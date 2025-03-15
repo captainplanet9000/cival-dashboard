@@ -1,0 +1,2220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElizaOS Trading Farm - Modern Dashboard</title>
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <!-- ApexCharts -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css">
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="modern_dashboard.css">
+    <!-- Fallback CSS in case modern_dashboard.css doesn't load -->
+    <style>
+        /* All styles moved to modern_dashboard.css */
+        /* Fallback styles in case the external CSS fails to load */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+        }
+        .dashboard-container {
+            display: flex;
+            height: 100vh;
+        }
+        .sidebar {
+            width: 240px;
+            background-color: #fff;
+            border-right: 1px solid #e5e7eb;
+            padding: 1rem;
+        }
+        .main-content {
+            flex: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+            margin-bottom: 1rem;
+        }
+        .card-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e5e7eb;
+            font-weight: 600;
+        }
+        .card-body {
+            padding: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                </svg>
+                <span>The Farm</span>
+            </div>
+            <ul class="nav-sidebar">
+                <li class="nav-item">
+                    <a href="#dashboard" class="nav-link active">
+                        <i class="bi bi-grid-1x2-fill"></i>
+                        <span>Trading Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#strategies-section" class="nav-link">
+                        <i class="bi bi-graph-up"></i>
+                        <span>Strategy Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#agents-section" class="nav-link">
+                        <i class="bi bi-cpu"></i>
+                        <span>ElizaOS Agents</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#agent-chat" class="nav-link">
+                        <i class="bi bi-chat-dots"></i>
+                        <span>Agent Chat</span>
+                    </a>
+                </li>
+                <li class="nav-header">Trading</li>
+                <li class="nav-item">
+                    <a href="#active-trades-section" class="nav-link">
+                        <i class="bi bi-currency-exchange"></i>
+                        <span>Active Trades</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#trade-history-section" class="nav-link">
+                        <i class="bi bi-clock-history"></i>
+                        <span>Trade History</span>
+                    </a>
+                </li>
+                <li class="nav-header">Protocols</li>
+                <li class="nav-item">
+                    <a href="#hyperliquid-section" class="nav-link">
+                        <i class="bi bi-water"></i>
+                        <span>Hyperliquid</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#vertex-section" class="nav-link">
+                        <i class="bi bi-triangle"></i>
+                        <span>Vertex Protocol</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#sonic-section" class="nav-link">
+                        <i class="bi bi-soundwave"></i>
+                        <span>Sonic Protocol</span>
+                    </a>
+                </li>
+                <li class="nav-header">Management</li>
+                <li class="nav-item">
+                    <a href="#risk-management-section" class="nav-link">
+                        <i class="bi bi-shield-check"></i>
+                        <span>Risk Management</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#analytics-section" class="nav-link">
+                        <i class="bi bi-bar-chart"></i>
+                        <span>Performance Analytics</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#settings-section" class="nav-link">
+                        <i class="bi bi-gear"></i>
+                        <span>System Settings</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Top Header Bar -->
+            <div class="main-header">
+                <h2 class="header-title">Trading Dashboard</h2>
+                <div class="header-actions">
+                    <div class="eliza-status-indicator">
+                        <span id="eliza-connection-status" class="badge badge-success">
+                            <i class="bi bi-cpu"></i> ElizaOS Connected
+                        </span>
+                    </div>
+                    <button class="btn btn-outline btn-icon">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                    <button class="btn btn-outline btn-icon">
+                        <i class="bi bi-gear"></i>
+                    </button>
+                    <div class="user-profile">
+                        <span>AP</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section-container">
+                <!-- Usage Chart -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">Credits Usage Last Year</h3>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xl font-bold">149,758</span>
+                            <div class="flex border rounded-md overflow-hidden">
+                                <button class="px-3 py-1 text-xs font-medium bg-primary text-white" onclick="filterCreditsChart('year')">Year</button>
+                                <button class="px-3 py-1 text-xs font-medium" onclick="filterCreditsChart('quarter')">Quarter</button>
+                                <button class="px-3 py-1 text-xs font-medium" onclick="filterCreditsChart('month')">Month</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="creditsChart"></div>
+                    <div class="flex flex-wrap gap-3 mt-3 justify-center">
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-[#008FFB] mr-1"></div>
+                            <span class="text-xs">Trade Executions: <b>58,020</b></span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-[#00E396] mr-1"></div>
+                            <span class="text-xs">Market Data API: <b>66,000</b></span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-[#775DD0] mr-1"></div>
+                            <span class="text-xs">ElizaOS AI Operations: <b>48,140</b></span>
+                        </div>
+                        <div class="flex items-center">
+                            <div class="w-3 h-3 rounded-full bg-[#FF4560] mr-1"></div>
+                            <span class="text-xs">Strategy Calculations: <b>32,350</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Strategy Control Panel - Replacing the users table section -->
+                <div class="card mt-6">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center">
+                            <h3>Strategy Control Panel</h3>
+                            <div class="flex gap-2">
+                                <button class="btn-sm btn-primary" onclick="createNewStrategy()">New Strategy</button>
+                                <button class="btn-sm btn-outline" onclick="importStrategy()">Import</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th width="30px">
+                                        <input type="checkbox" class="checkbox" id="select-all-strategies">
+                                    </th>
+                                    <th>STRATEGY NAME</th>
+                                    <th>MARKET</th>
+                                    <th>TIMEFRAME</th>
+                                    <th>RISK LEVEL</th>
+                                    <th>STATUS</th>
+                                    <th>P&L</th>
+                                    <th width="140px">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox strategy-checkbox"></td>
+                                    <td>MACD Crossover v2</td>
+                                    <td>BTC-USDT</td>
+                                    <td>4H</td>
+                                    <td>
+                                        <div class="inline-flex items-center">
+                                            <div class="w-16 bg-gray-200 rounded-full h-2">
+                                                <div class="bg-yellow-500 h-2 rounded-full" style="width: 60%"></div>
+                                            </div>
+                                            <span class="ml-2">Medium</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge badge-success">Running</span></td>
+                                    <td class="text-success">+12.45%</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="toggleStrategy('macd-btc')"><i class="bi bi-pause-fill"></i></button>
+                                            <button class="btn-icon-sm" onclick="editStrategy('macd-btc')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewStrategyDetails('macd-btc')"><i class="bi bi-bar-chart"></i></button>
+                                            <button class="btn-icon-sm" onclick="duplicateStrategy('macd-btc')"><i class="bi bi-files"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox strategy-checkbox"></td>
+                                    <td>RSI Momentum</td>
+                                    <td>ETH-USDT</td>
+                                    <td>1H</td>
+                                    <td>
+                                        <div class="inline-flex items-center">
+                                            <div class="w-16 bg-gray-200 rounded-full h-2">
+                                                <div class="bg-red-500 h-2 rounded-full" style="width: 85%"></div>
+                                            </div>
+                                            <span class="ml-2">High</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge badge-success">Running</span></td>
+                                    <td class="text-danger">-3.21%</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="toggleStrategy('rsi-eth')"><i class="bi bi-pause-fill"></i></button>
+                                            <button class="btn-icon-sm" onclick="editStrategy('rsi-eth')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewStrategyDetails('rsi-eth')"><i class="bi bi-bar-chart"></i></button>
+                                            <button class="btn-icon-sm" onclick="duplicateStrategy('rsi-eth')"><i class="bi bi-files"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox strategy-checkbox"></td>
+                                    <td>ElizaOS AI Alpha</td>
+                                    <td>SOL-USDT</td>
+                                    <td>1D</td>
+                                    <td>
+                                        <div class="inline-flex items-center">
+                                            <div class="w-16 bg-gray-200 rounded-full h-2">
+                                                <div class="bg-green-500 h-2 rounded-full" style="width: 35%"></div>
+                                            </div>
+                                            <span class="ml-2">Low</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge badge-warning">Paused</span></td>
+                                    <td class="text-success">+21.76%</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="toggleStrategy('eliza-sol')"><i class="bi bi-play-fill"></i></button>
+                                            <button class="btn-icon-sm" onclick="editStrategy('eliza-sol')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewStrategyDetails('eliza-sol')"><i class="bi bi-bar-chart"></i></button>
+                                            <button class="btn-icon-sm" onclick="duplicateStrategy('eliza-sol')"><i class="bi bi-files"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox strategy-checkbox"></td>
+                                    <td>Mean Reversion</td>
+                                    <td>ATOM-USDT</td>
+                                    <td>2H</td>
+                                    <td>
+                                        <div class="inline-flex items-center">
+                                            <div class="w-16 bg-gray-200 rounded-full h-2">
+                                                <div class="bg-blue-500 h-2 rounded-full" style="width: 50%"></div>
+                                            </div>
+                                            <span class="ml-2">Medium</span>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge badge-danger">Error</span></td>
+                                    <td class="text-muted">N/A</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="toggleStrategy('mean-atom')"><i class="bi bi-play-fill"></i></button>
+                                            <button class="btn-icon-sm" onclick="editStrategy('mean-atom')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewStrategyDetails('mean-atom')"><i class="bi bi-exclamation-triangle"></i></button>
+                                            <button class="btn-icon-sm" onclick="duplicateStrategy('mean-atom')"><i class="bi bi-files"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-footer">
+                        <div class="flex justify-between items-center">
+                            <div class="text-sm text-muted">Showing 4 of 12 strategies</div>
+                            <div class="flex items-center gap-2">
+                                <button class="btn-sm btn-outline">Bulk Actions</button>
+                                <div class="pagination">
+                                    <button class="btn-icon-sm"><i class="bi bi-chevron-left"></i></button>
+                                    <span>Page 1 of 3</span>
+                                    <button class="btn-icon-sm"><i class="bi bi-chevron-right"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Farm Command Control Panel - Replacing the integration cards section -->
+                <div class="card mt-6">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center">
+                            <h3>Master Command Center</h3>
+                            <button class="btn-sm btn-danger" onclick="emergencyStop()">Emergency Stop</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="grid grid-cols-3 gap-4">
+                            <!-- System Controls -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold mb-3">System Controls</h4>
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <span>Auto-Trading</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span>ElizaOS Integration</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span>Risk Manager</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span>API Connections</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <span>Data Collection</span>
+                                        <label class="toggle">
+                                            <input type="checkbox" checked>
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <button class="btn-sm btn-primary w-full">Apply Changes</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Risk Management -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold mb-3">Risk Management</h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-sm mb-1">Max Daily Drawdown</label>
+                                        <div class="flex gap-2">
+                                            <input type="range" min="1" max="10" value="3" class="range-slider w-full">
+                                            <span class="text-sm">3%</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm mb-1">Position Size Limit</label>
+                                        <div class="flex gap-2">
+                                            <input type="range" min="1" max="100" value="25" class="range-slider w-full">
+                                            <span class="text-sm">25%</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm mb-1">Stop Loss Type</label>
+                                        <select class="select-input w-full">
+                                            <option>Fixed</option>
+                                            <option>Trailing</option>
+                                            <option>ATR-Based</option>
+                                            <option>AI Adaptive</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm mb-1">Risk-Reward Ratio</label>
+                                        <select class="select-input w-full">
+                                            <option>1:1</option>
+                                            <option>1:2</option>
+                                            <option selected>1:3</option>
+                                            <option>2:1</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <button class="btn-sm btn-primary w-full">Update Risk Parameters</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Exchange Connections -->
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold mb-3">Exchange Connections</h4>
+                                <div class="space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <div class="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
+                                            <span>Binance</span>
+                                        </div>
+                                        <button class="btn-icon-xs">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <div class="h-3 w-3 rounded-full bg-green-500 mr-2"></div>
+                                            <span>Coinbase</span>
+                                        </div>
+                                        <button class="btn-icon-xs">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <div class="h-3 w-3 rounded-full bg-yellow-500 mr-2"></div>
+                                            <span>Kraken</span>
+                                        </div>
+                                        <button class="btn-icon-xs">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <div class="h-3 w-3 rounded-full bg-red-500 mr-2"></div>
+                                            <span>Bitfinex</span>
+                                        </div>
+                                        <button class="btn-icon-xs">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </button>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center">
+                                            <div class="h-3 w-3 rounded-full bg-gray-300 mr-2"></div>
+                                            <span>Kucoin</span>
+                                        </div>
+                                        <button class="btn-icon-xs">
+                                            <i class="bi bi-gear-fill"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="mt-4">
+                                    <button class="btn-sm btn-outline w-full">Add Exchange</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 mt-4">
+                            <div class="border rounded-lg p-4">
+                                <h4 class="font-semibold mb-3">ElizaOS AI Command Console</h4>
+                                <div class="bg-black rounded-lg p-3 h-40 text-green-400 font-mono text-sm overflow-auto" id="elizaConsole">
+                                    <div>> ElizaOS integration active</div>
+                                    <div>> Monitoring markets: BTC, ETH, SOL, ATOM, DOT</div>
+                                    <div>> Risk manager: Initialized</div>
+                                    <div>> Live data feed: Connected</div>
+                                    <div>> AI prediction engine: Ready</div>
+                                    <div>> Trading signals: Processing</div>
+                                    <div>> Waiting for commands...</div>
+                                </div>
+                                <div class="mt-3 flex">
+                                    <input type="text" class="input-command w-full" placeholder="Type command or query (e.g., 'status', 'analyze BTC', 'optimize strategies')">
+                                    <button class="btn-primary ml-2" onclick="sendElizaCommand()">Send</button>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2">
+                                    <button class="badge badge-outline" onclick="quickCommand('status')">Status</button>
+                                    <button class="badge badge-outline" onclick="quickCommand('analyze BTC')">Analyze BTC</button>
+                                    <button class="badge badge-outline" onclick="quickCommand('optimize')">Optimize</button>
+                                    <button class="badge badge-outline" onclick="quickCommand('forecast')">Market Forecast</button>
+                                    <button class="badge badge-outline" onclick="quickCommand('risk adjust')">Adjust Risk</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Active Trades Section -->
+                <div class="card mt-6">
+                    <div class="card-header">
+                        <div class="flex justify-between items-center">
+                            <h3>Active Trades</h3>
+                            <div class="flex gap-2">
+                                <select class="select-sm">
+                                    <option>All Pairs</option>
+                                    <option>BTC Pairs</option>
+                                    <option>ETH Pairs</option>
+                                    <option>SOL Pairs</option>
+                                </select>
+                                <button class="btn-sm btn-outline"><i class="bi bi-arrow-repeat mr-1"></i> Refresh</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th>PAIR</th>
+                                    <th>STRATEGY</th>
+                                    <th>ENTRY PRICE</th>
+                                    <th>CURRENT PRICE</th>
+                                    <th>TYPE</th>
+                                    <th>SIZE</th>
+                                    <th>P&L</th>
+                                    <th>DURATION</th>
+                                    <th width="120px">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>BTC-USDT</td>
+                                    <td>MACD Crossover</td>
+                                    <td>$63,450.00</td>
+                                    <td>$64,125.50</td>
+                                    <td><span class="badge badge-success">LONG</span></td>
+                                    <td>0.15 BTC</td>
+                                    <td class="text-success">+$101.33 (+1.06%)</td>
+                                    <td>4h 23m</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="closeTrade('btc-1')"><i class="bi bi-x-lg"></i></button>
+                                            <button class="btn-icon-sm" onclick="editTrade('btc-1')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewTradeDetails('btc-1')"><i class="bi bi-info-circle"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>ETH-USDT</td>
+                                    <td>RSI Momentum</td>
+                                    <td>$3,258.75</td>
+                                    <td>$3,201.25</td>
+                                    <td><span class="badge badge-danger">SHORT</span></td>
+                                    <td>1.5 ETH</td>
+                                    <td class="text-success">+$86.25 (+1.76%)</td>
+                                    <td>2h 12m</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="closeTrade('eth-1')"><i class="bi bi-x-lg"></i></button>
+                                            <button class="btn-icon-sm" onclick="editTrade('eth-1')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewTradeDetails('eth-1')"><i class="bi bi-info-circle"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>SOL-USDT</td>
+                                    <td>ElizaOS AI Alpha</td>
+                                    <td>$146.75</td>
+                                    <td>$152.50</td>
+                                    <td><span class="badge badge-success">LONG</span></td>
+                                    <td>25 SOL</td>
+                                    <td class="text-success">+$143.75 (+3.92%)</td>
+                                    <td>8h 45m</td>
+                                    <td>
+                                        <div class="flex gap-1">
+                                            <button class="btn-icon-sm" onclick="closeTrade('sol-1')"><i class="bi bi-x-lg"></i></button>
+                                            <button class="btn-icon-sm" onclick="editTrade('sol-1')"><i class="bi bi-pencil"></i></button>
+                                            <button class="btn-icon-sm" onclick="viewTradeDetails('sol-1')"><i class="bi bi-info-circle"></i></button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- ElizaOS Integration Status -->
+                <div class="card p-4 mt-6">
+                    <div class="card-header">
+                        <h3 class="card-title">ElizaOS Integration Status</h3>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#elizaIntegrationModal">
+                            <i class="bi bi-gear"></i> Configure
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="icon-box bg-success">
+                                <i class="bi bi-cpu-fill text-white"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold mb-1">ElizaOS Agent Framework</h4>
+                                <p class="text-sm text-muted-foreground">Connected to ElizaOS API for AI-powered trading</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="status-card">
+                                <div class="value">5</div>
+                                <div class="label">Active Agents</div>
+                            </div>
+                            <div class="status-card">
+                                <div class="value">12</div>
+                                <div class="label">Available Models</div>
+                            </div>
+                            <div class="status-card">
+                                <div class="value">95%</div>
+                                <div class="label">System Health</div>
+                                <div class="change positive">
+                                    <i class="bi bi-arrow-up"></i> 3% from last week
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ElizaOS Agent Management Section -->
+            <div id="agents-section" class="section-container">
+                <h5 class="section-title mb-3">
+                    <i class="bi bi-cpu me-2"></i>ElizaOS Agent Management
+                </h5>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                                <h6 class="m-0 font-weight-bold">Active AI Agents</h6>
+                                <div>
+                                    <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newAgentModal">
+                                        <i class="bi bi-plus-circle me-1"></i>Create Agent
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#elizaIntegrationModal">
+                                        <i class="bi bi-gear me-1"></i>Configure ElizaOS
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <ul class="nav nav-tabs mb-3" id="agentsTabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="active-agents-tab" data-bs-toggle="tab" data-bs-target="#active-agents-tab-pane" type="button" role="tab">
+                                            Active Agents
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="available-agents-tab" data-bs-toggle="tab" data-bs-target="#available-agents-tab-pane" type="button" role="tab">
+                                            Available Templates
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="agent-activity-tab" data-bs-toggle="tab" data-bs-target="#agent-activity-tab-pane" type="button" role="tab">
+                                            Activity Log
+                                        </button>
+                                    </li>
+                                </ul>
+                                
+                                <div class="tab-content" id="agentsTabsContent">
+                                    <!-- Active Agents Tab -->
+                                    <div class="tab-pane fade show active" id="active-agents-tab-pane" role="tabpanel" aria-labelledby="active-agents-tab" tabindex="0">
+                                        <div class="row" id="agent-container">
+                                            <!-- Example Agent Cards -->
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Market Analyst</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-ma-001</small><br>
+                                                            Last Action: Analyzing ICP/USDC pair<br>
+                                                            Performance: +2.3% (24h)
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 85%;" aria-valuenow="85" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-ma-001">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-ma-001">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Execution Agent</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-ex-002</small><br>
+                                                            Last Action: Placed ICP/USDC order<br>
+                                                            Performance: +1.7% (24h)
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 75%;" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-ex-002">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-ex-002">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Risk Manager</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-rm-003</small><br>
+                                                            Last Action: Updated risk parameters<br>
+                                                            Performance: N/A
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 90%;" aria-valuenow="90" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-rm-003">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-rm-003">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Available Agent Templates Tab -->
+                                    <div class="tab-pane fade" id="available-agents-tab-pane" role="tabpanel" aria-labelledby="available-agents-tab" tabindex="0">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Market Analyst</h5>
+                                                        <div class="card-text">
+                                                            <p>Analyzes market trends and patterns to identify potential trading opportunities.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Technical analysis capability</li>
+                                                                <li>Pattern recognition</li>
+                                                                <li>Sentiment analysis</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="market-analyst">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Execution Agent</h5>
+                                                        <div class="card-text">
+                                                            <p>Executes trades based on signals from other agents or predetermined strategies.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Multi-protocol support</li>
+                                                                <li>Smart order routing</li>
+                                                                <li>Transaction optimization</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="execution-agent">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Risk Manager</h5>
+                                                        <div class="card-text">
+                                                            <p>Monitors and manages trade risk according to predefined parameters.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Risk assessment</li>
+                                                                <li>Position sizing</li>
+                                                                <li>Stop-loss management</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="risk-manager">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Controller Agent</h5>
+                                                        <div class="card-text">
+                                                            <p>Coordinates the activities of all other agents in the system.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Multi-agent orchestration</li>
+                                                                <li>Decision synthesis</li>
+                                                                <li>Conflict resolution</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="controller-agent">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Agent Activity Log Tab -->
+                                    <div class="tab-pane fade" id="agent-activity-tab-pane" role="tabpanel" aria-labelledby="agent-activity-tab" tabindex="0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Timestamp</th>
+                                                        <th>Agent</th>
+                                                        <th>Action</th>
+                                                        <th>Details</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="agent-activity-log">
+                                                    <tr>
+                                                        <td>2023-10-15 14:32:45</td>
+                                                        <td>Market Analyst</td>
+                                                        <td>Analysis</td>
+                                                        <td>Completed market analysis for ICP/USDC</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 14:35:12</td>
+                                                        <td>Execution Agent</td>
+                                                        <td>Trade</td>
+                                                        <td>Executed buy order: 2.5 ICP at $9.87</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 14:42:38</td>
+                                                        <td>Risk Manager</td>
+                                                        <td>Update</td>
+                                                        <td>Updated risk parameters for volatile market</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 15:01:22</td>
+                                                        <td>Strategist</td>
+                                                        <td>Development</td>
+                                                        <td>Initiated new strategy development</td>
+                                                        <td><span class="badge bg-warning text-dark">In Progress</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 15:15:47</td>
+                                                        <td>Controller Agent</td>
+                                                        <td>Communication</td>
+                                                        <td>Coordinated signals between analysis and execution</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mt-3">
+                                            <button class="btn btn-sm btn-outline-secondary" id="refresh-activity-log">
+                                                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                                            </button>
+                                            <div class="btn-group" role="group">
+                                                <button type="button" class="btn btn-sm btn-outline-primary">Previous</button>
+                                                <button type="button" class="btn btn-sm btn-outline-primary">Next</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Performance Metrics Section -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                                <h6 class="m-0 font-weight-bold">Agent Performance Metrics</h6>
+                                <div class="dropdown no-arrow">
+                                    <a class="dropdown-toggle" href="#" role="button" id="agentMetricsDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="agentMetricsDropdown">
+                                        <a class="dropdown-item" href="#">Last 24 hours</a>
+                                        <a class="dropdown-item" href="#">Last 7 days</a>
+                                        <a class="dropdown-item" href="#">Last 30 days</a>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item" href="#">Export Data</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div id="agent-performance-chart" style="height: 300px;"></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="mb-3">
+                                            <h6 class="font-weight-bold">Overall Performance</h6>
+                                            <div class="progress mb-2" style="height: 20px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: 75%;" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100">75%</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Trading Accuracy</span>
+                                            <span>82%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-info" role="progressbar" style="width: 82%;" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Decision Speed</span>
+                                            <span>91%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-primary" role="progressbar" style="width: 91%;" aria-valuenow="91" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Risk Management</span>
+                                            <span>68%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-warning" role="progressbar" style="width: 68%;" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Placeholder for other content sections. The original content will be reorganized into these sections in subsequent edits -->
+            <div id="sonic-section" class="section-container">
+                <!-- Sonic Protocol content will go here -->
+            </div>
+
+            <div id="vertex-section" class="section-container">
+                <!-- Vertex Protocol content will go here -->
+            </div>
+
+            <div id="strategies-section" class="section-container">
+                <!-- Strategies content will go here -->
+            </div>
+
+            <div id="ai-integration-section" class="section-container">
+                <!-- ElizaOS AI Integration features will go here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container for Notifications -->
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 5;"></div>
+
+    <!-- Modals -->
+    <!-- Create New Agent Modal -->
+    <div class="modal fade" id="newAgentModal" tabindex="-1" aria-labelledby="newAgentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newAgentModalLabel">Create New ElizaOS Agent</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-agent-form">
+                        <div class="mb-3">
+                            <label for="agent-name" class="form-label">Agent Name</label>
+                            <input type="text" class="form-control" id="agent-name" placeholder="Enter agent name">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-type" class="form-label">Agent Type</label>
+                            <select class="form-select" id="agent-type">
+                                <option selected disabled>Select agent type</option>
+                                <option value="market-analyst">Market Analyst</option>
+                                <option value="execution-agent">Execution Agent</option>
+                                <option value="risk-manager">Risk Manager</option>
+                                <option value="controller-agent">Controller Agent</option>
+                                <option value="custom">Custom Agent</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="agent-description" rows="2" placeholder="Describe the agent's purpose"></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Agent Capabilities</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-market-analysis">
+                                        <label class="form-check-label" for="capability-market-analysis">Market Analysis</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-trade-execution">
+                                        <label class="form-check-label" for="capability-trade-execution">Trade Execution</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-risk-management">
+                                        <label class="form-check-label" for="capability-risk-management">Risk Management</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-portfolio-rebalancing">
+                                        <label class="form-check-label" for="capability-portfolio-rebalancing">Portfolio Rebalancing</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-sentiment-analysis">
+                                        <label class="form-check-label" for="capability-sentiment-analysis">Sentiment Analysis</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-multi-agent-collab">
+                                        <label class="form-check-label" for="capability-multi-agent-collab">Multi-Agent Collaboration</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="agent-model" class="form-label">AI Model</label>
+                                <select class="form-select" id="agent-model">
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <option value="claude-3-opus">Claude 3 Opus</option>
+                                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                                    <option value="llama-3-70b">Llama 3 70B</option>
+                                    <option value="gemini-pro">Gemini Pro</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="agent-frequency" class="form-label">Update Frequency</label>
+                                <select class="form-select" id="agent-frequency">
+                                    <option value="realtime">Real-time</option>
+                                    <option value="1min">Every minute</option>
+                                    <option value="5min">Every 5 minutes</option>
+                                    <option value="15min">Every 15 minutes</option>
+                                    <option value="1h">Hourly</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="agent-custom-params" class="d-none">
+                            <div class="mb-3">
+                                <label for="agent-custom-config" class="form-label">Custom Configuration</label>
+                                <textarea class="form-control" id="agent-custom-config" rows="4" placeholder='{"parameters": {"key": "value"}}'></textarea>
+                                <small class="form-text text-muted">Enter custom configuration in JSON format</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Protocol Access</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="protocol-sonic" checked>
+                                        <label class="form-check-label" for="protocol-sonic">Sonic</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="protocol-vertex" checked>
+                                        <label class="form-check-label" for="protocol-vertex">Vertex</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-memory-allocation" class="form-label">Memory Allocation (MB)</label>
+                            <input type="range" class="form-range" id="agent-memory-allocation" min="128" max="2048" step="128" value="512">
+                            <div class="d-flex justify-content-between">
+                                <small>128 MB</small>
+                                <small id="memory-value">512 MB</small>
+                                <small>2048 MB</small>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="create-agent-btn">Create Agent</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sonic Swap Modal -->
+    <div class="modal fade" id="sonicSwapModal" tabindex="-1" aria-labelledby="sonicSwapModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sonicSwapModalLabel">Swap Tokens on Sonic Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sonic-swap-form">
+                        <div class="mb-3">
+                            <label for="swap-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="swap-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-from-token" class="form-label">From Token</label>
+                            <select class="form-select" id="swap-from-token" required>
+                                <!-- Tokens will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-to-token" class="form-label">To Token</label>
+                            <select class="form-select" id="swap-to-token" required>
+                                <!-- Tokens will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-amount" class="form-label">Amount</label>
+                            <input type="number" class="form-control" id="swap-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated Receive</label>
+                                <span id="swap-estimate">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Price Impact</label>
+                                <span id="swap-price-impact">0.00%</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="execute-swap-btn">Swap Tokens</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sonic Liquidity Modal -->
+    <div class="modal fade" id="sonicLiquidityModal" tabindex="-1" aria-labelledby="sonicLiquidityModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sonicLiquidityModalLabel">Add Liquidity on Sonic Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sonic-liquidity-form">
+                        <div class="mb-3">
+                            <label for="liquidity-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="liquidity-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-pool" class="form-label">Select Pool</label>
+                            <select class="form-select" id="liquidity-pool" required>
+                                <!-- Pools will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-token-a-amount" class="form-label">Token A Amount</label>
+                            <input type="number" class="form-control" id="liquidity-token-a-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-token-b-amount" class="form-label">Token B Amount</label>
+                            <input type="number" class="form-control" id="liquidity-token-b-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated LP Tokens</label>
+                                <span id="liquidity-estimate">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Pool Share</label>
+                                <span id="liquidity-pool-share">0.00%</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="add-liquidity-btn">Add Liquidity</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vertex Order Modal -->
+    <div class="modal fade" id="vertexOrderModal" tabindex="-1" aria-labelledby="vertexOrderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="vertexOrderModalLabel">Place Order on Vertex Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="vertex-order-form">
+                        <div class="mb-3">
+                            <label for="order-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="order-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-market" class="form-label">Select Market</label>
+                            <select class="form-select" id="order-market" required>
+                                <!-- Markets will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-side" class="form-label">Side</label>
+                            <select class="form-select" id="order-side" required>
+                                <option value="BUY">BUY</option>
+                                <option value="SELL">SELL</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-type" class="form-label">Order Type</label>
+                            <select class="form-select" id="order-type" required>
+                                <option value="MARKET">MARKET</option>
+                                <option value="LIMIT">LIMIT</option>
+                                <option value="STOP">STOP</option>
+                                <option value="STOP_LIMIT">STOP LIMIT</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-size" class="form-label">Size</label>
+                            <input type="number" class="form-control" id="order-size" step="0.001" min="0" required>
+                        </div>
+                        <div class="mb-3 limit-price-field">
+                            <label for="order-price" class="form-label">Price</label>
+                            <input type="number" class="form-control" id="order-price" step="0.01" min="0">
+                        </div>
+                        <div class="mb-3 stop-price-field d-none">
+                            <label for="order-stop-price" class="form-label">Stop Price</label>
+                            <input type="number" class="form-control" id="order-stop-price" step="0.01" min="0">
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated Value</label>
+                                <span id="order-value-estimate">$0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Available Balance</label>
+                                <span id="order-available-balance">$0.00</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="execute-order-btn">Place Order</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Strategy Modal -->
+    <div class="modal fade" id="newStrategyModal" tabindex="-1" aria-labelledby="newStrategyModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newStrategyModalLabel">Create New Trading Strategy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-strategy-form">
+                        <div class="mb-3">
+                            <label for="strategy-name" class="form-label">Strategy Name</label>
+                            <input type="text" class="form-control" id="strategy-name" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="strategy-type" class="form-label">Protocol</label>
+                            <select class="form-select" id="strategy-type" required>
+                                <option value="" selected disabled>Select Protocol</option>
+                                <option value="sonic">Sonic Protocol</option>
+                                <option value="vertex">Vertex Protocol</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="strategy-template" class="form-label">Strategy Template</label>
+                            <select class="form-select" id="strategy-template" disabled>
+                                <option value="" selected disabled>Select Template</option>
+                                <!-- Templates will be populated based on protocol -->
+                            </select>
+                        </div>
+                        <div id="strategy-parameters-container">
+                            <!-- Parameters will be added based on template -->
+                        </div>
+                        <div class="mb-3">
+                            <label for="strategy-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="strategy-description" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="create-strategy-btn">Create Strategy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure Strategy Modal -->
+    <div class="modal fade" id="configureStrategyModal" tabindex="-1" aria-labelledby="configureStrategyModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configureStrategyModalLabel">Configure Strategy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="configure-strategy-form">
+                        <input type="hidden" id="configure-strategy-id">
+                        <input type="hidden" id="configure-strategy-protocol">
+                        
+                        <div class="mb-3">
+                            <label for="configure-strategy-name" class="form-label">Strategy Name</label>
+                            <input type="text" class="form-control" id="configure-strategy-name" readonly>
+                        </div>
+                        
+                        <div id="configure-strategy-parameters-container">
+                            <!-- Parameters will be added based on strategy -->
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-strategy-agents" class="form-label">Assign to Agents</label>
+                            <select class="form-select" id="configure-strategy-agents" multiple>
+                                <!-- Agents will be populated based on protocol -->
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger me-auto" id="delete-strategy-btn">Delete Strategy</button>
+                    <button type="button" class="btn btn-primary" id="save-strategy-config-btn">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure Agent Modal -->
+    <div class="modal fade" id="configureAgentModal" tabindex="-1" aria-labelledby="configureAgentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configureAgentModalLabel">Configure Agent</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="configure-agent-form">
+                        <input type="hidden" id="configure-agent-id">
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-name" class="form-label">Agent Name</label>
+                            <input type="text" class="form-control" id="configure-agent-name">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-strategies" class="form-label">Assign Strategies</label>
+                            <select class="form-select" id="configure-agent-strategies" multiple>
+                                <!-- Strategies will be populated based on agent type -->
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-risk" class="form-label">Risk Level (% of portfolio per trade)</label>
+                            <input type="range" class="form-range" id="configure-agent-risk" min="0.1" max="10" step="0.1" value="1">
+                            <div class="d-flex justify-content-between">
+                                <span>0.1%</span>
+                                <span id="risk-value">1.0%</span>
+                                <span>10%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Trading Pairs / Markets</label>
+                            <div id="configure-trading-pairs-container">
+                                <!-- Trading pairs will be added here based on protocol -->
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-testnet" class="form-label">Network</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="" id="configure-agent-testnet">
+                                <label class="form-check-label" for="configure-agent-testnet">
+                                    Use Testnet
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-agent-config-btn">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ElizaOS Integration Modal -->
+    <div class="modal fade" id="elizaIntegrationModal" tabindex="-1" aria-labelledby="elizaIntegrationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="elizaIntegrationModalLabel">ElizaOS Integration Configuration</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="eliza-config-form">
+                        <div class="mb-4">
+                            <h6 class="mb-3">ElizaOS API Configuration</h6>
+                            <div class="mb-3">
+                                <label for="elizaEndpoint" class="form-label">ElizaOS API Endpoint</label>
+                                <input type="url" class="form-control" id="elizaEndpoint" value="https://api.elizaos.ai/v1" placeholder="https://api.elizaos.ai/v1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="elizaApiKey" class="form-label">API Key</label>
+                                <input type="password" class="form-control" id="elizaApiKey" placeholder="Enter your ElizaOS API key">
+                                <div class="form-text">Your API key will be stored securely in your browser's local storage.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">AI Model Configuration</h6>
+                            <div class="mb-3">
+                                <label for="defaultModel" class="form-label">Default AI Model</label>
+                                <select class="form-select" id="defaultModel">
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <option value="claude-3-opus">Claude 3 Opus</option>
+                                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                                    <option value="llama-3-70b">Llama 3 70B</option>
+                                    <option value="gemini-pro">Gemini Pro</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="modelTemperature" class="form-label">Temperature: <span id="tempValue">0.7</span></label>
+                                <input type="range" class="form-range" min="0" max="1" step="0.1" value="0.7" id="modelTemperature">
+                                <div class="form-text">Controls randomness in the agent's decision making. Higher values make the output more random.</div>
+                            </div>
+                            
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" value="" id="enableMultiAgent" checked>
+                                <label class="form-check-label" for="enableMultiAgent">
+                                    Enable Multi-Agent Collaboration
+                                </label>
+                                <div class="form-text">Allows agents to communicate and collaborate with each other.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">Protocol Integration</h6>
+                            <div class="mb-3">
+                                <label for="sonicEndpoint" class="form-label">Sonic Protocol API Endpoint</label>
+                                <input type="url" class="form-control" id="sonicEndpoint" value="https://mainnet-api.sonic.ooo/v1" placeholder="https://mainnet-api.sonic.ooo/v1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="vertexEndpoint" class="form-label">Vertex Protocol API Endpoint</label>
+                                <input type="url" class="form-control" id="vertexEndpoint" value="https://api.vertexprotocol.com/v1" placeholder="https://api.vertexprotocol.com/v1">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">Advanced Settings</h6>
+                            <div class="mb-3">
+                                <label for="maxAgentMemory" class="form-label">Maximum Memory per Agent: <span id="memValue">512 MB</span></label>
+                                <input type="range" class="form-range" min="128" max="2048" step="128" value="512" id="maxAgentMemory">
+                            </div>
+                            <div class="mb-3">
+                                <label for="agentLogRetention" class="form-label">Agent Log Retention</label>
+                                <select class="form-select" id="agentLogRetention">
+                                    <option value="7">7 days</option>
+                                    <option value="14">14 days</option>
+                                    <option value="30" selected>30 days</option>
+                                    <option value="90">90 days</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-eliza-config">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Hyperliquid Integration -->
+    <link rel="stylesheet" href="../css/hyperliquid-monitor.css">
+    <script src="../js/hyperliquid-agent.js"></script>
+    <script src="../js/hyperliquid-monitor.js"></script>
+    
+    <script>
+        // Initialize the dashboard
+        document.addEventListener("DOMContentLoaded", function() {
+            // Credit usage chart
+            const creditsChartOptions = {
+                series: [
+                    {
+                        name: 'Trade Executions',
+                        data: [3250, 4120, 3740, 4280, 5350, 4800, 6400, 7100, 5500, 4980, 6200, 8300]
+                    },
+                    {
+                        name: 'Market Data API',
+                        data: [5800, 6200, 4500, 5100, 6800, 5600, 6200, 7400, 5800, 4900, 6100, 7600]
+                    },
+                    {
+                        name: 'ElizaOS AI Operations',
+                        data: [3200, 4580, 2760, 3400, 5200, 3800, 4300, 4600, 3700, 3100, 4100, 5400]
+                    },
+                    {
+                        name: 'Strategy Calculations',
+                        data: [2000, 3750, 1500, 3000, 4000, 2600, 2500, 3000, 2500, 2000, 2500, 3000]
+                    }
+                ],
+                chart: {
+                    type: 'bar',
+                    height: 320,
+                    stacked: true,
+                    toolbar: {
+                        show: false
+                    },
+                    fontFamily: "'Inter', sans-serif",
+                },
+                colors: ['#008FFB', '#00E396', '#775DD0', '#FF4560'],
+                plotOptions: {
+                    bar: {
+                        borderRadius: 6,
+                        columnWidth: '50%',
+                    }
+                },
+                dataLabels: {
+                    enabled: false
+                },
+                grid: {
+                    borderColor: 'hsl(var(--border))',
+                    strokeDashArray: 4,
+                    xaxis: {
+                        lines: {
+                            show: false
+                        }
+                    },
+                },
+                xaxis: {
+                    categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    axisBorder: {
+                        show: false
+                    },
+                    axisTicks: {
+                        show: false
+                    },
+                    labels: {
+                        style: {
+                            colors: 'hsl(var(--muted-foreground))',
+                            fontSize: '12px',
+                            fontFamily: "'Inter', sans-serif",
+                        },
+                    },
+                },
+                yaxis: {
+                    labels: {
+                        formatter: function(val) {
+                            return val.toLocaleString();
+                        },
+                        style: {
+                            colors: 'hsl(var(--muted-foreground))',
+                            fontSize: '12px',
+                            fontFamily: "'Inter', sans-serif",
+                        },
+                    },
+                },
+                tooltip: {
+                    y: {
+                        formatter: function(val) {
+                            return val.toLocaleString() + ' credits';
+                        }
+                    }
+                },
+                legend: {
+                    position: 'top',
+                    horizontalAlign: 'right',
+                    fontSize: '12px',
+                    fontFamily: "'Inter', sans-serif",
+                    markers: {
+                        width: 12,
+                        height: 12,
+                        radius: 6
+                    },
+                    itemMargin: {
+                        horizontal: 10,
+                        vertical: 0
+                    }
+                },
+                fill: {
+                    opacity: 1
+                }
+            };
+            
+            const creditsChart = new ApexCharts(document.querySelector("#creditsChart"), creditsChartOptions);
+            creditsChart.render();
+            
+            // Initialize theme toggling and other UI interactions
+            initializeUI();
+            
+            // Initialize ElizaOS connections
+            initializeElizaOSConnection();
+        });
+        
+        function initializeUI() {
+            // Toggle the sidebar
+            const sidebarToggleBtn = document.querySelector('.sidebar-toggle');
+            if (sidebarToggleBtn) {
+                sidebarToggleBtn.addEventListener('click', function() {
+                    document.querySelector('.sidebar').classList.toggle('collapsed');
+                    document.querySelector('.main-content').classList.toggle('expanded');
+                });
+            }
+            
+            // Activate the navbar links
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update page title
+                    if (this.querySelector('span')) {
+                        document.querySelector('.header-title').innerText = this.querySelector('span').innerText;
+                    }
+                });
+            });
+            
+            // Initialize dark/light mode toggle if present
+            const themeToggle = document.querySelector('.theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    document.body.classList.toggle('dark');
+                    localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+                });
+                
+                // Check for saved theme preference
+                const savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') {
+                    document.body.classList.add('dark');
+                }
+            }
+            
+            // Initialize dropdown functionality
+            const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
+            dropdownToggles.forEach(toggle => {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const dropdown = this.nextElementSibling;
+                    if (dropdown) {
+                        dropdown.classList.toggle('show');
+                    }
+                });
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', function(e) {
+                const dropdowns = document.querySelectorAll('.dropdown-menu.show');
+                dropdowns.forEach(dropdown => {
+                    if (!dropdown.previousElementSibling.contains(e.target)) {
+                        dropdown.classList.remove('show');
+                    }
+                });
+            });
+        }
+        
+        function initializeElizaOSConnection() {
+            // Simulate ElizaOS connection
+            setTimeout(() => {
+                const elizaStatusElement = document.getElementById('eliza-connection-status');
+                if (elizaStatusElement) {
+                    elizaStatusElement.innerHTML = '<i class="bi bi-cpu"></i> ElizaOS Connected';
+                    elizaStatusElement.className = 'badge badge-success';
+                }
+                console.log('ElizaOS connection initialized');
+            }, 1500);
+            
+            // Simulate updating dashboard with data from ElizaOS
+            fetchElizaOSAgents();
+        }
+        
+        function fetchElizaOSAgents() {
+            // This would normally be an API call to ElizaOS
+            console.log('Fetching ElizaOS agent data...');
+            // Display agent data in the dashboard
+            
+            // Sample function to update agent status cards
+            updateAgentStatusCards();
+        }
+        
+        function updateAgentStatusCards() {
+            // This would update the agent cards with live data
+            console.log('Updating agent status cards');
+            
+            // In a real implementation, this would fetch data from the ElizaOS API
+            // and update the UI accordingly
+        }
+        
+        // Master Control Panel Functions
+        function emergencyStop() {
+            console.log('Emergency stop triggered');
+            alert('EMERGENCY STOP: All trading activities have been halted.');
+            
+            // Stop all trading activities
+            const runningStrategies = document.querySelectorAll('.badge-success');
+            runningStrategies.forEach(badge => {
+                badge.className = 'badge badge-danger';
+                badge.innerText = 'Stopped';
+            });
+            
+            // Log to ElizaOS console
+            appendToElizaConsole('EMERGENCY STOP TRIGGERED');
+            appendToElizaConsole('All trading operations suspended');
+            appendToElizaConsole('Awaiting manual restart...');
+        }
+        
+        function createNewStrategy() {
+            console.log('Creating new strategy');
+            // This would open a modal or redirect to strategy creation page
+            alert('Opening strategy creation wizard...');
+        }
+        
+        function importStrategy() {
+            console.log('Importing strategy');
+            // This would open a file upload dialog
+            alert('Select strategy configuration file to import');
+        }
+        
+        function toggleStrategy(strategyId) {
+            console.log(`Toggling strategy: ${strategyId}`);
+            
+            // Find the specific strategy row
+            const row = document.querySelector(`[onclick="toggleStrategy('${strategyId}')"]`).closest('tr');
+            const statusBadge = row.querySelector('.badge');
+            const toggleButton = row.querySelector('.btn-icon-sm');
+            
+            if (statusBadge.classList.contains('badge-success')) {
+                // If running, pause it
+                statusBadge.className = 'badge badge-warning';
+                statusBadge.innerText = 'Paused';
+                toggleButton.innerHTML = '<i class="bi bi-play-fill"></i>';
+                appendToElizaConsole(`Strategy ${strategyId} paused`);
+            } else {
+                // If paused or error, start it
+                statusBadge.className = 'badge badge-success';
+                statusBadge.innerText = 'Running';
+                toggleButton.innerHTML = '<i class="bi bi-pause-fill"></i>';
+                appendToElizaConsole(`Strategy ${strategyId} activated`);
+            }
+        }
+        
+        function editStrategy(strategyId) {
+            console.log(`Editing strategy: ${strategyId}`);
+            alert(`Opening editor for strategy: ${strategyId}`);
+        }
+        
+        function viewStrategyDetails(strategyId) {
+            console.log(`Viewing details for strategy: ${strategyId}`);
+            alert(`Opening performance dashboard for strategy: ${strategyId}`);
+        }
+        
+        function duplicateStrategy(strategyId) {
+            console.log(`Duplicating strategy: ${strategyId}`);
+            alert(`Creating copy of strategy: ${strategyId}`);
+            appendToElizaConsole(`Duplicating strategy ${strategyId}`);
+        }
+        
+        // ElizaOS AI Command Console Functions
+        function sendElizaCommand() {
+            const commandInput = document.querySelector('.input-command');
+            const command = commandInput.value.trim();
+            
+            if (command) {
+                console.log(`Sending command to ElizaOS: ${command}`);
+                appendToElizaConsole(`> ${command}`);
+                
+                // Process command
+                processElizaCommand(command);
+                
+                // Clear input
+                commandInput.value = '';
+            }
+        }
+        
+        function quickCommand(command) {
+            console.log(`Quick command: ${command}`);
+            appendToElizaConsole(`> ${command}`);
+            
+            // Process command
+            processElizaCommand(command);
+        }
+        
+        function processElizaCommand(command) {
+            // This would integrate with the ElizaOS API
+            // Here we'll simulate responses
+            
+            setTimeout(() => {
+                if (command.toLowerCase().includes('status')) {
+                    appendToElizaConsole('System Status:');
+                    appendToElizaConsole('- Trading Engine: Online');
+                    appendToElizaConsole('- Active Strategies: 3');
+                    appendToElizaConsole('- Pending Orders: 2');
+                    appendToElizaConsole('- System Load: 42%');
+                    appendToElizaConsole('- Connectivity: Optimal');
+                    
+                    // Add Hyperliquid status if available
+                    if (window.hyperliquidAgent && window.hyperliquidAgent.connectionStatus) {
+                        appendToElizaConsole(`- Hyperliquid: ${window.hyperliquidAgent.connectionStatus}`);
+                    }
+                }
+                else if (command.toLowerCase().includes('analyze')) {
+                    const asset = command.split(' ')[1];
+                    appendToElizaConsole(`Analyzing ${asset}...`);
+                    appendToElizaConsole(`Technical indicators suggest ${Math.random() > 0.5 ? 'bullish' : 'bearish'} trend`);
+                    appendToElizaConsole(`Sentiment analysis: ${Math.random() > 0.6 ? 'positive' : 'negative'}`);
+                    appendToElizaConsole(`Recommendation: ${Math.random() > 0.5 ? 'LONG' : 'SHORT'} with confidence ${(Math.random() * 100).toFixed(1)}%`);
+                    
+                    // Get Hyperliquid orderbook if analyzing an asset
+                    if (window.hyperliquidAgent && ['ETH', 'BTC', 'SOL'].includes(asset)) {
+                        appendToElizaConsole(`Fetching ${asset} data from Hyperliquid...`);
+                        window.hyperliquidAgent.getOrderBook(asset)
+                            .then(data => {
+                                if (data.success) {
+                                    appendToElizaConsole(`Hyperliquid ${asset} price: $${data.price || 'N/A'}`);
+                                    appendToElizaConsole(`Liquidity: ${data.liquidity || 'Low'}`);
+                                } else {
+                                    appendToElizaConsole(`Could not retrieve Hyperliquid data: ${data.message}`);
+                                }
+                            })
+                            .catch(err => {
+                                appendToElizaConsole(`Error fetching Hyperliquid data: ${err.message}`);
+                            });
+                    }
+                }
+                else if (command.toLowerCase().includes('optimize')) {
+                    appendToElizaConsole('Optimizing trading strategies...');
+                    appendToElizaConsole('Analyzing historical performance...');
+                    appendToElizaConsole('Applying machine learning algorithms...');
+                    appendToElizaConsole('Strategy optimization complete');
+                    appendToElizaConsole('Recommended improvements applied to 3 strategies');
+                }
+                else if (command.toLowerCase().includes('forecast')) {
+                    appendToElizaConsole('Generating market forecast...');
+                    appendToElizaConsole('BTC: Likely volatility increase in next 24h');
+                    appendToElizaConsole('ETH: Correlation with BTC expected to weaken');
+                    appendToElizaConsole('SOL: Support level identified at $145.50');
+                }
+                else if (command.toLowerCase().includes('risk')) {
+                    appendToElizaConsole('Analyzing risk parameters...');
+                    appendToElizaConsole('Current portfolio risk: Medium');
+                    appendToElizaConsole('Suggestion: Reduce position sizes by 15%');
+                    appendToElizaConsole('Risk adjustment applied');
+                    
+                    // Update Hyperliquid risk parameters if available
+                    if (window.hyperliquidAgent) {
+                        window.hyperliquidAgent.updateRiskParameters({
+                            maxOrderSize: 0.085 // Reduce by 15%
+                        });
+                        appendToElizaConsole('Updated Hyperliquid risk parameters');
+                    }
+                }
+                else if (command.toLowerCase().includes('trade') || command.toLowerCase().includes('buy') || command.toLowerCase().includes('sell')) {
+                    // Parse trading command
+                    const words = command.toLowerCase().split(' ');
+                    let side = '';
+                    let size = 0.1; // Default size
+                    let symbol = 'ETH';
+                    
+                    // Extract side
+                    if (words.includes('buy') || words.includes('long')) {
+                        side = 'BUY';
+                    } else if (words.includes('sell') || words.includes('short')) {
+                        side = 'SELL';
+                    } else {
+                        appendToElizaConsole('Error: Trading side not specified (buy/sell)');
+                        return;
+                    }
+                    
+                    // Extract symbol
+                    const commonSymbols = ['btc', 'eth', 'sol', 'atom', 'dot'];
+                    for (const word of words) {
+                        if (commonSymbols.includes(word)) {
+                            symbol = word.toUpperCase();
+                            break;
+                        }
+                    }
+                    
+                    // Extract size
+                    for (let i = 0; i < words.length; i++) {
+                        const num = parseFloat(words[i]);
+                        if (!isNaN(num) && num > 0) {
+                            size = num;
+                            break;
+                        }
+                    }
+                    
+                    appendToElizaConsole(`Executing ${side} order for ${size} ${symbol}...`);
+                    
+                    // Execute trade through Hyperliquid if available
+                    if (window.hyperliquidAgent) {
+                        window.hyperliquidAgent.executeTrade(symbol, side, size)
+                            .then(result => {
+                                if (result.success) {
+                                    appendToElizaConsole(`Order executed successfully: ${result.message || 'Trade placed'}`);
+                                    appendToElizaConsole(`Order ID: ${result.orderId || 'Unknown'}`);
+                                    
+                                    // Update monitor if available
+                                    if (window.hyperliquidMonitor) {
+                                        window.hyperliquidMonitor.updateLastOrderStatus({
+                                            id: result.orderId || 'latest',
+                                            status: 'open',
+                                            symbol: symbol,
+                                            side: side,
+                                            size: size
+                                        });
+                                    }
+                                } else {
+                                    appendToElizaConsole(`Order failed: ${result.message || 'Unknown error'}`);
+                                }
+                            })
+                            .catch(err => {
+                                appendToElizaConsole(`Error executing order: ${err.message}`);
+                            });
+                    } else {
+                        appendToElizaConsole('Hyperliquid agent not available. Cannot execute trade.');
+                    }
+                }
+                else if (command.toLowerCase().includes('hyperliquid')) {
+                    appendToElizaConsole('Hyperliquid integration commands:');
+                    appendToElizaConsole('- trade/buy/sell [amount] [asset]: Execute trade');
+                    appendToElizaConsole('- hyperliquid status: Check connection status');
+                    appendToElizaConsole('- hyperliquid assets: List available assets');
+                    appendToElizaConsole('- hyperliquid reconnect: Attempt to reconnect');
+                    
+                    // Handle specific hyperliquid commands
+                    if (command.toLowerCase().includes('status')) {
+                        if (window.hyperliquidAgent) {
+                            appendToElizaConsole(`Hyperliquid Status: ${window.hyperliquidAgent.connectionStatus}`);
+                            
+                            // Request fresh status
+                            if (window.hyperliquidMonitor) {
+                                window.hyperliquidMonitor.updateMetrics();
+                            }
+                        } else {
+                            appendToElizaConsole('Hyperliquid agent not initialized');
+                        }
+                    } else if (command.toLowerCase().includes('assets')) {
+                        if (window.hyperliquidAgent) {
+                            appendToElizaConsole('Fetching available assets...');
+                            window.hyperliquidAgent.getAvailableAssets()
+                                .then(result => {
+                                    if (result.success && result.assets) {
+                                        appendToElizaConsole(`Available assets: ${result.assets.join(', ')}`);
+                                    } else {
+                                        appendToElizaConsole('Could not retrieve assets. Using defaults.');
+                                        appendToElizaConsole('Available assets: ETH, BTC, SOL');
+                                    }
+                                })
+                                .catch(err => {
+                                    appendToElizaConsole(`Error fetching assets: ${err.message}`);
+                                    appendToElizaConsole('Available assets: ETH, BTC, SOL');
+                                });
+                        } else {
+                            appendToElizaConsole('Hyperliquid agent not initialized');
+                        }
+                    } else if (command.toLowerCase().includes('reconnect')) {
+                        if (window.hyperliquidMonitor) {
+                            appendToElizaConsole('Attempting to reconnect to Hyperliquid...');
+                            window.hyperliquidMonitor.reconnect()
+                                .then(success => {
+                                    if (success) {
+                                        appendToElizaConsole('Successfully reconnected to Hyperliquid');
+                                    } else {
+                                        appendToElizaConsole('Failed to reconnect to Hyperliquid');
+                                    }
+                                })
+                                .catch(err => {
+                                    appendToElizaConsole(`Error reconnecting: ${err.message}`);
+                                });
+                        } else {
+                            appendToElizaConsole('Hyperliquid monitor not initialized');
+                        }
+                    }
+                }
+                else {
+                    appendToElizaConsole('Processing command...');
+                    appendToElizaConsole(`Command "${command}" executed successfully`);
+                }
+            }, 1000);
+        }
+        
+        function appendToElizaConsole(text) {
+            const console = document.getElementById('elizaConsole');
+            const div = document.createElement('div');
+            div.textContent = text;
+            console.appendChild(div);
+            
+            // Auto-scroll to bottom
+            console.scrollTop = console.scrollHeight;
+        }
+        
+        // Active Trades Functions
+        function closeTrade(tradeId) {
+            console.log(`Closing trade: ${tradeId}`);
+            const confirmed = confirm(`Are you sure you want to close trade ${tradeId}?`);
+            if (confirmed) {
+                // This would call the API to close the trade
+                alert(`Trade ${tradeId} closed successfully`);
+                appendToElizaConsole(`Trade ${tradeId} closed by user`);
+            }
+        }
+        
+        function editTrade(tradeId) {
+            console.log(`Editing trade: ${tradeId}`);
+            alert(`Opening editor for trade: ${tradeId}`);
+        }
+        
+        function viewTradeDetails(tradeId) {
+            console.log(`Viewing details for trade: ${tradeId}`);
+            alert(`Opening trade details for: ${tradeId}`);
+        }
+        
+        // Original trading farm functionality
+        function createAgentFromTemplate(templateId) {
+            console.log(`Creating agent from template: ${templateId}`);
+            // Implementation of creating an agent from a template
+            alert("Agent creation from template initiated: " + templateId);
+            appendToElizaConsole(`Creating new ElizaOS agent from template: ${templateId}`);
+        }
+        
+        // Credits Chart Functionality
+        function filterCreditsChart(period) {
+            console.log(`Filtering credits chart by period: ${period}`);
+            
+            // Update chart data based on period
+            let newData;
+            let newCategories;
+            
+            if (period === 'month') {
+                // Daily data for the current month
+                newData = [
+                    {
+                        name: 'Trade Executions',
+                        data: [180, 220, 190, 210, 240, 230, 260, 280, 250, 210, 230, 220, 240, 260, 280, 290, 310, 290, 270, 250, 240, 230, 250, 270, 280, 300, 320, 290, 270, 260]
+                    },
+                    {
+                        name: 'Market Data API',
+                        data: [150, 170, 160, 180, 200, 190, 210, 230, 220, 180, 190, 180, 200, 220, 240, 250, 270, 250, 230, 210, 200, 190, 210, 230, 240, 260, 280, 250, 230, 220]
+                    },
+                    {
+                        name: 'ElizaOS AI Operations',
+                        data: [120, 140, 130, 150, 170, 160, 180, 200, 190, 150, 160, 150, 170, 190, 210, 220, 240, 220, 200, 180, 170, 160, 180, 200, 210, 230, 250, 220, 200, 190]
+                    },
+                    {
+                        name: 'Strategy Calculations',
+                        data: [80, 100, 90, 110, 130, 120, 140, 160, 150, 110, 120, 110, 130, 150, 170, 180, 200, 180, 160, 140, 130, 120, 140, 160, 170, 190, 210, 180, 160, 150]
+                    }
+                ];
+                
+                // Generate day numbers for the month
+                newCategories = Array.from({length: 30}, (_, i) => (i + 1).toString());
+            } 
+            else if (period === 'quarter') {
+                // Weekly data for the quarter
+                newData = [
+                    {
+                        name: 'Trade Executions',
+                        data: [1450, 1680, 1520, 1790, 1830, 1750, 1900, 2050, 1920, 1800, 1950, 2020, 2100]
+                    },
+                    {
+                        name: 'Market Data API',
+                        data: [1650, 1880, 1720, 1990, 2030, 1950, 2100, 2250, 2120, 2000, 2150, 2220, 2300]
+                    },
+                    {
+                        name: 'ElizaOS AI Operations',
+                        data: [1200, 1430, 1270, 1540, 1580, 1500, 1650, 1800, 1670, 1550, 1700, 1770, 1850]
+                    },
+                    {
+                        name: 'Strategy Calculations',
+                        data: [850, 1080, 920, 1190, 1230, 1150, 1300, 1450, 1320, 1200, 1350, 1420, 1500]
+                    }
+                ];
+                
+                // Generate week numbers
+                newCategories = Array.from({length: 13}, (_, i) => `W${i + 1}`);
+            } 
+            else {
+                // Year data (default - monthly)
+                newData = [
+                    {
+                        name: 'Trade Executions',
+                        data: [3250, 4120, 3740, 4280, 5350, 4800, 6400, 7100, 5500, 4980, 6200, 8300]
+                    },
+                    {
+                        name: 'Market Data API',
+                        data: [5800, 6200, 4500, 5100, 6800, 5600, 6200, 7400, 5800, 4900, 6100, 7600]
+                    },
+                    {
+                        name: 'ElizaOS AI Operations',
+                        data: [3200, 4580, 2760, 3400, 5200, 3800, 4300, 4600, 3700, 3100, 4100, 5400]
+                    },
+                    {
+                        name: 'Strategy Calculations',
+                        data: [2000, 3750, 1500, 3000, 4000, 2600, 2500, 3000, 2500, 2000, 2500, 3000]
+                    }
+                ];
+                
+                // Monthly categories
+                newCategories = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            }
+            
+            // Update chart data
+            creditsChart.updateOptions({
+                xaxis: {
+                    categories: newCategories
+                }
+            });
+            
+            creditsChart.updateSeries(newData);
+            
+            // Update button styles
+            const buttons = document.querySelectorAll('[onclick^="filterCreditsChart"]');
+            buttons.forEach(btn => {
+                if (btn.textContent.toLowerCase() === period) {
+                    btn.classList.add('bg-primary', 'text-white');
+                } else {
+                    btn.classList.remove('bg-primary', 'text-white');
+                }
+            });
+        }
+    </script>
+</body>
+</html>

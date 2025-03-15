@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: ../
+      dockerfile: grafana_setup/Dockerfile.api
+    ports:
+      - "8051:8051"
+    volumes:
+      - ../:/app
+    environment:
+      - DB_PATH=/app/data/trading_farm.db
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=tradingfarm
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_USERS_AUTO_ASSIGN_ORG=true
+      - GF_USERS_AUTO_ASSIGN_ORG_ROLE=Editor
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_RENDERING_SERVER_URL=http://renderer:8081/render
+      - GF_RENDERING_CALLBACK_URL=http://grafana:3000/
+      - GF_LOG_FILTERS=rendering:debug
+      - GF_INSTALL_PLUGINS=briangann-gauge-panel
+      - GF_INSTALL_PLUGINS=digrich-bubblechart-panel
+      - GF_INSTALL_PLUGINS=ryantxu-ajax-panel
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=ryantxu-ajax-panel,briangann-gauge-panel,digrich-bubblechart-panel
+      # Green theme customization
+      - GF_CUSTOM_THEME=green
+      - GF_CUSTOM_THEME_PRIMARY_COLOR=#2E8B57
+      - GF_CUSTOM_THEME_SECONDARY_COLOR=#3F704D
+      - GF_CUSTOM_THEME_ACCENT_COLOR=#6B8E23
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+  renderer:
+    image: grafana/grafana-image-renderer:latest
+    ports:
+      - "8081:8081"
+    environment:
+      - ENABLE_METRICS=true
+    restart: unless-stopped
+    networks:
+      - trading-network
+
+volumes:
+  grafana_data:
+
+networks:
+  trading-network:
+    driver: bridge

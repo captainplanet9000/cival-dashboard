@@ -1,0 +1,18 @@
+2025-03-14 23:57:09,153 - elizaos_sim_server - INFO - Received command for agent eliza_trading_agent_1: analyze_market
+2025-03-14 23:57:09,155 - elizaos_sim_server - INFO - Parameters: {
+  "market": "ETH",
+  "timeframe": "1h"
+}
+2025-03-14 23:57:11,195 - elizaos_sim_server - INFO - Received command for agent eliza_trading_agent_1: execute_trade
+2025-03-14 23:57:11,197 - elizaos_sim_server - INFO - Parameters: {
+  "market": "ETH",
+  "direction": "long",
+  "size": 0.1,
+  "order_type": "market",
+  "exchange": "hyperliquid"
+}
+2025-03-14 23:57:13,244 - elizaos_sim_server - INFO - Received command for agent eliza_trading_agent_1: check_position
+2025-03-14 23:57:13,246 - elizaos_sim_server - INFO - Parameters: {
+  "market": "ETH",
+  "exchange": "hyperliquid"
+}
