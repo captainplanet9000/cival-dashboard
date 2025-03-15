@@ -24,6 +24,13 @@ VERTEX_API_KEY = os.getenv("VERTEX_API_KEY")
 PRIVATE_KEY = os.getenv("PRIVATE_KEY", "0x29311cb34026f4c04a6802575cd95b64316af02c85a53800bb2941dda569609a")  # Default to the provided private key
 WALLET_ADDRESS = os.getenv("WALLET_ADDRESS", "0xAe93892da6055a6ed3d5AAa53A05Ce54ee28dDa2")  # Default to the provided wallet address
 
+# AI Model Configuration
+GEMMA_API_KEY = os.getenv("GEMMA_API_KEY", "AIzaSyDks11WLILaPei2sW9M8QgCp2K4G5goE8k")
+GEMMA_MODEL_VERSION = "gemma-3-8b"
+GEMMA_TEMPERATURE = 0.7
+GEMMA_MAX_TOKENS = 1024
+GEMMA_TOP_P = 0.95
+
 # Trading Parameters
 TRADING_SYMBOLS = ["BTC/USDC", "ETH/USDC", "SOL/USDC"]
 TRADING_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"]

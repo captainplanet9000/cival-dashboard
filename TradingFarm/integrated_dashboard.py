@@ -25,6 +25,15 @@ from integrated_dashboard_config import (
 from src.monitoring.dashboard import TradingDashboard
 from hyperliquid_integration import setup_hyperliquid_dashboard
 
+# Import dashboard routes
+from dashboard.routes import blueprints
+
+# Import vault banking blueprint
+from vault_banking.routes import vault_banking_blueprint
+
+# Register vault banking blueprint
+blueprints.register_blueprint(vault_banking_blueprint)
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
