@@ -1,0 +1,44 @@
+{
+  "name": "sonic-nft-collection",
+  "version": "1.0.0",
+  "description": "Generative art NFT collection on the Sonic blockchain",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile",
+    "deploy": "hardhat run scripts/deploy_contract.js --network sonic",
+    "deploy:testnet": "hardhat run scripts/deploy_contract.js --network sonic_testnet",
+    "upload": "hardhat run scripts/upload_to_ipfs.js --network sonic",
+    "upload:testnet": "hardhat run scripts/upload_to_ipfs.js --network sonic_testnet",
+    "node": "hardhat node",
+    "lint": "eslint ."
+  },
+  "keywords": [
+    "nft",
+    "sonic",
+    "blockchain",
+    "generative-art",
+    "houdini",
+    "vex"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "@openzeppelin/contracts": "^4.9.3",
+    "@openzeppelin/test-helpers": "^0.5.16",
+    "chai": "^4.3.7",
+    "dotenv": "^16.3.1",
+    "eslint": "^8.46.0",
+    "ethereum-waffle": "^4.0.10",
+    "ethers": "^5.7.2",
+    "hardhat": "^2.17.1"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "form-data": "^4.0.0",
+    "fs-extra": "^11.1.1"
+  }
+} 
