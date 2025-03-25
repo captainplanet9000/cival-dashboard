@@ -1,0 +1,184 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --success: 142.1 76.2% 36.3%;
+    --success-foreground: 355.7 100% 97.3%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 48 96% 89%;
+    
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    
+    --radius: 0.5rem;
+  }
+  
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    
+    --success: 142.1 70.6% 45.3%;
+    --success-foreground: 144.9 80.4% 10%;
+    
+    --warning: 48 96% 89%;
+    --warning-foreground: 38 92% 50%;
+    
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Dashboard Cards */
+  .dashboard-card {
+    @apply bg-card rounded-md border border-border shadow-sm;
+  }
+  
+  /* Button Styles */
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium shadow-sm transition-colors;
+  }
+  
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-4 py-2 text-sm font-medium shadow-sm transition-colors;
+  }
+  
+  .btn-outline {
+    @apply border border-border bg-background hover:bg-muted rounded-md px-4 py-2 text-sm font-medium transition-colors;
+  }
+  
+  .btn-destructive {
+    @apply bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md px-4 py-2 text-sm font-medium shadow-sm transition-colors;
+  }
+  
+  /* Small button variants */
+  .btn-primary-sm {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm transition-colors;
+  }
+  
+  .btn-secondary-sm {
+    @apply bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm transition-colors;
+  }
+  
+  .btn-outline-sm {
+    @apply border border-border bg-background hover:bg-muted rounded-md px-3 py-1.5 text-xs font-medium transition-colors;
+  }
+  
+  .btn-destructive-sm {
+    @apply bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-md px-3 py-1.5 text-xs font-medium shadow-sm transition-colors;
+  }
+  
+  /* Text Status Colors */
+  .text-success {
+    @apply text-success;
+  }
+  
+  .text-warning {
+    @apply text-warning;
+  }
+  
+  .text-danger {
+    @apply text-destructive;
+  }
+  
+  /* Form Elements */
+  .form-input {
+    @apply block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring;
+  }
+  
+  .form-select {
+    @apply block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring;
+  }
+  
+  .form-checkbox {
+    @apply h-4 w-4 rounded border-border text-primary shadow focus:ring-ring;
+  }
+  
+  .form-label {
+    @apply block text-sm font-medium leading-6 mb-1;
+  }
+  
+  /* Status Badges */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  }
+  
+  .badge-success {
+    @apply bg-success/20 text-success;
+  }
+  
+  .badge-warning {
+    @apply bg-warning/20 text-warning;
+  }
+  
+  .badge-danger {
+    @apply bg-destructive/20 text-destructive;
+  }
+  
+  .badge-info {
+    @apply bg-primary/20 text-primary;
+  }
+  
+  .badge-muted {
+    @apply bg-muted text-muted-foreground;
+  }
+}

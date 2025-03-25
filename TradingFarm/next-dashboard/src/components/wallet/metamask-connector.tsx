@@ -19,6 +19,10 @@ interface Chain {
   symbol: string;
 }
 
+interface MetaMaskConnectorProps {
+  onConnect?: (address: string, chainId: string, balance: string, symbol: string, provider: any) => void;
+}
+
 const supportedChains: Chain[] = [
   { id: '0x1', name: 'Ethereum', icon: '🔷', symbol: 'ETH' },
   { id: '0x89', name: 'Polygon', icon: '🟣', symbol: 'MATIC' },
@@ -26,7 +30,7 @@ const supportedChains: Chain[] = [
   { id: '0xAA36A7', name: 'Sepolia', icon: '🔵', symbol: 'ETH' },
 ]
 
-export default function MetaMaskConnector() {
+export default function MetaMaskConnector({ onConnect }: MetaMaskConnectorProps) {
   const [isConnected, setIsConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState('')
   const [balance, setBalance] = useState('0')
@@ -76,6 +80,15 @@ export default function MetaMaskConnector() {
         setChainId(chainId)
         
         await getWalletBalance(accounts[0])
+        
+        // Get chain symbol
+        const chain = supportedChains.find(c => c.id === chainId)
+        const symbol = chain ? chain.symbol : 'ETH'
+        
+        // Call onConnect callback if provided
+        if (onConnect && provider) {
+          onConnect(accounts[0], chainId, balance, symbol, provider)
+        }
       }
       
       // Setup event listeners
@@ -120,6 +133,15 @@ export default function MetaMaskConnector() {
       await getWalletBalance(accounts[0])
       
       setTransactionStatus('')
+      
+      // Get chain symbol
+      const chain = supportedChains.find(c => c.id === chainId)
+      const symbol = chain ? chain.symbol : 'ETH'
+      
+      // Call onConnect callback if provided
+      if (onConnect && provider) {
+        onConnect(accounts[0], chainId, balance, symbol, provider)
+      }
     } catch (error) {
       console.error("Error connecting wallet:", error)
       setTransactionStatus('')
@@ -155,12 +177,26 @@ export default function MetaMaskConnector() {
       // Account changed
       setWalletAddress(accounts[0])
       getWalletBalance(accounts[0])
+      
+      // Call onConnect callback with updated information
+      if (onConnect && chainId) {
+        const chain = supportedChains.find(c => c.id === chainId)
+        const symbol = chain ? chain.symbol : 'ETH'
+        onConnect(accounts[0], chainId, balance, symbol, provider)
+      }
     }
   }
 
   // Handle chain changes
   const handleChainChanged = (newChainId: string) => {
     setChainId(newChainId)
+    
+    // Call onConnect callback with updated chain information
+    if (isConnected && onConnect) {
+      const chain = supportedChains.find(c => c.id === newChainId)
+      const symbol = chain ? chain.symbol : 'ETH'
+      onConnect(walletAddress, newChainId, balance, symbol, provider)
+    }
     
     // Refresh the page to ensure everything is in sync
     window.location.reload()
@@ -177,6 +213,13 @@ export default function MetaMaskConnector() {
   const refreshBalance = async () => {
     if (isConnected) {
       await getWalletBalance(walletAddress)
+      
+      // Call onConnect callback with updated balance
+      if (onConnect && chainId) {
+        const chain = supportedChains.find(c => c.id === chainId)
+        const symbol = chain ? chain.symbol : 'ETH'
+        onConnect(walletAddress, chainId, balance, symbol, provider)
+      }
     }
   }
 
