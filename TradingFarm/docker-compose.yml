@@ -1,6 +1,63 @@
 version: '3'
 
 services:
+  next-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tradingfarm_dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_MCP_SERVER_URL=http://python-libraries-mcp:8000
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - timescaledb
+      - python-libraries-mcp
+      - redis
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  python-libraries-mcp:
+    build:
+      context: ./python-libraries-mcp
+      dockerfile: Dockerfile
+    container_name: tradingfarm_mcp
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - timescaledb
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:alpine
+    container_name: tradingfarm_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   timescaledb:
     image: timescale/timescaledb:latest-pg14
     container_name: tradingfarm_db
@@ -13,6 +70,48 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradingfarm"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: tradingfarm_prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+    depends_on:
+      - next-dashboard
+      - python-libraries-mcp
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: tradingfarm_grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=secure_grafana_password
+    ports:
+      - "3001:3000"
+    restart: unless-stopped
+    depends_on:
+      - prometheus
     
 volumes:
   tradingfarm_db_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
