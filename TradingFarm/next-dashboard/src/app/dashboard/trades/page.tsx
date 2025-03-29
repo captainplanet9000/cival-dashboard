@@ -1,266 +1,338 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { ArrowUpDown, ExternalLink, Filter, Plus, MoreHorizontal, ChevronsUpDown, DollarSign, ArrowRightLeft } from 'lucide-react'
-
-// Mock data for trades
-const mockTrades = [
-  {
-    id: 'trade-001',
-    symbol: 'BTC/USDT',
-    type: 'Long',
-    entryPrice: 66542.80,
-    currentPrice: 67982.35,
-    size: 0.15,
-    pnl: '+3.67%',
-    value: 10197.35,
-    status: 'open',
-    timestamp: '2025-03-19T14:30:00Z',
-    strategy: 'Momentum Rider'
-  },
-  {
-    id: 'trade-002',
-    symbol: 'ETH/USDT',
-    type: 'Long',
-    entryPrice: 3521.45,
-    currentPrice: 3492.30,
-    size: 1.2,
-    pnl: '-0.83%',
-    value: 4190.76,
-    status: 'open',
-    timestamp: '2025-03-19T15:45:00Z',
-    strategy: 'Volatility Breakout'
-  },
-  {
-    id: 'trade-003',
-    symbol: 'SOL/USDT',
-    type: 'Short',
-    entryPrice: 142.35,
-    currentPrice: 138.65,
-    size: 25,
-    pnl: '+2.60%',
-    value: 3466.25,
-    status: 'open',
-    timestamp: '2025-03-19T16:15:00Z',
-    strategy: 'Mean Reversion VWAP'
-  },
-  {
-    id: 'trade-004',
-    symbol: 'ETH/USDT',
-    type: 'Long',
-    entryPrice: 3498.25,
-    currentPrice: 3492.30,
-    size: 0.8,
-    pnl: '-0.17%',
-    value: 2793.84,
-    status: 'closed',
-    timestamp: '2025-03-18T12:30:00Z',
-    strategy: 'Bollinger Band Scalper'
-  },
-  {
-    id: 'trade-005',
-    symbol: 'BTC/USDT',
-    type: 'Short',
-    entryPrice: 65782.40,
-    currentPrice: 67982.35,
-    size: 0.12,
-    pnl: '-3.35%',
-    value: 8157.88,
-    status: 'closed',
-    timestamp: '2025-03-18T10:15:00Z',
-    strategy: 'Momentum Rider'
-  }
-]
+import { useEffect, useState } from "react";
+import { tradeApi, Trade } from "../../../lib/api-client";
+import Link from "next/link";
 
 export default function TradesPage() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
-  
-  // Filter trades based on search term and status
-  const filteredTrades = mockTrades.filter(trade => {
-    const matchesSearch = trade.symbol.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         trade.strategy.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = selectedStatus === null || trade.status === selectedStatus
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [filters, setFilters] = useState({
+    symbol: '',
+    farmId: 'all',
+    agentId: 'all',
+    dateRange: '7d' // '24h', '7d', '30d', '90d', 'all'
+  });
+
+  useEffect(() => {
+    async function fetchTrades() {
+      setLoading(true);
+      
+      const params: any = {
+        limit: 100,
+        offset: 0
+      };
+      
+      // Apply filters if not set to 'all'
+      if (filters.farmId !== 'all') {
+        params.farmId = Number(filters.farmId);
+      }
+      
+      if (filters.agentId !== 'all') {
+        params.agentId = Number(filters.agentId);
+      }
+      
+      if (filters.symbol) {
+        params.symbol = filters.symbol;
+      }
+      
+      // Date range filter
+      if (filters.dateRange !== 'all') {
+        const now = new Date();
+        let daysAgo;
+        
+        switch (filters.dateRange) {
+          case '24h':
+            daysAgo = 1;
+            break;
+          case '7d':
+            daysAgo = 7;
+            break;
+          case '30d':
+            daysAgo = 30;
+            break;
+          case '90d':
+            daysAgo = 90;
+            break;
+          default:
+            daysAgo = 0;
+        }
+        
+        if (daysAgo > 0) {
+          const startDate = new Date();
+          startDate.setDate(now.getDate() - daysAgo);
+          params.startDate = startDate.toISOString();
+        }
+      }
+      
+      const response = await tradeApi.getTrades(params);
+      
+      if (response.error) {
+        setError(response.error);
+      } else if (response.data) {
+        setTrades(response.data);
+      }
+      
+      setLoading(false);
+    }
+
+    fetchTrades();
+  }, [filters]);
+
+  const handleFilterChange = (name: string, value: string) => {
+    setFilters(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  // Calculate performance metrics
+  const calculateTradeSummary = () => {
+    if (trades.length === 0) return null;
     
-    return matchesSearch && matchesStatus
-  })
-  
+    const totalTrades = trades.length;
+    const winningTrades = trades.filter(trade => (trade.profit_loss || 0) > 0).length;
+    const losingTrades = trades.filter(trade => (trade.profit_loss || 0) < 0).length;
+    const breakEvenTrades = totalTrades - winningTrades - losingTrades;
+    
+    const winRate = totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0;
+    
+    const totalProfitLoss = trades.reduce((sum, trade) => sum + (trade.profit_loss || 0), 0);
+    const totalWinnings = trades.filter(trade => (trade.profit_loss || 0) > 0)
+      .reduce((sum, trade) => sum + (trade.profit_loss || 0), 0);
+    const totalLosses = Math.abs(trades.filter(trade => (trade.profit_loss || 0) < 0)
+      .reduce((sum, trade) => sum + (trade.profit_loss || 0), 0));
+    
+    const profitFactor = totalLosses > 0 ? totalWinnings / totalLosses : totalWinnings > 0 ? Infinity : 0;
+    
+    const averageProfitLoss = totalTrades > 0 ? totalProfitLoss / totalTrades : 0;
+    
+    return {
+      totalTrades,
+      winningTrades,
+      losingTrades,
+      breakEvenTrades,
+      winRate,
+      totalProfitLoss,
+      profitFactor,
+      averageProfitLoss
+    };
+  };
+
+  const tradeSummary = calculateTradeSummary();
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="mt-4 text-gray-600">Loading trades data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="rounded-lg bg-red-50 p-6 text-center">
+          <h3 className="mb-2 text-lg font-semibold text-red-800">Error Loading Trades</h3>
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Trades</h1>
-        <p className="text-muted-foreground">
-          View and manage your active and historical trades
-        </p>
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Trade History</h1>
+          <p className="text-gray-500">View and analyze past trades</p>
+        </div>
+        <Link 
+          href="/dashboard/analytics/trade-metrics" 
+          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          Advanced Analytics
+        </Link>
       </div>
-      
-      {/* Trade Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="dashboard-card">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-muted-foreground">Total Active Trades</span>
-            <div className="flex items-end justify-between">
-              <span className="text-2xl font-bold">3</span>
-              <span className="text-sm text-success">+3 today</span>
-            </div>
+
+      {/* Filter section */}
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <label htmlFor="symbol-filter" className="block text-sm font-medium text-gray-700">Symbol</label>
+            <input
+              id="symbol-filter"
+              type="text"
+              placeholder="e.g. BTC/USDT"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+              value={filters.symbol}
+              onChange={(e) => handleFilterChange('symbol', e.target.value)}
+            />
+          </div>
+          <div>
+            <label htmlFor="farm-filter" className="block text-sm font-medium text-gray-700">Farm</label>
+            <select
+              id="farm-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+              value={filters.farmId}
+              onChange={(e) => handleFilterChange('farmId', e.target.value)}
+            >
+              <option value="all">All Farms</option>
+              <option value="1">Farm 1</option>
+              <option value="2">Farm 2</option>
+              <option value="3">Farm 3</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="agent-filter" className="block text-sm font-medium text-gray-700">Agent</label>
+            <select
+              id="agent-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+              value={filters.agentId}
+              onChange={(e) => handleFilterChange('agentId', e.target.value)}
+            >
+              <option value="all">All Agents</option>
+              <option value="1">Agent 1</option>
+              <option value="2">Agent 2</option>
+              <option value="3">Agent 3</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="date-range-filter" className="block text-sm font-medium text-gray-700">Time Period</label>
+            <select
+              id="date-range-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+              value={filters.dateRange}
+              onChange={(e) => handleFilterChange('dateRange', e.target.value)}
+            >
+              <option value="24h">Last 24 Hours</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
+              <option value="90d">Last 90 Days</option>
+              <option value="all">All Time</option>
+            </select>
+          </div>
+          <div className="ml-auto flex items-end">
+            <button 
+              className="rounded-md bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
+              onClick={() => setFilters({ symbol: '', farmId: 'all', agentId: 'all', dateRange: '7d' })}
+            >
+              Reset Filters
+            </button>
           </div>
         </div>
-        
-        <div className="dashboard-card">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-muted-foreground">Portfolio Value</span>
-            <div className="flex items-end justify-between">
-              <span className="text-2xl font-bold">$17,854.36</span>
-              <span className="text-sm text-success">+$532.92 (24h)</span>
+      </div>
+
+      {/* Trade performance summary */}
+      {tradeSummary && (
+        <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-sm text-gray-500">Total Trades</p>
+            <p className="text-2xl font-bold text-gray-900">{tradeSummary.totalTrades}</p>
+            <div className="mt-2 flex items-center space-x-2">
+              <span className="text-xs font-medium text-green-500">{tradeSummary.winningTrades} winning</span>
+              <span className="text-xs text-gray-400">|</span>
+              <span className="text-xs font-medium text-red-500">{tradeSummary.losingTrades} losing</span>
+              {tradeSummary.breakEvenTrades > 0 && (
+                <>
+                  <span className="text-xs text-gray-400">|</span>
+                  <span className="text-xs font-medium text-gray-500">{tradeSummary.breakEvenTrades} break-even</span>
+                </>
+              )}
             </div>
           </div>
-        </div>
-        
-        <div className="dashboard-card">
-          <div className="flex flex-col">
-            <span className="text-sm font-medium text-muted-foreground">Overall PnL (24h)</span>
-            <div className="flex items-end justify-between">
-              <span className="text-2xl font-bold text-success">+1.85%</span>
-              <span className="flex items-center text-sm text-success">
-                <ChevronsUpDown className="h-4 w-4 mr-1" />
-                0.35%
-              </span>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-sm text-gray-500">Win Rate</p>
+            <p className="text-2xl font-bold text-gray-900">{tradeSummary.winRate.toFixed(2)}%</p>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+              <div 
+                className="h-full rounded-full bg-green-500" 
+                style={{ width: `${tradeSummary.winRate}%` }}
+              ></div>
             </div>
           </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-sm text-gray-500">Total P&L</p>
+            <p className={`text-2xl font-bold ${tradeSummary.totalProfitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              ${tradeSummary.totalProfitLoss.toFixed(2)}
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              Avg per trade: ${tradeSummary.averageProfitLoss.toFixed(2)}
+            </p>
+          </div>
+          <div className="rounded-lg border border-gray-200 bg-white p-4">
+            <p className="text-sm text-gray-500">Profit Factor</p>
+            <p className="text-2xl font-bold text-gray-900">
+              {tradeSummary.profitFactor === Infinity ? '∞' : tradeSummary.profitFactor.toFixed(2)}
+            </p>
+            <p className="mt-2 text-xs text-gray-500">
+              {tradeSummary.profitFactor >= 2 ? 'Excellent' : 
+                tradeSummary.profitFactor >= 1.5 ? 'Good' : 
+                tradeSummary.profitFactor >= 1 ? 'Profitable' : 'Unprofitable'}
+            </p>
+          </div>
         </div>
-      </div>
-      
-      {/* Controls and Filters */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex gap-2">
-          <button className="btn-primary flex items-center">
-            <ArrowRightLeft className="mr-2 h-4 w-4" />
-            Manual Trade
-          </button>
-          <button className="btn-ghost flex items-center">
-            <Filter className="mr-2 h-4 w-4" />
-            Filter
-          </button>
-        </div>
-        
-        <div className="relative flex-1 sm:max-w-xs">
-          <input
-            type="text"
-            placeholder="Search trades..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-input w-full"
-          />
-        </div>
-      </div>
-      
-      {/* Status Filter */}
-      <div className="flex flex-wrap gap-2">
-        <button 
-          onClick={() => setSelectedStatus(null)}
-          className={`px-3 py-1 text-sm rounded-full ${
-            selectedStatus === null 
-              ? 'bg-primary text-primary-foreground' 
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          All
-        </button>
-        <button 
-          onClick={() => setSelectedStatus('open')}
-          className={`px-3 py-1 text-sm rounded-full ${
-            selectedStatus === 'open' 
-              ? 'bg-success/20 text-success border border-success/30' 
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          Open
-        </button>
-        <button 
-          onClick={() => setSelectedStatus('closed')}
-          className={`px-3 py-1 text-sm rounded-full ${
-            selectedStatus === 'closed' 
-              ? 'bg-muted/50 text-muted-foreground border border-muted/30' 
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          Closed
-        </button>
-      </div>
-      
-      {/* Trades Table */}
-      <div className="dashboard-card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 font-medium">
-                  <div className="flex items-center">
-                    Symbol
-                    <ArrowUpDown className="ml-2 h-3 w-3 text-muted-foreground" />
-                  </div>
-                </th>
-                <th className="text-left py-3 px-4 font-medium">Type</th>
-                <th className="text-left py-3 px-4 font-medium">Size</th>
-                <th className="text-left py-3 px-4 font-medium">Entry Price</th>
-                <th className="text-left py-3 px-4 font-medium">Current Price</th>
-                <th className="text-left py-3 px-4 font-medium">PnL</th>
-                <th className="text-left py-3 px-4 font-medium">Strategy</th>
-                <th className="text-left py-3 px-4 font-medium">Status</th>
-                <th className="text-right py-3 px-4 font-medium">Actions</th>
+      )}
+
+      {/* Trades table */}
+      {trades.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Date/Time</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Symbol</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Side</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Quantity</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Price</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">P&L</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Order</th>
               </tr>
             </thead>
-            <tbody>
-              {filteredTrades.map((trade) => (
-                <tr key={trade.id} className="border-b border-border">
-                  <td className="py-3 px-4 font-medium">{trade.symbol}</td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      trade.type === 'Long' 
-                        ? 'bg-success/10 text-success' 
-                        : 'bg-danger/10 text-danger'
-                    }`}>
-                      {trade.type}
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {trades.map((trade) => (
+                <tr key={trade.id}>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-900">
+                    #{trade.id}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    {trade.executed_at ? new Date(trade.executed_at).toLocaleString() : 
+                      trade.created_at ? new Date(trade.created_at).toLocaleString() : 'N/A'}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">{trade.symbol}</td>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    <span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${trade.side === 'buy' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                      {trade.side.toUpperCase()}
                     </span>
                   </td>
-                  <td className="py-3 px-4">{trade.size}</td>
-                  <td className="py-3 px-4">${trade.entryPrice.toFixed(2)}</td>
-                  <td className="py-3 px-4">${trade.currentPrice.toFixed(2)}</td>
-                  <td className="py-3 px-4">
-                    <span className={trade.pnl.startsWith('+') ? 'text-success' : 'text-danger'}>
-                      {trade.pnl}
-                    </span>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">{trade.quantity}</td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                    ${trade.price ? trade.price.toFixed(2) : 'N/A'}
                   </td>
-                  <td className="py-3 px-4">{trade.strategy}</td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      trade.status === 'open' 
-                        ? 'bg-success/10 text-success' 
-                        : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {trade.status}
-                    </span>
+                  <td className={`whitespace-nowrap px-6 py-4 text-sm ${(trade.profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    ${trade.profit_loss ? trade.profit_loss.toFixed(2) : '0.00'}
                   </td>
-                  <td className="py-3 px-4 text-right">
-                    <button className="p-1 hover:bg-muted rounded-md" title="View details">
-                      <ExternalLink className="h-4 w-4" />
-                    </button>
-                    <button className="p-1 hover:bg-muted rounded-md" title="More options">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </button>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <Link href={`/dashboard/orders/${trade.order_id}`} className="text-blue-600 hover:underline">
+                      #{trade.order_id}
+                    </Link>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          
-          {filteredTrades.length === 0 && (
-            <div className="text-center p-8">
-              <p className="text-muted-foreground">No trades found matching your filters.</p>
-            </div>
-          )}
         </div>
-      </div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <h3 className="mb-1 text-lg font-medium text-gray-900">No Trades Found</h3>
+          <p className="mb-4 text-sm text-gray-500">Try adjusting your filters or check back later</p>
+        </div>
+      )}
     </div>
-  )
+  );
 }
