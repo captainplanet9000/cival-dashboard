@@ -1,463 +1,176 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { 
-  Bot, 
-  Plus, 
-  Trash2, 
-  Edit, 
-  Play, 
-  AlertCircle, 
-  CheckCircle2, 
-  Brain,
-  Code,
-  RefreshCw,
-  PauseCircle,
-  DatabaseBackup,
-  ChevronRight,
-  ChevronDown,
-  LineChart,
-  Settings2,
-  Cpu
-} from 'lucide-react'
+import { useEffect, useState } from "react";
+import { agentApi, Agent } from "../../../lib/api-client";
+import Link from "next/link";
 
-interface Agent {
-  id: string
-  name: string
-  status: 'active' | 'paused' | 'offline'
-  type: 'trend' | 'reversal' | 'arbitrage' | 'custom'
-  performance: number
-  trades: number
-  winRate: number
-  createdAt: string
-  specialization: string[]
-  description: string
-  level: 'basic' | 'advanced' | 'expert'
-}
+export default function AgentsPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const agentData: Agent[] = [
-  {
-    id: 'agent-1',
-    name: 'TrendMaster',
-    status: 'active',
-    type: 'trend',
-    performance: 8.5,
-    trades: 145,
-    winRate: 62,
-    createdAt: '2023-11-05',
-    specialization: ['Bitcoin', 'Ethereum', 'Large Caps'],
-    description: 'Specialized in identifying and following medium to long-term trends in major cryptocurrencies.',
-    level: 'expert'
-  },
-  {
-    id: 'agent-2',
-    name: 'SwingTrader',
-    status: 'active',
-    type: 'reversal',
-    performance: 12.3,
-    trades: 93,
-    winRate: 58,
-    createdAt: '2023-12-10',
-    specialization: ['Swing Trading', 'Volatility', 'Mid Caps'],
-    description: 'Focuses on capturing price swings in volatile markets with moderate holding periods.',
-    level: 'advanced'
-  },
-  {
-    id: 'agent-3',
-    name: 'StableCoin Arbitrageur',
-    status: 'paused',
-    type: 'arbitrage',
-    performance: 3.2,
-    trades: 210,
-    winRate: 89,
-    createdAt: '2024-01-15',
-    specialization: ['Stablecoins', 'DEX Arbitrage', 'Low Risk'],
-    description: 'Specialized in finding and exploiting price differences between stablecoins across exchanges.',
-    level: 'expert'
-  },
-  {
-    id: 'agent-4',
-    name: 'PatternScout',
-    status: 'offline',
-    type: 'custom',
-    performance: -2.1,
-    trades: 67,
-    winRate: 45,
-    createdAt: '2024-02-01',
-    specialization: ['Pattern Recognition', 'Small Caps', 'Short Term'],
-    description: 'Uses advanced pattern recognition to identify trading opportunities in smaller cap tokens.',
-    level: 'basic'
-  }
-]
-
-// Agent Status Card Component
-const AgentStatusCard = () => {
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-primary/10 mr-4">
-          <Bot className="h-6 w-6 text-primary" />
-        </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Active Agents</p>
-          <p className="text-2xl font-bold">2</p>
-        </div>
-      </div>
+  useEffect(() => {
+    async function fetchAgents() {
+      setLoading(true);
+      const response = await agentApi.getAgents();
       
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-success/10 mr-4">
-          <LineChart className="h-6 w-6 text-success" />
-        </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Total Performance</p>
-          <p className="text-2xl font-bold">+6.8%</p>
-        </div>
-      </div>
+      if (response.error) {
+        setError(response.error);
+      } else if (response.data) {
+        setAgents(response.data);
+      }
       
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-accent/10 mr-4">
-          <Cpu className="h-6 w-6 text-accent" />
-        </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Resource Usage</p>
-          <p className="text-2xl font-bold">45%</p>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// Create Agent Component
-const CreateAgentForm = ({ onCancel }: { onCancel: () => void }) => {
-  return (
-    <div className="space-y-4 py-4">
-      <div>
-        <label htmlFor="agent-name" className="block text-sm font-medium mb-1">Agent Name</label>
-        <input 
-          type="text" 
-          id="agent-name" 
-          className="form-input w-full" 
-          placeholder="Enter a descriptive name"
-        />
-      </div>
-      
-      <div>
-        <label htmlFor="agent-type" className="block text-sm font-medium mb-1">Agent Type</label>
-        <select id="agent-type" className="form-select w-full">
-          <option value="trend">Trend Following</option>
-          <option value="reversal">Reversal</option>
-          <option value="arbitrage">Arbitrage</option>
-          <option value="custom">Custom</option>
-        </select>
-      </div>
-      
-      <div>
-        <label htmlFor="agent-description" className="block text-sm font-medium mb-1">Description</label>
-        <textarea 
-          id="agent-description" 
-          className="form-input w-full" 
-          placeholder="Describe what this agent does"
-          rows={3}
-        ></textarea>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium mb-1">Specializations</label>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-bitcoin" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-bitcoin" className="text-sm">Bitcoin</label>
-          </div>
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-ethereum" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-ethereum" className="text-sm">Ethereum</label>
-          </div>
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-large-caps" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-large-caps" className="text-sm">Large Caps</label>
-          </div>
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-mid-caps" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-mid-caps" className="text-sm">Mid Caps</label>
-          </div>
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-small-caps" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-small-caps" className="text-sm">Small Caps</label>
-          </div>
-          <div className="flex items-center">
-            <input type="checkbox" id="spec-stablecoins" className="h-4 w-4 mr-2" />
-            <label htmlFor="spec-stablecoins" className="text-sm">Stablecoins</label>
-          </div>
-        </div>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium mb-1">Agent Level</label>
-        <div className="flex space-x-4">
-          <div className="flex items-center">
-            <input type="radio" id="level-basic" name="agent-level" className="h-4 w-4 mr-2" />
-            <label htmlFor="level-basic" className="text-sm">Basic</label>
-          </div>
-          <div className="flex items-center">
-            <input type="radio" id="level-advanced" name="agent-level" className="h-4 w-4 mr-2" checked />
-            <label htmlFor="level-advanced" className="text-sm">Advanced</label>
-          </div>
-          <div className="flex items-center">
-            <input type="radio" id="level-expert" name="agent-level" className="h-4 w-4 mr-2" />
-            <label htmlFor="level-expert" className="text-sm">Expert</label>
-          </div>
-        </div>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium mb-1">Import From Template</label>
-        <select className="form-select w-full">
-          <option value="">Select a template (optional)</option>
-          <option value="trend-following">Trend Following Template</option>
-          <option value="reversal">Reversal Strategy Template</option>
-          <option value="arbitrage">DEX Arbitrage Template</option>
-        </select>
-      </div>
-      
-      <div>
-        <label className="block text-sm font-medium mb-1">Natural Language Instructions</label>
-        <textarea 
-          className="form-input w-full" 
-          placeholder="Provide instructions in natural language for ElizaOS"
-          rows={4}
-        ></textarea>
-        <p className="text-xs text-muted-foreground mt-1">
-          ElizaOS can interpret natural language to create agent behavior.
-        </p>
-      </div>
-      
-      <div className="pt-4 flex justify-end space-x-2">
-        <button className="btn-ghost" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="btn-primary">
-          Create Agent
-        </button>
-      </div>
-    </div>
-  )
-}
-
-export default function AgentsManagementPage() {
-  const [showCreateForm, setShowCreateForm] = useState(false)
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null)
-  
-  const toggleAgentDetails = (agentId: string) => {
-    if (expandedAgent === agentId) {
-      setExpandedAgent(null)
-    } else {
-      setExpandedAgent(agentId)
+      setLoading(false);
     }
-  }
-  
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Agent Management</h1>
-        <p className="text-muted-foreground">
-          Create, monitor and manage your trading agents
-        </p>
+
+    fetchAgents();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <p className="mt-4 text-gray-600">Loading agents...</p>
+        </div>
       </div>
-      
-      <AgentStatusCard />
-      
-      <div className="dashboard-card">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Your Agents</h2>
-          <button 
-            className="btn-primary flex items-center"
-            onClick={() => setShowCreateForm(true)}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            New Agent
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="rounded-lg bg-red-50 p-6 text-center">
+          <h3 className="mb-2 text-lg font-semibold text-red-800">Error Loading Agents</h3>
+          <p className="text-red-600">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Trading Agents</h1>
+          <p className="text-gray-500">Manage your trading agents and their configurations</p>
+        </div>
+        <button className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+          + Create Agent
+        </button>
+      </div>
+
+      {/* Filter section */}
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <label htmlFor="status-filter" className="block text-sm font-medium text-gray-700">Status</label>
+            <select
+              id="status-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="all">All</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="farm-filter" className="block text-sm font-medium text-gray-700">Farm</label>
+            <select
+              id="farm-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="all">All Farms</option>
+              <option value="1">Farm 1</option>
+              <option value="2">Farm 2</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="type-filter" className="block text-sm font-medium text-gray-700">Agent Type</label>
+            <select
+              id="type-filter"
+              className="mt-1 block w-full rounded-md border-gray-300 py-2 pl-3 pr-10 text-base focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="all">All Types</option>
+              <option value="trend">Trend Following</option>
+              <option value="mean">Mean Reversion</option>
+              <option value="breakout">Breakout</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          <div className="ml-auto flex items-end">
+            <button className="rounded-md bg-gray-100 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200">
+              Reset Filters
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Agents list */}
+      {agents.length > 0 ? (
+        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Agent</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Farm</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Type</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Win Rate</th>
+                <th className="px-6 py-3 text-center text-xs font-medium uppercase tracking-wider text-gray-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 bg-white">
+              {agents.map((agent) => (
+                <tr key={agent.id}>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    <Link href={`/dashboard/agents/${agent.id}`} className="font-medium text-blue-600 hover:underline">
+                      {agent.name}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    <Link href={`/dashboard/farms/${agent.farm_id}`} className="text-blue-600 hover:underline">
+                      Farm {agent.farm_id}
+                    </Link>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
+                    {agent.agent_type || 'Custom'}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4">
+                    <span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${agent.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+                      {agent.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
+                    {agent.performance_metrics?.win_rate
+                      ? `${(agent.performance_metrics.win_rate * 100).toFixed(1)}%`
+                      : 'N/A'}
+                  </td>
+                  <td className="whitespace-nowrap px-6 py-4 text-center text-sm">
+                    <div className="flex justify-center space-x-3">
+                      <Link href={`/dashboard/agents/${agent.id}`} className="text-blue-600 hover:text-blue-900">
+                        View
+                      </Link>
+                      <button className="text-blue-600 hover:text-blue-900">Edit</button>
+                      <button className={`${agent.is_active ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`}>
+                        {agent.is_active ? 'Stop' : 'Start'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
+          <h3 className="mb-1 text-lg font-medium text-gray-900">No Agents Found</h3>
+          <p className="mb-4 text-sm text-gray-500">Get started by creating your first trading agent</p>
+          <button className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
+            Create Agent
           </button>
         </div>
-        
-        {showCreateForm && (
-          <div className="mb-6 border rounded-md p-4 bg-muted/20">
-            <h3 className="text-lg font-semibold mb-4">Create New Agent</h3>
-            <CreateAgentForm onCancel={() => setShowCreateForm(false)} />
-          </div>
-        )}
-        
-        <div className="space-y-4">
-          {agentData.map((agent) => (
-            <div key={agent.id} className="border rounded-md overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/30"
-                onClick={() => toggleAgentDetails(agent.id)}
-              >
-                <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-full ${
-                    agent.status === 'active' ? 'bg-success/10' : 
-                    agent.status === 'paused' ? 'bg-warning/10' : 'bg-danger/10'
-                  }`}>
-                    <Bot className={`h-5 w-5 ${
-                      agent.status === 'active' ? 'text-success' : 
-                      agent.status === 'paused' ? 'text-warning' : 'text-danger'
-                    }`} />
-                  </div>
-                  <div>
-                    <h3 className="font-medium">{agent.name}</h3>
-                    <div className="flex items-center text-xs text-muted-foreground">
-                      <span className={`inline-block h-2 w-2 rounded-full mr-1 ${
-                        agent.status === 'active' ? 'bg-success' : 
-                        agent.status === 'paused' ? 'bg-warning' : 'bg-danger'
-                      }`}></span>
-                      <span className="capitalize">{agent.status}</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center space-x-6">
-                  <div className="text-right">
-                    <p className="text-sm font-medium">Type</p>
-                    <p className="text-sm capitalize">{agent.type}</p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-sm font-medium">Performance</p>
-                    <p className={`text-sm ${agent.performance >= 0 ? 'text-success' : 'text-danger'}`}>
-                      {agent.performance >= 0 ? '+' : ''}{agent.performance}%
-                    </p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <p className="text-sm font-medium">Win Rate</p>
-                    <p className="text-sm">{agent.winRate}%</p>
-                  </div>
-                  
-                  {expandedAgent === agent.id ? (
-                    <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                  )}
-                </div>
-              </div>
-              
-              {expandedAgent === agent.id && (
-                <div className="p-4 border-t bg-muted/10">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium flex items-center">
-                        <Brain className="h-4 w-4 mr-1 text-muted-foreground" />
-                        Specialization
-                      </p>
-                      <div className="flex flex-wrap gap-1">
-                        {agent.specialization.map((spec, idx) => (
-                          <span key={idx} className="px-2 py-1 bg-primary/10 text-primary text-xs rounded-full">
-                            {spec}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium flex items-center">
-                        <LineChart className="h-4 w-4 mr-1 text-muted-foreground" />
-                        Statistics
-                      </p>
-                      <div className="text-sm space-y-1">
-                        <p>Total Trades: {agent.trades}</p>
-                        <p>Success Rate: {agent.winRate}%</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium flex items-center">
-                        <CheckCircle2 className="h-4 w-4 mr-1 text-muted-foreground" />
-                        Level
-                      </p>
-                      <p className="text-sm capitalize flex items-center">
-                        <span className={`inline-block h-2 w-2 rounded-full mr-1 ${
-                          agent.level === 'basic' ? 'bg-muted' : 
-                          agent.level === 'advanced' ? 'bg-warning' : 'bg-success'
-                        }`}></span>
-                        {agent.level}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <div className="mb-4">
-                    <p className="text-sm font-medium flex items-center mb-1">
-                      <AlertCircle className="h-4 w-4 mr-1 text-muted-foreground" />
-                      Description
-                    </p>
-                    <p className="text-sm bg-muted/20 p-2 rounded-md">{agent.description}</p>
-                  </div>
-                  
-                  <div className="flex justify-between">
-                    <div className="flex space-x-2">
-                      <button className="btn-outline-sm flex items-center">
-                        <Code className="mr-1 h-3 w-3" />
-                        Code View
-                      </button>
-                      <button className="btn-outline-sm flex items-center">
-                        <Settings2 className="mr-1 h-3 w-3" />
-                        Configure
-                      </button>
-                    </div>
-                    
-                    <div className="flex space-x-2">
-                      {agent.status === 'active' ? (
-                        <button className="btn-warning-sm flex items-center">
-                          <PauseCircle className="mr-1 h-3 w-3" />
-                          Pause
-                        </button>
-                      ) : agent.status === 'paused' ? (
-                        <button className="btn-success-sm flex items-center">
-                          <Play className="mr-1 h-3 w-3" />
-                          Resume
-                        </button>
-                      ) : (
-                        <button className="btn-success-sm flex items-center">
-                          <Play className="mr-1 h-3 w-3" />
-                          Activate
-                        </button>
-                      )}
-                      
-                      <button className="btn-outline-sm flex items-center">
-                        <DatabaseBackup className="mr-1 h-3 w-3" />
-                        Backup
-                      </button>
-                      
-                      <button className="btn-ghost-sm flex items-center">
-                        <Edit className="mr-1 h-3 w-3" />
-                        Edit
-                      </button>
-                      
-                      <button className="btn-danger-sm flex items-center">
-                        <Trash2 className="mr-1 h-3 w-3" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-      
-      <div className="dashboard-card">
-        <h2 className="text-xl font-bold mb-4">Natural Language Instructions</h2>
-        <div className="bg-muted/20 p-4 rounded-md">
-          <p className="text-sm mb-2">Use natural language to control your agents through ElizaOS:</p>
-          <div className="space-y-2">
-            <p className="text-sm bg-primary/5 p-2 rounded-md">"Create a trend-following agent for Bitcoin that trades on 4-hour timeframes with a maximum drawdown of 10%"</p>
-            <p className="text-sm bg-primary/5 p-2 rounded-md">"Adjust all agents to reduce risk during high market volatility"</p>
-            <p className="text-sm bg-primary/5 p-2 rounded-md">"Optimize the SwingTrader agent for better performance in ranging markets"</p>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            ElizaOS will interpret these instructions and configure your agents accordingly.
-          </p>
-        </div>
-      </div>
+      )}
     </div>
-  )
+  );
 }
