@@ -1,23 +1,10 @@
-import { BaseEntity, BaseRepository } from '../lib/base-repository';
-import { SupabaseClient } from '@supabase/supabase-js';
-
-/**
- * Farm entity interface
- */
-export interface Farm extends BaseEntity {
-  name: string;
-  description?: string;
-  is_active: boolean;
-  risk_profile: object;
-  performance_metrics: object;
-  config: object;
-  metadata: object;
-}
+import { BaseRepository, QueryOptions } from '../../lib/base-repository';
+import { Farm } from '../models/farm';
 
 /**
  * Extended query options specifically for farms
  */
-export interface FarmQueryOptions {
+export interface FarmQueryOptions extends QueryOptions {
   includeAgents?: boolean;
   includeWallets?: boolean;
   includeStrategies?: boolean;
@@ -100,8 +87,7 @@ export class FarmRepository extends BaseRepository<Farm> {
       .select(`
         *,
         agents:agents(count),
-        strategies:farm_strategies(count),
-        goals:goals(count)
+        strategies:farm_strategies(count)
       `)
       .eq('is_active', true);
 
@@ -111,6 +97,27 @@ export class FarmRepository extends BaseRepository<Farm> {
     }
 
     return data || [];
+  }
+
+  /**
+   * Find farms by specific risk profiles
+   */
+  async findByRiskProfile(maxDrawdown: number): Promise<Farm[]> {
+    // For JSON fields, we need to use Postgres-specific filters
+    const query = `risk_profile->>'max_drawdown' <= '${maxDrawdown}'`;
+    
+    const { data, error } = await this.client
+      .from('farms')
+      .select('*')
+      .filter('risk_profile', 'not.is', 'null')
+      .or(query);
+
+    if (error) {
+      this.handleError(error);
+      return [];
+    }
+
+    return data as Farm[];
   }
 
   /**
@@ -131,5 +138,47 @@ export class FarmRepository extends BaseRepository<Farm> {
     }
 
     return true;
+  }
+
+  /**
+   * Get total value locked in all active farms
+   */
+  async getTotalValueLocked(): Promise<number> {
+    const { data, error } = await this.client
+      .from('farms')
+      .select('*')
+      .eq('is_active', true);
+
+    if (error) {
+      this.handleError(error);
+      return 0;
+    }
+
+    // Calculate TVL from the returned farms
+    const farms = data as Farm[];
+    let tvl = 0;
+
+    for (const farm of farms) {
+      const walletResponse = await this.client
+        .from('wallets')
+        .select('balance')
+        .eq('owner_id', farm.id)
+        .eq('owner_type', 'farm');
+      
+      if (walletResponse.error) {
+        continue;
+      }
+
+      interface WalletBalance {
+        balance: number;
+      }
+      
+      const walletBalances = walletResponse.data as WalletBalance[] || [];
+      const farmBalance = walletBalances.reduce((total: number, wallet: WalletBalance) => total + (wallet.balance || 0), 0);
+      
+      tvl += farmBalance;
+    }
+
+    return tvl;
   }
 }

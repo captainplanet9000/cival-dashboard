@@ -8,6 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from '../lib/supabase-client';
+import { API_CONFIG } from '../services/api-config';
 
 // Memory Types
 export type MemoryType = 'working' | 'episodic' | 'semantic' | 'procedural';
@@ -65,20 +66,32 @@ export interface AgentMemoryAnalysis {
 class CogneeClient {
   private static instance: CogneeClient;
   private supabase: SupabaseClient;
-  private apiKey: string = '';
+  private apiKey: string = API_CONFIG.COGNEE_API_KEY || '';
   private initialized: boolean = false;
 
   private constructor() {
     this.supabase = getSupabaseClient();
   }
 
+  /**
+   * Get CogneeClient singleton instance
+   */
   public static getInstance(): CogneeClient {
     if (!CogneeClient.instance) {
       CogneeClient.instance = new CogneeClient();
+      
+      // Auto-initialize if API key is available from environment
+      if (API_CONFIG.COGNEE_API_KEY) {
+        CogneeClient.instance.initialize(API_CONFIG.COGNEE_API_KEY);
+      }
     }
+    
     return CogneeClient.instance;
   }
 
+  /**
+   * Initialize the memory system with API key
+   */
   public initialize(apiKey: string): void {
     this.apiKey = apiKey;
     this.initialized = true;
@@ -87,7 +100,7 @@ class CogneeClient {
 
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error('Cognee client not initialized. Call initialize() with your API key first.');
+      throw new Error('Cognee memory system not initialized. Call initialize() first.');
     }
   }
 
@@ -296,7 +309,5 @@ class CogneeClient {
   }
 }
 
-// Export a singleton instance getter
-export const getCogneeClient = (): CogneeClient => {
-  return CogneeClient.getInstance();
-};
+// Export singleton instance
+export const cogneeClient = CogneeClient.getInstance();

@@ -1,5 +1,5 @@
 /**
- * Base entity interface for all models
+ * Base entity interface for all database models
  */
 export interface BaseEntity {
   id: number;
