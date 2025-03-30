@@ -1,0 +1,50 @@
+{
+  "name": "recursives-nft",
+  "version": "1.0.0",
+  "description": "Recursives - A generative art NFT collection on the Sonic blockchain",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:testnet": "hardhat run deploy.js --network sonic_testnet",
+    "deploy": "hardhat run deploy.js --network sonic",
+    "verify": "hardhat verify --network",
+    "node": "hardhat node",
+    "accounts": "hardhat accounts"
+  },
+  "keywords": [
+    "nft",
+    "sonic",
+    "blockchain",
+    "recursives",
+    "generative-art",
+    "houdini"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomiclabs/hardhat-ethers": "^2.2.3",
+    "@nomiclabs/hardhat-etherscan": "^3.1.7",
+    "@nomiclabs/hardhat-waffle": "^2.0.6",
+    "@openzeppelin/contracts": "^4.9.3",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.4",
+    "chai": "^4.3.7",
+    "dotenv": "^16.3.1",
+    "ethereum-waffle": "^4.0.10",
+    "ethers": "^5.7.2",
+    "hardhat": "^2.17.0"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@radix-ui/react-label": "^2.1.2",
+    "@radix-ui/react-slider": "^1.2.3",
+    "@radix-ui/react-switch": "^1.1.3",
+    "@radix-ui/react-tabs": "^1.1.3",
+    "@supabase/supabase-js": "^2.49.4",
+    "keccak256": "^1.0.6",
+    "lucide-react": "^0.485.0",
+    "merkletreejs": "^0.3.10",
+    "next": "^15.2.4"
+  }
+}

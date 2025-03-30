@@ -1,0 +1,82 @@
+// Fractal Crystalline Structure Generator
+// Place this in a Point Wrangle after a Grid node
+
+// Parameters to expose in UI
+// float seed = ch("seed");               // Global seed for randomization
+// float iterations = chi("iterations");   // Number of fractal iterations (1-10)
+// float scale = chf("scale");            // Overall scale of the structure
+// float roughness = chf("roughness");    // Surface roughness
+// float crystal_size = chf("size");      // Base crystal size
+// vector color_1 = chv("color1");        // Primary color
+// vector color_2 = chv("color2");        // Secondary color
+// float color_intensity = chf("color_intensity"); // Color vibrancy (0.1-2.0)
+// float edge_highlight = chf("edge_highlight"); // Edge highlight strength (0-1)
+
+// Initialize random seed
+float seed = ch("seed") + @ptnum;
+float noise_val;
+vector pos = @P;
+
+// Create base crystalline structure
+float base_angle = fit(rand(seed), 0, 1, 0, PI*2);
+float height = fit(rand(seed + 1.23), 0, 1, 0.5, 2.0) * ch("crystal_size");
+
+// Apply fractal iterations
+for(int i = 0; i < chi("iterations"); i++) {
+    // Create fractal branching
+    float iter_scale = pow(0.5, float(i));
+    vector offset = set(
+        sin(base_angle + i * PI/3),
+        cos(base_angle + i * PI/3),
+        0.5
+    ) * iter_scale * ch("scale");
+    
+    // Add noise-based displacement
+    float noise_freq = 1.0 + float(i) * 2.0;
+    noise_val = fnoise(pos * noise_freq + seed, 3 + i);
+    
+    // Modify position with fractal pattern
+    pos += offset * noise_val * ch("roughness");
+}
+
+// Apply crystalline surface detail
+float surface_detail = noise(pos * 5.0 + seed);
+pos += @N * surface_detail * ch("roughness") * 0.2;
+
+// Set final position
+@P = pos;
+
+// Generate color based on height and noise
+vector base_color = chv("color1");
+vector accent_color = chv("color2");
+float color_mix = fit(noise_val, -1, 1, 0, 1);
+@Cd = mix(base_color, accent_color, color_mix);
+
+// Apply color intensity adjustment (new parameter)
+float intensity = ch("color_intensity");
+@Cd = pow(@Cd, 1.0/intensity); // Adjust color vibrancy
+
+// Add edge highlighting with adjustable strength (improved)
+float edge_detect = 1.0 - abs(dot(@N, normalize(@P)));
+float highlight_strength = ch("edge_highlight");
+@Cd += edge_detect * highlight_strength;
+
+// Add sparkling effect on edges
+if (edge_detect > 0.7 && rand(@ptnum + seed * 123.4) > 0.7) {
+    @Cd += vector(1,1,1) * edge_detect * highlight_strength * 0.5;
+}
+
+// Store attributes for later use
+float height_normalized = fit(@P.y, 0, ch("crystal_size"), 0, 1);
+f@height = height_normalized;
+f@noise = noise_val;
+v@orig_pos = @P;
+
+// Store parameter values in attributes for metadata
+f@seed_attr = seed;
+i@iterations_attr = chi("iterations");
+f@scale_attr = ch("scale");
+f@roughness_attr = ch("roughness");
+f@crystal_size_attr = ch("crystal_size");
+f@color_intensity_attr = ch("color_intensity");
+f@edge_highlight_attr = ch("edge_highlight"); 

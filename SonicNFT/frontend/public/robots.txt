@@ -1,0 +1,11 @@
+# www.robotstxt.org/
+
+# Allow all web crawlers
+User-agent: *
+Allow: /
+
+# Disallow API routes
+Disallow: /api/
+
+# Sitemap location
+Sitemap: https://your-domain.com/sitemap.xml 
