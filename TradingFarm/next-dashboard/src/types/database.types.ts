@@ -51,6 +51,52 @@ export interface Database {
           }
         ]
       }
+      dashboard_layouts: {
+        Row: {
+          id: string
+          name: string
+          widgets: Json
+          farm_id: string
+          user_id: string
+          is_default: boolean
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          widgets: Json
+          farm_id: string
+          user_id: string
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          widgets?: Json
+          farm_id?: string
+          user_id?: string
+          is_default?: boolean
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dashboard_layouts_farm_id_fkey"
+            columns: ["farm_id"]
+            referencedRelation: "farms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dashboard_layouts_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
       agents: {
         Row: {
           id: number
