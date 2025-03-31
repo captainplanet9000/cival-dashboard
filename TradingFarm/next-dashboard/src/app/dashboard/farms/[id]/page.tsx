@@ -265,4 +265,4 @@ function getFarmPerformance(farm: Farm): number {
            (farm.performance_metrics.profit_factor ? Math.round(farm.performance_metrics.profit_factor * 10) : 0));
   }
   return Math.floor(Math.random() * 40) + 30;
-} 
+}

@@ -1,0 +1,16 @@
+{
+  "projectId": "bgvlzvswzpfoywfxehis",
+  "connectionString": "postgres://postgres:Captainplanet9000@db.bgvlzvswzpfoywfxehis.supabase.co:6543/postgres",
+  "postgresql_url": "postgresql://postgres:Captainplanet9000@db.bgvlzvswzpfoywfxehis.supabase.co:5432/postgres",
+  "pooler_url": "postgresql://postgres.bgvlzvswzpfoywfxehis:Captainplanet9000@aws-0-us-west-1.pooler.supabase.com:5432/postgres",
+  "databaseUrl": "https://bgvlzvswzpfoywfxehis.supabase.co",
+  "apiKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNjgzMTU1OSwiZXhwIjoyMDUyNDA3NTU5fQ.TZLKwHuMxv9xtSc0wJ7DG5ivjw0K-7NztPeLRsGqMAA",
+  "serviceKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNjgzMTU1OSwiZXhwIjoyMDUyNDA3NTU5fQ.TZLKwHuMxv9xtSc0wJ7DG5ivjw0K-7NztPeLRsGqMAA",
+  "anonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.ccYwDhIJXjmfp4tpc6bDlHKsLDqs7ivQpmugaa0uHXU",
+  "settings": {
+    "pooler": false,
+    "timeoutMs": 60000,
+    "retryAttempts": 3,
+    "debug": true
+  }
+}

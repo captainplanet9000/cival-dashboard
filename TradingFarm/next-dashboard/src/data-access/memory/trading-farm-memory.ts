@@ -1,105 +1,333 @@
 /**
  * Trading Farm Memory System
  * 
- * This module integrates the Cognee and Graphiti memory systems to provide
- * a comprehensive memory solution for trading agents.
+ * This module integrates Cognee.ai agent memory and Graphiti knowledge graph
+ * capabilities into the Trading Farm system, providing comprehensive memory
+ * management for trading agents and relationship analysis for markets.
  */
 
-import { API_CONFIG } from '../services/api-config';
-import { cogneeClient } from './cognee-client';
-import { graphitiClient } from './graphiti-client';
+import { getCogneeClient, CogneeMemoryItem, CogneeMemoryUpdate, AgentMemoryState, AgentMemoryAnalysis, MemoryType } from './cognee-client';
+import { getGraphitiClient, GraphNode, GraphEdge, GraphQueryResult, MarketCorrelation, GraphPathAnalysis, NodeType, EdgeType } from './graphiti-client';
+import { getSupabaseClient } from '../lib/supabase-client';
+import { SupabaseClient } from '@supabase/supabase-js';
 
-/**
- * Trading Farm Memory System provides integrated memory capabilities for trading agents
- * by combining episodic (Cognee) and structured knowledge graph (Graphiti) systems.
- */
+// Combined memory types
+export interface MemoryEvent {
+  type: 'market_data' | 'order' | 'trade' | 'agent_message' | 'system_event';
+  content: string;
+  importance: number;
+  metadata: Record<string, any>;
+  timestamp: number;
+}
+
+export interface StrategyInsight {
+  description: string;
+  confidence: number;
+  source: 'pattern' | 'correlation' | 'agent' | 'system';
+  relatedMarkets: string[];
+  suggestedAction?: string;
+}
+
+export interface MarketPattern {
+  name: string;
+  description: string;
+  markets: string[];
+  timeframe: string;
+  strength: number;
+  leadLag?: {
+    leader: string;
+    follower: string;
+    lagAmount: string;
+  };
+}
+
+// Main memory system
 export class TradingFarmMemory {
   private static instance: TradingFarmMemory;
+  private cogneeClient = getCogneeClient();
+  private graphitiClient = getGraphitiClient();
+  private supabase: SupabaseClient;
   private initialized: boolean = false;
 
-  /**
-   * Get the singleton instance of TradingFarmMemory
-   */
+  private constructor() {
+    this.supabase = getSupabaseClient();
+  }
+
   public static getInstance(): TradingFarmMemory {
     if (!TradingFarmMemory.instance) {
       TradingFarmMemory.instance = new TradingFarmMemory();
-      
-      // Auto-initialize if API keys are available from environment
-      if (API_CONFIG.COGNEE_API_KEY && API_CONFIG.GRAPHITI_API_KEY) {
-        TradingFarmMemory.instance.initialize(
-          API_CONFIG.COGNEE_API_KEY,
-          API_CONFIG.GRAPHITI_API_KEY
-        );
-      }
     }
-    
     return TradingFarmMemory.instance;
   }
 
-  private constructor() {
-    // Private constructor to enforce singleton pattern
-  }
-
-  /**
-   * Initialize the Trading Farm Memory System
-   */
   public initialize(cogneeApiKey: string, graphitiApiKey: string): void {
-    cogneeClient.initialize(cogneeApiKey);
-    graphitiClient.initialize(graphitiApiKey);
+    this.cogneeClient.initialize(cogneeApiKey);
+    this.graphitiClient.initialize(graphitiApiKey);
     this.initialized = true;
-    console.log('Trading Farm Memory System initialized');
+
+    // Set up subscriptions for automatic memory updates
+    this.setupSubscriptions();
   }
 
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error('Trading Farm Memory System not initialized. Call initialize() first.');
+      throw new Error('TradingFarmMemory not initialized. Call initialize() first.');
     }
   }
 
-  /**
-   * Store a memory using the appropriate memory system
-   */
-  public async storeMemory(agentId: string, content: string, type: string): Promise<string> {
+  // =========== Agent Memory Management ===========
+
+  public async storeAgentMemory(
+    agentId: number, 
+    event: MemoryEvent
+  ): Promise<CogneeMemoryItem> {
     this.ensureInitialized();
-    
-    // Use Cognee for episodic and semantic memories
-    if (type === 'episodic' || type === 'semantic') {
-      return await cogneeClient.storeMemory(agentId, content, type as any);
-    }
-    
-    // Default to Cognee
-    return await cogneeClient.storeMemory(agentId, content, 'episodic');
+
+    const memoryItem: CogneeMemoryUpdate = {
+      agentId: parseInt(agentId.toString()), // Convert to number
+      type: event.type as MemoryType,
+      content: event.content,
+      metadata: {
+        ...event.metadata,
+        importance: event.importance,
+        timestamp: event.timestamp
+      }
+    };
+
+    return await this.cogneeClient.storeMemory(memoryItem);
   }
 
-  /**
-   * Create an agent-related node in the knowledge graph
-   */
-  public async createAgentNode(agentId: string, properties: Record<string, any>): Promise<any> {
+  public async retrieveRelevantMemories(
+    agentId: number, 
+    context: string
+  ): Promise<CogneeMemoryItem[]> {
     this.ensureInitialized();
-    return await graphitiClient.createNode('Agent', {
-      agent_id: agentId,
-      ...properties
+    return await this.cogneeClient.retrieveMemories(parseInt(agentId.toString()));
+  }
+
+  public async getAgentMemoryState(agentId: number): Promise<AgentMemoryState> {
+    this.ensureInitialized();
+    return await this.cogneeClient.getAgentMemoryState(parseInt(agentId.toString()));
+  }
+
+  public async analyzeAgentMemory(agentId: number): Promise<AgentMemoryAnalysis> {
+    this.ensureInitialized();
+    return await this.cogneeClient.analyzeAgentMemory(parseInt(agentId.toString()));
+  }
+
+  public async consolidateAgentMemory(agentId: number): Promise<boolean> {
+    this.ensureInitialized();
+    return await this.cogneeClient.consolidate(parseInt(agentId.toString()));
+  }
+
+  // =========== Market Knowledge & Relationships ===========
+
+  public async updateFarmGraph(farmId: number): Promise<GraphNode> {
+    this.ensureInitialized();
+    return await this.graphitiClient.createFarmGraph(farmId);
+  }
+
+  public async getMarketCorrelations(timeframe: string = '1h'): Promise<MarketCorrelation[]> {
+    this.ensureInitialized();
+    return await this.graphitiClient.findMarketCorrelations(timeframe);
+  }
+
+  public async analyzeFarmPerformance(farmId: number): Promise<GraphPathAnalysis> {
+    this.ensureInitialized();
+    return await this.graphitiClient.findPatterns(NodeType.FARM);
+  }
+
+  public async findMarketPatterns(): Promise<MarketPattern[]> {
+    this.ensureInitialized();
+
+    const analysis = await this.graphitiClient.findPatterns(NodeType.MARKET);
+    
+    return analysis.paths.map(path => {
+      const pattern: MarketPattern = {
+        name: path.properties.name || 'Unknown Pattern',
+        description: path.properties.description || '',
+        markets: path.nodes
+          .filter(node => node.type === NodeType.MARKET)
+          .map(node => node.properties.symbol),
+        timeframe: path.properties.timeframe || '1h',
+        strength: path.score,
+        leadLag: path.properties.leadLag
+      };
+      return pattern;
     });
   }
 
-  /**
-   * Get all memories for an agent from Cognee
-   */
-  public async getAgentMemories(agentId: string, type?: string): Promise<any[]> {
+  public async generateInsights(farmId: number): Promise<StrategyInsight[]> {
     this.ensureInitialized();
-    return await cogneeClient.getMemories(agentId, type as any);
+
+    // Get farm performance analysis
+    const farmAnalysis = await this.analyzeFarmPerformance(farmId);
+    
+    // Get market patterns
+    const patterns = await this.findMarketPatterns();
+    
+    // Get market correlations
+    const correlations = await this.getMarketCorrelations();
+
+    const insights: StrategyInsight[] = [];
+
+    // Add insights from farm analysis
+    farmAnalysis.insights.forEach(insight => {
+      insights.push({
+        description: insight.description,
+        confidence: insight.confidence,
+        source: 'pattern',
+        relatedMarkets: this.extractMarketsFromString(insight.description),
+        suggestedAction: farmAnalysis.recommendations.find(
+          r => r.description.toLowerCase().includes(insight.description.toLowerCase())
+        )?.description
+      });
+    });
+
+    // Add insights from patterns
+    patterns.forEach(pattern => {
+      if (pattern.strength >= 0.7) {
+        insights.push({
+          description: pattern.description,
+          confidence: pattern.strength,
+          source: 'pattern',
+          relatedMarkets: pattern.markets,
+          suggestedAction: pattern.leadLag 
+            ? `Monitor ${pattern.leadLag.leader} for signals to trade ${pattern.leadLag.follower}`
+            : undefined
+        });
+      }
+    });
+
+    // Add insights from correlations
+    correlations.forEach(corr => {
+      if (Math.abs(corr.strength) >= 0.7) {
+        insights.push({
+          description: `Strong ${corr.direction} correlation between ${corr.source} and ${corr.target}`,
+          confidence: Math.abs(corr.strength),
+          source: 'correlation',
+          relatedMarkets: [corr.source, corr.target],
+          suggestedAction: corr.lag
+            ? `Consider ${corr.source} movements as leading indicator for ${corr.target}`
+            : undefined
+        });
+      }
+    });
+
+    // Sort by confidence
+    return insights.sort((a, b) => b.confidence - a.confidence);
   }
 
-  /**
-   * Get related nodes from the knowledge graph
-   */
-  public async getRelatedNodes(nodeId: string, depth: number = 1): Promise<any[]> {
+  // =========== Subscription and Event Handling ===========
+
+  private setupSubscriptions(): void {
     this.ensureInitialized();
-    return await graphitiClient.queryNeighbors(nodeId, { depthLimit: depth });
+
+    // Subscribe to market data updates
+    this.supabase
+      .channel('market_data')
+      .on('postgres_changes', { 
+        event: 'INSERT',
+        schema: 'public',
+        table: 'market_data'
+      }, payload => {
+        this.handleMarketDataUpdate(payload.new);
+      })
+      .subscribe();
+
+    // Subscribe to agent messages
+    this.supabase
+      .channel('agent_messages')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'agent_messages'
+      }, payload => {
+        this.handleAgentMessage(payload.new);
+      })
+      .subscribe();
+
+    // Subscribe to trades
+    this.supabase
+      .channel('trades')
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'trades'
+      }, payload => {
+        this.handleTradeEvent(payload.new);
+      })
+      .subscribe();
   }
 
-  // Add more integrated methods here as needed
+  private async handleMarketDataUpdate(data: any): Promise<void> {
+    const event: MemoryEvent = {
+      type: 'market_data',
+      content: `Market update for ${data.symbol}: ${data.price}`,
+      importance: this.calculateImportance(data),
+      metadata: data,
+      timestamp: Date.now()
+    };
+
+    // Store in agent memories if relevant
+    const { data: agents } = await this.supabase
+      .from('agents')
+      .select('id')
+      .eq('market', data.symbol);
+
+    if (agents) {
+      for (const agent of agents) {
+        await this.storeAgentMemory(agent.id, event);
+      }
+    }
+  }
+
+  private async handleAgentMessage(message: any): Promise<void> {
+    const event: MemoryEvent = {
+      type: 'agent_message',
+      content: message.content,
+      importance: message.importance || 0.5,
+      metadata: message,
+      timestamp: Date.now()
+    };
+
+    await this.storeAgentMemory(message.agent_id, event);
+  }
+
+  private async handleTradeEvent(trade: any): Promise<void> {
+    const event: MemoryEvent = {
+      type: 'trade',
+      content: `${trade.side} ${trade.amount} ${trade.symbol} @ ${trade.price}`,
+      importance: this.calculateImportance(trade),
+      metadata: trade,
+      timestamp: Date.now()
+    };
+
+    await this.storeAgentMemory(trade.agent_id, event);
+  }
+
+  private calculateImportance(data: any): number {
+    // Simple importance calculation based on price movement and volume
+    let importance = 0.5; // Base importance
+
+    if (data.price_change_percent) {
+      importance += Math.abs(data.price_change_percent) * 0.1;
+    }
+
+    if (data.volume_change_percent) {
+      importance += Math.abs(data.volume_change_percent) * 0.05;
+    }
+
+    return Math.min(Math.max(importance, 0), 1); // Clamp between 0 and 1
+  }
+
+  private extractMarketsFromString(text: string): string[] {
+    // Simple regex pattern to extract market symbols like BTC/USD, ETH-USD, etc.
+    const marketPattern = /\b([A-Z]{2,5})[\/\-]([A-Z]{2,5})\b/g;
+    const matches = text.match(marketPattern) || [];
+    return Array.from(new Set(matches)); // Remove duplicates using Array.from
+  }
 }
 
-// Export singleton instance
-export const tradingFarmMemory = TradingFarmMemory.getInstance();
+// Export singleton instance getter
+export const getTradingFarmMemory = TradingFarmMemory.getInstance;

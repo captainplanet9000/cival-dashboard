@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from 'react'
+import React from 'react'
 import { LineChart, Plus, Filter, ArrowUpDown, Info, MoreHorizontal, Play, Pause, Edit, Copy, Trash2 } from 'lucide-react'
+import Link from 'next/link'
 
 // Mock data for strategies
 const mockStrategies = [
@@ -48,8 +49,8 @@ const mockStrategies = [
 ]
 
 export default function StrategiesPage() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState<string | null>(null)
+  const [searchTerm, setSearchTerm] = React.useState('')
+  const [selectedStatus, setSelectedStatus] = React.useState<string | null>(null)
   
   // Filter strategies based on search term and status
   const filteredStrategies = mockStrategies.filter(strategy => {
@@ -72,10 +73,10 @@ export default function StrategiesPage() {
       {/* Controls and Filters */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex gap-2">
-          <button className="btn-primary flex items-center">
+          <Link href="/dashboard/strategies/builder" className="btn-primary flex items-center">
             <Plus className="mr-2 h-4 w-4" />
             New Strategy
-          </button>
+          </Link>
           <button className="btn-ghost flex items-center">
             <Filter className="mr-2 h-4 w-4" />
             Filter
@@ -193,9 +194,9 @@ export default function StrategiesPage() {
                         <Play className="h-4 w-4" />
                       </button>
                     )}
-                    <button className="p-1 hover:bg-muted rounded-md" title="Edit strategy">
+                    <Link href={`/dashboard/strategies/builder?id=${strategy.id}`} className="p-1 hover:bg-muted rounded-md inline-block" title="Edit strategy">
                       <Edit className="h-4 w-4" />
-                    </button>
+                    </Link>
                     <button className="p-1 hover:bg-muted rounded-md" title="Duplicate strategy">
                       <Copy className="h-4 w-4" />
                     </button>

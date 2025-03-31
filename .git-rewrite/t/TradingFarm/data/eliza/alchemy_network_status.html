@@ -1,0 +1,371 @@
+<!-- Network Status Component -->
+<div class="col-md-12 mb-4">
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-signal me-2"></i>
+            <span id="networkStatusTitle">Ethereum Network Status</span>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card bg-light mb-3">
+                        <div class="card-body text-center">
+                            <h6>Gas Prices</h6>
+                            <div class="d-flex justify-content-between mt-3">
+                                <div class="text-center">
+                                    <div class="fw-bold text-muted">Low</div>
+                                    <div id="networkGasLow" class="fs-5">-- Gwei</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="fw-bold text-muted">Medium</div>
+                                    <div id="networkGasMedium" class="fs-5">-- Gwei</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="fw-bold text-muted">High</div>
+                                    <div id="networkGasHigh" class="fs-5">-- Gwei</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light mb-3">
+                        <div class="card-body text-center">
+                            <h6>Block Info</h6>
+                            <div class="d-flex justify-content-between mt-3">
+                                <div class="text-center">
+                                    <div class="fw-bold text-muted">Latest</div>
+                                    <div id="networkLatestBlock" class="fs-5">--</div>
+                                </div>
+                                <div class="text-center">
+                                    <div class="fw-bold text-muted">Time</div>
+                                    <div id="networkBlockTime" class="fs-5">-- s</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light mb-3">
+                        <div class="card-body text-center">
+                            <h6>Network Load</h6>
+                            <div class="progress mt-3" style="height: 20px;">
+                                <div id="networkLoadProgress" class="progress-bar" role="progressbar" style="width: 0%;" 
+                                    aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                            </div>
+                            <div class="mt-2 text-center">
+                                <span id="networkCongestionStatus">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-light mb-3">
+                        <div class="card-body text-center">
+                            <h6>Transaction Cost</h6>
+                            <div class="d-flex flex-column justify-content-center align-items-center h-75">
+                                <div id="networkTxCost" class="fs-4">--</div>
+                                <small class="text-muted">Average ETH Transfer</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row mt-2">
+                <div class="col-md-6">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Fee Estimator</h6>
+                            <form id="feeEstimatorForm" class="mt-3">
+                                <div class="row g-3 align-items-center">
+                                    <div class="col-md-5">
+                                        <label for="txType" class="form-label">Transaction Type</label>
+                                        <select class="form-select" id="txType">
+                                            <option value="transfer">ETH Transfer</option>
+                                            <option value="tokenTransfer">Token Transfer</option>
+                                            <option value="swap">Token Swap</option>
+                                            <option value="nftMint">NFT Mint</option>
+                                            <option value="nftTransfer">NFT Transfer</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="txPriority" class="form-label">Priority</label>
+                                        <select class="form-select" id="txPriority">
+                                            <option value="low">Low Priority</option>
+                                            <option value="medium" selected>Medium Priority</option>
+                                            <option value="high">High Priority</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="estimateFeeBtn" class="form-label">&nbsp;</label>
+                                        <button type="button" class="btn btn-primary form-control" id="estimateFeeBtn">Estimate</button>
+                                    </div>
+                                </div>
+                                <div class="row mt-3">
+                                    <div class="col-md-12">
+                                        <div class="alert alert-info mb-0 d-flex justify-content-between align-items-center" id="feeEstimateResult">
+                                            <div>
+                                                <span>Estimated Fee:</span>
+                                                <strong id="feeEstimateValue">-- ETH</strong>
+                                                <span id="feeEstimateUsd">(--)</span>
+                                            </div>
+                                            <div>
+                                                <span>Time to Confirm:</span>
+                                                <strong id="feeEstimateTime">-- seconds</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Trading Agent Network Impact</h6>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            <th>Last Hour</th>
+                                            <th>Last 24 Hours</th>
+                                            <th>Impact</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Transactions</td>
+                                            <td id="agentTx1h">0</td>
+                                            <td id="agentTx24h">0</td>
+                                            <td><span class="badge bg-success" id="agentTxImpact">Low</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Gas Used</td>
+                                            <td id="agentGas1h">0</td>
+                                            <td id="agentGas24h">0</td>
+                                            <td><span class="badge bg-success" id="agentGasImpact">Low</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Fees Paid</td>
+                                            <td id="agentFees1h">0 ETH</td>
+                                            <td id="agentFees24h">0 ETH</td>
+                                            <td><span class="badge bg-success" id="agentFeesImpact">Low</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Failed Tx Rate</td>
+                                            <td id="agentFailed1h">0%</td>
+                                            <td id="agentFailed24h">0%</td>
+                                            <td><span class="badge bg-success" id="agentFailedImpact">Low</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Network Status Script -->
+<script>
+    // Make functions available globally
+    window.initializeNetworkStatus = initializeNetworkStatus;
+    window.refreshNetworkStatus = refreshNetworkStatus;
+    
+    // Network status data cache
+    let networkStatusCache = {};
+    
+    // Initialize network status
+    function initializeNetworkStatus() {
+        document.getElementById('estimateFeeBtn').addEventListener('click', estimateFees);
+        refreshNetworkStatus('ethereum');
+    }
+    
+    // Refresh network status
+    async function refreshNetworkStatus(network) {
+        try {
+            // Update network title
+            document.getElementById('networkStatusTitle').textContent = `${capitalizeFirstLetter(network)} Network Status`;
+            
+            // Get network status data
+            const response = await fetchAPI(`/alchemy/network-status?network=${network}`);
+            
+            if (response && response.success) {
+                // Cache the data
+                networkStatusCache[network] = response.data;
+                
+                // Update gas prices
+                document.getElementById('networkGasLow').textContent = `${response.data.gas.low} Gwei`;
+                document.getElementById('networkGasMedium').textContent = `${response.data.gas.medium} Gwei`;
+                document.getElementById('networkGasHigh').textContent = `${response.data.gas.high} Gwei`;
+                
+                // Update block info
+                document.getElementById('networkLatestBlock').textContent = response.data.latest_block.toLocaleString();
+                document.getElementById('networkBlockTime').textContent = `${response.data.block_time.toFixed(1)} s`;
+                
+                // Update network load
+                const loadPercentage = response.data.network_load;
+                const loadProgress = document.getElementById('networkLoadProgress');
+                loadProgress.style.width = `${loadPercentage}%`;
+                loadProgress.textContent = `${loadPercentage}%`;
+                loadProgress.setAttribute('aria-valuenow', loadPercentage);
+                
+                // Set color based on load
+                if (loadPercentage < 50) {
+                    loadProgress.className = 'progress-bar bg-success';
+                    document.getElementById('networkCongestionStatus').textContent = 'Low Congestion';
+                    document.getElementById('networkCongestionStatus').className = 'text-success';
+                } else if (loadPercentage < 80) {
+                    loadProgress.className = 'progress-bar bg-warning';
+                    document.getElementById('networkCongestionStatus').textContent = 'Moderate Congestion';
+                    document.getElementById('networkCongestionStatus').className = 'text-warning';
+                } else {
+                    loadProgress.className = 'progress-bar bg-danger';
+                    document.getElementById('networkCongestionStatus').textContent = 'High Congestion';
+                    document.getElementById('networkCongestionStatus').className = 'text-danger';
+                }
+                
+                // Update transaction cost
+                const txCost = response.data.tx_cost;
+                const coinSymbol = getNetworkSymbol(network);
+                document.getElementById('networkTxCost').textContent = `${txCost.toFixed(6)} ${coinSymbol}`;
+                
+                // Update agent metrics
+                document.getElementById('agentTx1h').textContent = response.data.agent_metrics.tx_count_1h;
+                document.getElementById('agentTx24h').textContent = response.data.agent_metrics.tx_count_24h;
+                document.getElementById('agentGas1h').textContent = formatLargeNumber(response.data.agent_metrics.gas_used_1h);
+                document.getElementById('agentGas24h').textContent = formatLargeNumber(response.data.agent_metrics.gas_used_24h);
+                document.getElementById('agentFees1h').textContent = `${response.data.agent_metrics.fees_1h.toFixed(4)} ${coinSymbol}`;
+                document.getElementById('agentFees24h').textContent = `${response.data.agent_metrics.fees_24h.toFixed(4)} ${coinSymbol}`;
+                document.getElementById('agentFailed1h').textContent = `${response.data.agent_metrics.failed_rate_1h.toFixed(1)}%`;
+                document.getElementById('agentFailed24h').textContent = `${response.data.agent_metrics.failed_rate_24h.toFixed(1)}%`;
+                
+                // Update impact badges
+                updateImpactBadge('agentTxImpact', response.data.agent_metrics.tx_impact);
+                updateImpactBadge('agentGasImpact', response.data.agent_metrics.gas_impact);
+                updateImpactBadge('agentFeesImpact', response.data.agent_metrics.fees_impact);
+                updateImpactBadge('agentFailedImpact', response.data.agent_metrics.failed_impact);
+                
+                // Pre-fill estimated fee
+                updateFeeEstimate(network, 'transfer', 'medium');
+            }
+        } catch (error) {
+            console.error('Error refreshing network status:', error);
+            showToast('Failed to load network status', 'error');
+        }
+    }
+    
+    // Estimate transaction fees
+    function estimateFees() {
+        const txType = document.getElementById('txType').value;
+        const priority = document.getElementById('txPriority').value;
+        const network = currentBlockchainNetwork;
+        
+        updateFeeEstimate(network, txType, priority);
+    }
+    
+    // Update fee estimate display
+    function updateFeeEstimate(network, txType, priority) {
+        // Check if we have cached data
+        if (!networkStatusCache[network]) {
+            showToast('Network data not available', 'error');
+            return;
+        }
+        
+        const data = networkStatusCache[network];
+        const coinSymbol = getNetworkSymbol(network);
+        
+        // Fee multipliers based on transaction type
+        const typeMultipliers = {
+            'transfer': 1.0,
+            'tokenTransfer': 1.5,
+            'swap': 3.0,
+            'nftMint': 5.0,
+            'nftTransfer': 2.0
+        };
+        
+        // Get base fee
+        let baseFee = data.tx_cost;
+        
+        // Apply transaction type multiplier
+        baseFee *= typeMultipliers[txType];
+        
+        // Apply priority multiplier
+        if (priority === 'low') {
+            baseFee *= 0.8;
+        } else if (priority === 'high') {
+            baseFee *= 1.5;
+        }
+        
+        // Calculate estimated time
+        let estimatedTime;
+        if (priority === 'low') {
+            estimatedTime = data.block_time * 5; // ~5 blocks
+        } else if (priority === 'medium') {
+            estimatedTime = data.block_time * 2; // ~2 blocks
+        } else {
+            estimatedTime = data.block_time; // ~1 block
+        }
+        
+        // Calculate USD value if available
+        let usdValue = '';
+        if (data.token_price && data.token_price.usd) {
+            const usdAmount = baseFee * data.token_price.usd;
+            usdValue = ` ($${usdAmount.toFixed(2)})`;
+        }
+        
+        // Update UI
+        document.getElementById('feeEstimateValue').textContent = `${baseFee.toFixed(6)} ${coinSymbol}`;
+        document.getElementById('feeEstimateUsd').textContent = usdValue;
+        document.getElementById('feeEstimateTime').textContent = `~${Math.round(estimatedTime)} seconds`;
+    }
+    
+    // Update impact badge
+    function updateImpactBadge(elementId, impact) {
+        const badge = document.getElementById(elementId);
+        
+        if (impact === 'low') {
+            badge.className = 'badge bg-success';
+            badge.textContent = 'Low';
+        } else if (impact === 'medium') {
+            badge.className = 'badge bg-warning';
+            badge.textContent = 'Medium';
+        } else {
+            badge.className = 'badge bg-danger';
+            badge.textContent = 'High';
+        }
+    }
+    
+    // Format large numbers with K, M, B suffixes
+    function formatLargeNumber(num) {
+        if (num >= 1_000_000_000) {
+            return (num / 1_000_000_000).toFixed(2) + 'B';
+        } else if (num >= 1_000_000) {
+            return (num / 1_000_000).toFixed(2) + 'M';
+        } else if (num >= 1_000) {
+            return (num / 1_000).toFixed(2) + 'K';
+        }
+        return num.toString();
+    }
+    
+    // Get network symbol
+    function getNetworkSymbol(network) {
+        const symbols = {
+            'ethereum': 'ETH',
+            'polygon': 'MATIC',
+            'arbitrum': 'ETH',
+            'optimism': 'ETH',
+            'base': 'ETH'
+        };
+        return symbols[network.toLowerCase()] || 'ETH';
+    }
+    
+    // Capitalize first letter
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+</script>
