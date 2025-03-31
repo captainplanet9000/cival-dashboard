@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { agentApi, Agent } from "../../../lib/api-client";
+import React from "react";
+import { agentService, Agent } from "@/services/agent-service";
 import Link from "next/link";
 
 export default function AgentsPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [agents, setAgents] = React.useState<Agent[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     async function fetchAgents() {
       setLoading(true);
-      const response = await agentApi.getAgents();
+      const response = await agentService.getAgents();
       
       if (response.error) {
         setError(response.error);
@@ -121,7 +121,7 @@ export default function AgentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 bg-white">
-              {agents.map((agent) => (
+              {agents.map((agent: Agent) => (
                 <tr key={agent.id}>
                   <td className="whitespace-nowrap px-6 py-4">
                     <Link href={`/dashboard/agents/${agent.id}`} className="font-medium text-blue-600 hover:underline">

@@ -12,13 +12,25 @@ import {
   Landmark,
   Shield,
   Clock,
-  RefreshCw
+  RefreshCw,
+  History,
+  Upload,
+  Download
 } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createBrowserClient } from '@/utils/supabase/client'
 import { useToast } from '@/components/ui/use-toast'
+import { Card } from '@/components/ui/card'
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/components/ui/dialog'
 
 import MetaMaskConnector from '@/components/wallet/metamask-connector'
 import ElizaChatInterface from '@/components/eliza/eliza-chat-interface'
@@ -28,6 +40,13 @@ import TransactionsPanel from '@/components/banking/TransactionsPanel'
 import FundAllocationsPanel from '@/components/banking/FundAllocationsPanel'
 import VaultInfoPanel from '@/components/banking/VaultInfoPanel'
 
+// Import new banking components
+import { TransactionHistory } from '@/components/banking/transaction-history'
+import { WithdrawalForm } from '@/components/banking/withdrawal-form'
+import { DepositAddress } from '@/components/banking/deposit-address'
+import { BalanceOverview } from '@/components/banking/balance-overview'
+import { VaultTransaction } from '@/services/vault-service'
+
 export default function BankingPage() {
   const [activeTab, setActiveTab] = React.useState('wallets')
   const [userId, setUserId] = React.useState<string>('1')
@@ -35,6 +54,10 @@ export default function BankingPage() {
   const [showFundingModal, setShowFundingModal] = React.useState(false)
   const [loading, setLoading] = React.useState(true)
   const [assetFilter, setAssetFilter] = React.useState<string | null>(null)
+  const [showDepositDialog, setShowDepositDialog] = React.useState(false)
+  const [showWithdrawDialog, setShowWithdrawDialog] = React.useState(false)
+  const [selectedCurrency, setSelectedCurrency] = React.useState<string | undefined>()
+  const [selectedTransaction, setSelectedTransaction] = React.useState<VaultTransaction | null>(null)
   const supabase = createBrowserClient()
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -87,6 +110,19 @@ export default function BankingPage() {
     window.location.reload()
   }
 
+  const handleOpenDeposit = () => {
+    setShowDepositDialog(true)
+  }
+
+  const handleOpenWithdraw = (currency?: string) => {
+    setSelectedCurrency(currency)
+    setShowWithdrawDialog(true)
+  }
+
+  const handleTransactionSelect = (transaction: VaultTransaction) => {
+    setSelectedTransaction(transaction)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
@@ -96,10 +132,48 @@ export default function BankingPage() {
             Manage your wallets, fund allocations, and trading accounts
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
+        <div className="flex gap-2">
+          <Dialog open={showDepositDialog} onOpenChange={setShowDepositDialog}>
+            <DialogTrigger asChild>
+              <Button className="gap-1">
+                <Upload className="h-4 w-4" />
+                Deposit
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Deposit Funds</DialogTitle>
+                <DialogDescription>
+                  Add funds to your Trading Farm account
+                </DialogDescription>
+              </DialogHeader>
+              <DepositAddress onSuccess={() => setShowDepositDialog(false)} />
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={showWithdrawDialog} onOpenChange={setShowWithdrawDialog}>
+            <DialogTrigger asChild>
+              <Button variant="outline" className="gap-1">
+                <Download className="h-4 w-4" />
+                Withdraw
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Withdraw Funds</DialogTitle>
+                <DialogDescription>
+                  Withdraw funds from your Trading Farm account
+                </DialogDescription>
+              </DialogHeader>
+              <WithdrawalForm onSuccess={() => setShowWithdrawDialog(false)} />
+            </DialogContent>
+          </Dialog>
+
+          <Button variant="outline" size="sm" onClick={handleRefresh}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {/* Banking Tabs */}
@@ -159,70 +233,114 @@ export default function BankingPage() {
           <BarChart2 className="mr-2 h-4 w-4" />
           Analytics
         </button>
+        <button
+          onClick={() => setActiveTab('banking-interface')}
+          className={`px-4 py-2 flex items-center ${
+            activeTab === 'banking-interface'
+              ? 'border-b-2 border-primary text-primary font-medium'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          <Landmark className="mr-2 h-4 w-4" />
+          Advanced Banking
+        </button>
       </div>
 
       {/* Tab Content */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Left Section - Wallets & Funding */}
-        <div className="md:col-span-2 space-y-6">
-          {activeTab === 'wallets' && (
-            <>
-              <BalancesPanel 
+      {activeTab !== 'banking-interface' ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Left Section - Wallets & Funding */}
+          <div className="md:col-span-2 space-y-6">
+            {activeTab === 'wallets' && (
+              <>
+                <BalancesPanel 
+                  userId={userId} 
+                  onShowTransactions={handleShowTransactions}
+                  farmId={farmId}
+                />
+                <MetaMaskConnector />
+              </>
+            )}
+
+            {activeTab === 'funds' && (
+              <FundAllocationsPanel userId={userId} />
+            )}
+            
+            {activeTab === 'transactions' && (
+              <TransactionsPanel 
                 userId={userId} 
-                onShowTransactions={handleShowTransactions}
-                farmId={farmId}
+                assetFilter={assetFilter || undefined}
+                limit={50}
               />
-              <MetaMaskConnector />
-            </>
-          )}
+            )}
+            
+            {activeTab === 'vault' && (
+              <VaultInfoPanel userId={userId} />
+            )}
 
-          {activeTab === 'funds' && (
-            <FundAllocationsPanel userId={userId} />
-          )}
-          
-          {activeTab === 'transactions' && (
-            <TransactionsPanel 
-              userId={userId} 
-              assetFilter={assetFilter || undefined}
-              limit={50}
-            />
-          )}
-          
-          {activeTab === 'vault' && (
-            <VaultInfoPanel userId={userId} />
-          )}
-
-          {activeTab === 'analytics' && (
-            <div className="dashboard-card">
-              <h2 className="text-xl font-bold mb-4 flex items-center">
-                <BarChart2 className="mr-2 h-5 w-5" />
-                Banking Analytics
-              </h2>
-              <div className="text-center p-12 text-muted-foreground">
-                <p>Banking analytics will be implemented here</p>
-                <p className="text-sm mt-2">This section will display historical performance, ROI metrics, and transaction history</p>
+            {activeTab === 'analytics' && (
+              <div className="dashboard-card">
+                <h2 className="text-xl font-bold mb-4 flex items-center">
+                  <BarChart2 className="mr-2 h-5 w-5" />
+                  Banking Analytics
+                </h2>
+                <div className="text-center p-12 text-muted-foreground">
+                  <BarChart2 className="mx-auto h-16 w-16 mb-4 opacity-20" />
+                  <p>Detailed banking analytics coming soon!</p>
+                  <Button variant="outline" className="mt-4">Enable Analytics</Button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Right Section - ElizaOS Chat Interface */}
-        <div className="md:col-span-1">
-          <ElizaChatInterface />
+          {/* Right Section - Eliza Assistant */}
+          <div>
+            <ElizaChatInterface 
+              initialContext={{
+                module: 'banking',
+                userId: userId,
+                farmId: farmId || '0'
+              }}
+            />
+          </div>
         </div>
-      </div>
-      
-      {/* Funding Modal (triggered from BalancesPanel but could be opened from a button here too) */}
+      ) : (
+        <div className="space-y-6">
+          {/* New Advanced Banking Interface */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <BalanceOverview 
+                onDeposit={handleOpenDeposit} 
+                onWithdraw={handleOpenWithdraw} 
+              />
+            </div>
+            <div>
+              <Card className="h-full overflow-hidden">
+                <ElizaChatInterface 
+                  initialContext={{
+                    module: 'banking',
+                    userId: userId,
+                    farmId: farmId || '0'
+                  }}
+                  className="h-full"
+                  showTitle={true}
+                  title="Banking Assistant"
+                />
+              </Card>
+            </div>
+          </div>
+          
+          <div className="pt-4">
+            <TransactionHistory onTransactionSelect={handleTransactionSelect} />
+          </div>
+        </div>
+      )}
+
+      {/* Funding Modal */}
       {showFundingModal && (
-        <FundingModal
-          isOpen={showFundingModal}
-          onClose={() => setShowFundingModal(false)}
-          onSuccess={() => {
-            setShowFundingModal(false)
-            // Refresh balances
-          }}
+        <FundingModal 
+          onClose={() => setShowFundingModal(false)} 
           userId={userId}
-          farmId={farmId}
         />
       )}
     </div>

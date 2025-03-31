@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { orderApi, Order } from "../../../lib/api-client";
+import { orderService, Order } from "@/services/order-service";
 import Link from "next/link";
 
 export default function OrdersPage() {
@@ -25,18 +25,18 @@ export default function OrdersPage() {
       
       // Apply filters if not set to 'all'
       if (filters.farmId !== 'all') {
-        params.farmId = Number(filters.farmId);
+        params.farmId = filters.farmId;
       }
       
       if (filters.agentId !== 'all') {
-        params.agentId = Number(filters.agentId);
+        params.agentId = filters.agentId;
       }
       
       if (filters.status !== 'all') {
         params.status = filters.status;
       }
       
-      const response = await orderApi.getOrders(params);
+      const response = await orderService.getOrders(params);
       
       if (response.error) {
         setError(response.error);
@@ -203,7 +203,7 @@ export default function OrdersPage() {
                           className="text-red-600 hover:text-red-900"
                           onClick={() => {
                             if (confirm('Are you sure you want to cancel this order?')) {
-                              orderApi.cancelOrder(order.id);
+                              orderService.cancelOrder(order.id);
                               // Reload orders after cancellation
                               setTimeout(() => {
                                 setFilters({ ...filters });
