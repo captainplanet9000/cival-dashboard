@@ -1,54 +1,15 @@
-import { BaseEntity, BaseRepository } from '../lib/base-repository';
-
-/**
- * Agent entity interface
- */
-export interface Agent extends BaseEntity {
-  farm_id: number;
-  name: string;
-  model_config: {
-    provider?: string;
-    model?: string;
-    temperature?: number;
-    max_tokens?: number;
-    fallback_models?: string[];
-    [key: string]: any;
-  };
-  tools_config: {
-    enabled_tools?: string[];
-    tool_permissions?: Record<string, string[]>;
-    mcp_servers?: string[];
-    [key: string]: any;
-  };
-  capabilities: string[];
-  is_active: boolean;
-  performance_metrics: {
-    trades_count?: number;
-    win_rate?: number;
-    profit_loss?: number;
-    last_active?: string;
-    [key: string]: any;
-  };
-  memory_context: {
-    key_memories?: Record<string, any>;
-    context_window?: any[];
-    [key: string]: any;
-  };
-  config: {
-    max_concurrent_trades?: number;
-    risk_level?: string;
-    operating_hours?: string[];
-    [key: string]: any;
-  };
-}
+import { BaseRepository, QueryOptions } from '../../lib/base-repository';
+import { Agent } from '../models/agent';
 
 /**
  * Extended query options specifically for agents
  */
-export interface AgentQueryOptions {
-  includeMessages?: boolean;
-  includeWallet?: boolean;
+export interface AgentQueryOptions extends QueryOptions {
+  includeFarm?: boolean;
+  includeWallets?: boolean;
   includeOrders?: boolean;
+  includeTrades?: boolean;
+  includeMemories?: boolean;
 }
 
 /**
@@ -67,19 +28,19 @@ export class AgentRepository extends BaseRepository<Agent> {
       .from(this.tableName)
       .select('*')
       .eq('farm_id', farmId);
-
+    
     if (error) {
       this.handleError(error);
       return [];
     }
-
+    
     return data as Agent[];
   }
 
   /**
    * Find an agent by ID with optional related data
    */
-  async findByIdWithRelations(id: number, options: AgentQueryOptions = {}): Promise<any> {
+  async findByIdWithRelations(id: number, options: AgentQueryOptions = {}): Promise<Agent | null> {
     const agent = await this.findById(id);
     
     if (!agent) {
@@ -88,145 +49,175 @@ export class AgentRepository extends BaseRepository<Agent> {
 
     const enrichedAgent: any = { ...agent };
 
-    // Load related messages if requested
-    if (options.includeMessages) {
-      const { data: messages } = await this.client
-        .from('agent_messages')
+    // Load related farm if requested
+    if (options.includeFarm) {
+      const { data: farm } = await this.client
+        .from('farms')
         .select('*')
-        .eq('agent_id', id)
-        .order('created_at', { ascending: false })
-        .limit(50);
+        .eq('id', agent.farm_id)
+        .single();
       
-      enrichedAgent.messages = messages || [];
+      enrichedAgent.farm = farm;
     }
 
-    // Load wallet if requested
-    if (options.includeWallet) {
-      const { data: wallet } = await this.client
+    // Load related wallets if requested
+    if (options.includeWallets) {
+      const { data: wallets } = await this.client
         .from('wallets')
         .select('*')
         .eq('owner_id', id)
-        .eq('owner_type', 'agent')
-        .single();
+        .eq('owner_type', 'agent');
       
-      enrichedAgent.wallet = wallet;
+      enrichedAgent.wallets = wallets || [];
     }
 
-    // Load orders if requested
+    // Load related orders if requested
     if (options.includeOrders) {
       const { data: orders } = await this.client
         .from('orders')
-        .select(`
-          *,
-          trades(*)
-        `)
+        .select('*')
         .eq('agent_id', id)
-        .order('created_at', { ascending: false })
-        .limit(20);
+        .order('created_at', { ascending: false });
       
       enrichedAgent.orders = orders || [];
     }
 
-    return enrichedAgent;
-  }
-
-  /**
-   * Record a message for an agent
-   */
-  async addMessage(agentId: number, content: string, direction: 'inbound' | 'outbound', messageType: string, metadata: object = {}): Promise<boolean> {
-    const { error } = await this.client
-      .from('agent_messages')
-      .insert({
-        agent_id: agentId,
-        content,
-        direction,
-        message_type: messageType,
-        metadata,
-        created_at: new Date().toISOString()
-      });
-
-    if (error) {
-      this.handleError(error);
-      return false;
+    // Load related trades if requested
+    if (options.includeTrades) {
+      const { data: trades } = await this.client
+        .from('trades')
+        .select('*')
+        .eq('agent_id', id)
+        .order('executed_at', { ascending: false });
+      
+      enrichedAgent.trades = trades || [];
     }
 
-    return true;
-  }
-
-  /**
-   * Update agent model configuration
-   */
-  async updateModelConfig(id: number, modelConfig: Agent['model_config']): Promise<boolean> {
-    const { error } = await this.client
-      .from(this.tableName)
-      .update({ 
-        model_config: modelConfig,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (error) {
-      this.handleError(error);
-      return false;
+    // Load agent memories if requested
+    if (options.includeMemories) {
+      const { data: memories } = await this.client
+        .from('memory_items')
+        .select('*')
+        .eq('agent_id', id)
+        .order('created_at', { ascending: false });
+      
+      enrichedAgent.memories = memories || [];
     }
 
-    return true;
+    return enrichedAgent as Agent;
   }
 
   /**
-   * Update agent tools configuration
+   * Find active agents with performance stats
    */
-  async updateToolsConfig(id: number, toolsConfig: Agent['tools_config']): Promise<boolean> {
-    const { error } = await this.client
-      .from(this.tableName)
-      .update({ 
-        tools_config: toolsConfig,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (error) {
-      this.handleError(error);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Update agent memory context
-   */
-  async updateMemoryContext(id: number, memoryContext: Agent['memory_context']): Promise<boolean> {
-    const { error } = await this.client
-      .from(this.tableName)
-      .update({ 
-        memory_context: memoryContext,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id);
-
-    if (error) {
-      this.handleError(error);
-      return false;
-    }
-
-    return true;
-  }
-
-  /**
-   * Get agents with OpenRouter integration
-   */
-  async findAgentsWithOpenRouter(): Promise<Agent[]> {
+  async findActiveAgentsWithStats(): Promise<any[]> {
     const { data, error } = await this.client
       .from(this.tableName)
-      .select('*')
-      .contains('model_config', { provider: 'openrouter' });
+      .select(`
+        *,
+        trades:trades(count),
+        orders:orders(count)
+      `)
+      .eq('is_active', true);
 
     if (error) {
       this.handleError(error);
       return [];
     }
 
-    return data as Agent[];
+    // Define interfaces for the data shapes
+    interface AgentWithCounts extends Agent {
+      trades?: { count: number };
+      orders?: { count: number };
+    }
+
+    interface Trade {
+      profit_loss?: number;
+    }
+
+    // Enrich the data with calculated metrics
+    const agents = data as AgentWithCounts[] || [];
+    const enrichedAgents = await Promise.all(agents.map(async (agent: AgentWithCounts) => {
+      const { data: trades } = await this.client
+        .from('trades')
+        .select('profit_loss')
+        .eq('agent_id', agent.id);
+      
+      const totalProfitLoss = (trades as Trade[] || []).reduce((sum: number, trade: Trade) => {
+        return sum + (trade.profit_loss || 0);
+      }, 0);
+      
+      return {
+        ...agent,
+        calculated_metrics: {
+          total_profit_loss: totalProfitLoss,
+          trade_count: agent.trades?.count || 0,
+          order_count: agent.orders?.count || 0
+        }
+      };
+    }));
+
+    return enrichedAgents;
+  }
+
+  /**
+   * Update agent parameters
+   */
+  async updateParameters(id: number, parameters: object): Promise<boolean> {
+    const { error } = await this.client
+      .from(this.tableName)
+      .update({ 
+        parameters,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) {
+      this.handleError(error);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Update agent status (active/inactive)
+   */
+  async updateStatus(id: number, isActive: boolean): Promise<boolean> {
+    const { error } = await this.client
+      .from(this.tableName)
+      .update({ 
+        is_active: isActive,
+        updated_at: new Date().toISOString(),
+        last_active_at: isActive ? new Date().toISOString() : undefined
+      })
+      .eq('id', id);
+
+    if (error) {
+      this.handleError(error);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Update agent performance metrics
+   */
+  async updatePerformanceMetrics(id: number, metrics: object): Promise<boolean> {
+    const { error } = await this.client
+      .from(this.tableName)
+      .update({ 
+        performance_metrics: metrics,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (error) {
+      this.handleError(error);
+      return false;
+    }
+
+    return true;
   }
 }
