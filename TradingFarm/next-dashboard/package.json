@@ -8,7 +8,8 @@
     "build": "next build",
     "start": "next start",
     "start:full": "NODE_ENV=production node server.js",
-    "lint": "next lint"
+    "lint": "next lint",
+    "ingest:farmdocs": "node src/scripts/run-farm-docs-ingestion.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
