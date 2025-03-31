@@ -2,11 +2,11 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-// Read environment variables or use fallbacks if not available
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "http://localhost:3007";
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+// Create a single supabase client for the entire app
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY); 
+export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey); 

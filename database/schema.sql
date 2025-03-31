@@ -362,4 +362,100 @@ CREATE POLICY "Users can read agent metrics for their farms" ON agent_metrics
     )
   );
 
--- Implement similar policies for other tables 
+-- Triggers for ElizaOS Integration
+CREATE TRIGGER update_eliza_commands_modified
+BEFORE UPDATE ON eliza_commands
+FOR EACH ROW EXECUTE PROCEDURE update_modified_column();
+
+-- ElizaOS Integration Tables
+CREATE TABLE eliza_commands (
+  id SERIAL PRIMARY KEY,
+  command TEXT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('user', 'agent', 'system', 'farm')),
+  agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+  farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+  context JSONB DEFAULT '{}'::JSONB,
+  response JSONB,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'cancelled')),
+  completed_at TIMESTAMPTZ,
+  processing_time_ms INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE memory_items (
+  id SERIAL PRIMARY KEY,
+  agent_id INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('fact', 'observation', 'insight', 'decision', 'feedback')),
+  importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 10),
+  embedding VECTOR(1536), -- For semantic search if using pgvector extension
+  metadata JSONB DEFAULT '{}'::JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  last_accessed_at TIMESTAMPTZ
+);
+
+-- Indexes for ElizaOS Integration
+CREATE INDEX idx_eliza_commands_agent ON eliza_commands(agent_id);
+CREATE INDEX idx_eliza_commands_farm ON eliza_commands(farm_id);
+CREATE INDEX idx_eliza_commands_status ON eliza_commands(status);
+CREATE INDEX idx_eliza_commands_created ON eliza_commands(created_at);
+CREATE INDEX idx_memory_items_agent ON memory_items(agent_id);
+CREATE INDEX idx_memory_items_type ON memory_items(type);
+CREATE INDEX idx_memory_items_importance ON memory_items(importance);
+CREATE INDEX idx_memory_items_created ON memory_items(created_at);
+
+-- Function to manage memory items retrieval with recency and importance
+CREATE OR REPLACE FUNCTION get_relevant_memories(
+  p_agent_id INTEGER, 
+  p_query TEXT,
+  p_limit INTEGER DEFAULT 10
+) RETURNS TABLE (
+  id INTEGER,
+  content TEXT,
+  type TEXT,
+  importance INTEGER,
+  created_at TIMESTAMPTZ,
+  relevance_score FLOAT
+) AS $$
+BEGIN
+  -- Update last_accessed timestamp for retrieved memories
+  RETURN QUERY
+  WITH retrieved_memories AS (
+    SELECT 
+      id, 
+      content, 
+      type, 
+      importance, 
+      created_at,
+      -- Simplified relevance score based on importance and recency
+      -- In a real implementation, this would use vector similarity with pgvector
+      importance * 0.6 + (1.0 - EXTRACT(EPOCH FROM (NOW() - created_at))/86400.0/30.0) * 0.4 AS relevance_score
+    FROM 
+      memory_items
+    WHERE 
+      agent_id = p_agent_id
+      AND (expires_at IS NULL OR expires_at > NOW())
+      -- Basic text search, would use vector similarity in production
+      AND (content ILIKE '%' || p_query || '%' OR p_query IS NULL)
+    ORDER BY
+      relevance_score DESC
+    LIMIT p_limit
+  )
+  SELECT 
+    rm.id, 
+    rm.content, 
+    rm.type, 
+    rm.importance, 
+    rm.created_at,
+    rm.relevance_score
+  FROM retrieved_memories rm;
+  
+  -- Update last_accessed_at for retrieved memories
+  UPDATE memory_items
+  SET last_accessed_at = NOW()
+  WHERE id IN (SELECT id FROM retrieved_memories);
+  
+  RETURN;
+END;
+$$ LANGUAGE plpgsql; 
