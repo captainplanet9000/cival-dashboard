@@ -22,6 +22,9 @@ export const API_CONFIG = {
   COGNEE_API_KEY: process.env.NEXT_PUBLIC_COGNEE_API_KEY || '',
   GRAPHITI_API_KEY: process.env.NEXT_PUBLIC_GRAPHITI_API_KEY || '',
   
+  // AI Services
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+  
   // MCP Services
   MCP_NEON_ENDPOINT: process.env.NEXT_PUBLIC_MCP_NEON_ENDPOINT || 'http://localhost:3003',
   MCP_NEON_API_KEY: process.env.NEXT_PUBLIC_MCP_NEON_API_KEY || '',

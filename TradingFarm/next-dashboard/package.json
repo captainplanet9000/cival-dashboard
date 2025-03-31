@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:elizaos": "node scripts/test-elizaos.js",
-    "test:connections": "node scripts/test-connections.js"
+    "test:connections": "node scripts/test-connections.js",
+    "ingest:farmdocs": "node src/scripts/run-farm-docs-ingestion.js"
   },
   "dependencies": {
     "next": "14.0.3",
