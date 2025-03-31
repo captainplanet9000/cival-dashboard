@@ -1,19 +1,22 @@
 /**
  * Farm Service
- * Handles all farm-related API interactions
+ * Handles all farm-related API interactions with Supabase
  */
 
-// Define the Farm interface (should match your API response)
+import { createBrowserClient } from "@/utils/supabase/client";
+import { createServerClient } from "@/utils/supabase/server";
+import { Database } from "@/types/database.types";
+
+// Define the Farm interface (should match the Supabase schema)
 export interface Farm {
-  id: string;
+  id: number;
   name: string;
-  description?: string;
-  is_active: boolean;
+  description?: string | null;
+  user_id?: string | null;
   created_at: string;
   updated_at: string;
   agents_count?: number;
-  strategies_count?: number;
-  user_id?: string;
+  agents?: any; // For handling relationships
 }
 
 // API response types
@@ -29,22 +32,61 @@ export const farmService = {
    */
   async getFarms(): Promise<ApiResponse<Farm[]>> {
     try {
-      // Use relative URL to ensure it works in development and production
-      const response = await fetch('/api/farms?userId=1', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error fetching farms:', errorData);
-        return { error: `Failed to load farms: ${response.status} ${response.statusText}` };
+      const supabase = createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .select('*, agents(count)')
+        .returns<Farm[]>();
+      
+      if (error) {
+        console.error('Error fetching farms:', error);
+        return { error: error.message };
       }
+      
+      // Transform the data to include agents_count
+      const farmsWithCounts = data.map(farm => {
+        const agentsCount = farm.agents ? (farm.agents as any).count : 0;
+        return {
+          ...farm,
+          agents_count: agentsCount,
+        };
+      });
+      
+      return { data: farmsWithCounts };
+    } catch (error) {
+      console.error('Error fetching farms:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
 
-      const data = await response.json();
-      return { data: data.farms };
+  /**
+   * Get farms for server components
+   */
+  async getFarmsServer(): Promise<ApiResponse<Farm[]>> {
+    try {
+      const supabase = await createServerClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .select('*, agents(count)')
+        .returns<Farm[]>();
+      
+      if (error) {
+        console.error('Error fetching farms:', error);
+        return { error: error.message };
+      }
+      
+      // Transform the data to include agents_count
+      const farmsWithCounts = data.map(farm => {
+        const agentsCount = farm.agents ? (farm.agents as any).count : 0;
+        return {
+          ...farm,
+          agents_count: agentsCount,
+        };
+      });
+      
+      return { data: farmsWithCounts };
     } catch (error) {
       console.error('Error fetching farms:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
@@ -54,23 +96,61 @@ export const farmService = {
   /**
    * Get a specific farm by ID
    */
-  async getFarmById(id: string): Promise<ApiResponse<Farm>> {
+  async getFarmById(id: number): Promise<ApiResponse<Farm>> {
     try {
-      const response = await fetch(`/api/farms/${id}?userId=1`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error(`Error fetching farm ${id}:`, errorData);
-        return { error: `Failed to load farm: ${response.status} ${response.statusText}` };
+      const supabase = createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .select('*, agents(count)')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error(`Error fetching farm ${id}:`, error);
+        return { error: error.message };
       }
+      
+      // Transform the data to include agents_count
+      const agentsCount = data.agents ? (data.agents as any).count : 0;
+      const farm = {
+        ...data,
+        agents_count: agentsCount,
+      };
+      
+      return { data: farm };
+    } catch (error) {
+      console.error(`Error fetching farm ${id}:`, error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
 
-      const data = await response.json();
-      return { data: data.farm };
+  /**
+   * Get a specific farm by ID for server components
+   */
+  async getFarmByIdServer(id: number): Promise<ApiResponse<Farm>> {
+    try {
+      const supabase = await createServerClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .select('*, agents(count)')
+        .eq('id', id)
+        .single();
+      
+      if (error) {
+        console.error(`Error fetching farm ${id}:`, error);
+        return { error: error.message };
+      }
+      
+      // Transform the data to include agents_count
+      const agentsCount = data.agents ? (data.agents as any).count : 0;
+      const farm = {
+        ...data,
+        agents_count: agentsCount,
+      };
+      
+      return { data: farm };
     } catch (error) {
       console.error(`Error fetching farm ${id}:`, error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
@@ -80,26 +160,74 @@ export const farmService = {
   /**
    * Create a new farm
    */
-  async createFarm(farmData: Partial<Farm>): Promise<ApiResponse<Farm>> {
+  async createFarm(farmData: Omit<Farm, 'id' | 'created_at' | 'updated_at'>): Promise<ApiResponse<Farm>> {
     try {
-      const response = await fetch('/api/farms', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(farmData),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error('Error creating farm:', errorData);
-        return { error: `Failed to create farm: ${response.status} ${response.statusText}` };
+      const supabase = createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .insert(farmData)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error('Error creating farm:', error);
+        return { error: error.message };
       }
-
-      const data = await response.json();
-      return { data: data.farm };
+      
+      return { data };
     } catch (error) {
       console.error('Error creating farm:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+
+  /**
+   * Update an existing farm
+   */
+  async updateFarm(id: number, farmData: Partial<Omit<Farm, 'id' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<Farm>> {
+    try {
+      const supabase = createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .update(farmData)
+        .eq('id', id)
+        .select()
+        .single();
+      
+      if (error) {
+        console.error(`Error updating farm ${id}:`, error);
+        return { error: error.message };
+      }
+      
+      return { data };
+    } catch (error) {
+      console.error(`Error updating farm ${id}:`, error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+
+  /**
+   * Delete a farm
+   */
+  async deleteFarm(id: number): Promise<ApiResponse<null>> {
+    try {
+      const supabase = createBrowserClient();
+      
+      const { error } = await supabase
+        .from('farms')
+        .delete()
+        .eq('id', id);
+      
+      if (error) {
+        console.error(`Error deleting farm ${id}:`, error);
+        return { error: error.message };
+      }
+      
+      return { data: null };
+    } catch (error) {
+      console.error(`Error deleting farm ${id}:`, error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
     }
   }

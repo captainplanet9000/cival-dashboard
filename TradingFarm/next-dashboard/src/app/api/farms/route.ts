@@ -4,90 +4,56 @@ import { createServerClient } from '@/utils/supabase/server';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
     const limit = parseInt(searchParams.get('limit') || '10');
     const offset = parseInt(searchParams.get('offset') || '0');
     
-    // In a production environment, we would validate the user ID and permissions
-    // and query actual farm data from Supabase
+    const supabase = await createServerClient();
     
-    // Mock farm data
-    const farms = [
-      {
-        id: 'farm-1',
-        name: 'Bitcoin Trading Farm',
-        description: 'Automated Bitcoin trading strategies',
-        createdAt: new Date().toISOString(),
-        status: 'active',
-        metrics: {
-          totalProfit: 12580.45,
-          profitLast24h: 345.21,
-          profitLast7d: 2245.87,
-          tradeCount: 178,
-          successRate: 0.68,
-          avgHoldingTime: '3.2h'
-        },
-        exchanges: [
-          { name: 'Binance', status: 'connected', apiKeyLastFour: '7X92' },
-          { name: 'Coinbase', status: 'connected', apiKeyLastFour: '3F21' }
-        ],
-        agentCount: 2,
-        strategyCount: 2
-      },
-      {
-        id: 'farm-2',
-        name: 'Ethereum Yield Strategy',
-        description: 'Yield optimization for Ethereum assets',
-        createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'active',
-        metrics: {
-          totalProfit: 8750.32,
-          profitLast24h: -120.45,
-          profitLast7d: 1120.63,
-          tradeCount: 93,
-          successRate: 0.62,
-          avgHoldingTime: '5.7h'
-        },
-        exchanges: [
-          { name: 'Binance', status: 'connected', apiKeyLastFour: '8P31' }
-        ],
-        agentCount: 1,
-        strategyCount: 1
-      },
-      {
-        id: 'farm-3',
-        name: 'Arbitrage Scanner',
-        description: 'Cross-exchange arbitrage opportunities',
-        createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-        status: 'paused',
-        metrics: {
-          totalProfit: 4250.18,
-          profitLast24h: 0,
-          profitLast7d: 0,
-          tradeCount: 65,
-          successRate: 0.55,
-          avgHoldingTime: '0.3h'
-        },
-        exchanges: [
-          { name: 'Binance', status: 'connected', apiKeyLastFour: '7X92' },
-          { name: 'Kraken', status: 'connected', apiKeyLastFour: '5F19' },
-          { name: 'OKX', status: 'connected', apiKeyLastFour: '2G87' }
-        ],
-        agentCount: 1,
-        strategyCount: 1
-      }
-    ];
-
-    // Pagination
-    const paginatedFarms = farms.slice(offset, offset + limit);
+    // Get the user ID from the authentication session
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Query farms from Supabase
+    const { data: farms, error, count } = await supabase
+      .from('farms')
+      .select('*, agents(count)', { count: 'exact' })
+      .eq('user_id', user.id)
+      .range(offset, offset + limit - 1)
+      .order('created_at', { ascending: false });
+    
+    if (error) {
+      console.error('Error fetching farms:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch farms data' },
+        { status: 500 }
+      );
+    }
+    
+    // Transform the data to include agent counts
+    const transformedFarms = farms.map(farm => {
+      const agentCount = farm.agents ? (farm.agents as any).count : 0;
+      
+      return {
+        ...farm,
+        agents_count: agentCount,
+        // Remove the agents relationship from the response
+        agents: undefined
+      };
+    });
     
     // Return the response with proper metadata
     return NextResponse.json({
-      farms: paginatedFarms,
-      total: farms.length,
+      farms: transformedFarms,
+      total: count || farms.length,
       limit,
       offset,
-      hasMore: offset + limit < farms.length
+      hasMore: count ? offset + limit < count : false
     });
   } catch (error) {
     console.error('Farms API error:', error);
@@ -100,39 +66,43 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const data = await request.json();
+    const requestData = await request.json();
     
-    // Validate required fields
-    if (!data.name) {
+    const supabase = await createServerClient();
+    
+    // Get the user ID from the authentication session
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (!user) {
       return NextResponse.json(
-        { error: 'Farm name is required' },
-        { status: 400 }
+        { error: 'Unauthorized' },
+        { status: 401 }
       );
     }
     
-    // In production, we would create the farm in the database
-    
-    // Return mock response with generated ID
-    const newFarm = {
-      id: `farm-${Date.now()}`,
-      name: data.name,
-      description: data.description || '',
-      createdAt: new Date().toISOString(),
-      status: 'active',
-      metrics: {
-        totalProfit: 0,
-        profitLast24h: 0,
-        profitLast7d: 0,
-        tradeCount: 0,
-        successRate: 0,
-        avgHoldingTime: '0h'
-      },
-      exchanges: [],
-      agentCount: 0,
-      strategyCount: 0
+    // Prepare the farm data with the authenticated user ID
+    const farmData = {
+      name: requestData.name,
+      description: requestData.description,
+      user_id: user.id
     };
     
-    return NextResponse.json({ farm: newFarm });
+    // Insert the farm data into Supabase
+    const { data: farm, error } = await supabase
+      .from('farms')
+      .insert(farmData)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating farm:', error);
+      return NextResponse.json(
+        { error: 'Failed to create farm' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({ farm });
   } catch (error) {
     console.error('Farm creation error:', error);
     return NextResponse.json(

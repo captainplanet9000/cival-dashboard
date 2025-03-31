@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { tradeApi, Trade } from "../../../lib/api-client";
+import { tradeService, Trade } from "@/services/trade-service";
 import Link from "next/link";
 
 export default function TradesPage() {
@@ -26,11 +26,11 @@ export default function TradesPage() {
       
       // Apply filters if not set to 'all'
       if (filters.farmId !== 'all') {
-        params.farmId = Number(filters.farmId);
+        params.farmId = filters.farmId;
       }
       
       if (filters.agentId !== 'all') {
-        params.agentId = Number(filters.agentId);
+        params.agentId = filters.agentId;
       }
       
       if (filters.symbol) {
@@ -66,7 +66,7 @@ export default function TradesPage() {
         }
       }
       
-      const response = await tradeApi.getTrades(params);
+      const response = await tradeService.getTrades(params);
       
       if (response.error) {
         setError(response.error);

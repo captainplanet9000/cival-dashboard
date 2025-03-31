@@ -2,8 +2,7 @@
  * Supabase Server Client
  * Use this in server components and server actions to interact with Supabase
  */
-import { createServerClient as createServerClientCookies, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createClient } from '@supabase/supabase-js';
 import { type Database } from '@/types/database.types';
 
 // Load configuration from environment or fallback to our known values
@@ -13,35 +12,16 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOi
 
 /**
  * Creates a Supabase client for use in server environments
- * Using cookie-based auth with Next.js cookies() API
- * Compatible with Next.js 15.2.4
+ * This version works with both pages/ and app/ directory setups
  */
 export async function createServerClient() {
-  const cookieStore = await cookies();
-  
-  return createServerClientCookies<Database>(
+  return createClient<Database>(
     supabaseUrl,
     supabaseAnonKey,
     {
-      cookieOptions: {
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-      cookies: {
-        async get(name: string) {
-          const cookie = await cookieStore.get(name);
-          return cookie?.value;
-        },
-        async set(name: string, value: string, options: CookieOptions) {
-          await cookieStore.set(name, value, options);
-        },
-        async remove(name: string, options: CookieOptions) {
-          await cookieStore.set(name, '', { ...options, maxAge: 0 });
-        },
-      },
       auth: {
-        persistSession: true,
-        autoRefreshToken: true,
+        persistSession: false, // Don't persist session in server context
+        autoRefreshToken: false,
       },
       global: {
         headers: { 'x-application-name': 'trading-farm-dashboard' }
@@ -56,30 +36,13 @@ export async function createServerClient() {
  * !CAUTION: Only use this in secure server contexts, never on the client side
  */
 export async function createServerAdminClient() {
-  const cookieStore = await cookies();
-  
-  return createServerClientCookies<Database>(
+  return createClient<Database>(
     supabaseUrl,
     supabaseServiceKey,
     {
-      cookieOptions: {
-        path: '/',
-        secure: process.env.NODE_ENV === 'production',
-      },
-      cookies: {
-        async get(name: string) {
-          const cookie = await cookieStore.get(name);
-          return cookie?.value;
-        },
-        async set(name: string, value: string, options: CookieOptions) {
-          await cookieStore.set(name, value, options);
-        },
-        async remove(name: string, options: CookieOptions) {
-          await cookieStore.set(name, '', { ...options, maxAge: 0 });
-        },
-      },
       auth: {
         persistSession: false,
+        autoRefreshToken: false,
       },
       global: {
         headers: { 

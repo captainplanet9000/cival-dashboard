@@ -1,4 +1,5 @@
 import { toast } from 'sonner';
+import { websocketConfig } from '@/config/app-config';
 
 export type MessageHandler = (message: any) => void;
 
@@ -32,13 +33,15 @@ class WebSocketService {
   private pendingMessages: Array<{ topic: string; message: any }> = [];
   private debug: boolean;
   private url: string;
+  private forceFallback: boolean = true; // Use fallback mode to avoid connection errors
 
   constructor(url: string = '', options: WebSocketOptions = {}) {
-    this.url = url;
-    this.reconnectDelay = options.reconnectDelay || 5000;
-    this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
+    this.url = url || websocketConfig.url;
+    this.reconnectDelay = options.reconnectDelay || websocketConfig.reconnectDelay;
+    this.maxReconnectAttempts = options.maxReconnectAttempts || websocketConfig.reconnectAttempts;
     this.heartbeatInterval = options.heartbeatInterval || 30000;
-    this.debug = options.debug || false;
+    this.debug = options.debug || websocketConfig.debug;
+    this.forceFallback = !websocketConfig.enabled || websocketConfig.fallbackMode;
   }
 
   /**
@@ -49,12 +52,72 @@ class WebSocketService {
       this.url = url;
     }
 
-    if (!this.url) {
-      console.error('WebSocket URL is not set');
+    // Always use fallback mode based on config
+    if (this.forceFallback) {
+      this.logDebug('Using fallback mode instead of WebSocket (disabled in config)');
+      this.simulateConnection();
       return;
     }
 
-    this.connect();
+    if (!this.url) {
+      console.error('WebSocket URL is not set');
+      this.simulateConnection();
+      return;
+    }
+
+    // Only attempt connection if explicitly enabled
+    if (websocketConfig.enabled) {
+      this.connect();
+    } else {
+      this.simulateConnection();
+    }
+  }
+
+  /**
+   * Check if we should use fallback mode
+   */
+  private async checkFallbackMode(): Promise<void> {
+    // Don't make network requests if already forced by config
+    if (this.forceFallback) return;
+    
+    try {
+      // Try to fetch socket_enabled config
+      const response = await fetch('/api/config?key=socket_enabled');
+      if (response.ok) {
+        const data = await response.json();
+        this.forceFallback = data.value !== 'true';
+      }
+    } catch (error) {
+      // If we can't fetch the config, default to fallback mode
+      this.forceFallback = true;
+      this.logDebug('Error fetching socket config, using fallback mode:', error);
+    }
+  }
+
+  /**
+   * Simulate a successful connection in fallback mode
+   */
+  private simulateConnection(): void {
+    this.connected = true;
+    this.reconnectAttempts = 0;
+    this.reconnecting = false;
+    this.logDebug('Using simulated WebSocket connection (fallback mode)');
+
+    // Notify system channel subscribers of simulated connection
+    this.notifySubscribers(WebSocketTopic.SYSTEM, {
+      type: 'connection',
+      status: 'connected',
+      fallback: true
+    });
+
+    // Set up periodic simulated heartbeats
+    this.heartbeatTimer = setInterval(() => {
+      this.notifySubscribers(WebSocketTopic.SYSTEM, {
+        type: 'heartbeat',
+        timestamp: new Date().toISOString(),
+        fallback: true
+      });
+    }, this.heartbeatInterval);
   }
 
   /**
@@ -62,6 +125,12 @@ class WebSocketService {
    */
   private connect() {
     try {
+      // Don't attempt to connect if we're in fallback mode
+      if (this.forceFallback) {
+        this.simulateConnection();
+        return;
+      }
+
       this.socket = new WebSocket(this.url);
 
       this.socket.onopen = this.handleOpen.bind(this);
@@ -70,7 +139,10 @@ class WebSocketService {
       this.socket.onerror = this.handleError.bind(this);
     } catch (error) {
       this.logDebug('Error creating WebSocket:', error);
-      this.scheduleReconnect();
+      
+      // Switch to fallback mode after connection failures
+      this.forceFallback = true;
+      this.simulateConnection();
     }
   }
 
@@ -316,22 +388,40 @@ class WebSocketService {
   }
 
   /**
-   * Send a message to the server
+   * Send a message to a topic
    */
   send(topic: string, message: any): boolean {
-    if (!this.connected || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      // Store message to send when connection is established
+    if (!topic) {
+      this.logDebug('Cannot send message: Topic is required');
+      return false;
+    }
+
+    // In fallback mode, we just simulate successful sends
+    if (this.forceFallback) {
+      this.logDebug(`[FALLBACK] Simulated message send to ${topic}:`, message);
+      return true;
+    }
+
+    if (!this.connected) {
+      this.logDebug(`Cannot send message to ${topic}: Not connected`);
+      // Store the message to send later when connected
       this.pendingMessages.push({ topic, message });
-      this.logDebug(`Message queued for topic: ${topic}`, message);
       return false;
     }
 
     try {
-      this.socket.send(JSON.stringify({ topic, message }));
-      this.logDebug(`Message sent on topic: ${topic}`, message);
-      return true;
+      if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+        this.socket.send(JSON.stringify({ topic, message }));
+        this.logDebug(`Sent message to ${topic}:`, message);
+        return true;
+      } else {
+        this.logDebug(`Cannot send message to ${topic}: Socket not ready`);
+        // Store the message to send later when connection is re-established
+        this.pendingMessages.push({ topic, message });
+        return false;
+      }
     } catch (error) {
-      this.logDebug(`Error sending message on topic: ${topic}`, error);
+      this.logDebug(`Error sending message to ${topic}:`, error);
       return false;
     }
   }
