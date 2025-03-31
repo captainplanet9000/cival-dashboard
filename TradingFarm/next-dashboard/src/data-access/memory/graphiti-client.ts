@@ -8,6 +8,7 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { getSupabaseClient } from '../lib/supabase-client';
+import { API_CONFIG } from '../services/api-config';
 
 // Graph Data Types
 export type NodeType = 'Farm' | 'Agent' | 'Market' | 'Strategy' | 'Order' | 'Trade' | 'Pattern' | 'Insight';
@@ -17,6 +18,8 @@ export interface GraphNode {
   id: string;
   type: NodeType;
   properties: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GraphEdge {
@@ -25,6 +28,8 @@ export interface GraphEdge {
   targetId: string;
   type: EdgeType;
   properties: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface GraphQuery {
@@ -69,20 +74,32 @@ export interface MarketCorrelation {
 class GraphitiClient {
   private static instance: GraphitiClient;
   private supabase: SupabaseClient;
-  private apiKey: string = '';
+  private apiKey: string = API_CONFIG.GRAPHITI_API_KEY || '';
   private initialized: boolean = false;
 
   private constructor() {
     this.supabase = getSupabaseClient();
   }
 
+  /**
+   * Get GraphitiClient singleton instance
+   */
   public static getInstance(): GraphitiClient {
     if (!GraphitiClient.instance) {
       GraphitiClient.instance = new GraphitiClient();
+      
+      // Auto-initialize if API key is available from environment
+      if (API_CONFIG.GRAPHITI_API_KEY) {
+        GraphitiClient.instance.initialize(API_CONFIG.GRAPHITI_API_KEY);
+      }
     }
+    
     return GraphitiClient.instance;
   }
 
+  /**
+   * Initialize the knowledge graph system with API key
+   */
   public initialize(apiKey: string): void {
     this.apiKey = apiKey;
     this.initialized = true;
@@ -91,7 +108,7 @@ class GraphitiClient {
 
   private ensureInitialized(): void {
     if (!this.initialized) {
-      throw new Error('Graphiti client not initialized. Call initialize() with your API key first.');
+      throw new Error('Graphiti knowledge graph system not initialized. Call initialize() first.');
     }
   }
 
@@ -103,7 +120,9 @@ class GraphitiClient {
     const node: GraphNode = {
       id: `node_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
       type,
-      properties
+      properties,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     return node;
@@ -123,7 +142,9 @@ class GraphitiClient {
       sourceId,
       targetId,
       type,
-      properties
+      properties,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
     
     return edge;
@@ -142,7 +163,9 @@ class GraphitiClient {
           properties: { 
             name: 'Alpha Farm', 
             is_active: true 
-          }
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         },
         {
           id: 'node_agent_1',
@@ -150,7 +173,9 @@ class GraphitiClient {
           properties: { 
             name: 'BTC Trend Follower', 
             is_active: true 
-          }
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         },
         {
           id: 'node_market_1',
@@ -158,7 +183,9 @@ class GraphitiClient {
           properties: { 
             symbol: 'BTC/USD', 
             exchange: 'Binance' 
-          }
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
       ],
       edges: [
@@ -170,7 +197,9 @@ class GraphitiClient {
           properties: { 
             since: '2023-01-15', 
             priority: 'high' 
-          }
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         },
         {
           id: 'edge_2',
@@ -180,7 +209,9 @@ class GraphitiClient {
           properties: { 
             timeframes: ['1h', '4h'], 
             active_since: '2023-01-20' 
-          }
+          },
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         }
       ]
     };
@@ -199,17 +230,23 @@ class GraphitiClient {
             {
               id: 'node_market_1',
               type: 'Market',
-              properties: { symbol: 'BTC/USD' }
+              properties: { symbol: 'BTC/USD' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'node_pattern_1',
               type: 'Pattern',
-              properties: { name: 'Evening Star' }
+              properties: { name: 'Evening Star' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'node_market_2',
               type: 'Market',
-              properties: { symbol: 'ETH/USD' }
+              properties: { symbol: 'ETH/USD' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           ],
           edges: [
@@ -218,14 +255,18 @@ class GraphitiClient {
               sourceId: 'node_market_1',
               targetId: 'node_pattern_1',
               type: 'LEADS_TO',
-              properties: { confidence: 0.87 }
+              properties: { confidence: 0.87 },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'edge_pattern_2',
               sourceId: 'node_pattern_1',
               targetId: 'node_market_2',
               type: 'LEADS_TO',
-              properties: { confidence: 0.83, lag: '30m' }
+              properties: { confidence: 0.83, lag: '30m' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           ],
           significance: 0.92,
@@ -374,17 +415,23 @@ class GraphitiClient {
             {
               id: 'node_agent_1',
               type: 'Agent',
-              properties: { name: 'BTC Momentum Trader' }
+              properties: { name: 'BTC Momentum Trader' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'node_strategy_1',
               type: 'Strategy',
-              properties: { name: 'MACD Crossover' }
+              properties: { name: 'MACD Crossover' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'node_market_1',
               type: 'Market',
-              properties: { symbol: 'BTC/USD' }
+              properties: { symbol: 'BTC/USD' },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           ],
           edges: [
@@ -393,14 +440,18 @@ class GraphitiClient {
               sourceId: 'node_agent_1',
               targetId: 'node_strategy_1',
               type: 'IMPLEMENTS',
-              properties: { win_rate: 0.68 }
+              properties: { win_rate: 0.68 },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             },
             {
               id: 'edge_trades_on_1',
               sourceId: 'node_agent_1',
               targetId: 'node_market_1',
               type: 'TRADES_ON',
-              properties: { timeframes: ['4h'] }
+              properties: { timeframes: ['4h'] },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             }
           ],
           significance: 0.85,
@@ -412,7 +463,5 @@ class GraphitiClient {
   }
 }
 
-// Export a singleton instance getter
-export const getGraphitiClient = (): GraphitiClient => {
-  return GraphitiClient.getInstance();
-};
+// Export singleton instance
+export const graphitiClient = GraphitiClient.getInstance();
