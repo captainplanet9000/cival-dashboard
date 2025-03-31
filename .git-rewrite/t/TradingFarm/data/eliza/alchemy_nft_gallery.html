@@ -1,0 +1,488 @@
+<!-- NFT Gallery Component -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <i class="fas fa-images me-2"></i>
+            NFT Gallery
+        </div>
+        <div>
+            <button class="btn btn-sm btn-primary" id="refreshNftGalleryBtn">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Basic Filters -->
+        <div class="row mb-3">
+            <div class="col-md-10">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="nftWalletFilter">
+                            <option value="all">All Wallets</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="nftCollectionFilter">
+                            <option value="all">All Collections</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control form-control-sm" id="nftSearchInput" placeholder="Search NFTs...">
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2 text-end">
+                <button class="btn btn-sm btn-outline-primary" id="applyNftFiltersBtn">
+                    <i class="fas fa-filter me-1"></i>Apply Filters
+                </button>
+            </div>
+        </div>
+        
+        <!-- NFT Grid -->
+        <div class="row" id="nftGrid">
+            <div class="col-12 text-center py-5">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading NFTs...</p>
+            </div>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div>
+                <span id="nftPaginationInfo">Showing 0-0 of 0 NFTs</span>
+            </div>
+            <nav aria-label="NFT Gallery pagination">
+                <ul class="pagination pagination-sm" id="nftPagination">
+                    <li class="page-item disabled">
+                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Previous</a>
+                    </li>
+                    <li class="page-item active">
+                        <a class="page-link" href="#">1</a>
+                    </li>
+                    <li class="page-item disabled">
+                        <a class="page-link" href="#" tabindex="-1" aria-disabled="true">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<!-- NFT Detail Modal -->
+<div class="modal fade" id="nftDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="nftDetailTitle">NFT Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <img id="nftDetailImage" src="" alt="NFT Image" class="img-fluid rounded mb-3" 
+                                     style="max-height: 300px; object-fit: contain;">
+                                <div id="nftDetailImagePlaceholder" class="bg-light rounded d-flex justify-content-center align-items-center" 
+                                     style="height: 300px; display: none;">
+                                    <div class="text-muted">
+                                        <i class="fas fa-image fa-3x mb-3"></i>
+                                        <p>No image available</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Details</h6>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Name</div>
+                                    <div id="nftDetailName" class="fw-bold">--</div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Token ID</div>
+                                    <div id="nftDetailTokenId">--</div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Collection</div>
+                                    <div id="nftDetailCollection">--</div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Owner</div>
+                                    <div id="nftDetailOwner">--</div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Token Standard</div>
+                                    <div id="nftDetailStandard">--</div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="text-muted mb-1">Blockchain</div>
+                                    <div id="nftDetailBlockchain">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Basic NFT actions -->
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h6 class="card-title">Actions</h6>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-primary" id="nftViewOnExplorer">
+                                <i class="fas fa-external-link-alt me-1"></i>View on Explorer
+                            </button>
+                            <button class="btn btn-outline-secondary" id="nftDetailTransfer" disabled>
+                                <i class="fas fa-paper-plane me-1"></i>Transfer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NFT Gallery Script -->
+<script>
+    // Make functions available globally
+    window.initializeNftGallery = initializeNftGallery;
+    window.refreshNftGallery = refreshNftGallery;
+    
+    // Current page and filters
+    let nftCurrentPage = 1;
+    let nftPageSize = 12;
+    let nftTotalPages = 1;
+    let nftFilters = {
+        wallet: 'all',
+        collection: 'all',
+        search: ''
+    };
+    
+    // Initialize NFT gallery
+    function initializeNftGallery() {
+        // Set up event listeners
+        document.getElementById('refreshNftGalleryBtn').addEventListener('click', () => {
+            refreshNftGallery(currentBlockchainNetwork);
+        });
+        
+        document.getElementById('applyNftFiltersBtn').addEventListener('click', () => {
+            nftFilters.wallet = document.getElementById('nftWalletFilter').value;
+            nftFilters.collection = document.getElementById('nftCollectionFilter').value;
+            nftFilters.search = document.getElementById('nftSearchInput').value;
+            nftCurrentPage = 1;
+            refreshNftGallery(currentBlockchainNetwork);
+        });
+        
+        // Load NFT gallery
+        refreshNftGallery(currentBlockchainNetwork);
+        
+        // Load wallet options
+        loadNftWalletOptions();
+    }
+    
+    // Load wallet options for filter
+    async function loadNftWalletOptions() {
+        try {
+            const response = await fetchAPI('/alchemy/wallets');
+            
+            if (response && response.success) {
+                const walletSelect = document.getElementById('nftWalletFilter');
+                
+                // Keep the "All Wallets" option
+                walletSelect.innerHTML = '<option value="all">All Wallets</option>';
+                
+                // Add each wallet
+                response.wallets.forEach(wallet => {
+                    const option = document.createElement('option');
+                    option.value = wallet.address;
+                    option.textContent = `${wallet.name} (${truncateAddress(wallet.address)})`;
+                    walletSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading wallet options:', error);
+        }
+    }
+    
+    // Refresh NFT gallery
+    async function refreshNftGallery(network) {
+        try {
+            // Show loading
+            document.getElementById('nftGrid').innerHTML = `
+                <div class="col-12 text-center py-5">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2">Loading NFTs...</p>
+                </div>
+            `;
+            
+            // Build query parameters
+            const queryParams = new URLSearchParams({
+                network: network,
+                page: nftCurrentPage,
+                page_size: nftPageSize
+            });
+            
+            if (nftFilters.wallet !== 'all') {
+                queryParams.append('wallet', nftFilters.wallet);
+            }
+            
+            if (nftFilters.collection !== 'all') {
+                queryParams.append('collection', nftFilters.collection);
+            }
+            
+            if (nftFilters.search) {
+                queryParams.append('search', nftFilters.search);
+            }
+            
+            // Fetch NFTs
+            const response = await fetchAPI(`/alchemy/nfts?${queryParams.toString()}`);
+            
+            if (response && response.success) {
+                const nfts = response.nfts;
+                nftTotalPages = response.total_pages || 1;
+                
+                // Also update collections filter
+                updateCollectionsFilter(response.collections || []);
+                
+                const nftGrid = document.getElementById('nftGrid');
+                
+                if (nfts.length === 0) {
+                    nftGrid.innerHTML = `
+                        <div class="col-12 text-center py-5">
+                            <i class="fas fa-search fa-3x mb-3 text-muted"></i>
+                            <p class="mb-0">No NFTs found</p>
+                        </div>
+                    `;
+                    
+                    // Update pagination
+                    updateNftPagination(0, 0, 0);
+                    return;
+                }
+                
+                // Clear grid
+                nftGrid.innerHTML = '';
+                
+                // Add each NFT
+                nfts.forEach(nft => {
+                    const cardCol = document.createElement('div');
+                    cardCol.className = 'col-md-3 col-sm-6 mb-4';
+                    
+                    const hasImage = nft.image_url && nft.image_url !== '';
+                    const imageContent = hasImage ? 
+                        `<img src="${nft.image_url}" class="card-img-top" alt="${nft.name || 'NFT'}" style="height: 180px; object-fit: cover;">` : 
+                        `<div class="bg-light d-flex justify-content-center align-items-center" style="height: 180px;">
+                            <i class="fas fa-image fa-3x text-muted"></i>
+                        </div>`;
+                    
+                    cardCol.innerHTML = `
+                        <div class="card h-100 nft-card" data-nft-id="${nft.id}">
+                            ${imageContent}
+                            <div class="card-body">
+                                <h6 class="card-title text-truncate">${nft.name || 'Unnamed NFT'}</h6>
+                                <p class="card-text small text-muted mb-1">${nft.collection_name || 'Unknown Collection'}</p>
+                                <p class="card-text small text-muted">Token ID: ${truncateMiddle(nft.token_id, 6)}</p>
+                            </div>
+                            <div class="card-footer bg-transparent">
+                                <button class="btn btn-sm btn-outline-primary view-nft-btn" data-nft-id="${nft.id}">
+                                    <i class="fas fa-eye me-1"></i>View
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    nftGrid.appendChild(cardCol);
+                });
+                
+                // Add event listeners to view buttons
+                document.querySelectorAll('.view-nft-btn').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const nftId = button.getAttribute('data-nft-id');
+                        viewNftDetails(nftId, network);
+                    });
+                });
+                
+                // Add click listeners to the cards themselves
+                document.querySelectorAll('.nft-card').forEach(card => {
+                    card.addEventListener('click', (e) => {
+                        // Only handle clicks on the card itself, not on buttons
+                        if (!e.target.closest('button')) {
+                            const nftId = card.getAttribute('data-nft-id');
+                            viewNftDetails(nftId, network);
+                        }
+                    });
+                });
+                
+                // Update pagination
+                updateNftPagination(response.total_items, response.page, response.page_size);
+            }
+        } catch (error) {
+            console.error('Error refreshing NFT gallery:', error);
+            showToast('Failed to load NFTs', 'error');
+        }
+    }
+    
+    // Update collections filter
+    function updateCollectionsFilter(collections) {
+        const collectionSelect = document.getElementById('nftCollectionFilter');
+        
+        // Keep the "All Collections" option
+        collectionSelect.innerHTML = '<option value="all">All Collections</option>';
+        
+        // Sort collections alphabetically
+        collections.sort((a, b) => a.name.localeCompare(b.name));
+        
+        // Add each collection
+        collections.forEach(collection => {
+            const option = document.createElement('option');
+            option.value = collection.address;
+            option.textContent = collection.name;
+            collectionSelect.appendChild(option);
+        });
+    }
+    
+    // View NFT details
+    async function viewNftDetails(nftId, network) {
+        try {
+            const response = await fetchAPI(`/alchemy/nft/${nftId}?network=${network}`);
+            
+            if (response && response.success) {
+                const nft = response.nft;
+                
+                // Update modal title
+                document.getElementById('nftDetailTitle').textContent = nft.name || 'NFT Details';
+                
+                // Update image
+                const imgElement = document.getElementById('nftDetailImage');
+                const imgPlaceholder = document.getElementById('nftDetailImagePlaceholder');
+                
+                if (nft.image_url && nft.image_url !== '') {
+                    imgElement.src = nft.image_url;
+                    imgElement.style.display = 'block';
+                    imgPlaceholder.style.display = 'none';
+                } else {
+                    imgElement.style.display = 'none';
+                    imgPlaceholder.style.display = 'flex';
+                }
+                
+                // Update details
+                document.getElementById('nftDetailName').textContent = nft.name || 'Unnamed NFT';
+                document.getElementById('nftDetailTokenId').textContent = nft.token_id;
+                document.getElementById('nftDetailCollection').textContent = nft.collection_name || 'Unknown Collection';
+                document.getElementById('nftDetailOwner').textContent = `${nft.owner_name || 'Unknown Owner'} (${truncateAddress(nft.owner_address)})`;
+                document.getElementById('nftDetailStandard').textContent = nft.token_standard || 'Unknown';
+                document.getElementById('nftDetailBlockchain').textContent = capitalizeFirstLetter(network);
+                
+                // Update explorer link
+                const explorerBaseUrl = getExplorerUrl(network);
+                document.getElementById('nftViewOnExplorer').onclick = () => {
+                    window.open(`${explorerBaseUrl}/token/${nft.contract_address}?a=${nft.token_id}`, '_blank');
+                };
+                
+                // Show the modal
+                new bootstrap.Modal(document.getElementById('nftDetailModal')).show();
+            }
+        } catch (error) {
+            console.error('Error viewing NFT details:', error);
+            showToast('Failed to load NFT details', 'error');
+        }
+    }
+    
+    // Update pagination controls
+    function updateNftPagination(totalItems, currentPage, pageSize) {
+        const totalPages = Math.ceil(totalItems / pageSize) || 1;
+        nftTotalPages = totalPages;
+        
+        // Update info text
+        const start = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+        const end = Math.min(currentPage * pageSize, totalItems);
+        document.getElementById('nftPaginationInfo').textContent = `Showing ${start}-${end} of ${totalItems} NFTs`;
+        
+        // Update pagination controls
+        const pagination = document.getElementById('nftPagination');
+        pagination.innerHTML = '';
+        
+        // Previous button
+        const prevLi = document.createElement('li');
+        prevLi.className = `page-item ${currentPage === 1 ? 'disabled' : ''}`;
+        prevLi.innerHTML = `<a class="page-link" href="#" tabindex="-1">Previous</a>`;
+        prevLi.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentPage > 1) {
+                nftCurrentPage = currentPage - 1;
+                refreshNftGallery(currentBlockchainNetwork);
+            }
+        });
+        pagination.appendChild(prevLi);
+        
+        // Page buttons (max 5)
+        const maxVisiblePages = 5;
+        let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        
+        if (endPage - startPage + 1 < maxVisiblePages && startPage > 1) {
+            startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+        
+        for (let i = startPage; i <= endPage; i++) {
+            const pageLi = document.createElement('li');
+            pageLi.className = `page-item ${i === currentPage ? 'active' : ''}`;
+            pageLi.innerHTML = `<a class="page-link" href="#">${i}</a>`;
+            pageLi.addEventListener('click', (e) => {
+                e.preventDefault();
+                nftCurrentPage = i;
+                refreshNftGallery(currentBlockchainNetwork);
+            });
+            pagination.appendChild(pageLi);
+        }
+        
+        // Next button
+        const nextLi = document.createElement('li');
+        nextLi.className = `page-item ${currentPage === totalPages ? 'disabled' : ''}`;
+        nextLi.innerHTML = `<a class="page-link" href="#" tabindex="-1">Next</a>`;
+        nextLi.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentPage < totalPages) {
+                nftCurrentPage = currentPage + 1;
+                refreshNftGallery(currentBlockchainNetwork);
+            }
+        });
+        pagination.appendChild(nextLi);
+    }
+    
+    // Helper functions
+    // Truncate address
+    function truncateAddress(address) {
+        if (!address) return '--';
+        return address.slice(0, 6) + '...' + address.slice(-4);
+    }
+    
+    // Truncate middle of string
+    function truncateMiddle(str, keepChars = 4) {
+        if (!str) return '--';
+        if (str.length <= keepChars * 2) return str;
+        return str.slice(0, keepChars) + '...' + str.slice(-keepChars);
+    }
+    
+    // Capitalize first letter
+    function capitalizeFirstLetter(string) {
+        return string.charAt(0).toUpperCase() + string.slice(1);
+    }
+</script>

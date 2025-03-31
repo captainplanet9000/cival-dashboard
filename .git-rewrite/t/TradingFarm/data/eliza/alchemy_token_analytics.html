@@ -1,0 +1,613 @@
+<!-- Token Analytics Component -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <div>
+            <i class="fas fa-coins me-2"></i>
+            Token Analytics
+        </div>
+        <div>
+            <button class="btn btn-sm btn-primary" id="refreshTokensBtn">
+                <i class="fas fa-sync-alt me-1"></i>Refresh
+            </button>
+        </div>
+    </div>
+    <div class="card-body">
+        <!-- Basic Filters -->
+        <div class="row mb-3">
+            <div class="col-md-10">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="tokenWalletFilter">
+                            <option value="all">All Wallets</option>
+                            <!-- Will be populated dynamically -->
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="tokenSortFilter">
+                            <option value="balance">Sort by Balance</option>
+                            <option value="value">Sort by Value</option>
+                            <option value="name">Sort by Name</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <input type="text" class="form-control form-control-sm" id="tokenSearchInput" placeholder="Search tokens...">
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2 text-end">
+                <button class="btn btn-sm btn-outline-primary" id="applyTokenFiltersBtn">
+                    <i class="fas fa-filter me-1"></i>Apply Filters
+                </button>
+            </div>
+        </div>
+        
+        <!-- Token Portfolio Overview -->
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="card-title">Total Portfolio Value</h6>
+                        <h3 id="totalPortfolioValue">$0.00</h3>
+                        <div id="portfolioChange" class="text-success">0.00%</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <div class="card bg-light">
+                    <div class="card-body">
+                        <h6 class="card-title">Portfolio Distribution</h6>
+                        <canvas id="portfolioChart" height="150"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Token Table -->
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Token</th>
+                        <th>Balance</th>
+                        <th>Price</th>
+                        <th>Value</th>
+                        <th>24h Change</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tokenTable">
+                    <!-- Tokens will be loaded here -->
+                    <tr>
+                        <td colspan="6" class="text-center">Loading tokens...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Token Detail Modal -->
+<div class="modal fade" id="tokenDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="tokenDetailTitle">Token Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card mb-3">
+                            <div class="card-body text-center">
+                                <img id="tokenDetailLogo" src="" alt="Token Logo" class="img-fluid rounded mb-3" style="max-height: 80px;">
+                                <h5 id="tokenDetailName">Token Name</h5>
+                                <div id="tokenDetailSymbol" class="text-muted">SYMBOL</div>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <div class="text-muted">Price</div>
+                                    <div id="tokenDetailPrice" class="fs-5">$0.00</div>
+                                </div>
+                                <div class="mb-2">
+                                    <div class="text-muted">24h Change</div>
+                                    <div id="tokenDetailChange" class="fs-5 text-success">0.00%</div>
+                                </div>
+                                <div class="mb-2">
+                                    <div class="text-muted">Market Cap</div>
+                                    <div id="tokenDetailMarketCap">$0</div>
+                                </div>
+                                <div class="mb-2">
+                                    <div class="text-muted">Contract</div>
+                                    <div id="tokenDetailContract">0x...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Price History</h6>
+                                <canvas id="tokenHistoryChart" height="250"></canvas>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">Your Holdings</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>Wallet</th>
+                                                <th>Balance</th>
+                                                <th>Value</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tokenHoldingsTable">
+                                            <!-- Holdings will be loaded here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <a href="#" class="btn btn-outline-primary" id="tokenExplorerLink" target="_blank">
+                    <i class="fas fa-external-link-alt me-1"></i>View on Explorer
+                </a>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Token Analytics Script -->
+<script>
+    // Make functions available globally
+    window.initializeTokenAnalytics = initializeTokenAnalytics;
+    window.refreshTokenAnalytics = refreshTokenAnalytics;
+    
+    // Charts
+    let portfolioChart = null;
+    let tokenHistoryChart = null;
+    
+    // Current filters
+    let tokenFilters = {
+        wallet: 'all',
+        sort: 'value',
+        search: ''
+    };
+    
+    // Initialize token analytics
+    function initializeTokenAnalytics() {
+        // Set up event listeners
+        document.getElementById('refreshTokensBtn').addEventListener('click', () => {
+            refreshTokenAnalytics(currentBlockchainNetwork);
+        });
+        
+        document.getElementById('applyTokenFiltersBtn').addEventListener('click', () => {
+            tokenFilters.wallet = document.getElementById('tokenWalletFilter').value;
+            tokenFilters.sort = document.getElementById('tokenSortFilter').value;
+            tokenFilters.search = document.getElementById('tokenSearchInput').value;
+            refreshTokenAnalytics(currentBlockchainNetwork);
+        });
+        
+        // Load token analytics
+        refreshTokenAnalytics(currentBlockchainNetwork);
+        
+        // Load wallet options
+        loadTokenWalletOptions();
+        
+        // Initialize portfolio chart
+        initializePortfolioChart();
+    }
+    
+    // Load wallet options for filter
+    async function loadTokenWalletOptions() {
+        try {
+            const response = await fetchAPI('/alchemy/wallets');
+            
+            if (response && response.success) {
+                const walletSelect = document.getElementById('tokenWalletFilter');
+                
+                // Keep the "All Wallets" option
+                walletSelect.innerHTML = '<option value="all">All Wallets</option>';
+                
+                // Add each wallet
+                response.wallets.forEach(wallet => {
+                    const option = document.createElement('option');
+                    option.value = wallet.address;
+                    option.textContent = `${wallet.name} (${truncateAddress(wallet.address)})`;
+                    walletSelect.appendChild(option);
+                });
+            }
+        } catch (error) {
+            console.error('Error loading wallet options:', error);
+        }
+    }
+    
+    // Initialize portfolio chart
+    function initializePortfolioChart() {
+        const ctx = document.getElementById('portfolioChart').getContext('2d');
+        
+        portfolioChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: [],
+                datasets: [{
+                    data: [],
+                    backgroundColor: [],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            boxWidth: 12
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Refresh token analytics
+    async function refreshTokenAnalytics(network) {
+        try {
+            // Show loading
+            document.getElementById('tokenTable').innerHTML = '<tr><td colspan="6" class="text-center">Loading tokens...</td></tr>';
+            
+            // Build query parameters
+            const queryParams = new URLSearchParams({
+                network: network
+            });
+            
+            if (tokenFilters.wallet !== 'all') {
+                queryParams.append('wallet', tokenFilters.wallet);
+            }
+            
+            if (tokenFilters.search) {
+                queryParams.append('search', tokenFilters.search);
+            }
+            
+            // Fetch tokens
+            const response = await fetchAPI(`/alchemy/tokens?${queryParams.toString()}`);
+            
+            if (response && response.success) {
+                const tokens = response.tokens;
+                
+                const tokenTable = document.getElementById('tokenTable');
+                
+                if (tokens.length === 0) {
+                    tokenTable.innerHTML = '<tr><td colspan="6" class="text-center">No tokens found</td></tr>';
+                    
+                    // Update portfolio summary
+                    document.getElementById('totalPortfolioValue').textContent = '$0.00';
+                    document.getElementById('portfolioChange').textContent = '0.00%';
+                    document.getElementById('portfolioChange').className = 'text-muted';
+                    
+                    // Update chart
+                    updatePortfolioChart([]);
+                    
+                    return;
+                }
+                
+                // Sort tokens
+                sortTokens(tokens, tokenFilters.sort);
+                
+                // Clear table
+                tokenTable.innerHTML = '';
+                
+                // Add each token
+                tokens.forEach(token => {
+                    const row = document.createElement('tr');
+                    
+                    // Format values
+                    const balance = parseFloat(token.balance).toFixed(6);
+                    const price = token.price ? `$${parseFloat(token.price).toFixed(4)}` : '--';
+                    const value = token.value ? `$${parseFloat(token.value).toFixed(2)}` : '--';
+                    
+                    // Format change
+                    let changeText = '--';
+                    let changeClass = '';
+                    
+                    if (token.price_change_24h !== null) {
+                        const change = parseFloat(token.price_change_24h);
+                        changeText = `${change.toFixed(2)}%`;
+                        changeClass = change >= 0 ? 'text-success' : 'text-danger';
+                    }
+                    
+                    // Create row
+                    row.innerHTML = `
+                        <td>
+                            <div class="d-flex align-items-center">
+                                <img src="${token.logo_url || 'https://via.placeholder.com/32'}" alt="${token.symbol}" 
+                                     class="rounded-circle me-2" width="32" height="32">
+                                <div>
+                                    <div class="fw-bold">${token.symbol}</div>
+                                    <small class="text-muted">${token.name}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>${balance} ${token.symbol}</td>
+                        <td>${price}</td>
+                        <td>${value}</td>
+                        <td class="${changeClass}">${changeText}</td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-info view-token-btn" data-token-address="${token.address}">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    `;
+                    
+                    tokenTable.appendChild(row);
+                });
+                
+                // Add event listeners to view buttons
+                document.querySelectorAll('.view-token-btn').forEach(button => {
+                    button.addEventListener('click', () => {
+                        const tokenAddress = button.getAttribute('data-token-address');
+                        viewTokenDetails(tokenAddress, network);
+                    });
+                });
+                
+                // Update portfolio summary
+                if (response.portfolio) {
+                    document.getElementById('totalPortfolioValue').textContent = `$${parseFloat(response.portfolio.total_value).toFixed(2)}`;
+                    
+                    const changeElement = document.getElementById('portfolioChange');
+                    const change = parseFloat(response.portfolio.total_change_24h);
+                    changeElement.textContent = `${change.toFixed(2)}%`;
+                    changeElement.className = change >= 0 ? 'text-success' : 'text-danger';
+                    
+                    // Update chart
+                    updatePortfolioChart(tokens);
+                }
+            }
+        } catch (error) {
+            console.error('Error refreshing token analytics:', error);
+            showToast('Failed to load tokens', 'error');
+        }
+    }
+    
+    // Update portfolio chart
+    function updatePortfolioChart(tokens) {
+        // Filter tokens with value
+        const tokensWithValue = tokens.filter(token => token.value && parseFloat(token.value) > 0);
+        
+        // Sort by value (descending)
+        tokensWithValue.sort((a, b) => parseFloat(b.value) - parseFloat(a.value));
+        
+        // Take top 5 tokens, group the rest as "Other"
+        let labels = [];
+        let data = [];
+        let colors = [];
+        let otherValue = 0;
+        
+        tokensWithValue.forEach((token, index) => {
+            if (index < 5) {
+                labels.push(token.symbol);
+                data.push(parseFloat(token.value));
+                colors.push(getRandomColor(index));
+            } else {
+                otherValue += parseFloat(token.value);
+            }
+        });
+        
+        // Add "Other" if there are more than 5 tokens
+        if (otherValue > 0) {
+            labels.push('Other');
+            data.push(otherValue);
+            colors.push('#6c757d');
+        }
+        
+        // Update chart
+        portfolioChart.data.labels = labels;
+        portfolioChart.data.datasets[0].data = data;
+        portfolioChart.data.datasets[0].backgroundColor = colors;
+        portfolioChart.update();
+    }
+    
+    // View token details
+    async function viewTokenDetails(tokenAddress, network) {
+        try {
+            const response = await fetchAPI(`/alchemy/token/${tokenAddress}?network=${network}`);
+            
+            if (response && response.success) {
+                const token = response.token;
+                
+                // Update modal title
+                document.getElementById('tokenDetailTitle').textContent = `${token.name} (${token.symbol})`;
+                
+                // Update token basic info
+                document.getElementById('tokenDetailLogo').src = token.logo_url || 'https://via.placeholder.com/80';
+                document.getElementById('tokenDetailName').textContent = token.name;
+                document.getElementById('tokenDetailSymbol').textContent = token.symbol;
+                
+                // Update price info
+                document.getElementById('tokenDetailPrice').textContent = token.price ? `$${parseFloat(token.price).toFixed(6)}` : '--';
+                
+                // Update price change
+                const changeElement = document.getElementById('tokenDetailChange');
+                if (token.price_change_24h !== null) {
+                    const change = parseFloat(token.price_change_24h);
+                    changeElement.textContent = `${change.toFixed(2)}%`;
+                    changeElement.className = change >= 0 ? 'fs-5 text-success' : 'fs-5 text-danger';
+                } else {
+                    changeElement.textContent = '--';
+                    changeElement.className = 'fs-5 text-muted';
+                }
+                
+                // Update market cap
+                document.getElementById('tokenDetailMarketCap').textContent = token.market_cap ? 
+                    `$${formatLargeNumber(token.market_cap)}` : '--';
+                
+                // Update contract address
+                document.getElementById('tokenDetailContract').textContent = truncateAddress(token.address);
+                
+                // Update explorer link
+                const explorerBaseUrl = getExplorerUrl(network);
+                document.getElementById('tokenExplorerLink').href = `${explorerBaseUrl}/token/${token.address}`;
+                
+                // Update holdings table
+                const holdingsTable = document.getElementById('tokenHoldingsTable');
+                holdingsTable.innerHTML = '';
+                
+                if (token.holdings && token.holdings.length > 0) {
+                    token.holdings.forEach(holding => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${holding.wallet_name} (${truncateAddress(holding.wallet_address)})</td>
+                            <td>${parseFloat(holding.balance).toFixed(6)} ${token.symbol}</td>
+                            <td>${holding.value ? `$${parseFloat(holding.value).toFixed(2)}` : '--'}</td>
+                        `;
+                        holdingsTable.appendChild(row);
+                    });
+                } else {
+                    holdingsTable.innerHTML = '<tr><td colspan="3" class="text-center">No holdings found</td></tr>';
+                }
+                
+                // Update price history chart
+                updateTokenHistoryChart(token.price_history);
+                
+                // Show the modal
+                new bootstrap.Modal(document.getElementById('tokenDetailModal')).show();
+            }
+        } catch (error) {
+            console.error('Error viewing token details:', error);
+            showToast('Failed to load token details', 'error');
+        }
+    }
+    
+    // Update token history chart
+    function updateTokenHistoryChart(priceHistory) {
+        // Destroy previous chart if it exists
+        if (tokenHistoryChart) {
+            tokenHistoryChart.destroy();
+        }
+        
+        if (!priceHistory || priceHistory.length === 0) {
+            document.getElementById('tokenHistoryChart').parentNode.innerHTML = 
+                '<div class="text-center text-muted py-4">No price history available</div>';
+            return;
+        }
+        
+        const ctx = document.getElementById('tokenHistoryChart').getContext('2d');
+        
+        // Format data
+        const labels = priceHistory.map(item => new Date(item.timestamp).toLocaleDateString());
+        const prices = priceHistory.map(item => item.price);
+        
+        // Calculate gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+        gradient.addColorStop(0, 'rgba(54, 162, 235, 0.2)');
+        gradient.addColorStop(1, 'rgba(54, 162, 235, 0)');
+        
+        // Create chart
+        tokenHistoryChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Price (USD)',
+                    data: prices,
+                    borderColor: 'rgba(54, 162, 235, 1)',
+                    backgroundColor: gradient,
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `$${parseFloat(context.raw).toFixed(6)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    },
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    // Sort tokens
+    function sortTokens(tokens, sortBy) {
+        switch (sortBy) {
+            case 'value':
+                tokens.sort((a, b) => {
+                    const valueA = a.value ? parseFloat(a.value) : 0;
+                    const valueB = b.value ? parseFloat(b.value) : 0;
+                    return valueB - valueA;
+                });
+                break;
+            case 'balance':
+                tokens.sort((a, b) => {
+                    const balanceA = parseFloat(a.balance);
+                    const balanceB = parseFloat(b.balance);
+                    return balanceB - balanceA;
+                });
+                break;
+            case 'name':
+                tokens.sort((a, b) => a.name.localeCompare(b.name));
+                break;
+        }
+    }
+    
+    // Format large numbers with K, M, B suffixes
+    function formatLargeNumber(num) {
+        if (num >= 1_000_000_000) {
+            return (num / 1_000_000_000).toFixed(2) + 'B';
+        } else if (num >= 1_000_000) {
+            return (num / 1_000_000).toFixed(2) + 'M';
+        } else if (num >= 1_000) {
+            return (num / 1_000).toFixed(2) + 'K';
+        }
+        return num.toString();
+    }
+    
+    // Get random color for chart
+    function getRandomColor(index) {
+        const predefinedColors = [
+            '#4E79A7', '#F28E2B', '#E15759', '#76B7B2', '#59A14F', 
+            '#EDC948', '#B07AA1', '#FF9DA7', '#9C755F', '#BAB0AC'
+        ];
+        
+        return predefinedColors[index % predefinedColors.length];
+    }
+    
+    // Truncate address
+    function truncateAddress(address) {
+        if (!address) return '--';
+        return address.slice(0, 6) + '...' + address.slice(-4);
+    }
+</script>

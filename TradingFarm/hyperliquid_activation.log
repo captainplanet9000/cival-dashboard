@@ -1,0 +1,66 @@
+2025-03-14 13:44:16,741 - hyperliquid_activation - INFO - Starting Hyperliquid integration activation
+2025-03-14 13:44:16,742 - hyperliquid_activation - INFO - Executing step: Check Requirements
+2025-03-14 13:44:16,753 - hyperliquid_activation - INFO - All required files exist
+2025-03-14 13:44:16,753 - hyperliquid_activation - INFO - Step Check Requirements completed successfully
+2025-03-14 13:44:16,754 - hyperliquid_activation - INFO - Executing step: Copy Dashboard Assets
+2025-03-14 13:44:16,760 - hyperliquid_activation - INFO - Dashboard assets are ready
+2025-03-14 13:44:16,761 - hyperliquid_activation - INFO - Step Copy Dashboard Assets completed successfully
+2025-03-14 13:44:16,761 - hyperliquid_activation - INFO - Executing step: Set Environment Variables
+2025-03-14 13:44:16,762 - hyperliquid_activation - INFO - Set environment variable HYPERLIQUID_SIMULATION=true
+2025-03-14 13:44:16,763 - hyperliquid_activation - INFO - Set environment variable HYPERLIQUID_BASE_URL=https://api.hyperliquid.xyz
+2025-03-14 13:44:16,763 - hyperliquid_activation - INFO - Set environment variable ELIZAOS_ENABLED=true
+2025-03-14 13:44:16,763 - hyperliquid_activation - INFO - Environment variables configured
+2025-03-14 13:44:16,764 - hyperliquid_activation - INFO - Step Set Environment Variables completed successfully
+2025-03-14 13:44:16,764 - hyperliquid_activation - INFO - Executing step: Copy Static Files
+2025-03-14 13:44:16,796 - hyperliquid_activation - INFO - Copied dashboard/js/hyperliquid.js to static/js/hyperliquid.js
+2025-03-14 13:44:16,807 - hyperliquid_activation - INFO - Copied dashboard/css/hyperliquid-styles.css to static/css/hyperliquid-styles.css
+2025-03-14 13:44:16,832 - hyperliquid_activation - INFO - Copied dashboard/templates/dashboard-integration.js to static/templates/dashboard-integration.js
+2025-03-14 13:44:16,833 - hyperliquid_activation - INFO - Static files copied successfully
+2025-03-14 13:44:16,833 - hyperliquid_activation - INFO - Step Copy Static Files completed successfully
+2025-03-14 13:44:16,834 - hyperliquid_activation - INFO - Executing step: Update Protocol Section
+2025-03-14 13:44:16,834 - hyperliquid_activation - INFO - Protocol section will be updated via JavaScript integration
+2025-03-14 13:44:16,835 - hyperliquid_activation - INFO - Step Update Protocol Section completed successfully
+2025-03-14 13:44:16,835 - hyperliquid_activation - INFO - Executing step: Patch Dashboard Runner
+2025-03-14 13:44:16,849 - hyperliquid_activation - ERROR - Could not find the app creation pattern in run_dashboard.py
+2025-03-14 13:44:16,850 - hyperliquid_activation - ERROR - Step Patch Dashboard Runner failed
+2025-03-14 13:44:16,850 - hyperliquid_activation - ERROR - 
+Hyperliquid integration activation failed. Please check the logs and fix any issues.
+
+2025-03-14 13:45:05,540 - hyperliquid_activation - INFO - Starting Hyperliquid integration activation
+2025-03-14 13:45:05,541 - hyperliquid_activation - INFO - Executing step: Check Requirements
+2025-03-14 13:45:05,551 - hyperliquid_activation - INFO - All required files exist
+2025-03-14 13:45:05,552 - hyperliquid_activation - INFO - Step Check Requirements completed successfully
+2025-03-14 13:45:05,553 - hyperliquid_activation - INFO - Executing step: Copy Dashboard Assets
+2025-03-14 13:45:05,560 - hyperliquid_activation - INFO - Dashboard assets are ready
+2025-03-14 13:45:05,561 - hyperliquid_activation - INFO - Step Copy Dashboard Assets completed successfully
+2025-03-14 13:45:05,562 - hyperliquid_activation - INFO - Executing step: Set Environment Variables
+2025-03-14 13:45:05,563 - hyperliquid_activation - INFO - Set environment variable HYPERLIQUID_SIMULATION=true
+2025-03-14 13:45:05,563 - hyperliquid_activation - INFO - Set environment variable HYPERLIQUID_BASE_URL=https://api.hyperliquid.xyz
+2025-03-14 13:45:05,564 - hyperliquid_activation - INFO - Set environment variable ELIZAOS_ENABLED=true
+2025-03-14 13:45:05,564 - hyperliquid_activation - INFO - Environment variables configured
+2025-03-14 13:45:05,565 - hyperliquid_activation - INFO - Step Set Environment Variables completed successfully
+2025-03-14 13:45:05,565 - hyperliquid_activation - INFO - Executing step: Copy Static Files
+2025-03-14 13:45:05,624 - hyperliquid_activation - INFO - Copied dashboard/js/hyperliquid.js to static/js/hyperliquid.js
+2025-03-14 13:45:05,633 - hyperliquid_activation - INFO - Copied dashboard/css/hyperliquid-styles.css to static/css/hyperliquid-styles.css
+2025-03-14 13:45:05,660 - hyperliquid_activation - INFO - Copied dashboard/templates/dashboard-integration.js to static/templates/dashboard-integration.js
+2025-03-14 13:45:05,661 - hyperliquid_activation - INFO - Static files copied successfully
+2025-03-14 13:45:05,661 - hyperliquid_activation - INFO - Step Copy Static Files completed successfully
+2025-03-14 13:45:05,662 - hyperliquid_activation - INFO - Executing step: Update Protocol Section
+2025-03-14 13:45:05,662 - hyperliquid_activation - INFO - Protocol section will be updated via JavaScript integration
+2025-03-14 13:45:05,663 - hyperliquid_activation - INFO - Step Update Protocol Section completed successfully
+2025-03-14 13:45:05,663 - hyperliquid_activation - INFO - Executing step: Patch Dashboard Runner
+2025-03-14 13:45:05,669 - hyperliquid_activation - INFO - Successfully patched run_dashboard.py for Hyperliquid integration
+2025-03-14 13:45:05,679 - hyperliquid_activation - INFO - Successfully patched src/monitoring/dashboard.py for Hyperliquid integration
+2025-03-14 13:45:05,679 - hyperliquid_activation - INFO - Step Patch Dashboard Runner completed successfully
+2025-03-14 13:45:05,680 - hyperliquid_activation - INFO - 
+Hyperliquid integration activation completed successfully!
+
+To see the integration in action:
+1. Run your Trading Farm dashboard with `python run_dashboard.py`
+2. Click on the Hyperliquid tab in the Protocols section
+3. Use the ElizaOS terminal to interact with Hyperliquid
+
+The integration is in simulation mode by default. To switch to live trading:
+1. Set the HYPERLIQUID_SIMULATION environment variable to "false"
+2. Set your WALLET_ADDRESS and PRIVATE_KEY environment variables
+

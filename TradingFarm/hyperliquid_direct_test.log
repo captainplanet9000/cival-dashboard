@@ -1,0 +1,61 @@
+2025-03-14 13:14:04,806 - hyperliquid_direct_test - INFO - Starting Hyperliquid direct test in read-only mode
+2025-03-14 13:14:04,806 - hyperliquid_direct_test - WARNING - Private key or wallet address not found in environment variables. Using test values for information gathering only.
+2025-03-14 13:14:04,807 - hyperliquid_direct_test - INFO - Fetching market metadata...
+2025-03-14 13:14:05,207 - hyperliquid_direct_test - ERROR - Error fetching market metadata: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/info/meta
+2025-03-14 13:14:05,209 - hyperliquid_direct_test - INFO - Fetching current ETH price...
+2025-03-14 13:14:05,597 - hyperliquid_direct_test - ERROR - Error fetching ticker data: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/info/ticker
+2025-03-14 13:14:05,599 - hyperliquid_direct_test - INFO - Running in read-only mode, skipping actual order creation
+2025-03-14 13:14:05,600 - hyperliquid_direct_test - INFO - To execute a real trade, set READ_ONLY = False and ensure environment variables are set
+2025-03-14 13:14:05,601 - hyperliquid_direct_test - INFO - Test completed in read-only mode
+2025-03-14 13:15:00,370 - hyperliquid_direct_test - INFO - Starting Hyperliquid direct test in read-only mode
+2025-03-14 13:15:00,371 - hyperliquid_direct_test - WARNING - Private key or wallet address not found in environment variables. Using test values for information gathering only.
+2025-03-14 13:15:00,372 - hyperliquid_direct_test - INFO - Fetching market metadata...
+2025-03-14 13:15:00,373 - hyperliquid_direct_test - INFO - Requesting metadata from: https://api.hyperliquid.io/info/meta
+2025-03-14 13:15:00,482 - hyperliquid_direct_test - ERROR - Error fetching market metadata: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /info/meta (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:15:00,484 - hyperliquid_direct_test - INFO - Trying alternative metadata endpoint: https://api.hyperliquid.io/exchange/v1/market/allMeta
+2025-03-14 13:15:00,577 - hyperliquid_direct_test - ERROR - Error fetching from alternative metadata endpoint: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /exchange/v1/market/allMeta (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:15:00,578 - hyperliquid_direct_test - INFO - Fetching current ETH price...
+2025-03-14 13:15:00,579 - hyperliquid_direct_test - INFO - Requesting ticker from: https://api.hyperliquid.io/info/ticker
+2025-03-14 13:15:00,675 - hyperliquid_direct_test - ERROR - Error fetching ticker data: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /info/ticker (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:15:00,676 - hyperliquid_direct_test - INFO - Trying alternative ticker endpoint: https://api.hyperliquid.io/exchange/v1/market/ticker?symbol=ETH
+2025-03-14 13:15:00,769 - hyperliquid_direct_test - ERROR - Error fetching from alternative ticker endpoint: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /exchange/v1/market/ticker?symbol=ETH (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:15:00,771 - hyperliquid_direct_test - INFO - Trying latest ticker endpoint format: https://api.hyperliquid.io/prices
+2025-03-14 13:15:00,863 - hyperliquid_direct_test - ERROR - Error fetching from latest price endpoint: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /prices (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:15:00,864 - hyperliquid_direct_test - INFO - Running in read-only mode, skipping actual order creation
+2025-03-14 13:15:00,864 - hyperliquid_direct_test - INFO - To execute a real trade, set READ_ONLY = False and ensure environment variables are set
+2025-03-14 13:15:00,865 - hyperliquid_direct_test - INFO - Test completed in read-only mode
+2025-03-14 13:16:01,931 - hyperliquid_direct_test - INFO - Starting Hyperliquid direct test in read-only mode
+2025-03-14 13:16:01,932 - hyperliquid_direct_test - WARNING - Private key or wallet address not found in environment variables. Using test values for information gathering only.
+2025-03-14 13:16:01,933 - hyperliquid_direct_test - INFO - Attempting to connect to Hyperliquid API at https://api.hyperliquid.io
+2025-03-14 13:16:01,934 - hyperliquid_direct_test - INFO - Fetching market metadata...
+2025-03-14 13:16:01,935 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.io/info/meta
+2025-03-14 13:16:02,057 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.io/info/meta: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /info/meta (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:16:02,059 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.io/exchange/v1/markets
+2025-03-14 13:16:02,178 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.io/exchange/v1/markets: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /exchange/v1/markets (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:16:02,180 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.io/api/markets
+2025-03-14 13:16:02,295 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.io/api/markets: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /api/markets (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:16:02,308 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.io/api/v1/markets
+2025-03-14 13:16:02,433 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.io/api/v1/markets: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /api/v1/markets (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:16:02,435 - hyperliquid_direct_test - INFO - Attempting to connect to Hyperliquid API at https://api.hyperliquid.xyz
+2025-03-14 13:16:02,437 - hyperliquid_direct_test - INFO - Fetching market metadata...
+2025-03-14 13:16:02,437 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.xyz/info/meta
+2025-03-14 13:16:02,851 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.xyz/info/meta: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/info/meta
+2025-03-14 13:16:02,853 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.xyz/exchange/v1/markets
+2025-03-14 13:16:03,251 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.xyz/exchange/v1/markets: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/exchange/v1/markets
+2025-03-14 13:16:03,253 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.xyz/api/markets
+2025-03-14 13:16:03,647 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.xyz/api/markets: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/api/markets
+2025-03-14 13:16:03,649 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://api.hyperliquid.xyz/api/v1/markets
+2025-03-14 13:16:04,047 - hyperliquid_direct_test - WARNING - Could not connect to https://api.hyperliquid.xyz/api/v1/markets: 404 Client Error: Not Found for url: https://api.hyperliquid.xyz/api/v1/markets
+2025-03-14 13:16:04,048 - hyperliquid_direct_test - INFO - Attempting to connect to Hyperliquid API at https://hyperliquid.xyz
+2025-03-14 13:16:04,050 - hyperliquid_direct_test - INFO - Fetching market metadata...
+2025-03-14 13:16:04,068 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://hyperliquid.xyz/info/meta
+2025-03-14 13:16:04,295 - hyperliquid_direct_test - WARNING - Could not connect to https://hyperliquid.xyz/info/meta: Expecting value: line 1 column 1 (char 0)
+2025-03-14 13:16:04,296 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://hyperliquid.xyz/exchange/v1/markets
+2025-03-14 13:16:04,474 - hyperliquid_direct_test - WARNING - Could not connect to https://hyperliquid.xyz/exchange/v1/markets: Expecting value: line 1 column 1 (char 0)
+2025-03-14 13:16:04,475 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://hyperliquid.xyz/api/markets
+2025-03-14 13:16:04,649 - hyperliquid_direct_test - WARNING - Could not connect to https://hyperliquid.xyz/api/markets: Expecting value: line 1 column 1 (char 0)
+2025-03-14 13:16:04,650 - hyperliquid_direct_test - INFO - Trying metadata endpoint: https://hyperliquid.xyz/api/v1/markets
+2025-03-14 13:16:04,808 - hyperliquid_direct_test - WARNING - Could not connect to https://hyperliquid.xyz/api/v1/markets: Expecting value: line 1 column 1 (char 0)
+2025-03-14 13:16:04,809 - hyperliquid_direct_test - INFO - Running in read-only mode, skipping actual order creation
+2025-03-14 13:16:04,811 - hyperliquid_direct_test - INFO - To execute a real trade, set READ_ONLY = False and ensure environment variables are set
+2025-03-14 13:16:04,812 - hyperliquid_direct_test - INFO - Test completed in read-only mode

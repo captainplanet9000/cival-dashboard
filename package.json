@@ -2,38 +2,45 @@
   "name": "trading-farm",
   "version": "1.0.0",
   "description": "Trading Farm - Multi-Exchange Trading Platform with AI",
-  "main": "dist/index.js",
+  "main": "index.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "init-services": "ts-node src/scripts/init-services.ts",
-    "test": "jest"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "alchemy-sdk": "^2.10.1",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@stackframe/stack": "^2.7.25",
+    "alchemy-sdk": "^2.11.0",
     "axios": "^1.6.2",
-    "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
-    "ethers": "^6.9.0",
+    "chalk": "^5.3.0",
+    "commander": "^11.1.0",
     "express": "^4.18.2",
-    "openai": "^4.20.1",
-    "pg": "^8.11.3"
+    "next": "^14.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.3.2",
+    "ws": "^8.14.2"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21",
     "@types/jest": "^29.5.10",
-    "@types/node": "^20.10.3",
-    "@types/pg": "^8.10.9",
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.39",
+    "@types/react-dom": "^18.2.17",
+    "@typescript-eslint/eslint-plugin": "^6.13.1",
+    "@typescript-eslint/parser": "^6.13.1",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.54.0",
+    "eslint-config-next": "^14.0.3",
     "jest": "^29.7.0",
-    "ts-jest": "^29.1.1",
-    "ts-node": "^10.9.1",
-    "typescript": "^5.3.2"
+    "postcss": "^8.4.31",
+    "ts-jest": "^29.1.1"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "author": "",
+  "author": "Anthony",
   "license": "MIT"
 }

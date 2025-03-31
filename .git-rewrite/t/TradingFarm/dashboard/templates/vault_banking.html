@@ -1,0 +1,545 @@
+{% extends "base.html" %}
+
+{% block title %}Vault Banking System{% endblock %}
+
+{% block content %}
+<!-- Vault Banking Dashboard -->
+<div class="vault-banking-dashboard">
+    <div class="dashboard-header">
+        <h1 class="dashboard-title">Vault Banking System</h1>
+        <div class="status-indicator {% if vault_frozen %}frozen{% else %}active{% endif %}">
+            <span class="status-text">{{ 'FROZEN' if vault_frozen else 'ACTIVE' }}</span>
+        </div>
+    </div>
+
+    <!-- Dashboard Body with Grid Layout -->
+    <div class="dashboard-grid">
+        <!-- Master Vault Panel -->
+        <div class="dashboard-card" id="master-vault-panel">
+            <div class="card-header">
+                <h2>Master Vault</h2>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="create-transaction-btn" {% if vault_frozen %}disabled{% endif %}>New Transaction</button>
+                    <button class="btn btn-danger" id="emergency-freeze-btn" {% if vault_frozen %}style="display:none"{% endif %}>Emergency Freeze</button>
+                    <button class="btn btn-success" id="unfreeze-btn" {% if not vault_frozen %}style="display:none"{% endif %}>Unfreeze Vault</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="balances-section">
+                    <h3>Vault Balances</h3>
+                    <div class="balances-list" id="vault-balances">
+                        <!-- Balances will be dynamically inserted here -->
+                        <div class="loading-placeholder">Loading balances...</div>
+                    </div>
+                </div>
+                <div class="transactions-section">
+                    <h3>Pending Transactions</h3>
+                    <div class="transactions-list" id="pending-transactions">
+                        <!-- Pending transactions will be dynamically inserted here -->
+                        <div class="loading-placeholder">Loading transactions...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Agent Wallets Panel -->
+        <div class="dashboard-card" id="agent-wallets-panel">
+            <div class="card-header">
+                <h2>Agent Wallets</h2>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="create-wallet-btn" {% if vault_frozen %}disabled{% endif %}>Create Wallet</button>
+                    <button class="btn btn-secondary" id="fund-wallet-btn" {% if vault_frozen %}disabled{% endif %}>Fund Wallet</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="agent-selector">
+                    <label for="agent-select">Select Agent:</label>
+                    <select id="agent-select" class="form-control">
+                        <option value="">-- Select an Agent --</option>
+                        <!-- Agent options will be dynamically inserted here -->
+                    </select>
+                </div>
+                <div class="wallet-list" id="agent-wallets">
+                    <!-- Agent wallets will be dynamically inserted here -->
+                    <div class="no-agent-selected">Select an agent to view wallets</div>
+                </div>
+                <div class="wallet-details" id="wallet-details" style="display:none">
+                    <h3>Wallet Details</h3>
+                    <div id="wallet-details-content"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transfer Network Panel -->
+        <div class="dashboard-card" id="transfer-network-panel">
+            <div class="card-header">
+                <h2>Transfer Network</h2>
+                <div class="header-actions">
+                    <button class="btn btn-primary" id="transfer-btn" {% if vault_frozen %}disabled{% endif %}>New Transfer</button>
+                    <button class="btn btn-secondary" id="cross-chain-btn" {% if vault_frozen %}disabled{% endif %}>Cross-Chain Transfer</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="tabs-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="recent-transfers">Recent Transfers</button>
+                        <button class="tab-btn" data-tab="routes">Bridge Routes</button>
+                    </div>
+                    <div class="tab-content active" id="recent-transfers">
+                        <div class="transfer-list" id="recent-transfer-list">
+                            <!-- Recent transfers will be dynamically inserted here -->
+                            <div class="loading-placeholder">Loading transfers...</div>
+                        </div>
+                    </div>
+                    <div class="tab-content" id="routes">
+                        <div class="routes-list" id="bridge-routes">
+                            <!-- Bridge routes will be dynamically inserted here -->
+                            <div class="loading-placeholder">Loading bridge routes...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ledger & Analytics Panel -->
+        <div class="dashboard-card" id="ledger-panel">
+            <div class="card-header">
+                <h2>Ledger & Analytics</h2>
+                <div class="header-actions">
+                    <button class="btn btn-secondary" id="generate-statement-btn">Generate Statement</button>
+                    <button class="btn btn-secondary" id="export-btn">Export Data</button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="tabs-container">
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="transaction-history">Transaction History</button>
+                        <button class="tab-btn" data-tab="analytics">Analytics</button>
+                    </div>
+                    <div class="tab-content active" id="transaction-history">
+                        <div class="history-filters">
+                            <div class="filter-group">
+                                <label for="history-filter-chain">Chain:</label>
+                                <select id="history-filter-chain" class="form-control form-control-sm">
+                                    <option value="">All Chains</option>
+                                    <!-- Chain options will be dynamically inserted here -->
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="history-filter-asset">Asset:</label>
+                                <select id="history-filter-asset" class="form-control form-control-sm">
+                                    <option value="">All Assets</option>
+                                    <!-- Asset options will be dynamically inserted here -->
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label for="history-filter-status">Status:</label>
+                                <select id="history-filter-status" class="form-control form-control-sm">
+                                    <option value="">All Status</option>
+                                    <option value="completed">Completed</option>
+                                    <option value="pending">Pending</option>
+                                    <option value="failed">Failed</option>
+                                    <option value="rejected">Rejected</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="transaction-history-list" id="transaction-history-list">
+                            <!-- Transaction history will be dynamically inserted here -->
+                            <div class="loading-placeholder">Loading transaction history...</div>
+                        </div>
+                    </div>
+                    <div class="tab-content" id="analytics">
+                        <div class="analytics-dashboard">
+                            <div class="analytics-chart" id="transaction-volume-chart">
+                                <!-- Transaction volume chart will be inserted here -->
+                                <div class="loading-placeholder">Loading charts...</div>
+                            </div>
+                            <div class="analytics-chart" id="asset-distribution-chart">
+                                <!-- Asset distribution chart will be inserted here -->
+                                <div class="loading-placeholder">Loading charts...</div>
+                            </div>
+                            <div class="analytics-metrics">
+                                <div class="metric-card">
+                                    <h4>Total Transaction Volume</h4>
+                                    <div class="metric-value" id="total-tx-volume">-</div>
+                                </div>
+                                <div class="metric-card">
+                                    <h4>Average Transaction Size</h4>
+                                    <div class="metric-value" id="avg-tx-size">-</div>
+                                </div>
+                                <div class="metric-card">
+                                    <h4>Active Wallets</h4>
+                                    <div class="metric-value" id="active-wallets">-</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<!-- Create Transaction Modal -->
+<div class="modal fade" id="create-transaction-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Transaction</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create-transaction-form">
+                    <div class="form-group">
+                        <label for="tx-chain-id">Chain</label>
+                        <select id="tx-chain-id" class="form-control" required>
+                            <!-- Chain options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="tx-to-address">To Address</label>
+                        <input type="text" class="form-control" id="tx-to-address" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="tx-asset">Asset</label>
+                        <select id="tx-asset" class="form-control" required>
+                            <!-- Asset options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="tx-amount">Amount</label>
+                        <input type="number" step="0.0000001" class="form-control" id="tx-amount" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="tx-memo">Memo (Optional)</label>
+                        <textarea class="form-control" id="tx-memo" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-transaction-btn">Create Transaction</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Create Wallet Modal -->
+<div class="modal fade" id="create-wallet-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New Wallet</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="create-wallet-form">
+                    <div class="form-group">
+                        <label for="wallet-agent-id">Agent</label>
+                        <select id="wallet-agent-id" class="form-control" required>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="wallet-name">Wallet Name</label>
+                        <input type="text" class="form-control" id="wallet-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="wallet-type">Wallet Type</label>
+                        <select id="wallet-type" class="form-control" required>
+                            <option value="trading">Trading</option>
+                            <option value="treasury">Treasury</option>
+                            <option value="operations">Operations</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="wallet-purpose">Purpose</label>
+                        <input type="text" class="form-control" id="wallet-purpose">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-wallet-btn">Create Wallet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Fund Wallet Modal -->
+<div class="modal fade" id="fund-wallet-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Fund Wallet</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="fund-wallet-form">
+                    <div class="form-group">
+                        <label for="fund-agent-id">Agent</label>
+                        <select id="fund-agent-id" class="form-control" required>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fund-wallet-id">Wallet</label>
+                        <select id="fund-wallet-id" class="form-control" required>
+                            <option value="">Select Agent First</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fund-chain-id">Chain</label>
+                        <select id="fund-chain-id" class="form-control" required>
+                            <!-- Chain options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fund-asset">Asset</label>
+                        <select id="fund-asset" class="form-control" required>
+                            <!-- Asset options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="fund-amount">Amount</label>
+                        <input type="number" step="0.0000001" class="form-control" id="fund-amount" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="fund-memo">Memo (Optional)</label>
+                        <textarea class="form-control" id="fund-memo" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-fund-btn">Fund Wallet</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transfer Modal -->
+<div class="modal fade" id="transfer-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">New Transfer</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="transfer-form">
+                    <div class="form-group">
+                        <label for="transfer-from-agent">From Agent</label>
+                        <select id="transfer-from-agent" class="form-control" required>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="transfer-to-agent">To Agent</label>
+                        <select id="transfer-to-agent" class="form-control" required>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="transfer-chain-id">Chain</label>
+                        <select id="transfer-chain-id" class="form-control" required>
+                            <!-- Chain options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="transfer-asset">Asset</label>
+                        <select id="transfer-asset" class="form-control" required>
+                            <!-- Asset options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="transfer-amount">Amount</label>
+                        <input type="number" step="0.0000001" class="form-control" id="transfer-amount" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="transfer-memo">Memo (Optional)</label>
+                        <textarea class="form-control" id="transfer-memo" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-transfer-btn">Execute Transfer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Cross-Chain Transfer Modal -->
+<div class="modal fade" id="cross-chain-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Cross-Chain Transfer</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <form id="cross-chain-form">
+                    <div class="form-group">
+                        <label for="cc-from-agent">From Agent</label>
+                        <select id="cc-from-agent" class="form-control" required>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-from-chain">From Chain</label>
+                        <select id="cc-from-chain" class="form-control" required>
+                            <!-- Chain options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-to-chain">To Chain</label>
+                        <select id="cc-to-chain" class="form-control" required>
+                            <!-- Chain options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-asset">Asset</label>
+                        <select id="cc-asset" class="form-control" required>
+                            <!-- Asset options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-amount">Amount</label>
+                        <input type="number" step="0.0000001" class="form-control" id="cc-amount" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-to-agent">To Agent (Optional)</label>
+                        <select id="cc-to-agent" class="form-control">
+                            <option value="">Same Agent (Self)</option>
+                            <!-- Agent options will be dynamically inserted here -->
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="cc-memo">Memo (Optional)</label>
+                        <textarea class="form-control" id="cc-memo" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="submit-cc-btn">Execute Cross-Chain Transfer</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transaction Approval Modal -->
+<div class="modal fade" id="approve-tx-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approve Transaction</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="tx-details"></div>
+                <form id="approve-tx-form">
+                    <input type="hidden" id="approve-tx-id">
+                    <div class="form-group">
+                        <label for="approve-key">Approver Key</label>
+                        <input type="password" class="form-control" id="approve-key" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="approve-notes">Notes (Optional)</label>
+                        <textarea class="form-control" id="approve-notes" rows="2"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="submit-approve-btn">Approve</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Emergency Freeze Modal -->
+<div class="modal fade" id="freeze-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Emergency Freeze</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <strong>Warning!</strong> This will freeze all vault banking operations. Use only in emergency situations.
+                </div>
+                <form id="freeze-form">
+                    <div class="form-group">
+                        <label for="freeze-key">Emergency Key</label>
+                        <input type="password" class="form-control" id="freeze-key" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="freeze-reason">Reason</label>
+                        <textarea class="form-control" id="freeze-reason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="submit-freeze-btn">Freeze Vault</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Unfreeze Modal -->
+<div class="modal fade" id="unfreeze-modal" tabindex="-1" role="dialog" aria-hidden="true">
+    <div class="modal-dialog" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Unfreeze Vault</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Notice:</strong> This will unfreeze all vault banking operations.
+                </div>
+                <form id="unfreeze-form">
+                    <div class="form-group">
+                        <label for="unfreeze-key">Emergency Key</label>
+                        <input type="password" class="form-control" id="unfreeze-key" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="unfreeze-reason">Reason</label>
+                        <textarea class="form-control" id="unfreeze-reason" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-success" id="submit-unfreeze-btn">Unfreeze Vault</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+<script src="{{ url_for('static', filename='js/vault_banking.js') }}"></script>
+{% endblock %}

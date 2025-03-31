@@ -63,6 +63,25 @@ A comprehensive trading platform with strategy development, backtesting, and dep
 - [ ] Customizable dashboard widgets
 - [ ] Mobile companion app
 
+## Services Integrated
+
+### Exchange APIs
+- **Bybit**: Spot and futures trading
+- **Coinbase Pro**: Spot trading
+- **Hyperliquid**: Perpetual trading
+
+### Market Data
+- **MarketStack**: Stock and ETF data
+
+### AI & Strategy
+- **OpenAI**: Market analysis and strategy generation
+
+### Memory & Data Management
+- **Neon PostgreSQL with pgvector**: Vector database for strategy storage and similarity search
+
+### Blockchain Infrastructure
+- **Alchemy**: Ethereum transaction simulation and optimization
+
 ## Getting Started
 
 ```bash
@@ -82,13 +101,10 @@ npm run dev
 - Supabase for database and authentication
 - Chart.js for data visualization
 - D3.js for advanced visualizations
-
-## Roadmap
-
-- Real-time market data integration
-- Multi-asset portfolio backtesting
-- Machine learning strategy optimization
-- Social sharing of strategy performance
+- Node.js for backend
+- Express for API server
+- WebSockets for real-time updates
+- OAuth2 and JWT for authentication
 
 ## Strategy System
 
@@ -127,14 +143,6 @@ The Trading Farm Dashboard includes a comprehensive strategy management system:
 - Performance tracking and metrics collection
 - Agent cooperation for enhanced strategy execution
 
-## Technology Stack
-
-- Frontend: Next.js, React, TypeScript, Tailwind CSS
-- Backend: Node.js, Express
-- Database: Supabase (PostgreSQL)
-- Real-time updates: WebSockets
-- Authentication: OAuth2, JWT
-
 ## Setup and Installation
 
 1. Clone the repository
@@ -169,132 +177,3 @@ The strategy system uses the following database tables:
 ## License
 
 MIT
-
-# Trading Farm API Integration
-
-This project implements a comprehensive API integration for Trading Farm, connecting to various exchanges, market data providers, AI services, and blockchain infrastructure.
-
-## Services Integrated
-
-### Exchange APIs
-- **Bybit**: Spot and futures trading
-- **Coinbase Pro**: Spot trading
-- **Hyperliquid**: Perpetual trading
-
-### Market Data
-- **MarketStack**: Stock and ETF data
-
-### AI & Strategy
-- **OpenAI**: Market analysis and strategy generation
-
-### Memory & Data Management
-- **Neon PostgreSQL with pgvector**: Vector database for strategy storage and similarity search
-
-### Blockchain Infrastructure
-- **Alchemy**: Ethereum transaction simulation and optimization
-
-## Setup
-
-### Prerequisites
-- Node.js 18+
-- PostgreSQL with pgvector extension (or Neon serverless PostgreSQL)
-
-### Installation
-
-1. Clone the repository
-```bash
-git clone https://github.com/your-username/trading-farm.git
-cd trading-farm
-```
-
-2. Install dependencies
-```bash
-npm install
-```
-
-3. Create a `.env` file based on `.env.example`
-```bash
-cp .env.example .env
-```
-
-4. Add your API keys to the `.env` file
-
-5. Build the project
-```bash
-npm run build
-```
-
-## Running the Service
-
-```bash
-npm start
-```
-
-For development:
-```bash
-npm run dev
-```
-
-## API Endpoints
-
-### Market Data
-- `GET /api/v1/trade/market-data/:symbol` - Get market data for a symbol
-- `GET /api/v1/trade/market-analysis/:symbol` - Get AI analysis of a market
-
-### Trading Strategy
-- `POST /api/v1/trade/generate-strategy` - Generate a trading strategy
-- `POST /api/v1/trade/similar-markets` - Find similar market conditions
-
-### Trading Operations
-- `GET /api/v1/trade/balances` - Get account balances across all exchanges
-- `POST /api/v1/trade/place-order` - Place an order using Smart Order Routing
-
-### Blockchain Operations
-- `GET /api/v1/trade/gas-prices` - Get gas price estimates for Ethereum
-- `POST /api/v1/trade/simulate-transaction` - Simulate an Ethereum transaction
-
-## Architecture
-
-The service is organized into the following components:
-
-### Service Registry
-A central registry that manages all service instances and their dependencies.
-
-### Exchange Connectors
-Exchange-specific implementations for trading operations.
-
-### Market Data Services
-Services for fetching and processing market data.
-
-### AI Services
-Services for market analysis and strategy generation using AI.
-
-### Vector Database
-A vector database for storing and retrieving trading strategies and market conditions.
-
-### Blockchain Services
-Services for blockchain interaction and optimization.
-
-## Adding a New API Integration
-
-To add a new API integration:
-
-1. Create a new service class in the appropriate directory
-2. Add the service to the Service Registry
-3. Update the `.env.example` file with the new API key placeholders
-4. Add new API endpoints in the appropriate router
-
-## Security Considerations
-
-- All API keys are stored in the `.env` file (not committed to version control)
-- Requests to external APIs use TLS/SSL
-- Rate limiting is implemented for public endpoints
-
-## License
-
-MIT
-
-
-
-
-

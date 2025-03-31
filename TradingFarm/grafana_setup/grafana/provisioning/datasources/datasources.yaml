@@ -1,0 +1,11 @@
+apiVersion: 1
+
+datasources:
+  - name: trading_farm_api
+    type: grafana-simple-json-datasource
+    access: proxy
+    url: http://api:8051
+    isDefault: true
+    editable: true
+    jsonData:
+      tlsSkipVerify: true

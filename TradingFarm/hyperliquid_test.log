@@ -1,0 +1,186 @@
+2025-03-14 13:04:49,788 - src.blockchain.hyperliquid - INFO - Using Hyperliquid testnet endpoints
+2025-03-14 13:04:49,789 - src.blockchain.hyperliquid - INFO - Hyperliquid client initialized
+2025-03-14 13:04:49,790 - hyperliquid_test - INFO - Checking initial account balance...
+2025-03-14 13:04:50,251 - src.blockchain.hyperliquid - ERROR - Error in Hyperliquid API request: 
+2025-03-14 13:04:50,252 - src.blockchain.hyperliquid - ERROR - Error making Hyperliquid API request: 404, message='Not Found', url='https://api.hyperliquid-testnet.xyz/exchange/v1/account/balance'
+2025-03-14 13:04:50,253 - hyperliquid_test - ERROR - Error executing test: 404, message='Not Found', url='https://api.hyperliquid-testnet.xyz/exchange/v1/account/balance'
+2025-03-14 13:04:50,254 - hyperliquid_test - INFO - Test completed
+2025-03-14 13:05:47,684 - hyperliquid_test - INFO - Using wallet address: 0x13642d32fdb95446dF6270DF1C4E687134527fD5
+2025-03-14 13:05:47,685 - hyperliquid_test - INFO - Checking account information...
+2025-03-14 13:05:47,760 - hyperliquid_test - ERROR - Error executing test: HTTPSConnectionPool(host='api.testnet.hyperliquid.xyz', port=443): Max retries exceeded with url: /info/user?user=0x13642d32fdb95446dF6270DF1C4E687134527fD5 (Caused by NameResolutionError("<urllib3.connection.HTTPSConnection object at 0x000001D95EBC4D70>: Failed to resolve 'api.testnet.hyperliquid.xyz' ([Errno 11001] getaddrinfo failed)"))
+2025-03-14 13:05:47,761 - hyperliquid_test - INFO - Test completed
+2025-03-14 13:06:46,654 - hyperliquid_test - INFO - Using Hyperliquid mainnet in read-only mode
+2025-03-14 13:06:46,659 - hyperliquid_test - INFO - Using wallet address: 0x13642d32fdb95446dF6270DF1C4E687134527fD5
+2025-03-14 13:06:46,660 - hyperliquid_test - INFO - Checking account information...
+2025-03-14 13:06:46,660 - hyperliquid_test - INFO - Fetching market metadata from: https://api.hyperliquid.io/info/meta
+2025-03-14 13:06:46,865 - hyperliquid_test - ERROR - Error executing test: HTTPSConnectionPool(host='api.hyperliquid.io', port=443): Max retries exceeded with url: /info/meta (Caused by SSLError(SSLError(1, '[SSL: TLSV1_UNRECOGNIZED_NAME] tlsv1 unrecognized name (_ssl.c:1018)')))
+2025-03-14 13:06:46,866 - hyperliquid_test - INFO - Test completed
+2025-03-14 13:17:37,269 - hyperliquid_test - INFO - Starting Hyperliquid market order test
+2025-03-14 13:17:37,271 - hyperliquid_test - INFO - Initialized Hyperliquid client for testnet in simulation mode
+2025-03-14 13:17:37,272 - hyperliquid_test - INFO - Checking account information...
+2025-03-14 13:17:37,273 - hyperliquid_test - INFO - Using simulated user state
+2025-03-14 13:17:37,274 - hyperliquid_test - INFO - User account value: 10000.00
+2025-03-14 13:17:37,274 - hyperliquid_test - INFO - Fetching market metadata...
+2025-03-14 13:17:37,275 - hyperliquid_test - INFO - Using simulated market metadata
+2025-03-14 13:17:37,275 - hyperliquid_test - INFO - Available markets: ETH, BTC
+2025-03-14 13:17:37,276 - hyperliquid_test - INFO - Getting current ETH price...
+2025-03-14 13:17:37,276 - hyperliquid_test - INFO - Using simulated ticker data for ETH
+2025-03-14 13:17:37,277 - hyperliquid_test - INFO - Current ETH price: 3245.67
+2025-03-14 13:17:37,277 - hyperliquid_test - INFO - Executing 0.1 ETH long market order...
+2025-03-14 13:17:37,278 - hyperliquid_test - INFO - SIMULATION: Creating BUY market order for 0.1 ETH
+2025-03-14 13:17:37,279 - hyperliquid_test - INFO - Using simulated ticker data for ETH
+2025-03-14 13:17:37,279 - hyperliquid_test - INFO - Order successfully created with ID: d70f4565-579c-41f6-b299-390513ab12d9
+2025-03-14 13:17:37,280 - hyperliquid_test - INFO - Filled at price: 3245.67
+2025-03-14 13:17:37,280 - hyperliquid_test - INFO - Total cost: 324.567
+2025-03-14 13:17:37,281 - hyperliquid_test - INFO - Checking updated account information...
+2025-03-14 13:17:37,282 - hyperliquid_test - INFO - Using simulated user state
+2025-03-14 13:17:37,282 - hyperliquid_test - INFO - ETH position size: 0.1
+2025-03-14 13:17:37,283 - hyperliquid_test - INFO - ETH position value: 324.567
+2025-03-14 13:17:37,284 - hyperliquid_test - INFO - Transaction summary:
+2025-03-14 13:17:37,287 - hyperliquid_test - INFO - {
+  "transaction": {
+    "exchange": "hyperliquid",
+    "asset": "ETH",
+    "direction": "long",
+    "size": 0.1,
+    "price": "3245.67",
+    "orderType": "market",
+    "status": "success",
+    "timestamp": "2025-03-14T13:17:37.284425",
+    "orderId": "d70f4565-579c-41f6-b299-390513ab12d9",
+    "cost": "324.567",
+    "fee": "0.1622835"
+  },
+  "position": {
+    "size": "0.1",
+    "value": "324.567",
+    "entryPrice": "3245.67"
+  },
+  "account": {
+    "value": "10000.00",
+    "freeCollateral": "9967.5433"
+  },
+  "simulationMode": true
+}
+2025-03-14 13:17:37,290 - hyperliquid_test - INFO - Test completed successfully
+2025-03-14 13:45:18,093 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:45:18,098 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:45:18,098 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:45:18,158 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:45:18,206 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:45:18,222 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:45:18,235 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:45:18,248 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:45:18,250 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:45:18,327 - src.monitoring.dashboard - ERROR - Failed to integrate Hyperliquid with dashboard: 'Dash' object has no attribute 'register_blueprint'
+2025-03-14 13:45:18,329 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:45:18,330 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:45:19,183 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:45:19,184 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-14 13:47:45,879 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:47:45,883 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:47:45,884 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:47:45,946 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:47:45,993 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:47:46,009 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:47:46,022 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:47:46,035 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:47:46,037 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:47:46,105 - hyperliquid_integration - INFO - Registered Hyperliquid callbacks with Dash app
+2025-03-14 13:47:46,106 - hyperliquid_integration - INFO - Set up static routes for Hyperliquid dashboard templates
+2025-03-14 13:47:46,107 - hyperliquid_integration - INFO - Hyperliquid integration with dashboard complete
+2025-03-14 13:47:46,108 - src.monitoring.dashboard - INFO - Hyperliquid integration added to dashboard
+2025-03-14 13:47:46,110 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:47:46,111 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:47:46,963 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:47:46,964 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-14 13:49:40,522 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:49:40,527 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:49:40,527 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:49:40,586 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:49:40,632 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:49:40,651 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:49:40,664 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:49:40,678 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:49:40,680 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:49:40,738 - hyperliquid_integration - INFO - Registered Hyperliquid callbacks with Dash app
+2025-03-14 13:49:40,740 - hyperliquid_integration - INFO - Set up static routes for Hyperliquid dashboard templates
+2025-03-14 13:49:40,740 - hyperliquid_integration - INFO - Hyperliquid integration with dashboard complete
+2025-03-14 13:49:40,741 - src.monitoring.dashboard - INFO - Hyperliquid integration added to dashboard
+2025-03-14 13:49:40,742 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:49:40,743 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:49:41,593 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:49:41,595 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-14 13:50:42,005 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:50:42,010 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:50:42,010 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:50:42,074 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:50:42,120 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:50:42,137 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:50:42,151 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:50:42,165 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:50:42,167 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:50:42,228 - hyperliquid_integration - INFO - Hyperliquid integration is disabled
+2025-03-14 13:50:42,229 - src.monitoring.dashboard - INFO - Hyperliquid integration added to dashboard
+2025-03-14 13:50:42,230 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:50:42,231 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:50:43,074 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:50:43,075 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-14 13:52:46,225 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:52:46,230 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:52:46,230 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:52:46,290 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:52:46,340 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:52:46,357 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:52:46,370 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:52:46,383 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:52:46,385 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:52:46,452 - hyperliquid_integration - INFO - Registered Hyperliquid callbacks with Dash app
+2025-03-14 13:52:46,454 - hyperliquid_integration - INFO - Set up static routes for Hyperliquid dashboard templates
+2025-03-14 13:52:46,454 - hyperliquid_integration - INFO - Hyperliquid integration with dashboard complete
+2025-03-14 13:52:46,455 - src.monitoring.dashboard - INFO - Hyperliquid integration added to dashboard
+2025-03-14 13:52:46,457 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:52:46,458 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:52:47,314 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:52:47,315 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-03-14 13:57:10,710 - __main__ - INFO - Hyperliquid integration enabled
+2025-03-14 13:57:10,714 - __main__ - INFO - Loaded dashboard configuration from config/dashboard_config.json
+2025-03-14 13:57:10,714 - __main__ - INFO - Using agent configuration from config/arbitrum_agent_config.json
+2025-03-14 13:57:10,774 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:57:10,821 - src.database.db_manager - INFO - Database initialized successfully at data/trading_farm.db
+2025-03-14 13:57:10,839 - src.monitoring.agent_manager - INFO - Imported Ethereum private key
+2025-03-14 13:57:10,852 - src.monitoring.agent_manager - INFO - Imported Ethereum wallet address
+2025-03-14 13:57:10,865 - src.monitoring.agent_manager - INFO - Imported testnet setting: True
+2025-03-14 13:57:10,868 - src.monitoring.agent_manager - INFO - Imported legacy configuration from Z:\___HomeSync\Github\GWDS\TradingFarm\src\monitoring\..\..\config\arbitrum_agent_config.json
+2025-03-14 13:57:10,933 - hyperliquid_integration - INFO - Registered Hyperliquid callbacks with Dash app
+2025-03-14 13:57:10,934 - hyperliquid_integration - INFO - Set up static routes for Hyperliquid dashboard templates
+2025-03-14 13:57:10,935 - hyperliquid_integration - INFO - Hyperliquid integration with dashboard complete
+2025-03-14 13:57:10,935 - src.monitoring.dashboard - INFO - Hyperliquid integration added to dashboard
+2025-03-14 13:57:10,937 - __main__ - INFO - Starting dashboard server on 0.0.0.0:9386
+2025-03-14 13:57:10,937 - dash.dash - INFO - Dash is running on http://0.0.0.0:9386/
+
+2025-03-14 13:57:11,786 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:9386
+ * Running on http://192.168.0.60:9386
+2025-03-14 13:57:11,787 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
