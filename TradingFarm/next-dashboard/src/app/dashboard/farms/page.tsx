@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { farmApi, Farm } from "../../../lib/api-client";
+import React from "react";
+import { farmService, Farm } from "@/services/farm-service";
 import Link from "next/link";
 
 export default function FarmsPage() {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [farms, setFarms] = React.useState<Farm[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
+  React.useEffect(() => {
     async function fetchFarms() {
       setLoading(true);
-      const response = await farmApi.getFarms();
+      const response = await farmService.getFarms();
       
       if (response.error) {
         setError(response.error);
@@ -62,7 +62,7 @@ export default function FarmsPage() {
 
       {/* Farms grid */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {farms.map((farm) => (
+        {farms.map((farm: Farm) => (
           <Link
             href={`/dashboard/farms/${farm.id}`}
             key={farm.id}
@@ -122,4 +122,4 @@ export default function FarmsPage() {
 function calculateFarmHealth(farm: Farm): number {
   // In a real app, this would be based on more sophisticated metrics
   return farm.is_active ? Math.floor(Math.random() * 40) + 60 : Math.floor(Math.random() * 30) + 20;
-} 
+}

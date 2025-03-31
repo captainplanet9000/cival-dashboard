@@ -14,6 +14,12 @@ class OrderType(Enum):
     STOP = "STOP"
     STOP_LIMIT = "STOP_LIMIT"
     TRAILING_STOP = "TRAILING_STOP"
+    OCO = "OCO"  # One-Cancels-Other
+    ICEBERG = "ICEBERG"  # Partially visible orders
+    TAKE_PROFIT = "TAKE_PROFIT"
+    TAKE_PROFIT_LIMIT = "TAKE_PROFIT_LIMIT"
+    TRAILING_STOP_LIMIT = "TRAILING_STOP_LIMIT"
+    FILL_OR_KILL = "FILL_OR_KILL"
 
 class OrderSide(Enum):
     BUY = "BUY"
@@ -39,7 +45,13 @@ class Order:
         leverage: Optional[float] = None,
         reduce_only: bool = False,
         post_only: bool = False,
-        extra_params: Optional[Dict[str, Any]] = None
+        extra_params: Optional[Dict[str, Any]] = None,
+        trailing_delta: Optional[float] = None,
+        take_profit_price: Optional[float] = None,
+        iceberg_qty: Optional[float] = None,
+        linked_order_id: Optional[str] = None,
+        activation_price: Optional[float] = None,
+        callback_rate: Optional[float] = None
     ):
         self.symbol = symbol
         self.side = side
@@ -53,6 +65,14 @@ class Order:
         self.reduce_only = reduce_only
         self.post_only = post_only
         self.extra_params = extra_params or {}
+        
+        # Advanced order parameters
+        self.trailing_delta = trailing_delta  # For trailing stops (in percent or price)
+        self.take_profit_price = take_profit_price  # For take-profit orders
+        self.iceberg_qty = iceberg_qty  # Visible quantity for iceberg orders
+        self.linked_order_id = linked_order_id  # For OCO orders
+        self.activation_price = activation_price  # For trailing stops
+        self.callback_rate = callback_rate  # For trailing stops (percent)
 
     def __str__(self):
         return (

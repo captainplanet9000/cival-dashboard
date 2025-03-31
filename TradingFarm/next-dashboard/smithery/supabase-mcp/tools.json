@@ -1,0 +1,315 @@
+{
+  "tools": [
+    {
+      "name": "run_query",
+      "description": "Run a query against the Supabase database",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "The query to run using Supabase API"
+        },
+        "table": {
+          "type": "string",
+          "description": "The table to query"
+        },
+        "select": {
+          "type": "string",
+          "description": "The columns to select (CSV or * for all)"
+        },
+        "where": {
+          "type": "object",
+          "description": "Filter conditions"
+        },
+        "order": {
+          "type": "string",
+          "description": "Order by column and direction (e.g., 'id.asc')"
+        },
+        "limit": {
+          "type": "number",
+          "description": "Maximum number of records to return"
+        }
+      }
+    },
+    {
+      "name": "insert_record",
+      "description": "Insert a record into a Supabase table",
+      "parameters": {
+        "table": {
+          "type": "string",
+          "description": "The table to insert into"
+        },
+        "data": {
+          "type": "object",
+          "description": "The data to insert"
+        },
+        "returning": {
+          "type": "string",
+          "description": "The columns to return after insertion (CSV or * for all)"
+        }
+      }
+    },
+    {
+      "name": "update_record",
+      "description": "Update records in a Supabase table",
+      "parameters": {
+        "table": {
+          "type": "string",
+          "description": "The table to update"
+        },
+        "data": {
+          "type": "object",
+          "description": "The data to update"
+        },
+        "where": {
+          "type": "object",
+          "description": "Filter conditions to identify records to update"
+        },
+        "returning": {
+          "type": "string",
+          "description": "The columns to return after update (CSV or * for all)"
+        }
+      }
+    },
+    {
+      "name": "delete_record",
+      "description": "Delete records from a Supabase table",
+      "parameters": {
+        "table": {
+          "type": "string",
+          "description": "The table to delete from"
+        },
+        "where": {
+          "type": "object",
+          "description": "Filter conditions to identify records to delete"
+        },
+        "returning": {
+          "type": "string",
+          "description": "The columns to return after deletion (CSV or * for all)"
+        }
+      }
+    },
+    {
+      "name": "run_sql",
+      "description": "Execute a raw SQL query on the Supabase database",
+      "parameters": {
+        "sql": {
+          "type": "string",
+          "description": "The SQL query to execute"
+        }
+      }
+    },
+    {
+      "name": "sql_transaction",
+      "description": "Execute multiple SQL statements in a transaction",
+      "parameters": {
+        "statements": {
+          "type": "array",
+          "description": "Array of SQL statements to execute in a transaction",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "create_farm",
+      "description": "Create a new farm in the Trading Farm system",
+      "parameters": {
+        "name": {
+          "type": "string",
+          "description": "The name of the farm"
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the farm"
+        },
+        "user_id": {
+          "type": "string",
+          "description": "Optional UUID of the owner"
+        }
+      }
+    },
+    {
+      "name": "create_agent",
+      "description": "Create a new agent in the Trading Farm system",
+      "parameters": {
+        "name": {
+          "type": "string",
+          "description": "The name of the agent"
+        },
+        "farm_id": {
+          "type": "number",
+          "description": "The ID of the farm this agent belongs to"
+        },
+        "status": {
+          "type": "string",
+          "description": "Optional status of the agent (default: inactive)"
+        },
+        "type": {
+          "type": "string",
+          "description": "Optional type of the agent (default: standard)"
+        },
+        "configuration": {
+          "type": "object",
+          "description": "Optional configuration for the agent"
+        }
+      }
+    },
+    {
+      "name": "create_wallet",
+      "description": "Create a new wallet in the Trading Farm system",
+      "parameters": {
+        "name": {
+          "type": "string",
+          "description": "The name of the wallet"
+        },
+        "address": {
+          "type": "string",
+          "description": "The blockchain address of the wallet"
+        },
+        "balance": {
+          "type": "number",
+          "description": "Optional initial balance (default: 0)"
+        },
+        "farm_id": {
+          "type": "number",
+          "description": "Optional ID of the farm this wallet belongs to"
+        },
+        "user_id": {
+          "type": "string",
+          "description": "Optional UUID of the owner"
+        }
+      }
+    },
+    {
+      "name": "record_transaction",
+      "description": "Record a transaction in the Trading Farm system",
+      "parameters": {
+        "type": {
+          "type": "string",
+          "description": "The type of transaction (deposit, withdrawal, transfer)"
+        },
+        "amount": {
+          "type": "number",
+          "description": "The amount of the transaction"
+        },
+        "wallet_id": {
+          "type": "number",
+          "description": "The ID of the wallet involved in the transaction"
+        },
+        "farm_id": {
+          "type": "number",
+          "description": "Optional ID of the farm related to this transaction"
+        },
+        "status": {
+          "type": "string",
+          "description": "Optional status of the transaction (default: pending)"
+        }
+      }
+    },
+    {
+      "name": "get_farm_details",
+      "description": "Get detailed information about a farm including its agents and wallets",
+      "parameters": {
+        "farm_id": {
+          "type": "number",
+          "description": "The ID of the farm to get details for"
+        }
+      }
+    },
+    {
+      "name": "run_migration",
+      "description": "Run a database migration SQL script",
+      "parameters": {
+        "sql": {
+          "type": "string",
+          "description": "The SQL migration script to run"
+        }
+      }
+    },
+    {
+      "name": "apply_schema",
+      "description": "Apply a database schema from a migration file",
+      "parameters": {
+        "file_path": {
+          "type": "string",
+          "description": "Path to the migration file"
+        }
+      }
+    },
+    {
+      "name": "connect_eliza_agent",
+      "description": "Connect an ElizaOS agent to the Trading Farm system",
+      "parameters": {
+        "agent_id": {
+          "type": "number",
+          "description": "The ID of the agent in the Trading Farm system"
+        },
+        "eliza_id": {
+          "type": "string",
+          "description": "The ID of the agent in the ElizaOS system"
+        },
+        "connection_type": {
+          "type": "string",
+          "description": "Type of connection (full, read-only, command)"
+        },
+        "capabilities": {
+          "type": "array",
+          "description": "List of capabilities to grant the ElizaOS agent",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "store_knowledge",
+      "description": "Store knowledge in the ElizaOS RAG system for agent use",
+      "parameters": {
+        "title": {
+          "type": "string",
+          "description": "Title of the knowledge item"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content of the knowledge item"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for categorizing the knowledge",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agent_ids": {
+          "type": "array",
+          "description": "Agent IDs that should have access to this knowledge",
+          "items": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "query_knowledge",
+      "description": "Query the ElizaOS knowledge base for information",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "The query to search for in the knowledge base"
+        },
+        "filter_tags": {
+          "type": "array",
+          "description": "Optional tags to filter the knowledge by",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agent_id": {
+          "type": "number",
+          "description": "Optional agent ID to filter knowledge by access"
+        }
+      }
+    }
+  ]
+}

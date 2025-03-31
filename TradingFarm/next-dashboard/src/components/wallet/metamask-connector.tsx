@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+// Update the import pattern for React
+import * as React from 'react'
 import { ethers } from 'ethers'
 import { 
   Wallet, 
@@ -9,7 +10,11 @@ import {
   Copy, 
   ExternalLink,
   Send,
-  RefreshCw
+  RefreshCw,
+  ArrowDownUp,
+  Clock,
+  ArrowLeft,
+  ArrowRight
 } from 'lucide-react'
 
 interface Chain {
@@ -17,27 +22,68 @@ interface Chain {
   name: string;
   icon: string;
   symbol: string;
+  rpcUrl?: string;
+  blockExplorerUrl?: string;
+}
+
+interface Transaction {
+  hash: string;
+  to: string;
+  from: string;
+  value: string;
+  timestamp: number;
+  status: 'pending' | 'confirmed' | 'failed';
 }
 
 const supportedChains: Chain[] = [
-  { id: '0x1', name: 'Ethereum', icon: '🔷', symbol: 'ETH' },
-  { id: '0x89', name: 'Polygon', icon: '🟣', symbol: 'MATIC' },
-  { id: '0xA', name: 'Optimism', icon: '🔴', symbol: 'ETH' },
-  { id: '0xAA36A7', name: 'Sepolia', icon: '🔵', symbol: 'ETH' },
+  { 
+    id: '0x1', 
+    name: 'Ethereum', 
+    icon: '🔷', 
+    symbol: 'ETH',
+    blockExplorerUrl: 'https://etherscan.io'
+  },
+  { 
+    id: '0x89', 
+    name: 'Polygon', 
+    icon: '🟣', 
+    symbol: 'MATIC',
+    blockExplorerUrl: 'https://polygonscan.com'
+  },
+  { 
+    id: '0xA', 
+    name: 'Optimism', 
+    icon: '🔴', 
+    symbol: 'ETH',
+    blockExplorerUrl: 'https://optimistic.etherscan.io'
+  },
+  { 
+    id: '0xAA36A7', 
+    name: 'Sepolia', 
+    icon: '🔵', 
+    symbol: 'ETH',
+    blockExplorerUrl: 'https://sepolia.etherscan.io'
+  },
 ]
 
 export default function MetaMaskConnector() {
-  const [isConnected, setIsConnected] = useState(false)
-  const [walletAddress, setWalletAddress] = useState('')
-  const [balance, setBalance] = useState('0')
-  const [chainId, setChainId] = useState('')
-  const [currentChain, setCurrentChain] = useState<Chain | null>(null)
-  const [transferAmount, setTransferAmount] = useState('')
-  const [showSendDialog, setShowSendDialog] = useState(false)
-  const [targetAddress, setTargetAddress] = useState('')
-  const [transactionStatus, setTransactionStatus] = useState('')
-  const [copySuccess, setCopySuccess] = useState(false)
-  const [provider, setProvider] = useState<any>(null)
+  const [isConnected, setIsConnected] = React.useState(false)
+  const [walletAddress, setWalletAddress] = React.useState('')
+  const [balance, setBalance] = React.useState('0')
+  const [chainId, setChainId] = React.useState('')
+  const [currentChain, setCurrentChain] = React.useState<Chain | null>(null)
+  const [transferAmount, setTransferAmount] = React.useState('')
+  const [showSendDialog, setShowSendDialog] = React.useState(false)
+  const [targetAddress, setTargetAddress] = React.useState('')
+  const [transactionStatus, setTransactionStatus] = React.useState('')
+  const [copySuccess, setCopySuccess] = React.useState(false)
+  const [provider, setProvider] = React.useState<any>(null)
+  const [showNetworkSelector, setShowNetworkSelector] = React.useState(false)
+  const [transactions, setTransactions] = React.useState<Transaction[]>([])
+  const [error, setError] = React.useState<string | null>(null)
+  
+  // Event cleanup reference
+  const eventCleanupRef = React.useRef<Function | null>(null)
 
   // Check if MetaMask is installed
   const isMetaMaskInstalled = () => {
@@ -45,20 +91,33 @@ export default function MetaMaskConnector() {
   }
 
   // Initialize connection on component mount
-  useEffect(() => {
+  React.useEffect(() => {
     if (isMetaMaskInstalled()) {
-      setProvider(new ethers.BrowserProvider(window.ethereum!))
+      const ethProvider = new ethers.BrowserProvider(window.ethereum!)
+      setProvider(ethProvider)
       checkConnection()
+    }
+    
+    // Cleanup function
+    return () => {
+      if (eventCleanupRef.current) {
+        eventCleanupRef.current()
+      }
     }
   }, [])
 
   // Update current chain information
-  useEffect(() => {
+  React.useEffect(() => {
     if (chainId) {
       const chain = supportedChains.find(c => c.id === chainId)
       setCurrentChain(chain || null)
+      
+      // Fetch transaction history when chain changes
+      if (isConnected) {
+        fetchTransactionHistory()
+      }
     }
-  }, [chainId])
+  }, [chainId, isConnected])
 
   // Check if wallet is already connected
   const checkConnection = async () => {
@@ -82,7 +141,7 @@ export default function MetaMaskConnector() {
       window.ethereum.on('accountsChanged', handleAccountsChanged)
       window.ethereum.on('chainChanged', handleChainChanged)
       
-      return () => {
+      eventCleanupRef.current = () => {
         if (window.ethereum) {
           window.ethereum.removeListener('accountsChanged', handleAccountsChanged)
           window.ethereum.removeListener('chainChanged', handleChainChanged)
@@ -90,6 +149,7 @@ export default function MetaMaskConnector() {
       }
     } catch (error) {
       console.error("Error checking connection:", error)
+      setError("Failed to check wallet connection")
     }
   }
 
@@ -104,6 +164,7 @@ export default function MetaMaskConnector() {
       if (!window.ethereum) return;
       
       setTransactionStatus('connecting')
+      setError(null)
       
       // Request accounts access
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' })
@@ -119,10 +180,14 @@ export default function MetaMaskConnector() {
       // Get balance
       await getWalletBalance(accounts[0])
       
+      // Fetch transaction history
+      fetchTransactionHistory()
+      
       setTransactionStatus('')
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error connecting wallet:", error)
       setTransactionStatus('')
+      setError(error?.message || "Failed to connect wallet")
     }
   }
 
@@ -141,6 +206,7 @@ export default function MetaMaskConnector() {
       setBalance(parseFloat(balanceEth).toFixed(4))
     } catch (error) {
       console.error("Error getting balance:", error)
+      setError("Failed to get wallet balance")
     }
   }
 
@@ -151,10 +217,12 @@ export default function MetaMaskConnector() {
       setIsConnected(false)
       setWalletAddress('')
       setBalance('0')
+      setTransactions([])
     } else {
       // Account changed
       setWalletAddress(accounts[0])
       getWalletBalance(accounts[0])
+      fetchTransactionHistory()
     }
   }
 
@@ -176,9 +244,88 @@ export default function MetaMaskConnector() {
   // Refresh wallet balance
   const refreshBalance = async () => {
     if (isConnected) {
+      setError(null)
       await getWalletBalance(walletAddress)
     }
   }
+
+  // Switch network
+  const switchNetwork = async (chainId: string) => {
+    if (!window.ethereum) return;
+    
+    try {
+      setError(null)
+      await window.ethereum.request({
+        method: 'wallet_switchEthereumChain',
+        params: [{ chainId }],
+      })
+      
+      setShowNetworkSelector(false)
+    } catch (error: any) {
+      console.error("Error switching network:", error)
+      
+      // Chain not added to MetaMask
+      if (error.code === 4902) {
+        const chain = supportedChains.find(c => c.id === chainId)
+        if (chain && chain.rpcUrl) {
+          try {
+            await window.ethereum.request({
+              method: 'wallet_addEthereumChain',
+              params: [
+                {
+                  chainId,
+                  chainName: chain.name,
+                  nativeCurrency: {
+                    name: chain.symbol,
+                    symbol: chain.symbol,
+                    decimals: 18,
+                  },
+                  rpcUrls: [chain.rpcUrl],
+                  blockExplorerUrls: chain.blockExplorerUrl ? [chain.blockExplorerUrl] : undefined,
+                },
+              ],
+            })
+            setShowNetworkSelector(false)
+          } catch (addError) {
+            console.error("Error adding network:", addError)
+            setError("Failed to add network to MetaMask")
+          }
+        }
+      } else {
+        setError("Failed to switch network")
+      }
+    }
+  }
+
+  // Fetch transaction history
+  const fetchTransactionHistory = React.useCallback(async () => {
+    if (!isConnected || !walletAddress || !currentChain?.blockExplorerUrl) return;
+    
+    try {
+      // In a real app, you would fetch from Etherscan API or similar
+      // Here we'll just show mock data for demonstration
+      setTransactions([
+        {
+          hash: '0x' + Math.random().toString(16).substring(2, 16) + Math.random().toString(16).substring(2, 16),
+          to: '0x' + Math.random().toString(16).substring(2, 42),
+          from: walletAddress,
+          value: (Math.random() * 0.1).toFixed(4),
+          timestamp: Date.now() - Math.floor(Math.random() * 86400000),
+          status: 'confirmed'
+        },
+        {
+          hash: '0x' + Math.random().toString(16).substring(2, 16) + Math.random().toString(16).substring(2, 16),
+          to: walletAddress,
+          from: '0x' + Math.random().toString(16).substring(2, 42),
+          value: (Math.random() * 0.1).toFixed(4),
+          timestamp: Date.now() - Math.floor(Math.random() * 86400000 * 2),
+          status: 'confirmed'
+        }
+      ])
+    } catch (error) {
+      console.error("Error fetching transaction history:", error)
+    }
+  }, [isConnected, walletAddress, currentChain])
 
   // Send transaction to trading farm wallet
   const sendTransaction = async (e: React.FormEvent) => {
@@ -190,6 +337,7 @@ export default function MetaMaskConnector() {
 
     try {
       setTransactionStatus('sending')
+      setError(null)
       
       const amountWei = ethers.parseEther(transferAmount)
       
@@ -202,8 +350,23 @@ export default function MetaMaskConnector() {
       
       setTransactionStatus('confirming')
       
+      // Add pending transaction to list
+      setTransactions((prev: Transaction[]) => [{
+        hash: tx.hash,
+        to: targetAddress,
+        from: walletAddress,
+        value: transferAmount,
+        timestamp: Date.now(),
+        status: 'pending' as const
+      }, ...prev] as Transaction[])
+      
       // Wait for transaction to be mined
-      await tx.wait()
+      const receipt = await tx.wait()
+      
+      // Update transaction status
+      setTransactions((prev: Transaction[]) => prev.map((t: Transaction) => 
+        t.hash === tx.hash ? {...t, status: receipt.status === 0 ? 'failed' as const : 'confirmed' as const} : t
+      ))
       
       setTransactionStatus('success')
       
@@ -220,15 +383,33 @@ export default function MetaMaskConnector() {
         setTransactionStatus('')
       }, 2000)
       
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending transaction:", error)
       setTransactionStatus('error')
+      setError(error?.message || "Transaction failed")
       
       // Clear error after 3 seconds
       setTimeout(() => {
         setTransactionStatus('')
       }, 3000)
     }
+  }
+
+  // Format transaction for display
+  const formatTransaction = (tx: Transaction) => {
+    const isIncoming = tx.to.toLowerCase() === walletAddress.toLowerCase()
+    return {
+      ...tx,
+      displayValue: `${isIncoming ? '+' : '-'}${tx.value} ${currentChain?.symbol || 'ETH'}`,
+      displayAddress: isIncoming ? tx.from : tx.to,
+      type: isIncoming ? 'received' : 'sent'
+    }
+  }
+
+  // Get blockchain explorer URL for transaction
+  const getExplorerUrl = (txHash: string) => {
+    if (!currentChain?.blockExplorerUrl) return '#';
+    return `${currentChain.blockExplorerUrl}/tx/${txHash}`;
   }
 
   // Render installation prompt if MetaMask is not installed
@@ -260,6 +441,19 @@ export default function MetaMaskConnector() {
         <Wallet className="mr-2 h-5 w-5" />
         Wallet Connection
       </h2>
+      
+      {error && (
+        <div className="mb-4 p-2 bg-danger/10 border border-danger/20 rounded-md flex items-center text-danger text-sm">
+          <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+          <span>{error}</span>
+          <button 
+            onClick={() => setError(null)} 
+            className="ml-auto text-xs hover:text-danger/70"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       
       {!isConnected ? (
         <div className="flex flex-col items-center justify-center p-6 text-center">
@@ -312,11 +506,11 @@ export default function MetaMaskConnector() {
                   {copySuccess ? <CheckCircle className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
                 </button>
                 <a
-                  href={`https://etherscan.io/address/${walletAddress}`}
+                  href={`${currentChain?.blockExplorerUrl || 'https://etherscan.io'}/address/${walletAddress}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="p-2 rounded-md hover:bg-muted"
-                  title="View on Etherscan"
+                  title="View on Explorer"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
@@ -324,9 +518,12 @@ export default function MetaMaskConnector() {
             </div>
             
             <div className="flex justify-between items-center">
-              <div>
+              <div className="relative">
                 <p className="text-sm text-muted-foreground">Network</p>
-                <p className="font-medium flex items-center">
+                <button 
+                  className="font-medium flex items-center hover:text-primary"
+                  onClick={() => setShowNetworkSelector(!showNetworkSelector)}
+                >
                   {currentChain ? (
                     <>
                       <span className="mr-1">{currentChain.icon}</span>
@@ -335,7 +532,25 @@ export default function MetaMaskConnector() {
                   ) : (
                     'Unknown Network'
                   )}
-                </p>
+                  <ArrowDownUp className="ml-1 h-3 w-3" />
+                </button>
+                
+                {/* Network Selector Dropdown */}
+                {showNetworkSelector && (
+                  <div className="absolute z-10 mt-1 bg-card border border-border rounded-md shadow-lg w-48">
+                    {supportedChains.map(chain => (
+                      <button
+                        key={chain.id}
+                        onClick={() => switchNetwork(chain.id)}
+                        className={`w-full text-left px-3 py-2 flex items-center hover:bg-muted ${chain.id === chainId ? 'bg-muted/50 font-medium' : ''}`}
+                      >
+                        <span className="mr-2">{chain.icon}</span>
+                        {chain.name}
+                        {chain.id === chainId && <CheckCircle className="ml-auto h-3 w-3 text-success" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Balance</p>
@@ -364,12 +579,60 @@ export default function MetaMaskConnector() {
             </button>
           </div>
           
-          {/* Transaction History Preview */}
+          {/* Transaction History */}
           <div>
-            <h3 className="text-md font-medium mb-2">Recent Transactions</h3>
-            <div className="text-sm text-muted-foreground text-center p-3 bg-muted/50 rounded-md">
-              No recent transactions
-            </div>
+            <h3 className="text-md font-medium mb-2 flex items-center">
+              <Clock className="mr-1 h-4 w-4" />
+              Recent Transactions
+            </h3>
+            {transactions.length > 0 ? (
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                {transactions.map((tx: Transaction) => {
+                  const formattedTx = formatTransaction(tx);
+                  return (
+                    <a
+                      key={tx.hash}
+                      href={getExplorerUrl(tx.hash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center justify-between p-2 text-sm border border-border rounded-md hover:bg-muted/30"
+                    >
+                      <div className="flex items-center">
+                        <div className={`p-1 rounded-full mr-2 ${formattedTx.type === 'received' ? 'bg-success/10' : 'bg-muted'}`}>
+                          {formattedTx.type === 'received' ? 
+                            <ArrowLeft className={`h-3 w-3 ${formattedTx.type === 'received' ? 'text-success' : 'text-muted-foreground'}`} /> : 
+                            <ArrowRight className={`h-3 w-3 ${formattedTx.type === 'sent' ? 'text-primary' : 'text-muted-foreground'}`} />
+                          }
+                        </div>
+                        <div>
+                          <p className="font-medium">{formattedTx.displayValue}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(tx.timestamp).toLocaleString(undefined, { 
+                              month: 'short', 
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs">
+                          {formattedTx.type === 'received' ? 'From:' : 'To:'} {formattedTx.displayAddress.substring(0, 6)}...
+                        </p>
+                        <p className={`text-xs ${tx.status === 'confirmed' ? 'text-success' : tx.status === 'pending' ? 'text-warning' : 'text-danger'}`}>
+                          {tx.status === 'confirmed' ? 'Confirmed' : tx.status === 'pending' ? 'Pending' : 'Failed'}
+                        </p>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground text-center p-3 bg-muted/50 rounded-md">
+                No recent transactions
+              </div>
+            )}
           </div>
           
           {/* Send Dialog */}
