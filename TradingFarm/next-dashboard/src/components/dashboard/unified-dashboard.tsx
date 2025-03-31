@@ -80,6 +80,31 @@ interface UnifiedDashboardProps {
   hasElizaOS?: boolean;
 }
 
+interface Notification {
+  id: number;
+  type: 'success' | 'info' | 'error' | 'warning';
+  message: string;
+  time: string;
+}
+
+interface PriceAlert {
+  id: number;
+  pair: string;
+  condition: 'above' | 'below';
+  price: number;
+  current: number;
+  active: boolean;
+}
+
+interface RiskMetricProps {
+  title: string;
+  metrics: {
+    name: string;
+    value: string;
+    status: 'normal' | 'warning' | 'good' | 'danger';
+  }[];
+}
+
 export default function UnifiedDashboard({
   farmId,
   initialLayout,
@@ -418,6 +443,98 @@ export default function UnifiedDashboard({
   };
 
   const [activeTab, setActiveTab] = React.useState('overview');
+
+  // Missing components for notifications and alerts
+  const ExecutionNotifications = ({ limit = 3 }: { limit?: number }) => {
+    const [notifications, setNotifications] = React.useState<Notification[]>([
+      { id: 1, type: 'success', message: 'BTC/USDT Buy order filled at $51,245.30', time: new Date(Date.now() - 1000 * 60 * 5).toISOString() },
+      { id: 2, type: 'info', message: 'ETH/USDT strategy initiated with $5,000 allocation', time: new Date(Date.now() - 1000 * 60 * 25).toISOString() },
+      { id: 3, type: 'error', message: 'SOL/USDT order rejected: insufficient margin', time: new Date(Date.now() - 1000 * 60 * 45).toISOString() },
+      { id: 4, type: 'warning', message: 'Risk threshold exceeded on ARB/USDT position', time: new Date(Date.now() - 1000 * 60 * 120).toISOString() },
+    ]);
+    
+    return (
+      <div className="space-y-2 mt-2">
+        {notifications.slice(0, limit).map((notification: Notification) => (
+          <div 
+            key={notification.id}
+            className={`p-2 rounded-md text-xs ${
+              notification.type === 'success' ? 'bg-green-500/10 border border-green-500/20 text-green-500' :
+              notification.type === 'error' ? 'bg-red-500/10 border border-red-500/20 text-red-500' :
+              notification.type === 'warning' ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-500' :
+              'bg-blue-500/10 border border-blue-500/20 text-blue-500'
+            }`}
+          >
+            <div className="font-medium">{notification.message}</div>
+            <div className="text-xs opacity-70 mt-1">
+              {new Date(notification.time).toLocaleTimeString()}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const PriceAlertSystem = ({ limit = 3 }: { limit?: number }) => {
+    const [alerts, setAlerts] = React.useState<PriceAlert[]>([
+      { id: 1, pair: 'BTC/USDT', condition: 'above', price: 52000, current: 51245.30, active: true },
+      { id: 2, pair: 'ETH/USDT', condition: 'below', price: 2800, current: 2945.75, active: true },
+      { id: 3, pair: 'SOL/USDT', condition: 'above', price: 105, current: 99.45, active: true },
+    ]);
+    
+    return (
+      <div className="space-y-2 mt-2">
+        {alerts.slice(0, limit).map((alert: PriceAlert) => (
+          <div 
+            key={alert.id}
+            className="p-2 rounded-md text-xs bg-card border"
+          >
+            <div className="flex justify-between">
+              <span className="font-medium">{alert.pair}</span>
+              <span className={
+                alert.condition === 'above' && alert.current > alert.price ? 'text-green-500' :
+                alert.condition === 'below' && alert.current < alert.price ? 'text-green-500' :
+                'text-muted-foreground'
+              }>
+                ${alert.current.toLocaleString()}
+              </span>
+            </div>
+            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+              <span>Alert {alert.condition} ${alert.price.toLocaleString()}</span>
+              <span className={alert.active ? 'text-green-500' : 'text-muted-foreground'}>
+                {alert.active ? 'Active' : 'Inactive'}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const RiskMetricsCard = ({ title, metrics }: RiskMetricProps) => {
+    return (
+      <div className="bg-card p-4 rounded-md border shadow-sm">
+        <div className="flex flex-col">
+          <div className="text-sm font-medium mb-2">{title}</div>
+          <div className="space-y-2">
+            {metrics.map((metric, index) => (
+              <div key={index} className="flex justify-between items-center">
+                <span className="text-sm text-muted-foreground">{metric.name}</span>
+                <span className={`text-sm font-medium ${
+                  metric.status === 'good' ? 'text-green-500' : 
+                  metric.status === 'warning' ? 'text-yellow-500' : 
+                  metric.status === 'danger' ? 'text-red-500' : 
+                  'text-foreground'
+                }`}>
+                  {metric.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="flex flex-col gap-6 p-4 md:p-8 w-full">
