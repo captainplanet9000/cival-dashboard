@@ -1,401 +1,187 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
-import { useToast } from '@/components/ui/use-toast';
-import { Socket, io } from 'socket.io-client';
-import { usePathname } from 'next/navigation';
-import { createBrowserClient } from '@/utils/supabase/client';
+import * as React from 'react';
+import { io, type Socket } from 'socket.io-client';
 
-// Message types for Socket.io events
-export type SocketMessageType = 
-  | 'ORDER_UPDATE' 
-  | 'POSITION_UPDATE' 
-  | 'BALANCE_UPDATE' 
-  | 'PRICE_ALERT'
-  | 'MARKET_DATA'
-  | 'EXECUTION_NOTIFICATION'
-  | 'RISK_ALERT'
-  | 'ELIZAOS_NOTIFICATION'
-  | 'SYNC_STATUS'
-  | 'COMMAND_RESPONSE'
-  | 'KNOWLEDGE_RESPONSE';
-
-// Message structure
-export interface SocketMessage {
-  type: SocketMessageType;
-  data: any;
-  timestamp: string;
-  farm_id?: string;
-  exchange_id?: string;
-  symbol?: string;
-}
-
-// Socket provider props
-interface SocketProviderProps {
-  children: React.ReactNode;
-  url?: string;
-  enableLogging?: boolean;
-  autoConnect?: boolean;
-}
-
-// Context structure
 interface SocketContextType {
+  socket: Socket | null;
   isConnected: boolean;
-  messages: SocketMessage[];
-  latestMessages: Record<SocketMessageType, SocketMessage | null>;
-  clearMessages: () => void;
+  latestMessages: {
+    [key: string]: any;
+  };
+  messages: any[];
   send: (event: string, data: any) => void;
   subscribe: (room: string) => void;
   unsubscribe: (room: string) => void;
-  connect: () => void;
-  disconnect: () => void;
-  connectionStatus: 'connecting' | 'connected' | 'disconnected' | 'error';
-  subscribedRooms: string[];
-  lastActivity: Date | null;
-  socket: Socket | null;
-  stats: {
-    messagesReceived: number;
-    messagesSent: number;
-    connectionStartTime: Date | null;
-  };
 }
 
-// Create context with default values
-const SocketContext = createContext<SocketContextType>({
+const SocketContext = React.createContext<SocketContextType>({
+  socket: null,
   isConnected: false,
-  messages: [],
   latestMessages: {},
-  clearMessages: () => {},
+  messages: [],
   send: () => {},
   subscribe: () => {},
-  unsubscribe: () => {},
-  connect: () => {},
-  disconnect: () => {},
-  connectionStatus: 'disconnected',
-  subscribedRooms: [],
-  lastActivity: null,
-  socket: null,
-  stats: {
-    messagesReceived: 0,
-    messagesSent: 0,
-    connectionStartTime: null,
-  },
+  unsubscribe: () => {}
 });
 
-export const SocketProvider: React.FC<SocketProviderProps> = ({
+export const useSocket = () => React.useContext(SocketContext);
+
+export interface SocketProviderProps {
+  children: React.ReactNode;
+  farmId?: string;
+  userId?: string;
+}
+
+export function SocketProvider({ 
   children,
-  url,
-  enableLogging = false,
-  autoConnect = true,
-}) => {
-  const [socket, setSocket] = useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected' | 'error'>('disconnected');
-  const [messages, setMessages] = useState<SocketMessage[]>([]);
-  const [latestMessages, setLatestMessages] = useState<Record<SocketMessageType, SocketMessage | null>>({} as Record<SocketMessageType, SocketMessage | null>);
-  const [subscribedRooms, setSubscribedRooms] = useState<string[]>([]);
-  const [lastActivity, setLastActivity] = useState<Date | null>(null);
-  const [stats, setStats] = useState({
-    messagesReceived: 0,
-    messagesSent: 0,
-    connectionStartTime: null as Date | null,
-  });
+  farmId,
+  userId
+}: SocketProviderProps) {
+  const [socket, setSocket] = React.useState<Socket | null>(null);
+  const [isConnected, setIsConnected] = React.useState(false);
+  const [socketUrl, setSocketUrl] = React.useState<string | null>(null);
+  const [messages, setMessages] = React.useState<any[]>([]);
+  const [latestMessages, setLatestMessages] = React.useState<{[key: string]: any}>({});
   
-  const socketRef = useRef<Socket | null>(null);
-  const { toast } = useToast();
-  const pathname = usePathname();
-  const supabase = createBrowserClient();
-  
-  // Get Socket.io URL
-  const getSocketUrl = useCallback(async () => {
-    if (url) return url;
-    
-    try {
-      // Get Socket URL from environment or from database
-      const { data: config, error } = await supabase
-        .from('config')
-        .select('socket_url')
-        .eq('is_active', true)
-        .single();
-      
-      if (error) {
+  // Fetch the socket URL from the API
+  React.useEffect(() => {
+    const fetchSocketUrl = async () => {
+      try {
+        const response = await fetch('/api/config?key=socket_io_url');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch Socket URL: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        // Parse the JSON string if it's stored as a string in the database
+        const url = typeof data.value === 'string' && data.value.startsWith('"') 
+          ? JSON.parse(data.value) 
+          : data.value;
+          
+        setSocketUrl(url);
+      } catch (error: any) {
         console.error('Error getting Socket URL:', error);
-        return process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.tradingfarm.io';
+        // Fallback to default URL
+        setSocketUrl('http://localhost:3002');
       }
-      
-      return config.socket_url || process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.tradingfarm.io';
-    } catch (error) {
-      console.error('Error getting Socket URL:', error);
-      return process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.tradingfarm.io';
-    }
-  }, [url, supabase]);
+    };
+    
+    fetchSocketUrl();
+  }, []);
   
-  // Connect to Socket.io server
-  const connectSocket = useCallback(async () => {
-    // Clean up existing connection
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
+  // Initialize socket connection when URL is available
+  React.useEffect(() => {
+    if (!socketUrl) return;
     
     try {
-      const socketUrl = await getSocketUrl();
-      setConnectionStatus('connecting');
-      
-      // Get auth token for socket authentication
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token;
-      
-      // Initialize Socket.io with options
+      // @ts-ignore - Ignoring the type issue with Socket.io
       const socketInstance = io(socketUrl, {
-        transports: ['websocket', 'polling'],
-        autoConnect: false,
-        reconnection: true,
-        reconnectionAttempts: 10,
+        reconnectionAttempts: 5,
         reconnectionDelay: 1000,
-        reconnectionDelayMax: 10000,
-        timeout: 20000,
-        auth: token ? { token } : undefined,
+        autoConnect: true,
+        query: userId ? { userId } : undefined
       });
       
-      // Setup event listeners
       socketInstance.on('connect', () => {
-        if (enableLogging) {
-          console.log('Socket.io connection established');
-        }
-        
+        console.log('Socket connected');
         setIsConnected(true);
-        setConnectionStatus('connected');
-        setStats(prev => ({
-          ...prev,
-          connectionStartTime: new Date(),
-        }));
         
-        // Restore room subscriptions
-        subscribedRooms.forEach(room => {
-          socketInstance.emit('join', room);
-        });
-      });
-      
-      socketInstance.on('disconnect', (reason) => {
-        if (enableLogging) {
-          console.log(`Socket.io disconnected: ${reason}`);
+        // Join farm room if farmId is provided
+        if (farmId) {
+          socketInstance.emit('JOIN_FARM', farmId);
+          // Also join ElizaOS room for commands and knowledge queries
+          socketInstance.emit('JOIN_ELIZAOS', { farmId });
         }
-        
+      });
+      
+      socketInstance.on('disconnect', () => {
+        console.log('Socket disconnected');
         setIsConnected(false);
-        setConnectionStatus('disconnected');
       });
       
-      socketInstance.on('connect_error', (error) => {
-        console.error('Socket.io connection error:', error);
-        setConnectionStatus('error');
-        
-        toast({
-          title: "Connection Error",
-          description: "Failed to connect to trading server. Please check your network.",
-          variant: "destructive",
-        });
+      socketInstance.on('connect_error', (error: any) => {
+        console.error('Connection error:', error);
+        setIsConnected(false);
       });
       
-      // Set up event listeners for message types
-      const messageTypes: SocketMessageType[] = [
+      // Generic message handler that collects all messages
+      const messageTypes = [
         'ORDER_UPDATE', 
-        'POSITION_UPDATE', 
-        'BALANCE_UPDATE', 
-        'PRICE_ALERT',
-        'MARKET_DATA',
+        'PRICE_ALERT', 
         'EXECUTION_NOTIFICATION',
-        'RISK_ALERT',
-        'ELIZAOS_NOTIFICATION',
-        'SYNC_STATUS',
         'COMMAND_RESPONSE',
         'KNOWLEDGE_RESPONSE'
       ];
       
       messageTypes.forEach(type => {
-        socketInstance.on(type, (data) => {
-          const message: SocketMessage = {
-            type,
-            data,
-            timestamp: new Date().toISOString(),
-          };
+        socketInstance.on(type, (message: any) => {
+          // Update all messages
+          setMessages((prev: any[]) => [...prev, { ...message, receivedAt: new Date().toISOString() }]);
           
-          // Update messages state
-          setMessages(prev => [...prev.slice(-99), message]);
-          
-          // Update latest message for the specific type
-          setLatestMessages(prev => ({
+          // Also store the latest message of each type
+          setLatestMessages((prev: any) => ({
             ...prev,
-            [type]: message,
+            [type]: message
           }));
-          
-          // Update stats
-          setStats(prev => ({
-            ...prev,
-            messagesReceived: prev.messagesReceived + 1,
-          }));
-          
-          // Update last activity
-          setLastActivity(new Date());
-          
-          if (enableLogging) {
-            console.log(`Socket.io ${type} received:`, data);
-          }
         });
       });
       
-      // Store socket instance
-      socketRef.current = socketInstance;
       setSocket(socketInstance);
       
-      // Connect if autoConnect is true
-      if (autoConnect) {
-        socketInstance.connect();
-      }
-      
-      return socketInstance;
+      return () => {
+        messageTypes.forEach(type => {
+          socketInstance.off(type);
+        });
+        socketInstance.off('connect');
+        socketInstance.off('disconnect');
+        socketInstance.off('connect_error');
+        socketInstance.disconnect();
+      };
     } catch (error) {
-      console.error('Error creating Socket.io connection:', error);
-      setConnectionStatus('error');
-      
-      toast({
-        title: "Connection Error",
-        description: "Failed to initialize socket connection. Please try again later.",
-        variant: "destructive",
-      });
-      
-      return null;
+      console.error("Error initializing socket:", error);
+      return () => {};
     }
-  }, [getSocketUrl, supabase, toast, subscribedRooms, enableLogging, autoConnect]);
+  }, [socketUrl, farmId, userId]);
   
-  // Initialize connection when component mounts
-  useEffect(() => {
-    connectSocket();
-    
-    // Cleanup on unmount
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
-      }
-    };
-  }, [connectSocket]);
+  // Send message to the server
+  const send = (event: string, data: any) => {
+    if (socket && isConnected) {
+      socket.emit(event, data);
+    } else {
+      console.error('Cannot send message: socket not connected');
+    }
+  };
   
   // Subscribe to a room
-  const subscribe = useCallback((room: string) => {
-    if (!socketRef.current || !isConnected) {
-      // Store for when connection is established
-      setSubscribedRooms(prev => {
-        if (prev.includes(room)) return prev;
-        return [...prev, room];
-      });
-      return;
+  const subscribe = (room: string) => {
+    if (socket && isConnected) {
+      console.log(`Joining room: ${room}`);
+      socket.emit('join', room);
     }
-    
-    socketRef.current.emit('join', room);
-    
-    setSubscribedRooms(prev => {
-      if (prev.includes(room)) return prev;
-      return [...prev, room];
-    });
-    
-    if (enableLogging) {
-      console.log(`Subscribed to room: ${room}`);
-    }
-  }, [isConnected, enableLogging]);
+  };
   
   // Unsubscribe from a room
-  const unsubscribe = useCallback((room: string) => {
-    if (!socketRef.current || !isConnected) {
-      setSubscribedRooms(prev => prev.filter(r => r !== room));
-      return;
+  const unsubscribe = (room: string) => {
+    if (socket && isConnected) {
+      console.log(`Leaving room: ${room}`);
+      socket.emit('leave', room);
     }
-    
-    socketRef.current.emit('leave', room);
-    
-    setSubscribedRooms(prev => prev.filter(r => r !== room));
-    
-    if (enableLogging) {
-      console.log(`Unsubscribed from room: ${room}`);
-    }
-  }, [isConnected, enableLogging]);
-  
-  // Send message to server
-  const send = useCallback((event: string, data: any) => {
-    if (!socketRef.current || !isConnected) {
-      toast({
-        title: "Not Connected",
-        description: "Cannot send message: socket is not connected",
-      });
-      return;
-    }
-    
-    socketRef.current.emit(event, data);
-    
-    // Update stats
-    setStats(prev => ({
-      ...prev,
-      messagesSent: prev.messagesSent + 1,
-    }));
-    
-    // Update last activity
-    setLastActivity(new Date());
-    
-    if (enableLogging) {
-      console.log(`Socket.io sent ${event}:`, data);
-    }
-  }, [isConnected, toast, enableLogging]);
-  
-  // Clear message history
-  const clearMessages = useCallback(() => {
-    setMessages([]);
-    setLatestMessages({} as Record<SocketMessageType, SocketMessage | null>);
-  }, []);
-  
-  // Connect to Socket.io server
-  const connect = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.connect();
-    } else {
-      connectSocket();
-    }
-  }, [connectSocket]);
-  
-  // Disconnect from Socket.io server
-  const disconnect = useCallback(() => {
-    if (socketRef.current) {
-      socketRef.current.disconnect();
-    }
-  }, []);
-  
-  // Context value
-  const contextValue: SocketContextType = {
-    isConnected,
-    messages,
-    latestMessages,
-    clearMessages,
-    send,
-    subscribe,
-    unsubscribe,
-    connect,
-    disconnect,
-    connectionStatus,
-    subscribedRooms,
-    lastActivity,
-    socket,
-    stats,
   };
   
   return (
-    <SocketContext.Provider value={contextValue}>
+    <SocketContext.Provider 
+      value={{ 
+        socket, 
+        isConnected, 
+        messages,
+        latestMessages,
+        send,
+        subscribe,
+        unsubscribe
+      }}
+    >
       {children}
     </SocketContext.Provider>
   );
-};
-
-// Custom hook to use the socket context
-export const useSocket = () => {
-  const context = useContext(SocketContext);
-  if (context === undefined) {
-    throw new Error('useSocket must be used within a SocketProvider');
-  }
-  return context;
-};
+}

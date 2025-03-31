@@ -12,7 +12,13 @@ import {
   Settings,
   Brain,
   Repeat,
-  Bot as Bot2
+  Bot as Bot2,
+  Wallet,
+  Target,
+  Banknote,
+  Shield,
+  Briefcase,
+  Zap
 } from "lucide-react";
 
 interface DashboardLayoutProps {
@@ -32,8 +38,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <h1 className="text-xl font-bold">Trading Farm</h1>
           </div>
           
-          <nav className="p-4">
-            <ul className="space-y-2">
+          <nav className="p-4 overflow-y-auto">
+            <ul className="space-y-1">
+              {/* Main Dashboard */}
               <li>
                 <Link 
                   href="/dashboard" 
@@ -43,6 +50,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   Dashboard
                 </Link>
               </li>
+              
+              {/* Portfolio Section */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Portfolio</p>
               <li>
                 <Link 
                   href="/dashboard/farms" 
@@ -52,7 +62,57 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   Farms
                 </Link>
               </li>
-              <p className="text-xs text-muted-foreground px-4 py-2">Trading</p>
+              <li>
+                <Link 
+                  href="/dashboard/agents" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Bot className="w-5 h-5 mr-3" />
+                  Agents
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/dashboard/goals" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Target className="w-5 h-5 mr-3" />
+                  Goals
+                </Link>
+              </li>
+              
+              {/* Banking & Vault Section - New */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Banking</p>
+              <li>
+                <Link 
+                  href="/dashboard/banking" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Wallet className="w-5 h-5 mr-3" />
+                  Balances
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/dashboard/banking/vault" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Shield className="w-5 h-5 mr-3" />
+                  Vault
+                </Link>
+              </li>
+              <li>
+                <Link 
+                  href="/dashboard/banking/transactions" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Banknote className="w-5 h-5 mr-3" />
+                  Transactions
+                </Link>
+              </li>
+              
+              {/* Trading Section */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Trading</p>
               <li>
                 <Link 
                   href="/dashboard/orders" 
@@ -71,13 +131,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   Trades
                 </Link>
               </li>
+              
+              {/* Strategy Section */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Strategies</p>
               <li>
                 <Link 
                   href="/dashboard/strategies" 
                   className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
                 >
-                  <LineChart className="w-5 h-5 mr-3" />
-                  Strategies
+                  <Briefcase className="w-5 h-5 mr-3" />
+                  Strategy Library
                 </Link>
               </li>
               <li>
@@ -89,34 +152,39 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   Strategy Builder
                 </Link>
               </li>
-              <li>
-                <Link 
-                  href="/dashboard/agents" 
-                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Bot className="w-5 h-5 mr-3" />
-                  Agents
-                </Link>
-              </li>
+              
+              {/* Analytics Section */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Analytics</p>
               <li>
                 <Link 
                   href="/dashboard/analytics" 
                   className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
                 >
                   <BarChart3 className="w-5 h-5 mr-3" />
-                  Analytics
+                  Performance
                 </Link>
               </li>
               <li>
                 <Link 
-                  href="/dashboard/performance" 
+                  href="/dashboard/analytics/risk" 
                   className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
                 >
                   <LineChart className="w-5 h-5 mr-3" />
-                  Performance
+                  Risk Analysis
                 </Link>
               </li>
-              <p className="text-xs text-muted-foreground px-4 py-2">System</p>
+              
+              {/* ElizaOS Section */}
+              <p className="text-xs text-muted-foreground px-4 py-2 mt-2">AI & System</p>
+              <li>
+                <Link 
+                  href="/dashboard/elizaos/console" 
+                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Zap className="w-5 h-5 mr-3" />
+                  AI Command Center
+                </Link>
+              </li>
               <li>
                 <Link 
                   href="/dashboard/settings" 
@@ -124,15 +192,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 >
                   <Settings className="w-5 h-5 mr-3" />
                   Settings
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/dashboard/guides/eliza-integration" 
-                  className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-                >
-                  <Bot2 className="w-5 h-5 mr-3" />
-                  ElizaOS Guide
                 </Link>
               </li>
             </ul>

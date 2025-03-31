@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useSocket } from "@/providers/socket-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +67,7 @@ export default function PriceAlertSystem({ farmId }: PriceAlertSystemProps) {
   }, [messages, farmId, toast]);
 
   // Create a new price alert
-  const createAlert = () => {
+  const createAlert = useCallback(() => {
     if (!newAlertSymbol || !newAlertPrice) {
       toast({
         title: "Invalid Alert",
@@ -114,10 +114,10 @@ export default function PriceAlertSystem({ farmId }: PriceAlertSystemProps) {
     toast({
       description: `Alert created for ${newAlert.symbol}`,
     });
-  };
+  }, [alerts, newAlertSymbol, newAlertPrice, newAlertCondition, farmId, toast]);
 
   // Delete an alert
-  const deleteAlert = (id: string) => {
+  const deleteAlert = useCallback((id: string) => {
     setAlerts(alerts.filter(alert => alert.id !== id));
     
     // Notify server to remove the alert
@@ -129,10 +129,10 @@ export default function PriceAlertSystem({ farmId }: PriceAlertSystemProps) {
     toast({
       description: "Alert removed",
     });
-  };
+  }, [alerts, farmId, toast]);
 
   // Toggle an alert's active status
-  const toggleAlert = (id: string) => {
+  const toggleAlert = useCallback((id: string) => {
     setAlerts(alerts.map(alert => 
       alert.id === id 
         ? { ...alert, active: !alert.active } 
@@ -152,7 +152,7 @@ export default function PriceAlertSystem({ farmId }: PriceAlertSystemProps) {
         }
       );
     }
-  };
+  }, [alerts, farmId, send]);
 
   return (
     <div className="space-y-4">

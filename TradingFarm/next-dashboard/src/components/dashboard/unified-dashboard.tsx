@@ -9,7 +9,7 @@ import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/fixed-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import CommandConsole from '@/components/elizaos/command-console';
 import OrderUpdatesStream from '@/components/websocket/order-updates-stream';
@@ -417,178 +417,219 @@ export default function UnifiedDashboard({
     }
   };
 
+  const [activeTab, setActiveTab] = React.useState('overview');
+
   return (
-    <div className="container mx-auto p-4">
-      <div className="mb-6 flex justify-between items-center">
+    <div className="flex flex-col gap-6 p-4 md:p-8 w-full">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold">Trading Farm Dashboard</h1>
-          <p className="text-muted-foreground">Manage your trades and monitor performance</p>
-        </div>
-        
-        <div className="flex space-x-2">
-          {/* Theme toggle */}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
-          </Button>
-          
-          {/* Layout selector */}
-          {layouts.length > 0 && (
-            <Select
-              value={activeLayout?.id || ''}
-              onValueChange={(value: string) => switchLayout(value)}
-            >
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select layout" />
-              </SelectTrigger>
-              <SelectContent>
-                {layouts.map((layout: DashboardLayoutConfig) => (
-                  <SelectItem key={layout.id} value={layout.id || ''}>
-                    {layout.name}
-                    {layout.is_default && (
-                      <Badge variant="outline" className="ml-2">
-                        Default
-                      </Badge>
-                    )}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          {/* Layout actions */}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => loadLayouts()}
-            disabled={isLoading}
-            aria-label="Refresh layouts"
-          >
-            <RefreshCw className={cn("h-5 w-5", isLoading && "animate-spin")} />
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => saveLayout()}
-            disabled={isSaving}
-            aria-label="Save layout"
-          >
-            <Save className="h-5 w-5" />
-          </Button>
-          
-          <Button
-            variant="outline"
-            size="icon" 
-            onClick={() => setIsEditMode(!isEditMode)}
-            aria-label={isEditMode ? "Exit edit mode" : "Edit dashboard"}
-          >
-            <SlidersHorizontal className="h-5 w-5" />
-          </Button>
-          
-          {isEditMode && (
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button onClick={() => setShowAddWidget(true)}>
-                  <Plus className="h-5 w-5 mr-2" />
-                  Add Widget
-                </Button>
-              </DialogTrigger>
-              {showAddWidget && (
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Add Widget</DialogTitle>
-                    <DialogDescription>
-                      Choose a widget to add to your dashboard
-                    </DialogDescription>
-                  </DialogHeader>
-                  
-                  <div className="grid grid-cols-2 gap-3 py-4">
-                    {(Object.keys(getWidgetTitle({} as WidgetType)) as WidgetType[]).map((type) => (
-                      <Button
-                        key={type}
-                        variant="outline"
-                        className="flex flex-col items-center justify-center p-4 h-auto space-y-2 hover:bg-accent"
-                        onClick={() => addWidget(type)}
-                      >
-                        <div className="flex-none">{getWidgetIcon(type)}</div>
-                        <div className="text-sm font-medium">{getWidgetTitle(type)}</div>
-                        <p className="text-xs text-muted-foreground">{getWidgetDescription(type)}</p>
-                      </Button>
-                    ))}
-                  </div>
-                  
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowAddWidget(false)}>
-                      Cancel
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              )}
-            </Dialog>
-          )}
-        </div>
-      </div>
-      
-      {isConnected ? (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          {widgets.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed">
-              <div className="mb-4 opacity-50">
-                <LayoutGrid className="h-12 w-12" />
-              </div>
-              <h3 className="text-lg font-medium mb-2">No widgets added</h3>
-              <p className="text-muted-foreground mb-4">
-                Your dashboard is empty. Add widgets to start monitoring your farm.
-              </p>
-              {isEditMode ? (
-                <Button onClick={() => setShowAddWidget(true)}>
-                  <Plus className="h-5 w-5 mr-2" />
-                  Add Your First Widget
-                </Button>
-              ) : (
-                <Button onClick={() => setIsEditMode(true)}>
-                  <SlidersHorizontal className="h-5 w-5 mr-2" />
-                  Enter Edit Mode
-                </Button>
-              )}
-            </div>
-          ) : (
-            <SortableContext items={widgets.map((w: Widget) => w.id)} strategy={rectSortingStrategy}>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {widgets.map((widget: Widget) => (
-                  <WidgetContainer
-                    key={widget.id}
-                    id={widget.id}
-                    title={widget.title}
-                    onRemove={isEditMode ? () => removeWidget(widget.id) : undefined}
-                  >
-                    {renderWidget(widget)}
-                  </WidgetContainer>
-                ))}
-              </div>
-            </SortableContext>
-          )}
-        </DndContext>
-      ) : (
-        <div className="flex flex-col items-center justify-center p-12 text-center border rounded-lg border-dashed">
-          <div className="mb-4 text-yellow-500">
-            <RefreshCw className="h-12 w-12 animate-spin" />
-          </div>
-          <h3 className="text-lg font-medium mb-2">Connecting to server...</h3>
           <p className="text-muted-foreground">
-            Please wait while we establish a connection to the trading server.
+            {isConnected ? (
+              <span className="text-green-500 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                Connected - Real-time updates active
+              </span>
+            ) : (
+              <span className="text-red-500 flex items-center gap-1">
+                <span className="inline-block w-2 h-2 rounded-full bg-red-500"></span>
+                Disconnected - Reconnecting...
+              </span>
+            )}
           </p>
         </div>
-      )}
+        
+        <div className="flex items-center gap-4">
+          <span className="text-sm text-muted-foreground">Last updated: {new Date().toLocaleTimeString()}</span>
+        </div>
+      </div>
+
+      <Tabs 
+        defaultValue="overview" 
+        value={activeTab}
+        onValueChange={setActiveTab}
+        className="w-full"
+      >
+        <TabsList className="grid grid-cols-4 sm:grid-cols-4 w-full md:w-auto">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="trading">Trading</TabsTrigger>
+          <TabsTrigger value="risk">Risk</TabsTrigger>
+          <TabsTrigger value="elizaos">ElizaOS</TabsTrigger>
+        </TabsList>
+        
+        <div className="mt-6">
+          <TabsContent value="overview" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Main dashboard area */}
+              <div className="col-span-1 md:col-span-2 space-y-6">
+                {/* Performance metrics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div className="flex flex-col">
+                    <span className="text-sm text-muted-foreground">Total Assets</span>
+                    <span className="text-2xl font-bold">$123,456</span>
+                    <span className="text-xs text-green-500">+2.5% today</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm text-muted-foreground">Daily P&L</span>
+                    <span className="text-2xl font-bold">$1,234</span>
+                    <span className="text-xs text-green-500">+3.2%</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm text-muted-foreground">Open Positions</span>
+                    <span className="text-2xl font-bold">12</span>
+                    <span className="text-xs text-muted-foreground">4 profitable</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-sm text-muted-foreground">Win Rate</span>
+                    <span className="text-2xl font-bold">68%</span>
+                    <span className="text-xs text-muted-foreground">Last 30 days</span>
+                  </div>
+                </div>
+                
+                {/* Recent activity */}
+                <OrderUpdatesStream limit={5} />
+                
+                {/* Command console in overview for quick access */}
+                <CommandConsole farmId={farmId} height="compact" />
+              </div>
+              
+              {/* Sidebar with notifications and alerts */}
+              <div className="col-span-1 space-y-6">
+                <div>
+                  <div className="text-sm text-muted-foreground">Notifications</div>
+                  <ExecutionNotifications limit={3} />
+                </div>
+                
+                <div>
+                  <div className="text-sm text-muted-foreground">Price Alerts</div>
+                  <PriceAlertSystem limit={3} />
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="trading" className="space-y-6">
+            <div className="grid grid-cols-1 gap-6">
+              <div>
+                <div className="text-sm text-muted-foreground">Active Trades</div>
+                <div className="text-center p-8 text-muted-foreground">
+                  Active trades will appear here
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-sm text-muted-foreground">Order Book</div>
+                <OrderUpdatesStream limit={10} />
+              </div>
+              
+              <div>
+                <div className="text-sm text-muted-foreground">Trade History</div>
+                <div className="text-center p-8 text-muted-foreground">
+                  Trade history will appear here
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="risk" className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <RiskMetricsCard title="Position Risk" metrics={[
+                { name: 'VaR (95%)', value: '$2,345.00', status: 'normal' },
+                { name: 'Max Drawdown', value: '12.4%', status: 'warning' },
+                { name: 'Sharpe Ratio', value: '1.8', status: 'good' },
+                { name: 'Leverage', value: '2.3x', status: 'normal' }
+              ]} />
+              
+              <RiskMetricsCard title="Exposure Analysis" metrics={[
+                { name: 'BTC Exposure', value: '32%', status: 'warning' },
+                { name: 'ETH Exposure', value: '28%', status: 'normal' },
+                { name: 'USDT Balance', value: '$45,678', status: 'good' },
+                { name: 'Margin Level', value: '76%', status: 'normal' }
+              ]} />
+              
+              <RiskMetricsCard title="Exchange Risk" metrics={[
+                { name: 'Binance', value: '42%', status: 'normal' },
+                { name: 'FTX', value: '0%', status: 'danger' },
+                { name: 'Kraken', value: '35%', status: 'normal' },
+                { name: 'Coinbase', value: '23%', status: 'normal' }
+              ]} />
+              
+              <RiskMetricsCard title="Correlation Analysis" metrics={[
+                { name: 'Internal Correlation', value: '0.32', status: 'good' },
+                { name: 'Market Correlation', value: '0.68', status: 'warning' },
+                { name: 'SPY Correlation', value: '0.21', status: 'good' },
+                { name: 'Volatility Index', value: '0.45', status: 'normal' }
+              ]} />
+            </div>
+            
+            <div>
+              <div className="text-sm text-muted-foreground">Risk Alerts</div>
+              <div className="text-center p-8 text-muted-foreground">
+                Risk alerts will appear here
+              </div>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="elizaos" className="space-y-6">
+            <div className="min-h-[600px]">
+              <CommandConsole farmId={farmId} height="full" />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <div className="text-sm text-muted-foreground">Knowledge Base</div>
+                <div className="flex flex-col gap-4">
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-medium">Risk Management Strategy</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Position sizing and hedging techniques for volatile markets
+                    </p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-medium">Market Analysis Framework</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Technical and fundamental analysis methodology for crypto assets
+                    </p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-medium">Arbitrage Opportunity Detection</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Cross-exchange price differentials and execution strategies
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-sm text-muted-foreground">AI Actions</div>
+                <div className="flex flex-col gap-2">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Risk rebalancing</span>
+                      <span className="text-xs text-muted-foreground">2:34 PM</span>
+                    </div>
+                    <p className="text-sm">Adjusted BTC position to maintain risk parameters</p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Market analysis</span>
+                      <span className="text-xs text-muted-foreground">1:15 PM</span>
+                    </div>
+                    <p className="text-sm">Completed sentiment analysis of recent market developments</p>
+                  </div>
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="flex justify-between">
+                      <span className="font-medium">Alert configuration</span>
+                      <span className="text-xs text-muted-foreground">11:42 AM</span>
+                    </div>
+                    <p className="text-sm">Updated price alerts based on volatility analysis</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </TabsContent>
+        </div>
+      </Tabs>
     </div>
   );
 }
