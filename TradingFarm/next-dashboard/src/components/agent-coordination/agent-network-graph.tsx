@@ -29,6 +29,8 @@ interface AgentNetworkGraphProps {
   height?: number;
   width?: number;
   realTimeUpdates?: boolean;
+  // Allow directly passing agents for testing or static displays
+  agents?: Agent[];
 }
 
 // Generate a deterministic color based on role
@@ -82,16 +84,143 @@ const getAgentStatus = (agent: any): 'online' | 'offline' | 'busy' => {
   return 'offline';
 };
 
+// Generate relationships between agents based on communication patterns
+const generateRelationships = (agents: any[], messages: any[]) => {
+  // Map to track message counts between agents
+  const communicationMap = new Map<string, Map<string, { count: number, last: number }>>();
+  
+  // Initialize the communication map for all agents
+  agents.forEach(sourceAgent => {
+    const sourceId = sourceAgent.id.toString();
+    communicationMap.set(sourceId, new Map());
+    
+    agents.forEach(targetAgent => {
+      const targetId = targetAgent.id.toString();
+      if (sourceId !== targetId) {
+        communicationMap.get(sourceId)?.set(targetId, { count: 0, last: 0 });
+      }
+    });
+  });
+  
+  // Process messages to count communications
+  messages.forEach(message => {
+    const sourceId = message.sender_id?.toString();
+    const targetId = message.receiver_id?.toString();
+    
+    if (sourceId && targetId && sourceId !== targetId) {
+      const sourceCommunications = communicationMap.get(sourceId);
+      if (sourceCommunications) {
+        const existing = sourceCommunications.get(targetId);
+        if (existing) {
+          sourceCommunications.set(targetId, { 
+            count: existing.count + 1, 
+            last: Math.max(existing.last, new Date(message.created_at).getTime()) 
+          });
+        } else {
+          sourceCommunications.set(targetId, { 
+            count: 1, 
+            last: new Date(message.created_at).getTime() 
+          });
+        }
+      }
+    }
+  });
+  
+  // Convert the map to an array of relationships
+  const relationships: AgentRelationship[] = [];
+  let maxMessageCount = 1; // Avoid division by zero
+  
+  communicationMap.forEach((targetMap, sourceId) => {
+    targetMap.forEach((value, targetId) => {
+      if (value.count > 0) {
+        relationships.push({
+          source: sourceId,
+          target: targetId,
+          messageCount: value.count,
+          lastCommunication: value.last,
+          strength: 0 // Will be normalized later
+        });
+        
+        maxMessageCount = Math.max(maxMessageCount, value.count);
+      }
+    });
+  });
+  
+  // Normalize relationship strengths
+  relationships.forEach(relationship => {
+    // Scale between 0.1 and 1 based on message count
+    const normalizedStrength = 0.1 + (relationship.messageCount / Math.max(1, maxMessageCount)) * 0.9;
+    relationship.strength = normalizedStrength;
+  });
+  
+  return relationships;
+};
+
+// Generate mock relationships between agents for visualization
+// This is mainly used for testing or when no relationship data is available
+const generateMockRelationships = (agents: Agent[]): AgentRelationship[] => {
+  const relationships: AgentRelationship[] = [];
+  
+  // Create a hierarchical structure where coordinators connect to everything
+  // and other roles have specific connection patterns
+  agents.forEach(sourceAgent => {
+    if (sourceAgent.role === AgentRole.COORDINATOR) {
+      // Coordinators connect to everyone
+      agents
+        .filter(a => a.id !== sourceAgent.id)
+        .forEach(targetAgent => {
+          relationships.push({
+            source: sourceAgent.id,
+            target: targetAgent.id,
+            strength: 0.8,
+            messageCount: 10,
+            lastCommunication: Date.now()
+          });
+        });
+    } else if (sourceAgent.role === AgentRole.EXECUTOR) {
+      // Executors connect to analyzers and risk managers
+      agents
+        .filter(a => (a.role === AgentRole.ANALYZER || a.role === AgentRole.RISK_MANAGER) && a.id !== sourceAgent.id)
+        .forEach(targetAgent => {
+          relationships.push({
+            source: sourceAgent.id,
+            target: targetAgent.id,
+            strength: 0.5,
+            messageCount: 5,
+            lastCommunication: Date.now() - 3600000 // 1 hour ago
+          });
+        });
+    } else if (sourceAgent.role === AgentRole.ANALYZER) {
+      // Analyzers connect to risk managers
+      agents
+        .filter(a => a.role === AgentRole.RISK_MANAGER && a.id !== sourceAgent.id)
+        .forEach(targetAgent => {
+          relationships.push({
+            source: sourceAgent.id,
+            target: targetAgent.id,
+            strength: 0.6,
+            messageCount: 7,
+            lastCommunication: Date.now() - 7200000 // 2 hours ago
+          });
+        });
+    }
+    // Observers don't initiate connections but are connected to by coordinators
+  });
+  
+  return relationships;
+};
+
 const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({ 
   farmId,
   height = 400, 
   width = undefined,
-  realTimeUpdates = true
+  realTimeUpdates = true,
+  agents: passedAgents
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
-  const [loading, setLoading] = useState(true);
-  const [agents, setAgents] = useState<any[]>([]);
+  const [loading, setLoading] = useState(!passedAgents);
+  const [agents, setAgents] = useState<any[]>(passedAgents || []);
   const [relationships, setRelationships] = useState<AgentRelationship[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   
@@ -119,6 +248,13 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
   
   // Fetch agents and their relationships
   useEffect(() => {
+    // Skip fetching if agents were directly passed
+    if (passedAgents) {
+      const mockRelationships = generateMockRelationships(passedAgents);
+      setRelationships(mockRelationships);
+      return;
+    }
+  
     const fetchAgents = async () => {
       if (!farmId) return;
       
@@ -129,67 +265,49 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
         // Get all agents for the farm
         const { data: agentsData, error } = await supabase
           .from('agents')
-          .select('*')
+          .select(`
+            id,
+            name,
+            status,
+            type,
+            configuration,
+            created_at,
+            updated_at
+          `)
           .eq('farm_id', farmId);
-          
-        if (error) throw error;
+        
+        if (error) {
+          console.error('Error fetching agents:', error);
+          return;
+        }
+        
+        // Get all messages between agents in the last 24 hours
+        const oneDayAgo = new Date();
+        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+        
+        const { data: messagesData, error: messagesError } = await supabase
+          .from('agent_messages')
+          .select(`
+            id,
+            sender_id,
+            receiver_id,
+            created_at
+          `)
+          .eq('farm_id', farmId)
+          .gte('created_at', oneDayAgo.toISOString());
+        
+        if (messagesError) {
+          console.error('Error fetching agent messages:', messagesError);
+          return;
+        }
         
         setAgents(agentsData || []);
         
-        // If we have agents, get their communication relationships
-        if (agentsData && agentsData.length > 0) {
-          const agentIds = agentsData.map(a => a.id);
-          
-          // Get agent messages to build relationship strengths
-          const { data: messages, error: messagesError } = await supabase
-            .from('agent_messages')
-            .select('sender_id, recipient_id, timestamp')
-            .or(`sender_id.in.(${agentIds.join(',')}),recipient_id.in.(${agentIds.join(',')})`)
-            .order('timestamp', { ascending: false });
-            
-          if (messagesError) throw messagesError;
-          
-          // Build relationship map based on message frequency
-          const relationshipMap = new Map<string, { count: number, last: number }>();
-          
-          (messages || []).forEach(msg => {
-            if (!msg.sender_id || !msg.recipient_id) return;
-            
-            const key = [msg.sender_id, msg.recipient_id].sort().join('-');
-            const existing = relationshipMap.get(key) || { count: 0, last: 0 };
-            
-            relationshipMap.set(key, {
-              count: existing.count + 1,
-              last: Math.max(existing.last, new Date(msg.timestamp).getTime())
-            });
-          });
-          
-          // Convert to relationships array
-          const relationshipsArray: AgentRelationship[] = [];
-          
-          for (const [key, value] of relationshipMap.entries()) {
-            const [sourceId, targetId] = key.split('-');
-            
-            // Skip self-references
-            if (sourceId === targetId) continue;
-            
-            // Calculate relationship strength based on message count (normalize to 0.1-1 range)
-            const maxMessageCount = Math.max(...Array.from(relationshipMap.values()).map(v => v.count));
-            const normalizedStrength = 0.1 + (value.count / Math.max(1, maxMessageCount)) * 0.9;
-            
-            relationshipsArray.push({
-              source: sourceId,
-              target: targetId,
-              strength: normalizedStrength,
-              messageCount: value.count,
-              lastCommunication: value.last
-            });
-          }
-          
-          setRelationships(relationshipsArray);
-        }
+        // Generate relationships based on message exchanges
+        const relationshipsArray = generateRelationships(agentsData || [], messagesData || []);
+        setRelationships(relationshipsArray);
       } catch (error) {
-        console.error('Error fetching agent data:', error);
+        console.error('Error fetching agent network data:', error);
       } finally {
         setLoading(false);
       }
@@ -213,14 +331,15 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
           fetchAgents();
         })
         .subscribe();
-        
+      
       // Subscribe to new messages
       const messagesSubscription = supabase
         .channel('agent-messages')
         .on('postgres_changes', { 
           event: 'INSERT', 
           schema: 'public', 
-          table: 'agent_messages'
+          table: 'agent_messages',
+          filter: `farm_id=eq.${farmId}`
         }, () => {
           fetchAgents();
         })
@@ -231,27 +350,19 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
         supabase.removeChannel(messagesSubscription);
       };
     }
-  }, [farmId, realTimeUpdates]);
+  }, [farmId, passedAgents, realTimeUpdates]);
   
   // Set up and run the force-directed graph simulation
   useEffect(() => {
     if (!canvasRef.current || agents.length === 0) return;
     
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    // Stop any existing animation
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = 0;
+    }
     
-    const actualWidth = width || canvas.parentElement?.clientWidth || 600;
-    canvas.width = actualWidth;
-    canvas.height = height;
-    
-    // Calculate device pixel ratio for high DPI displays
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = actualWidth * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${actualWidth}px`;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
+    const actualWidth = width || canvasRef.current.clientWidth;
     
     // Create nodes from agents
     const nodes = agents.map(agent => ({
@@ -267,42 +378,56 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
       role: getAgentRole(agent)
     }));
     
-    // Create links between nodes
-    const links = relationships.map(link => {
-      const sourceIndex = nodes.findIndex(node => node.id === link.source);
-      const targetIndex = nodes.findIndex(node => node.id === link.target);
-      
-      // Skip invalid links
-      if (sourceIndex === -1 || targetIndex === -1) return null;
+    // Create links from relationships
+    const links = relationships.map(rel => {
+      const sourceIdx = nodes.findIndex(n => n.id === rel.source);
+      const targetIdx = nodes.findIndex(n => n.id === rel.target);
       
       return {
-        source: sourceIndex,
-        target: targetIndex,
-        strength: link.strength,
-        messageCount: link.messageCount
+        source: sourceIdx,
+        target: targetIdx, 
+        strength: rel.strength,
+        messageCount: rel.messageCount
       };
-    }).filter(link => link !== null) as simulationRef.current['links'];
+    }).filter(link => link.source !== -1 && link.target !== -1);
     
+    // Store the nodes and links in the ref
     simulationRef.current = { nodes, links };
     
     // Start the simulation
     startSimulation();
     
-    // Clean up
     return () => {
-      cancelAnimationFrame(animationRef.current);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = 0;
+      }
     };
   }, [agents, relationships, height, width]);
   
   const startSimulation = () => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Set canvas width
+    const actualWidth = width || canvas.clientWidth;
+    canvas.width = actualWidth;
+    
+    // Define the physics parameters
+    const damping = 0.9; // Velocity damping
+    const dt = 0.1; // Time step
+    
+    // Simulation step
     const simulate = () => {
-      if (!canvasRef.current) return;
-      
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
       if (!ctx) return;
       
-      const actualWidth = width || canvas.clientWidth;
+      // Clear the canvas
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Get the current state
       const { nodes, links } = simulationRef.current;
       
       // Apply forces
@@ -310,137 +435,136 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
       
       // Update positions
       nodes.forEach(node => {
-        node.x += node.vx;
-        node.y += node.vy;
+        node.vx *= damping;
+        node.vy *= damping;
         
-        // Damping
-        node.vx *= 0.9;
-        node.vy *= 0.9;
+        node.x += node.vx * dt;
+        node.y += node.vy * dt;
         
-        // Boundary constraints
-        if (node.x < node.radius) {
-          node.x = node.radius;
-          node.vx *= -0.5;
-        }
-        if (node.x > actualWidth - node.radius) {
-          node.x = actualWidth - node.radius;
-          node.vx *= -0.5;
-        }
-        if (node.y < node.radius) {
-          node.y = node.radius;
-          node.vy *= -0.5;
-        }
-        if (node.y > height - node.radius) {
-          node.y = height - node.radius;
-          node.vy *= -0.5;
-        }
+        // Contain within bounds
+        node.x = Math.max(node.radius, Math.min(canvas.width - node.radius, node.x));
+        node.y = Math.max(node.radius, Math.min(canvas.height - node.radius, node.y));
       });
       
-      // Clear canvas
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
-      // Draw links
+      // Render links
       links.forEach(link => {
         const source = nodes[link.source];
         const target = nodes[link.target];
         
+        // Draw links
         ctx.beginPath();
         ctx.moveTo(source.x, source.y);
         ctx.lineTo(target.x, target.y);
-        ctx.strokeStyle = `rgba(148, 163, 184, ${Math.min(1, link.strength * 0.8)})`;
-        ctx.lineWidth = link.messageCount ? Math.min(5, Math.max(1, link.messageCount / 5)) : 1;
+        
+        // Style based on strength
+        ctx.strokeStyle = `rgba(150, 150, 150, ${0.2 + link.strength * 0.3})`;
+        ctx.lineWidth = 1 + link.strength * 2;
         ctx.stroke();
         
-        // Draw message count indicator
-        if (link.messageCount > 0) {
+        // Draw message count indicator if above a threshold
+        if (link.messageCount > 2) {
           const midX = (source.x + target.x) / 2;
           const midY = (source.y + target.y) / 2;
           
-          // Only draw if messages > 1
-          if (link.messageCount > 1) {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.beginPath();
-            ctx.arc(midX, midY, 8, 0, Math.PI * 2);
-            ctx.fill();
-            
-            ctx.fillStyle = '#000';
-            ctx.font = '9px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(link.messageCount.toString(), midX, midY);
-          }
+          ctx.beginPath();
+          ctx.arc(midX, midY, 8, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
+          ctx.fill();
+          
+          ctx.font = '8px Arial';
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(link.messageCount.toString(), midX, midY);
         }
       });
       
-      // Draw nodes
+      // Render nodes
       nodes.forEach(node => {
-        // Determine if this node is hovered
-        const isHovered = node.id === hoveredNode;
-        
-        // Draw node
+        // Node circle
         ctx.beginPath();
-        ctx.arc(node.x, node.y, node.radius + (isHovered ? 3 : 0), 0, Math.PI * 2);
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        
+        // If hovered, highlight with a glow
+        if (hoveredNode === node.id) {
+          ctx.save();
+          ctx.shadowColor = node.color;
+          ctx.shadowBlur = 15;
+        }
+        
+        // Fill based on role
         ctx.fillStyle = node.color;
         ctx.fill();
         
-        // Add status indicator
+        // Status ring
         ctx.beginPath();
-        ctx.arc(node.x + node.radius * 0.7, node.y - node.radius * 0.7, node.radius * 0.35, 0, Math.PI * 2);
-        
-        switch (node.status) {
-          case 'online':
-            ctx.fillStyle = '#22c55e'; // Green
-            break;
-          case 'busy':
-            ctx.fillStyle = '#f97316'; // Orange
-            break;
-          case 'offline':
-            ctx.fillStyle = '#94a3b8'; // Gray
-            break;
-        }
-        
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
+        ctx.arc(node.x, node.y, node.radius + 3, 0, Math.PI * 2);
+        ctx.strokeStyle = node.status === 'online' 
+          ? 'rgba(34, 197, 94, 0.6)' // green
+          : node.status === 'busy' 
+            ? 'rgba(234, 179, 8, 0.6)' // yellow
+            : 'rgba(239, 68, 68, 0.6)'; // red
+        ctx.lineWidth = 2;
         ctx.stroke();
         
-        // Draw name only if hovered
-        if (isHovered) {
-          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-          const padding = 8;
+        // If hovered, show name label
+        if (hoveredNode === node.id) {
+          const padding = 6;
           const textWidth = ctx.measureText(node.name).width;
-          const boxWidth = textWidth + padding * 2;
           
-          ctx.roundRect(
-            node.x - boxWidth / 2,
-            node.y + node.radius + 5,
-            boxWidth,
-            26,
-            4
+          // Label background
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillRect(
+            node.x - textWidth / 2 - padding, 
+            node.y - node.radius - 25, 
+            textWidth + padding * 2, 
+            20
           );
-          ctx.fill();
           
-          ctx.fillStyle = '#fff';
-          ctx.font = 'bold 12px sans-serif';
+          // Label text
+          ctx.font = '12px Arial';
+          ctx.fillStyle = '#ffffff';
           ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(node.name, node.x, node.y + node.radius + 18);
+          ctx.fillText(node.name, node.x, node.y - node.radius - 15);
+          
+          ctx.restore();
         }
       });
       
+      // Schedule next frame
       animationRef.current = requestAnimationFrame(simulate);
     };
     
+    // Apply physical forces to the simulation
     const applyForces = () => {
       const { nodes, links } = simulationRef.current;
       
-      // Reset forces
-      nodes.forEach(node => {
-        node.vx = 0;
-        node.vy = 0;
+      // Apply link forces
+      links.forEach(link => {
+        const source = nodes[link.source];
+        const target = nodes[link.target];
+        
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+        
+        // Desired distance based on node sizes
+        const idealDistance = source.radius + target.radius + 50;
+        
+        // Force strength based on difference from ideal distance and link strength
+        const force = (distance - idealDistance) * 0.01 * link.strength;
+        
+        const forceX = (dx / distance) * force;
+        const forceY = (dy / distance) * force;
+        
+        source.vx += forceX;
+        source.vy += forceY;
+        target.vx -= forceX;
+        target.vy -= forceY;
       });
       
-      // Apply repulsive forces between nodes
+      // Apply repulsive forces between all nodes
       for (let i = 0; i < nodes.length; i++) {
         for (let j = i + 1; j < nodes.length; j++) {
           const nodeA = nodes[i];
@@ -448,72 +572,46 @@ const AgentNetworkGraph: React.FC<AgentNetworkGraphProps> = ({
           
           const dx = nodeB.x - nodeA.x;
           const dy = nodeB.y - nodeA.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          const distance = Math.sqrt(dx * dx + dy * dy) || 1;
           
           // Skip if too far apart
           if (distance > 200) continue;
           
-          // Calculate repulsion (inversely proportional to distance)
-          const repulsionFactor = 100 / Math.max(1, distance);
-          const normalizedDx = dx / distance;
-          const normalizedDy = dy / distance;
+          // Repulsion inversely proportional to distance
+          const force = 100 / (distance * distance);
           
-          nodeA.vx -= normalizedDx * repulsionFactor;
-          nodeA.vy -= normalizedDy * repulsionFactor;
-          nodeB.vx += normalizedDx * repulsionFactor;
-          nodeB.vy += normalizedDy * repulsionFactor;
+          const forceX = (dx / distance) * force;
+          const forceY = (dy / distance) * force;
+          
+          nodeA.vx -= forceX;
+          nodeA.vy -= forceY;
+          nodeB.vx += forceX;
+          nodeB.vy += forceY;
         }
       }
       
-      // Apply attractive forces for links
-      links.forEach(link => {
-        const sourceNode = nodes[link.source];
-        const targetNode = nodes[link.target];
-        
-        const dx = targetNode.x - sourceNode.x;
-        const dy = targetNode.y - sourceNode.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Skip if already close
-        if (distance < (sourceNode.radius + targetNode.radius + 10)) return;
-        
-        // Calculate attraction
-        const idealDistance = 100;
-        const distanceDiff = distance - idealDistance;
-        const attractionFactor = distanceDiff * link.strength * 0.05;
-        const normalizedDx = dx / distance;
-        const normalizedDy = dy / distance;
-        
-        sourceNode.vx += normalizedDx * attractionFactor;
-        sourceNode.vy += normalizedDy * attractionFactor;
-        targetNode.vx -= normalizedDx * attractionFactor;
-        targetNode.vy -= normalizedDy * attractionFactor;
-      });
-      
-      // Center attraction to prevent graph from drifting away
+      // Apply center attraction force
       const centerX = (width || 600) / 2;
       const centerY = height / 2;
       
       nodes.forEach(node => {
         const dx = centerX - node.x;
         const dy = centerY - node.y;
-        const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Only apply center gravity if far from center
-        if (distance > 100) {
-          const centerForce = 0.002;
-          node.vx += dx * centerForce;
-          node.vy += dy * centerForce;
-        }
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        if (distance === 0) return;
+        
+        // Strength decreases with node importance
+        const strength = 0.0005 * (1 - getNodeSize(node.role) / 20);
+        
+        node.vx += dx * strength;
+        node.vy += dy * strength;
       });
     };
     
-    // Start simulation
-    animate();
-    
-    function animate() {
-      simulate();
-    }
+    // Start the animation
+    animationRef.current = requestAnimationFrame(simulate);
   };
   
   // Handle canvas mouse events for interactivity

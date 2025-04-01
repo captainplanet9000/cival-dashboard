@@ -1,0 +1,66 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- You can @ files here
+- You can use markdown but dont have to
+# Cursor IDE Configuration for Trading Farm Dashboard
+
+## Project Context
+- Project Name: Trading Farm Dashboard
+- Tech Stack: Next.js, React, TypeScript, Tailwind CSS
+- Key Components: Strategy Management, Farm Management, Goal-Based Trading, ElizaOS Integration
+
+## Code Generation Settings
+- Generate comprehensive TypeScript code solutions with proper type safety
+- Use modern React patterns (hooks, functional components, context)
+- Follow shadcn/ui component design patterns 
+- Implement Tailwind CSS for all styling
+- Generate complete component implementations with proper prop typing
+
+## AI Behavior Rules
+- Prioritize componentization and modular design
+- Create reusable UI components for trading interfaces
+- Generate proper TypeScript interfaces for all data models
+- Implement proper state management patterns (useState, useContext, etc.)
+- Follow dashboard design patterns established in existing pages
+
+## Trading Farm Specific Rules
+- Implement proper MetaMask integration for wallet connections
+- Build goal-based interfaces for strategy management
+- Create data visualization components using modern chart libraries
+- Support ElizaOS natural language processing capabilities
+- Implement proper risk management controls in trading interfaces
+
+## Command Allowlist for Auto-Execution
+- npm run dev
+- npm start
+- npm test
+- npm run build
+- git status
+- git log
+- git diff
+- ls
+- dir
+- cd
+- find
+- grep
+- cat
+- echo
+
+## File Structure Understanding
+- /src/app/dashboard/* - Dashboard page components
+- /src/components/* - Reusable UI components
+- /src/lib/* - Utility functions and API clients
+- /src/styles/* - Global styles and Tailwind configuration
+
+## Design Preferences
+- Use card-based UI design with consistent styling
+- Implement dark mode support throughout all components
+- Create responsive layouts that work well on all device sizes
+- Use Lucide icons for UI elements
+- Implement proper loading states and error handling

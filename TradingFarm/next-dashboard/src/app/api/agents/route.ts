@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
+import { NextResponse, NextRequest } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server';
-import type { NextRequest } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+import { Database } from '@/types/database.types';
 
 interface AgentConfig {
   description: string;
@@ -30,6 +30,12 @@ interface AgentResult {
 // GET handler for fetching all agents
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const farmIdParam = searchParams.get('farmId') || searchParams.get('farm_id');
+    const farmId = farmIdParam ? parseInt(farmIdParam) : null;
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const offset = parseInt(searchParams.get('offset') || '0');
+    
     const supabase = await createServerClient();
     
     // Get the user ID from the authentication session
@@ -42,11 +48,6 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    // Try to get farm_id from query params
-    const { searchParams } = new URL(request.url);
-    const farmIdParam = searchParams.get('farm_id');
-    const farmId = farmIdParam ? parseInt(farmIdParam, 10) : null;
-    
     // Base query
     let query = supabase
       .from('agents')
@@ -58,11 +59,12 @@ export async function GET(request: NextRequest) {
         farm_id,
         created_at,
         updated_at,
+        configuration,
         farms (
           id,
           name
         )
-      `);
+      `, { count: 'exact' });
     
     // Filter by farm_id if provided
     if (farmId) {
@@ -72,8 +74,11 @@ export async function GET(request: NextRequest) {
       query = query
         .eq('farms.user_id', user.id);
     }
+
+    // Add pagination
+    query = query.range(offset, offset + limit - 1);
     
-    const { data: agents, error } = await query;
+    const { data: agents, error, count } = await query;
     
     if (error) {
       console.error('Error fetching agents:', error);
@@ -83,17 +88,22 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    return NextResponse.json({ agents });
+    return NextResponse.json({
+      agents,
+      total: count || (agents ? agents.length : 0),
+      limit,
+      offset,
+      hasMore: count ? offset + limit < count : false
+    });
   } catch (error) {
     console.error('Error fetching agents:', error);
     return NextResponse.json(
-      { error: 'An unexpected error occurred' },
+      { error: 'Failed to fetch agents data' },
       { status: 500 }
     );
   }
 }
 
-// POST handler for creating a new agent
 export async function POST(request: NextRequest) {
   try {
     const requestData = await request.json();
@@ -143,71 +153,35 @@ export async function POST(request: NextRequest) {
     const agentData = {
       name: requestData.name,
       farm_id: requestData.farm_id,
-      status: 'initializing',
-      type: 'eliza'
+      status: requestData.status || 'initializing',
+      type: requestData.type || 'eliza',
+      // Store all additional data in a configuration JSON object
+      // This avoids schema issues with missing columns
+      configuration: configObject
     };
-
-    console.log('Creating agent with data:', { ...agentData, configuration: configObject });
-
-    // First try: Basic insert without configuration to test schema compatibility
-    const { data: basicAgentData, error: basicError } = await supabase
+    
+    console.log('Creating agent with data:', agentData);
+    
+    // Insert agent into Supabase
+    const { data: agent, error } = await supabase
       .from('agents')
       .insert([agentData])
-      .select('id, name, farm_id, status, type')
+      .select('id, name, farm_id, status, type, configuration')
       .single();
-
-    if (basicError) {
-      console.error('Basic agent creation failed:', basicError);
-      
-      // Create a temporary agent response for UI to continue
-      const tempAgentResponse = {
-        id: Math.floor(Math.random() * 1000000), // Temporary ID
-        ...agentData,
-        configuration: configObject,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      
-      return NextResponse.json({ 
-        agent: tempAgentResponse,
-        message: 'Agent created in memory only',
-        error: 'Database insertion failed, but UI can continue with this temporary agent',
-        details: basicError.message
-      });
+    
+    if (error) {
+      console.error('Error creating agent:', error);
+      return NextResponse.json(
+        { error: `Failed to create agent: ${error.message}` },
+        { status: 500 }
+      );
     }
-
-    // Now try to update with configuration if basic insert succeeded
-    try {
-      const { error: configError } = await supabase
-        .from('agents')
-        .update({ configuration: configObject })
-        .eq('id', basicAgentData.id);
-      
-      if (configError) {
-        // Configuration column may not exist, but we still have a valid agent
-        console.warn('Failed to update agent configuration:', configError);
-        
-        // Return the created agent without configuration in database
-        return NextResponse.json({ 
-          agent: {
-            ...basicAgentData,
-            configuration: configObject // Include in API response even if not in DB
-          },
-          message: 'Agent created successfully (configuration in memory only)',
-          warning: 'Configuration not saved to database'
-        });
-      }
-    } catch (updateError) {
-      console.warn('Exception updating configuration:', updateError);
-      // Continue with the agent we created
-    }
-
-    // Success path - agent was created and possibly updated with configuration
+    
+    // Skip the agent history logging as it's causing issues
+    // We'll add this back once the database procedures are set up properly
+    
     return NextResponse.json({ 
-      agent: {
-        ...basicAgentData,
-        configuration: configObject
-      },
+      agent,
       message: 'Agent created successfully' 
     });
   } catch (error) {

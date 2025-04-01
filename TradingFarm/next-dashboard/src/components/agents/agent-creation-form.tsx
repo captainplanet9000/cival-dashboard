@@ -179,133 +179,49 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
         }
       };
       
-      console.log('Creating Eliza agent with data:', agentData);
-      
-      // First try our most direct approach - the eliza-direct endpoint
+      // First try to use the direct API endpoint to bypass schema cache issues
       try {
-        const directResponse = await fetch('/api/agents/eliza-direct', {
+        const directResponse = await fetch('/api/agents/create-direct', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(agentData),
         });
-        
-        const responseData = await directResponse.json();
         
         if (directResponse.ok) {
-          console.log('Eliza agent created successfully with direct approach:', responseData);
+          const data = await directResponse.json();
           toast({
             title: "Agent Created Successfully",
-            description: `${responseData.agent.name} has been created and is initializing.`,
+            description: `${data.agent.name} has been created and is being initialized.`,
           });
           
           if (onSuccess) {
-            onSuccess(responseData.agent);
+            onSuccess(data.agent);
           } else {
             // Navigate to the agent details page
-            router.push(`/dashboard/agents/${responseData.agent.id}`);
+            router.push(`/dashboard/agents/${data.agent.id}`);
           }
           return;
-        } else {
-          console.error(`Direct creation endpoint failed (${directResponse.status}):`, responseData.error);
         }
       } catch (directError) {
-        console.error('Direct endpoint error:', directError);
+        console.error('Direct API endpoint failed:', directError);
+        // Continue to regular API as fallback
       }
       
-      // If direct approach failed, try the specialized Eliza endpoint
-      try {
-        const elizaResponse = await fetch('/api/agents/eliza-create', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(agentData),
-        });
-        
-        const responseData = await elizaResponse.json();
-        
-        if (elizaResponse.ok) {
-          console.log('Eliza agent created successfully:', responseData);
-          toast({
-            title: "Agent Created Successfully",
-            description: `${responseData.agent.name} has been created and is initializing.`,
-          });
-          
-          if (onSuccess) {
-            onSuccess(responseData.agent);
-          } else {
-            // Navigate to the agent details page
-            router.push(`/dashboard/agents/${responseData.agent.id}`);
-          }
-          return;
-        } else {
-          console.error(`Eliza creation endpoint failed (${elizaResponse.status}):`, responseData.error);
-        }
-      } catch (elizaError) {
-        console.error('Eliza endpoint error:', elizaError);
-      }
-      
-      // Try with our fallback approaches if the Eliza-specific endpoints fail
-      const fallbackEndpoints = [
-        { name: 'basic create', url: '/api/agents/basic-create' },
-        { name: 'direct insert', url: '/api/agents/direct-insert' },
-        { name: 'custom create', url: '/api/agents/custom-create' },
-      ];
-      
-      for (const endpoint of fallbackEndpoints) {
-        try {
-          console.log(`Attempting ${endpoint.name}...`);
-          const response = await fetch(endpoint.url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(agentData),
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`${endpoint.name} succeeded:`, data);
-            
-            toast({
-              title: "Agent Created Successfully",
-              description: `${data.agent.name} has been created, but some backend features may be limited.`,
-            });
-            
-            if (onSuccess) {
-              onSuccess(data.agent);
-            } else {
-              // Navigate to the agent details page
-              router.push(`/dashboard/agents/${data.agent.id}`);
-            }
-            return;
-          } else {
-            const errorText = await response.text();
-            console.error(`${endpoint.name} failed (${response.status}):`, errorText);
-          }
-        } catch (error) {
-          console.error(`${endpoint.name} API error:`, error);
-        }
-      }
-      
-      // Last resort: original agent service
-      console.log('Attempting original agent service...');
+      // Fallback to using the agent service
       const response = await agentService.createAgent(agentData);
       
       if (response.error) {
-        console.error('Original service failed:', response.error);
         toast({
           variant: "destructive",
           title: "Agent Creation Failed",
           description: response.error,
         });
       } else if (response.data) {
-        console.log('Original service succeeded:', response.data);
         toast({
           title: "Agent Created Successfully",
-          description: `${response.data.name} has been created, but some backend features may be limited.`,
+          description: `${response.data.name} has been created and is being initialized.`,
         });
         
         if (onSuccess) {
@@ -314,13 +230,6 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
           // Navigate to the agent details page
           router.push(`/dashboard/agents/${response.data.id}`);
         }
-      } else {
-        // If all else fails, show an error
-        toast({
-          variant: "destructive",
-          title: "Agent Creation Failed",
-          description: "All creation methods failed. Please try again later.",
-        });
       }
     } catch (error) {
       console.error('Error creating agent:', error);
@@ -496,11 +405,11 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                   <FormItem>
                     <FormLabel>Farm</FormLabel>
                     <Select
-                      onValueChange={(value: string) => form.setValue('farm_id', parseInt(value))}
-                      defaultValue={form.getValues('farm_id')?.toString()}
+                      onValueChange={field.onChange}
+                      defaultValue={field.value?.toString()}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select a farm" />
                         </SelectTrigger>
                       </FormControl>
@@ -513,12 +422,23 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Select the farm where this agent will be deployed
+                      The farm this agent will be associated with
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
+            </div>
+          )}
+          
+          {/* Step 2: Strategy Configuration */}
+          {currentStep === 2 && (
+            <div className="space-y-4">
+              <div className="text-center">
+                <BarChart2 className="mx-auto h-12 w-12 text-primary" />
+                <h2 className="mt-2 text-xl font-semibold">Strategy Configuration</h2>
+                <p className="text-sm text-muted-foreground">Configure how your agent will trade</p>
+              </div>
               
               <FormField
                 control={form.control}
@@ -526,7 +446,10 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Strategy Type</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a strategy type" />
@@ -547,17 +470,6 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                   </FormItem>
                 )}
               />
-            </div>
-          )}
-          
-          {/* Step 2: Risk and Markets */}
-          {currentStep === 2 && (
-            <div className="space-y-4">
-              <div className="text-center">
-                <Globe className="mx-auto h-12 w-12 text-primary" />
-                <h2 className="mt-2 text-xl font-semibold">Markets & Risk</h2>
-                <p className="text-sm text-muted-foreground">Define where and how your agent will trade</p>
-              </div>
               
               <FormField
                 control={form.control}
@@ -565,10 +477,13 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Risk Level</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select risk level" />
+                          <SelectValue placeholder="Select a risk level" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -580,7 +495,7 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                       </SelectContent>
                     </Select>
                     <FormDescription>
-                      Set how aggressively your agent will trade
+                      The risk level affects position sizing and stop-loss settings
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -593,42 +508,42 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 render={() => (
                   <FormItem>
                     <div className="mb-4">
-                      <FormLabel className="text-base">Target Markets</FormLabel>
+                      <FormLabel>Target Markets</FormLabel>
                       <FormDescription>
-                        Select the markets this agent will trade on
+                        Select the markets this agent will trade in
                       </FormDescription>
+                      <FormMessage />
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
                       {availableMarkets.map((market: string) => (
-                        <div key={market} className="flex items-center space-x-2">
-                          <Checkbox 
-                            id={`market-${market}`}
+                        <div key={market} className="flex items-start space-x-2">
+                          <Checkbox
                             checked={isMarketSelected(market)}
                             onCheckedChange={() => handleMarketToggle(market)}
+                            id={`market-${market}`}
                           />
                           <label
                             htmlFor={`market-${market}`}
                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                           >
-                            {market}
+                            {market.toUpperCase()}
                           </label>
                         </div>
                       ))}
                     </div>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
           )}
           
-          {/* Step 3: Advanced Configuration */}
+          {/* Step 3: Advanced Settings */}
           {currentStep === 3 && (
             <div className="space-y-4">
               <div className="text-center">
                 <Activity className="mx-auto h-12 w-12 text-primary" />
-                <h2 className="mt-2 text-xl font-semibold">Trading Configuration</h2>
-                <p className="text-sm text-muted-foreground">Fine-tune your agent's trading parameters</p>
+                <h2 className="mt-2 text-xl font-semibold">Trading Parameters</h2>
+                <p className="text-sm text-muted-foreground">Configure additional trading parameters</p>
               </div>
               
               <FormField
@@ -637,24 +552,24 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Capital Allocation (%)</FormLabel>
-                    <FormControl>
-                      <div className="space-y-2">
+                    <div className="space-y-2">
+                      <FormControl>
                         <Slider
                           min={1}
                           max={100}
                           step={1}
-                          defaultValue={[field.value || 10]}
-                          onValueChange={(vals) => field.onChange(vals[0])}
+                          defaultValue={[field.value]}
+                          onValueChange={(value: number[]) => field.onChange(value[0])}
                         />
-                        <div className="flex justify-between">
-                          <span className="text-xs text-muted-foreground">1%</span>
-                          <span className="text-xs font-medium">{field.value || 10}%</span>
-                          <span className="text-xs text-muted-foreground">100%</span>
-                        </div>
+                      </FormControl>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Conservative (1%)</span>
+                        <span>Current: {field.value}%</span>
+                        <span>Aggressive (100%)</span>
                       </div>
-                    </FormControl>
+                    </div>
                     <FormDescription>
-                      Percentage of farm capital allocated to this agent
+                      Percentage of available capital allocated to this agent
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -667,24 +582,24 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Leverage</FormLabel>
-                    <FormControl>
-                      <div className="space-y-2">
+                    <div className="space-y-2">
+                      <FormControl>
                         <Slider
                           min={1}
                           max={10}
                           step={1}
-                          defaultValue={[field.value || 1]}
-                          onValueChange={(vals) => field.onChange(vals[0])}
+                          defaultValue={[field.value]}
+                          onValueChange={(value: number[]) => field.onChange(value[0])}
                         />
-                        <div className="flex justify-between">
-                          <span className="text-xs text-muted-foreground">1x</span>
-                          <span className="text-xs font-medium">{field.value || 1}x</span>
-                          <span className="text-xs text-muted-foreground">10x</span>
-                        </div>
+                      </FormControl>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>1x</span>
+                        <span>Current: {field.value}x</span>
+                        <span>10x</span>
                       </div>
-                    </FormControl>
+                    </div>
                     <FormDescription>
-                      Maximum leverage the agent can use
+                      Maximum leverage that can be applied to positions
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -696,18 +611,35 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 name="max_drawdown_percent"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Max Drawdown (%)</FormLabel>
+                    <FormLabel>Maximum Drawdown (%)</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         min={1}
                         max={100}
+                        placeholder="20"
                         {...field}
-                        placeholder="25"
                       />
                     </FormControl>
                     <FormDescription>
-                      Maximum allowed drawdown before agent stops trading
+                      Agent will stop trading if drawdown exceeds this percentage
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              <FormField
+                control={form.control}
+                name="exchange_account_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Exchange Account ID (Optional)</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter exchange account ID" {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      Specify a particular exchange account to use, if any
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -718,57 +650,92 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                 control={form.control}
                 name="auto_start"
                 render={({ field }) => (
-                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5">
-                      <FormLabel className="text-base">Auto-start Agent</FormLabel>
-                      <FormDescription>
-                        Start trading immediately after creation
-                      </FormDescription>
-                    </div>
+                  <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
                     <FormControl>
-                      <Switch
+                      <Checkbox
                         checked={field.value}
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Auto-start trading</FormLabel>
+                      <FormDescription>
+                        If checked, the agent will start trading immediately after creation
+                      </FormDescription>
+                    </div>
                   </FormItem>
                 )}
               />
+              
+              <div className="rounded-md border p-4">
+                <div className="flex items-center justify-between pb-4">
+                  <div className="space-y-0.5">
+                    <h3 className="text-base font-semibold">Advanced Configuration</h3>
+                    <p className="text-sm text-muted-foreground">
+                      JSON configuration for advanced users
+                    </p>
+                  </div>
+                  <Switch
+                    checked={form.getValues('use_advanced_config')}
+                    onCheckedChange={handleAdvancedConfigToggle}
+                  />
+                </div>
+                
+                {form.getValues('use_advanced_config') && (
+                  <div className="space-y-4 pt-2">
+                    <Textarea
+                      id="json-config"
+                      placeholder={`{\n  "example_param": "value",\n  "numeric_param": 123\n}`}
+                      className="font-mono text-sm h-40"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        const textarea = document.getElementById('json-config') as HTMLTextAreaElement;
+                        if (textarea) {
+                          applyJsonConfig(textarea.value);
+                        }
+                      }}
+                    >
+                      Apply Configuration
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           
-          {/* Form navigation */}
+          {/* Navigation and submit buttons */}
           <div className="flex justify-between pt-4">
             {currentStep > 1 ? (
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={prevStep}
-                disabled={isCreating}
               >
-                Back
+                Previous
               </Button>
             ) : (
-              <Button 
-                type="button" 
-                variant="outline" 
+              <Button
+                type="button"
+                variant="outline"
                 onClick={onCancel}
-                disabled={isCreating}
               >
                 Cancel
               </Button>
             )}
             
             {currentStep < 3 ? (
-              <Button 
-                type="button" 
+              <Button
+                type="button"
                 onClick={nextStep}
-                disabled={isCreating}
               >
-                Next <ChevronRight className="ml-2 h-4 w-4" />
+                Next
+                <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <Button 
+              <Button
                 type="submit"
                 disabled={isCreating}
               >
@@ -778,26 +745,10 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
                     Creating...
                   </>
                 ) : (
-                  <>Create Agent</>
+                  'Create Agent'
                 )}
               </Button>
             )}
-          </div>
-          
-          {/* Step indicator */}
-          <div className="flex justify-center gap-2 pt-2">
-            {[1, 2, 3].map((step) => (
-              <div 
-                key={step}
-                className={`w-3 h-3 rounded-full ${
-                  currentStep === step 
-                    ? 'bg-primary' 
-                    : currentStep > step 
-                      ? 'bg-primary/60' 
-                      : 'bg-muted'
-                }`}
-              />
-            ))}
           </div>
         </form>
       </Form>
