@@ -37,15 +37,8 @@ import ElizaChatInterface from '@/components/eliza/eliza-chat-interface'
 import BalancesPanel from '@/components/banking/BalancesPanel'
 import FundingModal from '@/components/banking/FundingModal'
 import TransactionsPanel from '@/components/banking/TransactionsPanel'
-import FundAllocationsPanel from '@/components/banking/FundAllocationsPanel'
 import VaultInfoPanel from '@/components/banking/VaultInfoPanel'
-
-// Import new banking components
-import { TransactionHistory } from '@/components/banking/transaction-history'
-import { WithdrawalForm } from '@/components/banking/withdrawal-form'
-import { DepositAddress } from '@/components/banking/deposit-address'
-import { BalanceOverview } from '@/components/banking/balance-overview'
-import { VaultTransaction } from '@/services/vault-service'
+import FundAllocationsPanel from '@/components/banking/FundAllocationsPanel'
 
 export default function BankingPage() {
   const [activeTab, setActiveTab] = React.useState('wallets')
@@ -57,7 +50,7 @@ export default function BankingPage() {
   const [showDepositDialog, setShowDepositDialog] = React.useState(false)
   const [showWithdrawDialog, setShowWithdrawDialog] = React.useState(false)
   const [selectedCurrency, setSelectedCurrency] = React.useState<string | undefined>()
-  const [selectedTransaction, setSelectedTransaction] = React.useState<VaultTransaction | null>(null)
+  const [selectedTransaction, setSelectedTransaction] = React.useState<any | null>(null)
   const supabase = createBrowserClient()
   const { toast } = useToast()
   const searchParams = useSearchParams()
@@ -119,7 +112,7 @@ export default function BankingPage() {
     setShowWithdrawDialog(true)
   }
 
-  const handleTransactionSelect = (transaction: VaultTransaction) => {
+  const handleTransactionSelect = (transaction: any) => {
     setSelectedTransaction(transaction)
   }
 
@@ -147,7 +140,9 @@ export default function BankingPage() {
                   Add funds to your Trading Farm account
                 </DialogDescription>
               </DialogHeader>
-              <DepositAddress onSuccess={() => setShowDepositDialog(false)} />
+              <div className="p-12 flex justify-center">
+                <p>Deposit functionality coming soon!</p>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -165,7 +160,9 @@ export default function BankingPage() {
                   Withdraw funds from your Trading Farm account
                 </DialogDescription>
               </DialogHeader>
-              <WithdrawalForm onSuccess={() => setShowWithdrawDialog(false)} />
+              <div className="p-12 flex justify-center">
+                <p>Withdrawal functionality coming soon!</p>
+              </div>
             </DialogContent>
           </Dialog>
 
@@ -309,10 +306,16 @@ export default function BankingPage() {
           {/* New Advanced Banking Interface */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <BalanceOverview 
-                onDeposit={handleOpenDeposit} 
-                onWithdraw={handleOpenWithdraw} 
-              />
+              <div className="dashboard-card">
+                <h2 className="text-xl font-bold mb-4 flex items-center">
+                  <DollarSign className="mr-2 h-5 w-5" />
+                  Balance Overview
+                </h2>
+                <div className="text-center p-12 text-muted-foreground">
+                  <DollarSign className="mx-auto h-16 w-16 mb-4 opacity-20" />
+                  <p>Balance overview coming soon!</p>
+                </div>
+              </div>
             </div>
             <div>
               <Card className="h-full overflow-hidden">
@@ -331,7 +334,16 @@ export default function BankingPage() {
           </div>
           
           <div className="pt-4">
-            <TransactionHistory onTransactionSelect={handleTransactionSelect} />
+            <div className="dashboard-card">
+              <h2 className="text-xl font-bold mb-4 flex items-center">
+                <Clock className="mr-2 h-5 w-5" />
+                Transaction History
+              </h2>
+              <div className="text-center p-12 text-muted-foreground">
+                <Clock className="mx-auto h-16 w-16 mb-4 opacity-20" />
+                <p>Transaction history coming soon!</p>
+              </div>
+            </div>
           </div>
         </div>
       )}
