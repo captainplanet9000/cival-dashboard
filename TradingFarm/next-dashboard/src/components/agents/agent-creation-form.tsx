@@ -179,9 +179,9 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
         }
       };
       
-      // First try to use the direct API endpoint to bypass schema cache issues
+      // Try the custom API endpoint that handles schema cache issues
       try {
-        const directResponse = await fetch('/api/agents/create-direct', {
+        const customResponse = await fetch('/api/agents/custom-create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -189,8 +189,8 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
           body: JSON.stringify(agentData),
         });
         
-        if (directResponse.ok) {
-          const data = await directResponse.json();
+        if (customResponse.ok) {
+          const data = await customResponse.json();
           toast({
             title: "Agent Created Successfully",
             description: `${data.agent.name} has been created and is being initialized.`,
@@ -203,13 +203,15 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
             router.push(`/dashboard/agents/${data.agent.id}`);
           }
           return;
+        } else {
+          console.error('Custom API failed with status:', customResponse.status);
         }
-      } catch (directError) {
-        console.error('Direct API endpoint failed:', directError);
-        // Continue to regular API as fallback
+      } catch (customError) {
+        console.error('Custom API endpoint failed:', customError);
+        // Fall back to regular API
       }
       
-      // Fallback to using the agent service
+      // Fall back to using the regular agent creation endpoint if the custom one fails
       const response = await agentService.createAgent(agentData);
       
       if (response.error) {
