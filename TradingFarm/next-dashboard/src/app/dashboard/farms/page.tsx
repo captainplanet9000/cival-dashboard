@@ -2,16 +2,74 @@
 
 import React from "react";
 import { farmService, Farm } from "@/services/farm-service";
+import { createBrowserClient } from "@/utils/supabase/client";
 import Link from "next/link";
+import { 
+  AlertCircle, 
+  Building2, 
+  CheckCircle, 
+  Bot, 
+  Layers, 
+  Settings,
+  PlusCircle,
+  Search,
+  RefreshCcw,
+  BarChart
+} from "lucide-react";
+
+// Import Shadcn components
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/components/ui/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
+import { FarmCreationDialog } from "@/components/farms/farm-creation-dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 
 export default function FarmsPage() {
   const [farms, setFarms] = React.useState<Farm[]>([]);
+  const [filteredFarms, setFilteredFarms] = React.useState<Farm[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = React.useState<string>("");
+  const { toast } = useToast();
+  const supabase = createBrowserClient();
 
+  // Setup real-time subscription for farm updates
   React.useEffect(() => {
-    async function fetchFarms() {
-      setLoading(true);
+    const setupRealtimeSubscription = async () => {
+      try {
+        const subscription = supabase
+          .channel('farms-channel')
+          .on('postgres_changes', { 
+            event: '*', 
+            schema: 'public', 
+            table: 'farms' 
+          }, (payload) => {
+            fetchFarms();
+          })
+          .subscribe();
+
+        return () => {
+          supabase.removeChannel(subscription);
+        };
+      } catch (error) {
+        console.error('Error setting up realtime subscription:', error);
+      }
+    };
+
+    setupRealtimeSubscription();
+  }, [supabase]);
+
+  // Fetch farms data
+  const fetchFarms = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
       const response = await farmService.getFarms();
       
       if (response.error) {
@@ -19,101 +77,275 @@ export default function FarmsPage() {
       } else if (response.data) {
         setFarms(response.data);
       }
-      
+    } catch (error) {
+      console.error('Error fetching farms:', error);
+      setError('Failed to load farms. Please try again later.');
+    } finally {
       setLoading(false);
     }
-
-    fetchFarms();
   }, []);
 
-  if (loading) {
+  React.useEffect(() => {
+    fetchFarms();
+  }, [fetchFarms]);
+
+  // Apply search filter
+  React.useEffect(() => {
+    let result = [...farms];
+    
+    // Apply search query
+    if (searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((farm: Farm) => 
+        farm.name.toLowerCase().includes(query) || 
+        (farm.description && farm.description.toLowerCase().includes(query))
+      );
+    }
+    
+    setFilteredFarms(result);
+  }, [farms, searchQuery]);
+
+  // Handle farm creation success
+  const handleFarmCreated = (newFarm: Farm) => {
+    setFarms((prev: Farm[]) => [newFarm, ...prev]);
+    toast({
+      title: "Farm Created",
+      description: `${newFarm.name} has been created successfully`,
+    });
+  };
+
+  // Handle farm deletion
+  const handleDeleteFarm = async (farmId: number) => {
+    if (!confirm("Are you sure you want to delete this farm? All associated agents will also be deleted. This action cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const response = await farmService.deleteFarm(farmId);
+      
+      if (response.error) {
+        toast({
+          variant: "destructive",
+          title: "Delete Failed",
+          description: response.error,
+        });
+      } else {
+        toast({
+          title: "Farm Deleted",
+          description: "The farm has been successfully deleted",
+        });
+        
+        // Remove farm from the local state
+        setFarms(farms.filter((farm: Farm) => farm.id !== farmId));
+      }
+    } catch (error) {
+      console.error('Error deleting farm:', error);
+      toast({
+        variant: "destructive",
+        title: "Delete Failed",
+        description: "An unexpected error occurred",
+      });
+    }
+  };
+
+  // Loading state
+  if (loading && farms.length === 0) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center">
-          <div className="h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          <p className="mt-4 text-gray-600">Loading farms...</p>
+      <div className="container mx-auto p-6 space-y-6">
+        <div className="flex justify-between items-center">
+          <div>
+            <Skeleton className="h-8 w-40 mb-2" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {Array(6).fill(0).map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-6 w-40 mb-2" />
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Skeleton className="h-9 w-full" />
+              </CardFooter>
+            </Card>
+          ))}
         </div>
       </div>
     );
   }
 
+  // Error state
   if (error) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="rounded-lg bg-red-50 p-6 text-center">
-          <h3 className="mb-2 text-lg font-semibold text-red-800">Error Loading Farms</h3>
-          <p className="text-red-600">{error}</p>
+      <div className="container mx-auto p-6">
+        <div className="flex flex-col items-center justify-center p-6 bg-red-50 rounded-lg border border-red-200">
+          <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+          <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Farms</h3>
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button variant="outline" onClick={fetchFarms}>
+            <RefreshCcw className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between">
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Trading Farms</h1>
-          <p className="text-gray-500">Manage your trading farms and their configurations</p>
+          <h1 className="text-2xl font-bold">Trading Farms</h1>
+          <p className="text-muted-foreground">
+            Manage your trading farms and their configurations
+          </p>
         </div>
-        <button className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-          + Create Farm
-        </button>
+        <FarmCreationDialog onSuccess={handleFarmCreated} />
       </div>
 
-      {/* Farms grid */}
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {farms.map((farm: Farm) => (
-          <Link
-            href={`/dashboard/farms/${farm.id}`}
-            key={farm.id}
-            className="block rounded-lg border border-gray-200 bg-white p-6 transition-shadow hover:shadow-md"
-          >
-            <div className="mb-4">
-              <div className="mb-1 flex items-center justify-between">
-                <h3 className="text-lg font-medium text-gray-900">{farm.name}</h3>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${farm.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
-                  {farm.is_active ? 'Active' : 'Inactive'}
-                </span>
-              </div>
-              <p className="text-sm text-gray-500">{farm.description || 'No description'}</p>
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search farms..."
+                className="pl-8"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-md bg-gray-50 p-2 text-center">
-                <p className="text-xs text-gray-500">Agents</p>
-                <p className="text-lg font-semibold text-gray-900">{farm.agents_count || 0}</p>
-              </div>
-              <div className="rounded-md bg-gray-50 p-2 text-center">
-                <p className="text-xs text-gray-500">Strategies</p>
-                <p className="text-lg font-semibold text-gray-900">{farm.strategies_count || 0}</p>
-              </div>
-            </div>
-            
-            <div className="mt-4">
-              <div className="h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
-                <div 
-                  className="h-full rounded-full bg-blue-500" 
-                  style={{ width: `${calculateFarmHealth(farm)}%` }}
-                ></div>
-              </div>
-              <div className="mt-1 flex items-center justify-between">
-                <p className="text-xs text-gray-500">Farm Health</p>
-                <p className="text-xs font-medium text-gray-900">{calculateFarmHealth(farm)}%</p>
-              </div>
-            </div>
-          </Link>
-        ))}
-        
-        {farms.length === 0 && (
-          <div className="col-span-full rounded-lg border border-gray-200 bg-white p-8 text-center">
-            <h3 className="mb-1 text-lg font-medium text-gray-900">No Farms Found</h3>
-            <p className="mb-4 text-sm text-gray-500">Get started by creating your first trading farm</p>
-            <button className="rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700">
-              Create Farm
-            </button>
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
+
+      {filteredFarms.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 bg-muted/50 rounded-lg border border-dashed">
+          <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Farms Found</h3>
+          <p className="text-muted-foreground text-center mb-4">
+            {farms.length > 0 
+              ? "No farms match your current search criteria."
+              : "You haven't created any trading farms yet. Create your first farm to get started."}
+          </p>
+          {farms.length > 0 ? (
+            <Button variant="outline" onClick={() => setSearchQuery("")}>
+              Clear Search
+            </Button>
+          ) : (
+            <FarmCreationDialog />
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredFarms.map((farm: Farm) => (
+            <Card key={farm.id} className="overflow-hidden">
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div className="space-y-1">
+                    <CardTitle className="text-lg">{farm.name}</CardTitle>
+                    <CardDescription>
+                      Created {new Date(farm.created_at).toLocaleDateString()}
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                    <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                    Active
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="pb-2">
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {farm.description || "No description provided."}
+                  </p>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col items-center justify-center p-2 bg-muted rounded-md">
+                      <Bot className="h-4 w-4 mb-1 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Agents</span>
+                      <span className="text-lg font-semibold">{farm.agents_count || 0}</span>
+                    </div>
+                    
+                    <div className="flex flex-col items-center justify-center p-2 bg-muted rounded-md">
+                      <Layers className="h-4 w-4 mb-1 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Strategies</span>
+                      <span className="text-lg font-semibold">0</span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                      <div 
+                        className="h-full rounded-full bg-blue-500" 
+                        style={{ width: `${calculateFarmHealth(farm)}%` }}
+                      ></div>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">Farm Health</p>
+                      <p className="text-xs font-medium">{calculateFarmHealth(farm)}%</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="pt-2">
+                <div className="flex justify-between w-full">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        Actions
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/agents?farm=${farm.id}`}>
+                          <Bot className="h-4 w-4 mr-2" />
+                          View Agents
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/strategies?farm=${farm.id}`}>
+                          <Layers className="h-4 w-4 mr-2" />
+                          View Strategies
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/farms/${farm.id}/performance`}>
+                          <BarChart className="h-4 w-4 mr-2" />
+                          Performance
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-red-600"
+                        onClick={() => handleDeleteFarm(farm.id)}
+                      >
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  
+                  <Link href={`/dashboard/farms/${farm.id}`} passHref>
+                    <Button size="sm">
+                      <Settings className="h-4 w-4 mr-2" />
+                      Manage
+                    </Button>
+                  </Link>
+                </div>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -121,5 +353,5 @@ export default function FarmsPage() {
 // Helper function to calculate farm health percentage (demo only)
 function calculateFarmHealth(farm: Farm): number {
   // In a real app, this would be based on more sophisticated metrics
-  return farm.is_active ? Math.floor(Math.random() * 40) + 60 : Math.floor(Math.random() * 30) + 20;
+  return Math.floor(Math.random() * 40) + 60;
 }

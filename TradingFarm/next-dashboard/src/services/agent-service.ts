@@ -5,174 +5,203 @@
 import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
 import { Database } from '@/types/database.types';
+import { Json } from '@/types/database.types';
 
-// Define the Agent interface based on the database schema
-export interface Agent {
-  id: number;
-  name: string;
-  farm_id: number;
-  status: string;
-  type: string;
-  configuration: any;
-  created_at?: string;
-  updated_at?: string;
-}
-
-// Extended agent interface with UI-specific fields
-export interface ExtendedAgent extends Agent {
+// Define a type for the configuration data to improve type safety
+export interface AgentConfiguration {
   description?: string;
-  user_id?: string;
   strategy_type?: string;
   risk_level?: string;
   target_markets?: string[];
   performance_metrics?: {
     win_rate?: number;
     profit_loss?: number;
-    trade_count?: number;
     total_trades?: number;
-    profitable_trades?: number;
-    success_rate?: number;
-    total_profit?: number;
-    profit_last_24h?: number;
-    avg_holding_time?: string;
+    average_trade_duration?: number;
   };
+  [key: string]: any; // Allow additional configuration options
 }
 
-// Agent creation request
+// Helper function to safely extract configuration values
+function safeGetConfig(config: unknown): Record<string, any> {
+  if (!config) return {};
+  
+  if (typeof config === 'string') {
+    try {
+      return JSON.parse(config) || {};
+    } catch (e) {
+      return {};
+    }
+  }
+  
+  if (typeof config === 'object' && config !== null) {
+    return config as Record<string, any>;
+  }
+  
+  return {};
+}
+
+// Agent interfaces
+export interface Agent {
+  id: number;
+  name: string;
+  description?: string;
+  farm_id: number;
+  type: string;
+  strategy_type?: string;
+  status: string;
+  risk_level?: string;
+  target_markets?: string[];
+  configuration?: AgentConfiguration;
+  is_active?: boolean; // Calculated property based on status
+  performance_metrics?: {
+    win_rate?: number;
+    profit_loss?: number;
+    total_trades?: number;
+    average_trade_duration?: number;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExtendedAgent extends Agent {
+  farm_name?: string;
+}
+
 export interface AgentCreationRequest {
   name: string;
   description?: string;
   farm_id: number;
-  strategy_type: string;
-  risk_level: string;
-  target_markets: string[];
+  type?: string;
+  strategy_type?: string;
+  risk_level?: string;
+  target_markets?: string[];
+  status?: string;
   config?: any;
 }
 
-// Agent activity interface
-export interface AgentActivity {
-  id: number;
-  agent_id: number;
-  activity_type: string;
-  details?: any;
-  status?: string;
-  created_at?: string;
-}
-
-// Agent history entry
 export interface AgentHistoryEntry {
   id: number;
   agent_id: number;
-  entry_type: string;
-  data: any;
+  action: string;
+  details?: any;
   timestamp: string;
 }
 
-// API response types
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
 
-// Helper function to extract extended properties from agent configuration
-const mapAgentToExtended = (agent: Agent): ExtendedAgent => {
-  const config = agent.configuration || {};
-  // Ensure config is treated as an object to safely access properties
-  const configObj = typeof config === 'object' && config !== null ? config : {};
-  
-  return {
-    ...agent,
-    description: configObj.description,
-    user_id: configObj.user_id,
-    strategy_type: configObj.strategy_type || agent.type,
-    risk_level: configObj.risk_level,
-    target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
-    performance_metrics: typeof configObj.performance_metrics === 'object' && configObj.performance_metrics !== null 
-      ? configObj.performance_metrics 
-      : {}
-  };
-};
-
-// Helper function to prepare agent data for database
-const prepareAgentForDatabase = (agentData: AgentCreationRequest): any => {
-  return {
-    name: agentData.name,
-    farm_id: agentData.farm_id,
-    status: 'initializing',
-    type: agentData.strategy_type,
-    configuration: {
-      description: agentData.description,
-      strategy_type: agentData.strategy_type,
-      risk_level: agentData.risk_level,
-      target_markets: agentData.target_markets,
-      config: agentData.config || {},
-      performance_metrics: {}
-    }
-  };
-};
-
-// Agent service implementation
+/**
+ * Agent service for managing trading agents
+ */
 export const agentService = {
   /**
-   * Get all agents or agents for a specific farm
+   * Get all agents
    */
-  async getAgents(farmId?: number): Promise<ApiResponse<ExtendedAgent[]>> {
+  async getAgents(): Promise<ApiResponse<ExtendedAgent[]>> {
     try {
       const supabase = createBrowserClient();
       
-      let query = supabase
+      // Query the agents table
+      const { data, error } = await supabase
         .from('agents')
-        .select('*');
-      
-      if (farmId) {
-        query = query.eq('farm_id', farmId);
-      }
-      
-      const { data, error } = await query;
+        .select(`
+          *,
+          farms:farm_id (name)
+        `)
+        .order('created_at', { ascending: false });
       
       if (error) {
         console.error('Error fetching agents:', error);
         return { error: error.message };
       }
       
-      // Map database agents to extended agents
-      const extendedAgents = data.map(mapAgentToExtended);
+      // Transform the data to extract the farm name and properly cast configuration
+      const extendedAgents: ExtendedAgent[] = data.map(agent => {
+        // Safely extract configuration properties
+        const configObj = safeGetConfig(agent.configuration);
+        const performanceMetrics = safeGetConfig(configObj.performance_metrics);
+        
+        return {
+          ...agent,
+          // Cast configuration to the right type
+          configuration: configObj as AgentConfiguration,
+          // Extract properties from configuration
+          description: configObj.description as string | undefined,
+          strategy_type: configObj.strategy_type as string | undefined,
+          risk_level: configObj.risk_level as string | undefined,
+          target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
+          performance_metrics: {
+            win_rate: performanceMetrics.win_rate || 0,
+            profit_loss: performanceMetrics.profit_loss || 0,
+            total_trades: performanceMetrics.total_trades || 0,
+            average_trade_duration: performanceMetrics.average_trade_duration || 0
+          },
+          farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+          is_active: agent.status === 'active'
+        };
+      });
       
       return { data: extendedAgents };
     } catch (error) {
-      console.error('Error fetching agents:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error('Unexpected error fetching agents:', error);
+      return { error: 'An unexpected error occurred' };
     }
   },
-
+  
   /**
    * Get a specific agent by ID
    */
-  async getAgentById(id: number): Promise<ApiResponse<ExtendedAgent>> {
+  async getAgent(id: number): Promise<ApiResponse<ExtendedAgent>> {
     try {
       const supabase = createBrowserClient();
       
       const { data, error } = await supabase
         .from('agents')
-        .select('*')
+        .select(`
+          *,
+          farms:farm_id (name)
+        `)
         .eq('id', id)
         .single();
       
       if (error) {
-        console.error(`Error fetching agent ${id}:`, error);
+        console.error(`Error fetching agent with ID ${id}:`, error);
         return { error: error.message };
       }
       
-      // Map database agent to extended agent
-      const extendedAgent = mapAgentToExtended(data);
+      // Safely extract configuration properties
+      const configObj = safeGetConfig(data.configuration);
+      const performanceMetrics = safeGetConfig(configObj.performance_metrics);
+      
+      const extendedAgent: ExtendedAgent = {
+        ...data,
+        // Cast configuration to the right type
+        configuration: configObj as AgentConfiguration,
+        // Extract properties from configuration
+        description: configObj.description as string | undefined,
+        strategy_type: configObj.strategy_type as string | undefined,
+        risk_level: configObj.risk_level as string | undefined,
+        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
+        performance_metrics: {
+          win_rate: performanceMetrics.win_rate || 0,
+          profit_loss: performanceMetrics.profit_loss || 0,
+          total_trades: performanceMetrics.total_trades || 0,
+          average_trade_duration: performanceMetrics.average_trade_duration || 0
+        },
+        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        is_active: data.status === 'active'
+      };
       
       return { data: extendedAgent };
     } catch (error) {
-      console.error(`Error fetching agent ${id}:`, error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error(`Unexpected error fetching agent with ID ${id}:`, error);
+      return { error: 'An unexpected error occurred' };
     }
   },
-
+  
   /**
    * Create a new agent
    */
@@ -180,23 +209,37 @@ export const agentService = {
     try {
       const supabase = createBrowserClient();
       
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        return { error: 'User not authenticated' };
-      }
-      
       // Prepare agent data for database
-      const dbAgent = prepareAgentForDatabase(agentData);
+      // Moving fields that don't exist in the table schema into configuration JSON
+      const agentToCreate = {
+        name: agentData.name,
+        farm_id: agentData.farm_id,
+        status: agentData.status || 'initializing',
+        type: agentData.type || 'eliza', // Setting to eliza by default
+        configuration: {
+          description: agentData.description,
+          strategy_type: agentData.strategy_type,
+          risk_level: agentData.risk_level,
+          target_markets: agentData.target_markets,
+          performance_metrics: {
+            win_rate: 0,
+            profit_loss: 0,
+            total_trades: 0,
+            average_trade_duration: 0
+          },
+          ...agentData.config // Add any additional configuration options
+        }
+      };
       
-      // Add user_id to configuration
-      dbAgent.configuration.user_id = user.id;
+      console.log('Creating agent with data:', agentToCreate);
       
       const { data, error } = await supabase
         .from('agents')
-        .insert(dbAgent)
-        .select()
+        .insert(agentToCreate)
+        .select(`
+          *,
+          farms:farm_id (name)
+        `)
         .single();
       
       if (error) {
@@ -204,25 +247,152 @@ export const agentService = {
         return { error: error.message };
       }
       
-      // Log creation activity directly in DB or using local tracking
-      this.trackAgentActivity(data.id, 'created', { initial_config: agentData }, 'success');
+      // Safely extract configuration properties
+      const configObj = safeGetConfig(data.configuration);
+      const performanceMetrics = safeGetConfig(configObj.performance_metrics);
       
-      // Return the extended agent
-      return { data: mapAgentToExtended(data) };
+      // Transform the returned data to match the ExtendedAgent interface
+      const createdAgent: ExtendedAgent = {
+        ...data,
+        // Cast configuration to the right type
+        configuration: configObj as AgentConfiguration,
+        // Extract properties from configuration
+        description: configObj.description as string || '',
+        strategy_type: configObj.strategy_type as string || '',
+        risk_level: configObj.risk_level as string || '',
+        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+        performance_metrics: {
+          win_rate: performanceMetrics.win_rate || 0,
+          profit_loss: performanceMetrics.profit_loss || 0,
+          total_trades: performanceMetrics.total_trades || 0,
+          average_trade_duration: performanceMetrics.average_trade_duration || 0
+        },
+        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        is_active: data.status === 'active'
+      };
+      
+      return { data: createdAgent };
     } catch (error) {
-      console.error('Error creating agent:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error('Unexpected error creating agent:', error);
+      return { error: 'An unexpected error occurred' };
     }
   },
-
+  
   /**
    * Update an agent
    */
-  async updateAgent(id: number, updateData: Partial<ExtendedAgent>): Promise<ApiResponse<ExtendedAgent>> {
+  async updateAgent(id: number, updates: Partial<Agent>): Promise<ApiResponse<ExtendedAgent>> {
     try {
       const supabase = createBrowserClient();
       
-      // First, get the current agent data
+      const { data, error } = await supabase
+        .from('agents')
+        .update(updates)
+        .eq('id', id)
+        .select(`
+          *,
+          farms:farm_id (name)
+        `)
+        .single();
+      
+      if (error) {
+        console.error(`Error updating agent with ID ${id}:`, error);
+        return { error: error.message };
+      }
+      
+      const updatedAgent: ExtendedAgent = {
+        ...data,
+        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        is_active: data.status === 'active'
+      };
+      
+      return { data: updatedAgent };
+    } catch (error) {
+      console.error(`Unexpected error updating agent with ID ${id}:`, error);
+      return { error: 'An unexpected error occurred' };
+    }
+  },
+  
+  /**
+   * Get available strategy types
+   */
+  async getStrategyTypes(): Promise<ApiResponse<string[]>> {
+    try {
+      // Return a list of predefined strategy types
+      return { 
+        data: [
+          'trend_following',
+          'mean_reversion',
+          'breakout',
+          'scalping',
+          'momentum',
+          'arbitrage',
+          'news_based',
+          'grid_trading',
+          'ai_driven'
+        ] 
+      };
+    } catch (error) {
+      console.error('Error fetching strategy types:', error);
+      return { error: 'An unexpected error occurred' };
+    }
+  },
+  
+  /**
+   * Get risk levels
+   */
+  async getRiskLevels(): Promise<ApiResponse<string[]>> {
+    try {
+      // Return a list of predefined risk levels
+      return { 
+        data: [
+          'very_low',
+          'low',
+          'medium',
+          'high',
+          'very_high'
+        ] 
+      };
+    } catch (error) {
+      console.error('Error fetching risk levels:', error);
+      return { error: 'An unexpected error occurred' };
+    }
+  },
+  
+  /**
+   * Get available markets
+   */
+  async getAvailableMarkets(): Promise<ApiResponse<string[]>> {
+    try {
+      // Return a list of predefined markets
+      return { 
+        data: [
+          'BTC/USD',
+          'ETH/USD',
+          'XRP/USD',
+          'ADA/USD',
+          'BNB/USD',
+          'SOL/USD',
+          'DOGE/USD',
+          'DOT/USD',
+          'AVAX/USD',
+          'SHIB/USD'
+        ] 
+      };
+    } catch (error) {
+      console.error('Error fetching available markets:', error);
+      return { error: 'An unexpected error occurred' };
+    }
+  },
+  
+  /**
+   * Update agent performance metrics
+   */
+  async updateAgentPerformance(id: number, performanceData: Partial<Agent['performance_metrics']>): Promise<ApiResponse<ExtendedAgent>> {
+    try {
+      const supabase = createBrowserClient();
+      
+      // Fetch current agent to get existing performance metrics
       const { data: currentAgent, error: fetchError } = await supabase
         .from('agents')
         .select('*')
@@ -230,125 +400,51 @@ export const agentService = {
         .single();
       
       if (fetchError) {
-        console.error(`Error fetching agent ${id} for update:`, fetchError);
+        console.error(`Error fetching agent ${id} for performance update:`, fetchError);
         return { error: fetchError.message };
       }
       
-      // Prepare update object based on database schema
-      const updateObj: any = {};
+      // Type assertion to handle the database schema
+      const agentData = currentAgent as unknown as Agent;
       
-      // Only add properties if they are defined
-      if (updateData.name !== undefined) updateObj.name = updateData.name;
-      if (updateData.farm_id !== undefined) updateObj.farm_id = updateData.farm_id;
-      if (updateData.status !== undefined) updateObj.status = updateData.status;
-      if (updateData.type !== undefined) updateObj.type = updateData.type;
-      else if (updateData.strategy_type !== undefined) updateObj.type = updateData.strategy_type;
+      // Ensure we have a performance_metrics object
+      const currentMetrics = agentData.performance_metrics || {};
       
-      // Update configuration if any related fields are provided
-      if (
-        updateData.description !== undefined || 
-        updateData.strategy_type !== undefined || 
-        updateData.risk_level !== undefined || 
-        updateData.target_markets !== undefined ||
-        updateData.performance_metrics !== undefined
-      ) {
-        // Get current configuration and ensure it's an object
-        const currentConfig = typeof currentAgent.configuration === 'object' && currentAgent.configuration !== null 
-          ? currentAgent.configuration 
-          : {};
-        
-        // Create updated configuration
-        const updatedConfig: any = { ...currentConfig };
-        
-        if (updateData.description !== undefined) updatedConfig.description = updateData.description;
-        if (updateData.strategy_type !== undefined) updatedConfig.strategy_type = updateData.strategy_type;
-        if (updateData.risk_level !== undefined) updatedConfig.risk_level = updateData.risk_level;
-        if (updateData.target_markets !== undefined) updatedConfig.target_markets = updateData.target_markets;
-        
-        if (updateData.performance_metrics !== undefined) {
-          // Initialize performance_metrics if it doesn't exist
-          if (!updatedConfig.performance_metrics || typeof updatedConfig.performance_metrics !== 'object') {
-            updatedConfig.performance_metrics = {};
-          }
-          
-          // Safely update performance metrics
-          const currentMetrics = updatedConfig.performance_metrics;
-          const newMetrics = updateData.performance_metrics;
-          
-          // Only update defined properties
-          if (newMetrics.win_rate !== undefined) currentMetrics.win_rate = newMetrics.win_rate;
-          if (newMetrics.profit_loss !== undefined) currentMetrics.profit_loss = newMetrics.profit_loss;
-          if (newMetrics.trade_count !== undefined) currentMetrics.trade_count = newMetrics.trade_count;
-          if (newMetrics.total_trades !== undefined) currentMetrics.total_trades = newMetrics.total_trades;
-          if (newMetrics.profitable_trades !== undefined) currentMetrics.profitable_trades = newMetrics.profitable_trades;
-          if (newMetrics.success_rate !== undefined) currentMetrics.success_rate = newMetrics.success_rate;
-          if (newMetrics.total_profit !== undefined) currentMetrics.total_profit = newMetrics.total_profit;
-          if (newMetrics.profit_last_24h !== undefined) currentMetrics.profit_last_24h = newMetrics.profit_last_24h;
-          if (newMetrics.avg_holding_time !== undefined) currentMetrics.avg_holding_time = newMetrics.avg_holding_time;
-        }
-        
-        // Add updated configuration to update object
-        updateObj.configuration = updatedConfig;
-      }
+      // Merge existing metrics with new data
+      const updatedMetrics = {
+        ...currentMetrics,
+        ...performanceData
+      };
       
-      // Only proceed with update if there are fields to update
-      if (Object.keys(updateObj).length === 0) {
-        return { data: mapAgentToExtended(currentAgent) };
-      }
-      
-      // Perform the update
+      // Update the agent with new performance metrics
       const { data, error } = await supabase
         .from('agents')
-        .update(updateObj)
+        .update({
+          performance_metrics: updatedMetrics,
+          updated_at: new Date().toISOString()
+        })
         .eq('id', id)
-        .select()
+        .select(`
+          *,
+          farms:farm_id (name)
+        `)
         .single();
       
       if (error) {
-        console.error(`Error updating agent ${id}:`, error);
+        console.error(`Error updating agent performance ${id}:`, error);
         return { error: error.message };
       }
       
-      // Track update activity
-      this.trackAgentActivity(id, 'updated', { updated_fields: Object.keys(updateData) }, 'success');
+      const updatedAgent: ExtendedAgent = {
+        ...data,
+        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        is_active: data.status === 'active'
+      };
       
-      // Return the extended agent
-      return { data: mapAgentToExtended(data) };
+      return { data: updatedAgent };
     } catch (error) {
-      console.error(`Error updating agent ${id}:`, error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-
-  /**
-   * Delete an agent
-   */
-  async deleteAgent(id: number): Promise<ApiResponse<void>> {
-    try {
-      const supabase = createBrowserClient();
-      
-      // Track deletion activity
-      this.trackAgentActivity(id, 'deleted', { agent_id: id }, 'pending');
-      
-      // Delete the agent
-      const { error } = await supabase
-        .from('agents')
-        .delete()
-        .eq('id', id);
-      
-      if (error) {
-        console.error(`Error deleting agent ${id}:`, error);
-        // Update activity status to failed
-        this.trackAgentActivity(id, 'deletion_failed', { agent_id: id, error: error.message }, 'failed');
-        return { error: error.message };
-      }
-      
-      return { data: undefined };
-    } catch (error) {
-      console.error(`Error deleting agent ${id}:`, error);
-      // Log the failure
-      this.trackAgentActivity(id, 'deletion_failed', { agent_id: id, error: error instanceof Error ? error.message : 'Unknown error' }, 'failed');
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error(`Unexpected error updating agent performance ${id}:`, error);
+      return { error: 'An unexpected error occurred' };
     }
   },
   
@@ -356,273 +452,33 @@ export const agentService = {
    * Change agent status (activate/deactivate/pause)
    */
   async changeAgentStatus(id: number, status: string): Promise<ApiResponse<ExtendedAgent>> {
+    return this.updateAgent(id, { status });
+  },
+  
+  /**
+   * Delete an agent
+   */
+  async deleteAgent(id: number): Promise<ApiResponse<null>> {
     try {
       const supabase = createBrowserClient();
       
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('agents')
-        .update({ status })
-        .eq('id', id)
-        .select()
-        .single();
+        .delete()
+        .eq('id', id);
       
       if (error) {
-        console.error(`Error changing agent status ${id}:`, error);
+        console.error(`Error deleting agent with ID ${id}:`, error);
         return { error: error.message };
       }
       
-      // Track status change
-      this.trackAgentActivity(id, 'status_changed', { new_status: status }, 'success');
-      
-      // Return the extended agent
-      return { data: mapAgentToExtended(data) };
+      return { data: null };
     } catch (error) {
-      console.error(`Error changing agent status ${id}:`, error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error(`Unexpected error deleting agent with ID ${id}:`, error);
+      return { error: 'An unexpected error occurred' };
     }
   },
   
-  /**
-   * Track agent activity (temporary implementation until agent_activities table is available)
-   * This tracks activities in local storage and console for development
-   */
-  trackAgentActivity(
-    agentId: number, 
-    activityType: string, 
-    details: any = {}, 
-    status: string = 'pending'
-  ): void {
-    // Create activity object
-    const activity = {
-      id: Date.now(), // Temporary ID
-      agent_id: agentId,
-      activity_type: activityType,
-      details,
-      status,
-      created_at: new Date().toISOString()
-    };
-    
-    // Log to console for development
-    console.log(`[Agent Activity] ${activityType} for agent ${agentId}:`, activity);
-    
-    // Store in local storage for development
-    try {
-      const activitiesKey = `agent_activities_${agentId}`;
-      const existingActivities = JSON.parse(localStorage.getItem(activitiesKey) || '[]');
-      existingActivities.unshift(activity);
-      localStorage.setItem(activitiesKey, JSON.stringify(existingActivities.slice(0, 50))); // Keep last 50
-    } catch (error) {
-      console.error('Error storing agent activity in localStorage:', error);
-    }
-  },
-  
-  /**
-   * Get agent activities (temporary implementation until agent_activities table is available)
-   * This retrieves tracked activities from local storage for development
-   */
-  async getAgentActivities(agentId: number, limit: number = 50): Promise<ApiResponse<AgentActivity[]>> {
-    try {
-      // Retrieve from local storage
-      const activitiesKey = `agent_activities_${agentId}`;
-      const activities = JSON.parse(localStorage.getItem(activitiesKey) || '[]');
-      
-      return { data: activities.slice(0, limit) };
-    } catch (error) {
-      console.error('Error retrieving agent activities:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Add history entry for agent (temporary implementation until agent_history table is available)
-   */
-  async addAgentHistoryEntry(
-    agentId: number, 
-    entryType: string, 
-    data: any
-  ): Promise<ApiResponse<AgentHistoryEntry>> {
-    try {
-      // Create history entry
-      const entry = {
-        id: Date.now(), // Temporary ID
-        agent_id: agentId,
-        entry_type: entryType,
-        data,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Log to console for development
-      console.log(`[Agent History] ${entryType} for agent ${agentId}:`, entry);
-      
-      // Store in local storage for development
-      try {
-        const historyKey = `agent_history_${agentId}`;
-        const existingEntries = JSON.parse(localStorage.getItem(historyKey) || '[]');
-        existingEntries.unshift(entry);
-        localStorage.setItem(historyKey, JSON.stringify(existingEntries.slice(0, 50))); // Keep last 50
-      } catch (storageError) {
-        console.error('Error storing agent history in localStorage:', storageError);
-      }
-      
-      return { data: entry };
-    } catch (error) {
-      console.error('Error adding agent history entry:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Get agent history entries (temporary implementation until agent_history table is available)
-   */
-  async getAgentHistory(
-    agentId: number, 
-    entryType?: string, 
-    limit: number = 50
-  ): Promise<ApiResponse<AgentHistoryEntry[]>> {
-    try {
-      // Retrieve from local storage
-      const historyKey = `agent_history_${agentId}`;
-      let entries = JSON.parse(localStorage.getItem(historyKey) || '[]');
-      
-      // Filter by entry type if provided
-      if (entryType) {
-        entries = entries.filter((entry: AgentHistoryEntry) => entry.entry_type === entryType);
-      }
-      
-      return { data: entries.slice(0, limit) };
-    } catch (error) {
-      console.error('Error retrieving agent history:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Get available strategy types for agent creation
-   */
-  async getStrategyTypes(): Promise<ApiResponse<string[]>> {
-    try {
-      // In a production environment, this would fetch from the database
-      // For now we'll return predefined options
-      return { 
-        data: [
-          'Mean Reversion',
-          'Trend Following',
-          'Momentum',
-          'Breakout',
-          'Arbitrage',
-          'Market Making',
-          'Grid Trading',
-          'Scalping',
-          'Statistical Arbitrage',
-          'Sentiment Analysis'
-        ] 
-      };
-    } catch (error) {
-      console.error('Error fetching strategy types:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Get available risk levels for agent creation
-   */
-  async getRiskLevels(): Promise<ApiResponse<string[]>> {
-    try {
-      // In a production environment, this would fetch from the database
-      // For now we'll return predefined options
-      return { 
-        data: [
-          'Conservative',
-          'Moderate',
-          'Aggressive',
-          'Very Aggressive'
-        ] 
-      };
-    } catch (error) {
-      console.error('Error fetching risk levels:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Get available markets for agent creation
-   */
-  async getAvailableMarkets(): Promise<ApiResponse<string[]>> {
-    try {
-      // In a production environment, this would fetch from the database
-      // For now we'll return predefined options
-      return { 
-        data: [
-          'Crypto - BTC/USD',
-          'Crypto - ETH/USD',
-          'Crypto - SOL/USD',
-          'Crypto - BNB/USD',
-          'Forex - EUR/USD',
-          'Forex - USD/JPY',
-          'Stocks - US Tech',
-          'Stocks - S&P 500',
-          'Commodities - Gold',
-          'Commodities - Oil'
-        ] 
-      };
-    } catch (error) {
-      console.error('Error fetching available markets:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-  
-  /**
-   * Complete agent setup and set to active
-   */
-  async finalizeAgentSetup(id: number): Promise<ApiResponse<ExtendedAgent>> {
-    try {
-      const supabase = createBrowserClient();
-      
-      // Get agent data first
-      const { data: agent, error: fetchError } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (fetchError) {
-        console.error(`Error fetching agent ${id} for setup:`, fetchError);
-        return { error: fetchError.message };
-      }
-      
-      // Update agent status
-      const { data, error } = await supabase
-        .from('agents')
-        .update({
-          status: 'inactive', // Initially set to inactive until user activates it
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select()
-        .single();
-      
-      if (error) {
-        console.error(`Error finalizing agent ${id} setup:`, error);
-        return { error: error.message };
-      }
-      
-      // Track finalization activity
-      this.trackAgentActivity(id, 'setup_completed', { agent_id: id }, 'success');
-      
-      // Initialize agent history
-      await this.addAgentHistoryEntry(id, 'initialization', {
-        message: `Agent "${data.name}" has been successfully initialized`,
-        timestamp: new Date().toISOString()
-      });
-      
-      // Return the extended agent
-      return { data: mapAgentToExtended(data) };
-    } catch (error) {
-      console.error(`Error finalizing agent ${id} setup:`, error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-    }
-  },
-
   /**
    * Get available farms for agent creation
    */
@@ -630,37 +486,55 @@ export const agentService = {
     try {
       const supabase = createBrowserClient();
       
-      // Get current user
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        return { error: 'User not authenticated' };
-      }
-      
-      // Fetch farms that the user has access to
       const { data, error } = await supabase
         .from('farms')
         .select('id, name')
-        .eq('user_id', user.id);
+        .order('name');
       
       if (error) {
-        console.error('Error fetching available farms:', error);
+        console.error('Error fetching farms:', error);
         return { error: error.message };
-      }
-      
-      // If no farms are found, return a default farm as fallback
-      if (!data || data.length === 0) {
-        return {
-          data: [
-            { id: 1, name: 'My Trading Farm' }
-          ]
-        };
       }
       
       return { data };
     } catch (error) {
-      console.error('Error fetching available farms:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+      console.error('Unexpected error fetching farms:', error);
+      return { error: 'An unexpected error occurred' };
     }
   },
+  
+  /**
+   * Get agent activity logs
+   * Note: Implementation assumes there's an agent_activity table in the database
+   */
+  async getAgentActivity(agentId: number): Promise<ApiResponse<AgentHistoryEntry[]>> {
+    try {
+      const supabase = createBrowserClient();
+      
+      // Since the agent_activity table doesn't exist yet in the database schema,
+      // we're returning an empty array for now. In production, uncomment the query below
+      // when the table is available.
+      
+      /*
+      const { data, error } = await supabase
+        .from('agent_activity')
+        .select('*')
+        .eq('agent_id', agentId)
+        .order('timestamp', { ascending: false });
+      
+      if (error) {
+        console.error(`Error fetching activity for agent with ID ${agentId}:`, error);
+        return { error: error.message };
+      }
+      
+      return { data };
+      */
+      
+      // Temporary implementation until table exists
+      return { data: [] };
+    } catch (error) {
+      console.error(`Unexpected error fetching activity for agent with ID ${agentId}:`, error);
+      return { error: 'An unexpected error occurred' };
+    }
+  }
 };
