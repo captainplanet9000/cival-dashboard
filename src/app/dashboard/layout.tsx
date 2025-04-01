@@ -1,18 +1,29 @@
-import React from 'react';
-import { DashboardNavigation } from '../../components/layout/DashboardNavigation';
+"use client";
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+import { ReactNode } from 'react';
+import { Sidebar } from '@/components/dashboard/Sidebar';
+import { DashboardHeader } from '@/components/dashboard/DashboardHeader';
+import { DashboardProvider } from '@/contexts/DashboardContext';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+
+interface DashboardLayoutProps {
+  children: ReactNode;
+}
+
+export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
-    <div className="dashboard-layout flex">
-      <DashboardNavigation />
-      
-      <main className="flex-grow bg-gray-100 min-h-screen overflow-auto">
-        {children}
-      </main>
-    </div>
+    <DashboardProvider>
+      <div className="flex h-screen overflow-hidden">
+        <Sidebar />
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <DashboardHeader />
+          <main className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-900 p-4">
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
+          </main>
+        </div>
+      </div>
+    </DashboardProvider>
   );
-} 
+}
