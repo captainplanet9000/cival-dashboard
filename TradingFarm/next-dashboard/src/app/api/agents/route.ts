@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server';
 import { Database } from '@/types/database.types';
 
@@ -107,16 +108,27 @@ export async function POST(request: NextRequest) {
     // Prepare agent data
     const agentData = {
       name: requestData.name,
-      description: requestData.description,
       farm_id: requestData.farm_id,
       status: requestData.status || 'initializing',
-      type: requestData.type,
-      strategy_type: requestData.strategy_type,
-      risk_level: requestData.risk_level,
-      target_markets: requestData.target_markets || {},
-      configuration: requestData.config || {},  // Using configuration instead of config to match DB schema
-      user_id: user.id
+      type: requestData.type || 'eliza',
+      // Store all additional data in a configuration JSON object
+      // This avoids schema issues with missing columns
+      configuration: {
+        description: requestData.description,
+        strategy_type: requestData.strategy_type,
+        risk_level: requestData.risk_level,
+        target_markets: requestData.target_markets || [],
+        performance_metrics: {
+          win_rate: 0,
+          profit_loss: 0,
+          total_trades: 0,
+          average_trade_duration: 0
+        },
+        ...requestData.config
+      }
     };
+    
+    console.log('Creating agent with data:', agentData);
     
     // Insert agent into Supabase
     const { data: agent, error } = await supabase
@@ -128,26 +140,13 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error('Error creating agent:', error);
       return NextResponse.json(
-        { error: 'Failed to create agent' },
+        { error: `Failed to create agent: ${error.message}` },
         { status: 500 }
       );
     }
     
-    // Check if agent_history table exists before trying to insert
-    try {
-      // Log the agent creation in a separate table if it exists
-      await supabase
-        .rpc('log_agent_action', {
-          p_agent_id: agent.id,
-          p_farm_id: agent.farm_id,
-          p_action_type: 'creation',
-          p_description: `Agent "${agent.name}" was created`,
-          p_metadata: { configuration: agent.configuration }
-        });
-    } catch (historyError) {
-      // If the stored procedure or table doesn't exist, just log and continue
-      console.warn('Could not log agent history:', historyError);
-    }
+    // Skip the agent history logging as it's causing issues
+    // We'll add this back once the database procedures are set up properly
     
     return NextResponse.json({ agent });
   } catch (error) {
