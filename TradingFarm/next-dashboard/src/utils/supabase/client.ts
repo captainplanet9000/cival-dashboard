@@ -7,12 +7,16 @@ import type { Database } from '@/types/database.types';
 
 // Load configuration from environment or fallback to our known values
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgvlzvswzpfoywfxehis.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.ccYwDhIJXjmfp4tpc6bDlHKsLDqs7ivQpmugaa0uHXU';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
 /**
  * Creates a Supabase client for use in browser environments
  */
 export function createBrowserClient() {
+  if (!supabaseAnonKey) {
+    console.error('Missing Supabase anonymous key. Check your environment variables.');
+  }
+  
   return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
