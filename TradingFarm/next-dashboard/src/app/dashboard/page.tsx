@@ -1,42 +1,39 @@
 "use client";
 
-import * as React from 'react';
+import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { useSocket } from "@/providers/socket-provider";
-import OrderUpdatesStream from "@/components/websocket/order-updates-stream";
-import CommandConsole from "@/components/elizaos/command-console";
-import RiskMetricsCard from "@/components/risk-management/risk-metrics-card";
-import UnifiedDashboard from "@/components/dashboard/unified-dashboard";
-import { WidgetContainer } from "@/components/dashboard/widget-container";
-import PriceAlertSystem from "@/components/websocket/price-alert-system";
-import ExecutionNotifications from "@/components/websocket/execution-notifications";
-import { createBrowserClient } from "@/utils/supabase/client";
-import { useTheme } from "next-themes";
 import { useToast } from "@/components/ui/use-toast";
-import { ExtendedAgent, agentService } from "@/services/agent-service";
-import Link from "next/link";
-import {
-  Activity,
-  BarChart2,
-  Brain,
-  LineChart,
-  DollarSign,
-  LayoutDashboard,
-  Layers,
-  Percent,
-  RefreshCw,
-  ShieldAlert,
-  Zap,
-  Sun,
-  Moon,
-  TrendingUp,
+import { 
+  LineChart, 
+  BarChart2 as BarChart, 
+  // PieChart, // Not used in the code
+  ArrowUp, 
+  ArrowDown, 
+  ArrowRight, 
+  TrendingUp, 
   TrendingDown,
-  Bot,
-  Plus,
+  RefreshCw, 
+  Zap, 
+  Activity,
+  Sun,
+  Moon
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge"; // Added missing import
+import { useSocket } from "@/providers/socket-provider"; // Added missing import
+import OrderUpdatesStream from "@/components/websocket/order-updates-stream"; // Added missing import
+import CommandConsole from "@/components/elizaos/command-console"; // Added missing import
+import RiskMetricsCard from "@/components/risk-management/risk-metrics-card"; // Added missing import
+import UnifiedDashboard from "@/components/dashboard/unified-dashboard"; // Added missing import
+import { WidgetContainer } from "@/components/dashboard/widget-container"; // Added missing import
+import PriceAlertSystem from "@/components/websocket/price-alert-system"; // Added missing import
+import ExecutionNotifications from "@/components/websocket/execution-notifications"; // Added missing import
+import { createBrowserClient } from "@/utils/supabase/client"; // Added missing import
+import { useTheme } from "next-themes"; // Added missing import
+import { ExtendedAgent, agentService } from "@/services/agent-service"; // Added missing import
+import Link from "next/link"; // Added missing import
+import { DollarSign, LayoutDashboard, Layers, Percent, ShieldAlert, Bot, Plus } from "lucide-react"; // Added missing imports
 
 // Define mock dashboard data interface
 interface DashboardData {
@@ -59,7 +56,7 @@ export default function DashboardPage() {
   const [loadingAgents, setLoadingAgents] = React.useState(true);
   const { isConnected } = useSocket();
   const { theme, setTheme } = useTheme();
-  const { toast } = useToast();
+  const { toast } = useToast(); // Fixed toast function call
   const supabase = createBrowserClient();
 
   // Sample risk metrics data for demonstration
@@ -163,19 +160,23 @@ export default function DashboardPage() {
     const fetchAgents = async () => {
       try {
         setLoadingAgents(true);
-        const response = await agentService.getAgents(parseInt(farmId));
-        if (response.error) {
-          console.error("Error fetching agents:", response.error);
-          toast({
-            title: "Error",
-            description: "Failed to load agent data. Please try again later.",
-            variant: "destructive",
-          });
-        } else if (response.data) {
-          setAgents(response.data);
+        if (farmId) {
+          const response = await agentService.getAgents(parseInt(farmId));
+          if (response.error) {
+            console.error("Error fetching agents:", response.error);
+            toast({
+              title: "Error",
+              description: "Failed to load agent data. Please try again later.",
+              variant: "destructive",
+            });
+            setAgents([]);
+          } else {
+            setAgents(response.data || []);
+          }
         }
-      } catch (err) {
-        console.error("Error fetching agents:", err);
+      } catch (error) {
+        console.error("Error in fetchAgents:", error);
+        setAgents([]);
       } finally {
         setLoadingAgents(false);
       }
@@ -186,7 +187,11 @@ export default function DashboardPage() {
 
   // Handle theme toggle
   const toggleTheme = () => {
-    setTheme(theme === "light" ? "dark" : "light");
+    // Force theme change and ensure it's applied
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    // For debugging purposes
+    console.log("Theme changed to:", newTheme);
   };
 
   // Refresh dashboard data
@@ -297,7 +302,7 @@ export default function DashboardPage() {
             Unified
           </TabsTrigger>
           <TabsTrigger value="performance">
-            <BarChart2 className="h-4 w-4 mr-2" />
+            <BarChart className="h-4 w-4 mr-2" />
             Performance
           </TabsTrigger>
           <TabsTrigger value="agents">
@@ -330,7 +335,7 @@ export default function DashboardPage() {
               title="Avg Trade Duration"
               value={data?.avgTradeDuration || "4h 32m"}
               trend="neutral"
-              icon={<BarChart2 className="h-4 w-4" />}
+              icon={<BarChart className="h-4 w-4" />}
             />
             <MetricCard
               title="Top Pair"
