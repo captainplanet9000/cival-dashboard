@@ -1,0 +1,179 @@
+{
+  "mcpServers": {
+    "mcp-server-firecrawl": {
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp"],
+      "env": {
+        "FIRECRAWL_API_KEY": "fc-40d3938d94314262ae057ff2a800b51e"
+      }
+    },
+    "sequential thinking": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@smithery-ai/server-sequential-thinking",
+        "--config",
+        "\"{}\""
+      ]
+    },
+    "Github": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@smithery-ai/github",
+        "--config",
+        "\"{\\\"githubPersonalAccessToken\\\":\\\"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\\\"}\""
+      ]
+    },
+    "Veyrax": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@VeyraX/veyrax-mcp",
+        "--config",
+        "\"{\\\"VEYRAX_API_KEY\\\":\\\"vrx-58238b5a743effd4da1f00cc6ed7af98c23559d8\\\"}\""
+      ]
+    },
+    "Neon Database": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "neon",
+        "--config",
+        "\"{\\\"neonApiKey\\\":\\\"napi_s70cf7v9o45i1fui1ywaauxwogngmyfgh4oru2vx90e9vexy10b1grf9dg5jl98g\\\"}\""
+      ]
+    },
+    "Browserbase": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@browserbasehq/mcp-browserbase",
+        "--config",
+        "\"{\\\"browserbaseApiKey\\\":\\\"bb_live_Zy4rl0bkAZ7V8rxzCr6k1OQU_EI\\\",\\\"browserbaseProjectId\\\":\\\"31ecb9aa-71a0-46f8-90e6-4a31fa83ac03\\\"}\""
+      ]
+    },
+    "Knowledge graph": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@jlia0/servers",
+        "--config",
+        "\"{\\\"memoryFilePath\\\":\\\"memory.json\\\"}\""
+      ]
+    },
+    "openrouter": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@mcpserver/openrouterai",
+        "--config",
+        "\"{\\\"openrouterApiKey\\\":\\\"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\\\",\\\"openrouterDefaultModel\\\":\\\"\\\"}\""
+      ]
+    },
+    "todoist": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@abhiz123/todoist-mcp-server",
+        "--config",
+        "\"{\\\"todoistApiToken\\\":\\\"8a89856dd043d2ac9946c17e861e54209d2e6422\\\"}\""
+      ]
+    },
+    "taskmanager": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@kazuph/mcp-taskmanager",
+        "--config",
+        "\"{}\""
+      ]
+    },
+    "react": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@Streen9/react-mcp",
+        "--config",
+        "\"{}\""
+      ]
+    },
+    "airtable": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "airtable-server",
+        "--config",
+        "\"{\\\"airtableApiKey\\\":\\\"pataDk7vnTyljxV3v.a51d8a606f36cf9011ebae848d5265b4ba197c851080f4cfdb93a79768317b8c\\\"}\""
+      ]
+    },
+    "Helius": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "@smithery/cli@latest",
+        "run",
+        "@dcSpark/mcp-server-helius",
+        "--config",
+        "\"{\\\"HELIUS_API_KEY\\\":\\\"9bdf9eff-0576-4219-a6aa-9f49aac460f7\\\"}\""
+      ]
+    },
+    "Supabase": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "cd",
+        "GWDS_co_op\\TradingFarm\\mcp\\supabase-mcp",
+        "&&",
+        "npm",
+        "run",
+        "minimal"
+      ]
+    }
+  }
+}

@@ -1,179 +1,223 @@
-# Trading Farm Platform
+# Trading Farm Dashboard
 
-A comprehensive trading platform with strategy development, backtesting, and deployment capabilities.
+A comprehensive dashboard for managing crypto trading farms with Supabase backend integration and real-time updates.
 
-## Features and Implementation Checklist
+## Overview
 
-### Core Components
-- [x] PineScript code editor for trading strategies
-- [x] Memory system with vector embeddings for semantic search
-- [x] Memory visualization (timeline, graph, table views)
-- [x] Supabase integration with pgvector for embeddings storage
+Trading Farm Dashboard is a modern web application that allows users to manage and monitor their crypto trading operations. The application uses Next.js for the frontend and Supabase for the backend, with real-time updates powered by Supabase's realtime functionality.
 
-### Strategy Management
-- [x] Strategy import and storage
-- [x] Strategy editing and versioning
-- [x] Strategy organization and categorization
+## Features
 
-### Backtesting System
-- [x] Complete backtesting page with configuration options
-- [x] Mock trade data generation for testing
-- [x] Performance metrics calculation (win rate, P/L, Sharpe ratio)
-- [x] D3.js visualization of equity curves with interactive tooltips
+- **Farm Management:** Create and manage trading farms with customizable goals and risk levels
+- **Portfolio Analytics:** Track performance metrics, equity curves, and allocations
+- **Banking:** Manage wallets, transactions, and flash loans
+- **Trading:** Create and monitor orders across multiple exchanges
+- **Strategies:** Create, backtest, and deploy trading strategies
+- **ElizaOS AI:** Integrated AI assistant for natural language operations
+- **Real-time Updates:** Get real-time notifications for key events
+- **Webhooks:** Integrate with external services
 
-### Strategy Deployment System
-- [x] Strategy deployment service
-- [x] Deployment configuration dialog
-- [x] API route for fetching available trading farms
-- [x] Deployment management UI (pause, resume, stop, restart)
-- [x] Farm filtering and status controls
+## Backend Architecture
 
-### Performance Monitoring
-- [x] Real-time performance dashboard
-- [x] Daily profit/loss visualization
-- [x] Strategy performance comparison
-- [x] Performance metrics cards with KPIs
-- [x] Risk assessment tools
-- [x] Performance alerts and notifications
+The backend is built on Supabase with the following components:
 
-### Risk Management
-- [x] Position sizing controls
-- [x] Stop-loss and take-profit mechanisms
-- [x] Max drawdown settings
-- [x] Risk metrics visualization
-- [x] Volatility-based position sizing
+### Database Schema
 
-### Portfolio Management
-- [ ] Multi-strategy portfolio construction
-- [ ] Portfolio optimization tools
-- [ ] Capital allocation modeling
-- [ ] Correlation analysis for diversification
-- [ ] Rebalancing tools
+The database schema is organized into the following main sections:
 
-### User Management
-- [ ] User authentication and authorization
-- [ ] Team collaboration features
-- [ ] Role-based access controls
-- [ ] Activity logging and audit trails
+1. **Farm Core Tables**
+   - `farms`: Main farm entities
+   - `farm_wallets`: Wallet management for farms
+   - `farm_agents`: Automated agents for farms
+   - `farm_settings`: Configuration settings
 
-### User Interface
-- [x] Responsive dashboard layout
-- [x] Dark/light mode support
-- [x] Interactive charts and visualizations
-- [ ] Customizable dashboard widgets
-- [ ] Mobile companion app
+2. **Trading Tables**
+   - `orders`: Trading orders with statuses
+   - `trades`: Executed trades
+   - `flash_loans`: Flash loan operations
 
-## Services Integrated
+3. **Strategy Tables**
+   - `strategies`: Trading strategy definitions
+   - `strategy_versions`: Version history for strategies
+   - `strategy_backtests`: Backtest results
+   - `farm_strategies`: Mapping between farms and strategies
 
-### Exchange APIs
-- **Bybit**: Spot and futures trading
-- **Coinbase Pro**: Spot trading
-- **Hyperliquid**: Perpetual trading
+4. **ElizaOS Tables**
+   - `eliza_conversations`: AI conversations
+   - `eliza_messages`: Individual messages in conversations
+   - `knowledge_base`: Knowledge items for AI
+   - `memory_items`: Memory storage for AI
 
-### Market Data
-- **MarketStack**: Stock and ETF data
+5. **Analytics Tables**
+   - `strategy_analytics`: Performance metrics for strategies
+   - `farm_performance_snapshots`: Historical performance snapshots
+   - `risk_assessment_reports`: Risk analysis reports
 
-### AI & Strategy
-- **OpenAI**: Market analysis and strategy generation
+6. **Integration Tables**
+   - `webhooks`: External integrations via webhooks
+   - `integrations`: External service connections
+   - `notification_settings`: User notification preferences
+   - `notifications`: User notifications
 
-### Memory & Data Management
-- **Neon PostgreSQL with pgvector**: Vector database for strategy storage and similarity search
+### Edge Functions
 
-### Blockchain Infrastructure
-- **Alchemy**: Ethereum transaction simulation and optimization
+Custom Supabase Edge Functions are used for:
+
+1. **Webhook Handling**: Process incoming webhooks from external services
+2. **Real-time Updates**: Manage real-time subscriptions and broadcasts
+3. **Scheduled Jobs**: Run automated tasks based on schedules
+
+### Supabase Message Control Protocol (MCP)
+
+The application uses Supabase MCP to handle more complex interactions with the database. The MCP endpoint is located at:
+
+```
+https://mcp.composio.dev/supabase/ancient-brash-planet-yjteSe
+```
+
+MCP provides:
+- Enhanced query capabilities
+- Transactional operations
+- Custom function execution
+
+## Service Modules
+
+The application is organized into service modules that handle specific functionality:
+
+1. **Farm Service**: Manages farm creation, configuration, and lifecycle
+2. **Wallet Service**: Handles wallet operations and transaction history
+3. **Strategy Service**: Manages trading strategies and backtesting
+4. **Trading Service**: Handles orders, trades, and flash loans
+5. **Analytics Service**: Provides performance metrics and risk assessment
+6. **ElizaOS Service**: Powers the AI assistant capabilities
 
 ## Getting Started
 
-```bash
-# Install dependencies
-npm install
+### Prerequisites
 
-# Run development server
+- Node.js 16+
+- Supabase account and project
+- PostgreSQL knowledge for advanced database operations
+
+### Installation
+
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/trading-farm-dashboard.git
+cd trading-farm-dashboard
+```
+
+2. Install dependencies
+```bash
+npm install
+```
+
+3. Set up environment variables
+```bash
+cp .env.example .env.local
+```
+
+4. Update `.env.local` with your Supabase credentials
+
+5. Run database migrations
+```bash
+npx supabase migration up
+```
+
+6. Start the development server
+```bash
 npm run dev
 ```
 
-## Technology Stack
+### Database Migrations
 
-- Next.js for the frontend framework
-- React for UI components
-- TypeScript for type-safe code
-- Tailwind CSS for styling
-- Supabase for database and authentication
-- Chart.js for data visualization
-- D3.js for advanced visualizations
-- Node.js for backend
-- Express for API server
-- WebSockets for real-time updates
-- OAuth2 and JWT for authentication
+Database migrations are located in the `supabase/migrations` directory. To apply a migration:
 
-## Strategy System
+```bash
+npx supabase migration up
+```
 
-The Trading Farm Dashboard includes a comprehensive strategy management system:
+To create a new migration:
 
-### Strategy Creation and Management
+```bash
+npx supabase migration new <migration-name>
+```
 
-- Natural language strategy creation - describe your strategy in plain English
-- Rule-based strategy definition with clear entry/exit conditions
-- Strategy versioning for tracking changes and improvements
-- Backtest capabilities for evaluating strategy performance
-- Risk management parameters for controlling trade exposure
+After creating a migration, don't forget to run:
 
-### Strategy Types Supported
+```bash
+npx supabase gen types typescript --local > src/types/database.types.ts
+```
 
-- Momentum strategies
-- Mean reversion strategies
-- Breakout strategies
-- Trend following strategies
-- Arbitrage strategies
-- Grid trading strategies
-- Martingale strategies
-- Custom strategies
+## Real-time Functionality
 
-### Strategy Deployment
+The dashboard uses Supabase's real-time capabilities for:
 
-- Deploy strategies to specific trading agents
-- Configure strategy parameters for each agent
-- Monitor strategy performance in real-time
-- Analyze historical performance and optimize
+1. Live order updates
+2. Real-time trade notifications
+3. Farm status changes
+4. Performance metric updates
 
-### Integration with Agents
+To enable real-time for a specific table, modify the Supabase dashboard or use the following SQL:
 
-- Agents can execute strategies automatically
-- Real-time order execution based on strategy signals
-- Performance tracking and metrics collection
-- Agent cooperation for enhanced strategy execution
+```sql
+-- Enable real-time for a table
+ALTER PUBLICATION supabase_realtime ADD TABLE public.table_name;
+```
 
-## Setup and Installation
+## Webhooks
 
-1. Clone the repository
-2. Install dependencies with `npm install`
-3. Create a `.env` file based on `.env.example`
-4. Run the development server with `npm run dev`
+External services can integrate with the Trading Farm Dashboard through webhooks. The webhook endpoint is available at:
 
-## Database Schema
+```
+https://your-project.supabase.co/functions/v1/webhook-handler
+```
 
-The strategy system uses the following database tables:
+Supported webhook events include:
+- `farm.status.changed`
+- `trade.executed`
+- `order.status.changed`
+- `strategy.performance.updated`
+- `flash.loan.status.changed`
+- `risk.threshold.exceeded`
 
-- `strategies` - Core strategy definitions
-- `strategy_versions` - Version history for strategies
-- `strategy_backtests` - Backtest results for strategies
-- `agent_strategies` - Linking strategies to agents
-- `farm_strategies` - Linking strategies to farms
+## Scheduled Jobs
 
-## API Endpoints
+The application supports scheduled jobs for automated tasks such as:
+- Performance metric calculation
+- Risk assessment
+- Position cleanup
+- Wallet balance synchronization
+- Notification digests
 
-### Strategy Management
+Jobs are managed through the `scheduled_jobs` table and processed by the cron-scheduler Edge Function.
 
-- `GET /api/strategies` - Get all strategies or a specific strategy
-- `POST /api/strategies` - Create a new strategy
-- `PUT /api/strategies` - Update an existing strategy
-- `DELETE /api/strategies` - Delete a strategy
+## Security
 
-### Strategy Execution
+The application implements a comprehensive security model:
 
-- `POST /api/strategies/execute` - Execute a strategy with a given context
-- `POST /api/strategies/deploy` - Deploy a strategy to an agent
+1. **Row Level Security (RLS)**: All tables have RLS policies to ensure users can only access their own data
+2. **API Key Management**: Secure API key generation and validation for external access
+3. **Audit Logging**: Comprehensive audit trail of important actions
+4. **Secure Webhook Signatures**: Webhook payloads are signed for verification
+
+## Contributing
+
+Contributions are welcome! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Commit your changes (`git commit -m 'Add some amazing feature'`)
+5. Push to the branch (`git push origin feature/amazing-feature`)
+6. Open a Pull Request
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Acknowledgements
+
+- Supabase for the incredible backend platform
+- Next.js team for the frontend framework
+- OpenAI for ElizaOS AI capabilities
