@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { createServerClient } from '@/utils/supabase/server';
+import { createServerAdminClient } from '@/utils/supabase/server';
 import { v4 as uuidv4 } from 'uuid';
 import { Database } from '@/types/database.types';
 
@@ -27,167 +27,332 @@ interface AgentResult {
   updated_at: string;
 }
 
-// GET handler for fetching all agents
+/**
+ * GET /api/agents
+ * Fetches all agents or agents for a specific farm
+ */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const farmIdParam = searchParams.get('farmId') || searchParams.get('farm_id');
-    const farmId = farmIdParam ? parseInt(farmIdParam) : null;
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const farmId = searchParams.get('farmId');
     
-    const supabase = await createServerClient();
+    const supabase = await createServerAdminClient();
     
-    // Get the user ID from the authentication session
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-    
-    // Base query
     let query = supabase
       .from('agents')
       .select(`
-        id,
-        name,
-        status,
-        type,
-        farm_id,
-        created_at,
-        updated_at,
-        configuration,
-        farms (
-          id,
-          name
-        )
-      `, { count: 'exact' });
+        *,
+        farms:farm_id (name)
+      `);
     
-    // Filter by farm_id if provided
+    // Apply farm filter if provided
     if (farmId) {
       query = query.eq('farm_id', farmId);
-    } else {
-      // Otherwise, join with farms and filter by user_id to ensure the user only sees their agents
-      query = query
-        .eq('farms.user_id', user.id);
     }
-
-    // Add pagination
-    query = query.range(offset, offset + limit - 1);
     
-    const { data: agents, error, count } = await query;
+    // Order by created_at descending (newest first)
+    query = query.order('created_at', { ascending: false });
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching agents:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch agents' },
+        { error: 'Failed to fetch agents', details: error.message },
         { status: 500 }
       );
     }
     
-    return NextResponse.json({
-      agents,
-      total: count || (agents ? agents.length : 0),
-      limit,
-      offset,
-      hasMore: count ? offset + limit < count : false
+    // Process the data to extract useful properties
+    const processedData = data.map(agent => {
+      // Extract configuration properties
+      const configObj = agent.configuration || {};
+      const performanceMetrics = configObj.performance_metrics || {};
+      
+      return {
+        ...agent,
+        // Extract these fields from configuration if they exist
+        description: configObj.description || '',
+        strategy_type: configObj.strategy_type || '',
+        risk_level: configObj.risk_level || '',
+        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+        performance_metrics: {
+          win_rate: performanceMetrics.win_rate || 0,
+          profit_loss: performanceMetrics.profit_loss || 0,
+          total_trades: performanceMetrics.total_trades || 0,
+          average_trade_duration: performanceMetrics.average_trade_duration || 0
+        },
+        farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+        is_active: agent.status === 'active'
+      };
     });
+    
+    return NextResponse.json({ data: processedData });
   } catch (error) {
-    console.error('Error fetching agents:', error);
+    console.error('Unexpected error in GET /api/agents:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch agents data' },
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     );
   }
 }
 
+/**
+ * POST /api/agents
+ * Create a new agent
+ */
 export async function POST(request: NextRequest) {
   try {
-    const requestData = await request.json();
-    const supabase = await createServerClient();
-
-    // Get the user ID from the authentication session
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
+    const body = await request.json();
+    const { 
+      name, 
+      farm_id, 
+      type, 
+      status, 
+      description, 
+      strategy_type, 
+      risk_level, 
+      target_markets,
+      config 
+    } = body;
+    
+    if (!name) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: 'Agent name is required' },
+        { status: 400 }
       );
     }
-
-    // Verify user owns the farm
-    const { data: farmData, error: farmError } = await supabase
-      .from('farms')
-      .select('id')
-      .eq('id', requestData.farm_id)
-      .eq('user_id', user.id)
-      .single();
-
-    if (farmError || !farmData) {
+    
+    if (!farm_id) {
       return NextResponse.json(
-        { error: 'Farm not found or access denied' },
-        { status: 403 }
+        { error: 'Farm ID is required' },
+        { status: 400 }
       );
     }
-
-    // Prepare agent configuration data
-    const configObject: AgentConfig = {
-      description: requestData.description || '',
-      strategy_type: requestData.strategy_type || 'custom',
-      risk_level: requestData.risk_level || 'medium',
-      target_markets: requestData.target_markets || [],
-      performance_metrics: {
-        win_rate: 0,
-        profit_loss: 0,
-        total_trades: 0,
-        average_trade_duration: 0
-      },
-      ...(requestData.config || {})
-    };
-
-    // Prepare basic agent data
-    const agentData = {
-      name: requestData.name,
-      farm_id: requestData.farm_id,
-      status: requestData.status || 'initializing',
-      type: requestData.type || 'eliza',
-      // Store all additional data in a configuration JSON object
-      // This avoids schema issues with missing columns
-      configuration: configObject
+    
+    const supabase = await createServerAdminClient();
+    
+    // Prepare agent data for database
+    // Moving fields that don't exist in the table schema into configuration JSON
+    const agentToCreate = {
+      name,
+      farm_id,
+      status: status || 'initializing',
+      type: type || 'eliza', // Setting to eliza by default
+      configuration: {
+        description,
+        strategy_type,
+        risk_level,
+        target_markets,
+        performance_metrics: {
+          win_rate: 0,
+          profit_loss: 0,
+          total_trades: 0,
+          average_trade_duration: 0
+        },
+        ...config // Add any additional configuration options
+      }
     };
     
-    console.log('Creating agent with data:', agentData);
-    
-    // Insert agent into Supabase
-    const { data: agent, error } = await supabase
+    const { data, error } = await supabase
       .from('agents')
-      .insert([agentData])
-      .select('id, name, farm_id, status, type, configuration')
+      .insert(agentToCreate)
+      .select(`
+        *,
+        farms:farm_id (name)
+      `)
       .single();
     
     if (error) {
       console.error('Error creating agent:', error);
       return NextResponse.json(
-        { error: `Failed to create agent: ${error.message}` },
+        { error: 'Failed to create agent', details: error.message },
         { status: 500 }
       );
     }
     
-    // Skip the agent history logging as it's causing issues
-    // We'll add this back once the database procedures are set up properly
+    // Process the created agent to match the client-side expected format
+    const configObj = data.configuration || {};
+    const performanceMetrics = configObj.performance_metrics || {};
     
-    return NextResponse.json({ 
-      agent,
-      message: 'Agent created successfully' 
-    });
+    const processedAgent = {
+      ...data,
+      description: configObj.description || '',
+      strategy_type: configObj.strategy_type || '',
+      risk_level: configObj.risk_level || '',
+      target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+      performance_metrics: {
+        win_rate: performanceMetrics.win_rate || 0,
+        profit_loss: performanceMetrics.profit_loss || 0,
+        total_trades: performanceMetrics.total_trades || 0,
+        average_trade_duration: performanceMetrics.average_trade_duration || 0
+      },
+      farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+      is_active: data.status === 'active'
+    };
+    
+    return NextResponse.json({ data: processedAgent }, { status: 201 });
   } catch (error) {
-    console.error('Agent creation error:', error);
+    console.error('Unexpected error in POST /api/agents:', error);
     return NextResponse.json(
-      { error: 'Failed to create agent: ' + (error instanceof Error ? error.message : String(error)) },
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PUT /api/agents/:id
+ * Update an existing agent
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { id, ...updates } = body;
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Agent ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const supabase = await createServerAdminClient();
+    
+    // Fetch the existing agent to merge with updates
+    const { data: existingAgent, error: fetchError } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError) {
+      console.error(`Error fetching agent ${id}:`, fetchError);
+      return NextResponse.json(
+        { error: 'Failed to fetch existing agent', details: fetchError.message },
+        { status: 500 }
+      );
+    }
+    
+    // Prepare the updates
+    const updatedFields: any = {};
+    
+    // Handle direct table fields
+    if (updates.name) updatedFields.name = updates.name;
+    if (updates.status) updatedFields.status = updates.status;
+    if (updates.type) updatedFields.type = updates.type;
+    if (updates.farm_id) updatedFields.farm_id = updates.farm_id;
+    
+    // Handle configuration fields
+    const existingConfig = existingAgent.configuration || {};
+    const updatedConfig = { ...existingConfig };
+    
+    if (updates.description) updatedConfig.description = updates.description;
+    if (updates.strategy_type) updatedConfig.strategy_type = updates.strategy_type;
+    if (updates.risk_level) updatedConfig.risk_level = updates.risk_level;
+    if (updates.target_markets) updatedConfig.target_markets = updates.target_markets;
+    
+    // Handle performance metrics update
+    if (updates.performance_metrics) {
+      updatedConfig.performance_metrics = {
+        ...(existingConfig.performance_metrics || {}),
+        ...updates.performance_metrics
+      };
+    }
+    
+    // Add any other direct config updates
+    if (updates.config) {
+      Object.assign(updatedConfig, updates.config);
+    }
+    
+    // Add the updated configuration to the update fields
+    updatedFields.configuration = updatedConfig;
+    
+    // Update the agent
+    const { data, error } = await supabase
+      .from('agents')
+      .update(updatedFields)
+      .eq('id', id)
+      .select(`
+        *,
+        farms:farm_id (name)
+      `)
+      .single();
+    
+    if (error) {
+      console.error(`Error updating agent ${id}:`, error);
+      return NextResponse.json(
+        { error: 'Failed to update agent', details: error.message },
+        { status: 500 }
+      );
+    }
+    
+    // Process the updated agent to match the client-side expected format
+    const configObj = data.configuration || {};
+    const performanceMetrics = configObj.performance_metrics || {};
+    
+    const processedAgent = {
+      ...data,
+      description: configObj.description || '',
+      strategy_type: configObj.strategy_type || '',
+      risk_level: configObj.risk_level || '',
+      target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+      performance_metrics: {
+        win_rate: performanceMetrics.win_rate || 0,
+        profit_loss: performanceMetrics.profit_loss || 0,
+        total_trades: performanceMetrics.total_trades || 0,
+        average_trade_duration: performanceMetrics.average_trade_duration || 0
+      },
+      farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+      is_active: data.status === 'active'
+    };
+    
+    return NextResponse.json({ data: processedAgent });
+  } catch (error) {
+    console.error('Unexpected error in PUT /api/agents:', error);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/agents/:id
+ * Delete an agent
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Agent ID is required' },
+        { status: 400 }
+      );
+    }
+    
+    const supabase = await createServerAdminClient();
+    
+    const { error } = await supabase
+      .from('agents')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error(`Error deleting agent ${id}:`, error);
+      return NextResponse.json(
+        { error: 'Failed to delete agent', details: error.message },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Unexpected error in DELETE /api/agents:', error);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     );
   }

@@ -1,186 +1,154 @@
 'use client';
 
-import * as React from 'react';
-import { io, type Socket } from 'socket.io-client';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 interface SocketContextType {
-  socket: Socket | null;
   isConnected: boolean;
-  latestMessages: {
-    [key: string]: any;
-  };
-  messages: any[];
-  send: (event: string, data: any) => void;
-  subscribe: (room: string) => void;
-  unsubscribe: (room: string) => void;
+  sendMessage: (message: any) => void;
+  lastMessage: any;
+  connect: () => void;
+  disconnect: () => void;
 }
 
-const SocketContext = React.createContext<SocketContextType>({
-  socket: null,
+const SocketContext = createContext<SocketContextType>({
   isConnected: false,
-  latestMessages: {},
-  messages: [],
-  send: () => {},
-  subscribe: () => {},
-  unsubscribe: () => {}
+  sendMessage: () => { },
+  lastMessage: null,
+  connect: () => { },
+  disconnect: () => { }
 });
 
-export const useSocket = () => React.useContext(SocketContext);
+export const useSocket = () => useContext(SocketContext);
 
-export interface SocketProviderProps {
+interface SocketProviderProps {
   children: React.ReactNode;
-  farmId?: string;
-  userId?: string;
 }
 
-export function SocketProvider({ 
-  children,
-  farmId,
-  userId
-}: SocketProviderProps) {
-  const [socket, setSocket] = React.useState<Socket | null>(null);
-  const [isConnected, setIsConnected] = React.useState(false);
-  const [socketUrl, setSocketUrl] = React.useState<string | null>(null);
-  const [messages, setMessages] = React.useState<any[]>([]);
-  const [latestMessages, setLatestMessages] = React.useState<{[key: string]: any}>({});
+export function SocketProvider({ children }: SocketProviderProps) {
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [lastMessage, setLastMessage] = useState<any>(null);
+  const [reconnectTimeout, setReconnectTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const maxReconnectAttempts = 5;
+  const reconnectDelay = 3000; // 3 seconds
   
-  // Fetch the socket URL from the API
-  React.useEffect(() => {
-    const fetchSocketUrl = async () => {
-      try {
-        const response = await fetch('/api/config?key=socket_io_url');
-        if (!response.ok) {
-          throw new Error(`Failed to fetch Socket URL: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        // Parse the JSON string if it's stored as a string in the database
-        const url = typeof data.value === 'string' && data.value.startsWith('"') 
-          ? JSON.parse(data.value) 
-          : data.value;
-          
-        setSocketUrl(url);
-      } catch (error: any) {
-        console.error('Error getting Socket URL:', error);
-        // Fallback to default URL
-        setSocketUrl('http://localhost:3002');
-      }
-    };
+  const getWebSocketUrl = () => {
+    // Try to get the WebSocket URL from environment variable
+    const wsUrl = process.env.NEXT_PUBLIC_GRAPHQL_WS_URL || process.env.NEXT_PUBLIC_WS_URL;
     
-    fetchSocketUrl();
+    if (wsUrl) {
+      return wsUrl;
+    }
+    
+    // Fallback to derived URL based on current host
+    const isSecure = window.location.protocol === 'https:';
+    const protocol = isSecure ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    
+    return `${protocol}//${host}/api/ws`;
+  };
+  
+  const createSocketConnection = () => {
+    try {
+      const wsUrl = getWebSocketUrl();
+      console.log(`Connecting to WebSocket at ${wsUrl}`);
+      
+      const ws = new WebSocket(wsUrl);
+      setSocket(ws);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        setIsConnected(true);
+        setReconnectAttempts(0);
+        
+        // Send authentication if needed
+        if (typeof window !== 'undefined') {
+          // Get auth token from localStorage if available
+          const token = localStorage.getItem('auth_token');
+          if (token) {
+            ws.send(JSON.stringify({ type: 'auth', token }));
+          }
+        }
+      };
+      
+      ws.onclose = (event) => {
+        console.log(`WebSocket disconnected: ${event.code} ${event.reason}`);
+        setIsConnected(false);
+        
+        // Try to reconnect if not a normal closure and we haven't exceeded max attempts
+        if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+          const timeout = setTimeout(() => {
+            console.log(`Attempting to reconnect (${reconnectAttempts + 1}/${maxReconnectAttempts})...`);
+            setReconnectAttempts(prev => prev + 1);
+            createSocketConnection();
+          }, reconnectDelay);
+          
+          setReconnectTimeout(timeout);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('WebSocket message received:', data);
+          setLastMessage(data);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+    } catch (error) {
+      console.error('Error creating WebSocket connection:', error);
+    }
+  };
+  
+  const connect = () => {
+    if (!socket || socket.readyState === WebSocket.CLOSED) {
+      createSocketConnection();
+    }
+  };
+  
+  const disconnect = () => {
+    if (socket) {
+      // Use code 1000 for normal closure
+      socket.close(1000, 'User initiated disconnect');
+    }
+    
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      setReconnectTimeout(null);
+    }
+    
+    setIsConnected(false);
+  };
+  
+  const sendMessage = (message: any) => {
+    if (socket && isConnected) {
+      socket.send(typeof message === 'string' ? message : JSON.stringify(message));
+    } else {
+      console.warn('Cannot send message: WebSocket not connected');
+    }
+  };
+  
+  // Connect on component mount and cleanup on unmount
+  useEffect(() => {
+    // Auto-connect
+    connect();
+    
+    // Cleanup on unmount
+    return () => {
+      disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
-  // Initialize socket connection when URL is available
-  React.useEffect(() => {
-    if (!socketUrl) return;
-    
-    try {
-      // @ts-ignore - Ignoring the type issue with Socket.io
-      const socketInstance = io(socketUrl, {
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        autoConnect: true,
-        query: userId ? { userId } : undefined
-      });
-      
-      socketInstance.on('connect', () => {
-        console.log('Socket connected');
-        setIsConnected(true);
-        
-        // Join farm room if farmId is provided
-        if (farmId) {
-          socketInstance.emit('JOIN_FARM', farmId);
-          // Also join ElizaOS room for commands and knowledge queries
-          socketInstance.emit('JOIN_ELIZAOS', { farmId });
-        }
-      });
-      
-      socketInstance.on('disconnect', () => {
-        console.log('Socket disconnected');
-        setIsConnected(false);
-      });
-      
-      socketInstance.on('connect_error', (error: any) => {
-        console.error('Connection error:', error);
-        setIsConnected(false);
-      });
-      
-      // Generic message handler that collects all messages
-      const messageTypes = [
-        'ORDER_UPDATE', 
-        'PRICE_ALERT', 
-        'EXECUTION_NOTIFICATION',
-        'COMMAND_RESPONSE',
-        'KNOWLEDGE_RESPONSE'
-      ];
-      
-      messageTypes.forEach(type => {
-        socketInstance.on(type, (message: any) => {
-          // Update all messages
-          setMessages((prev: any[]) => [...prev, { ...message, receivedAt: new Date().toISOString() }]);
-          
-          // Also store the latest message of each type
-          setLatestMessages((prev: any) => ({
-            ...prev,
-            [type]: message
-          }));
-        });
-      });
-      
-      setSocket(socketInstance);
-      
-      return () => {
-        messageTypes.forEach(type => {
-          socketInstance.off(type);
-        });
-        socketInstance.off('connect');
-        socketInstance.off('disconnect');
-        socketInstance.off('connect_error');
-        socketInstance.disconnect();
-      };
-    } catch (error) {
-      console.error("Error initializing socket:", error);
-      return () => {};
-    }
-  }, [socketUrl, farmId, userId]);
-  
-  // Send message to the server
-  const send = (event: string, data: any) => {
-    if (socket && isConnected) {
-      socket.emit(event, data);
-    } else {
-      console.error('Cannot send message: socket not connected');
-    }
-  };
-  
-  // Subscribe to a room
-  const subscribe = (room: string) => {
-    if (socket && isConnected) {
-      console.log(`Joining room: ${room}`);
-      socket.emit('join', room);
-    }
-  };
-  
-  // Unsubscribe from a room
-  const unsubscribe = (room: string) => {
-    if (socket && isConnected) {
-      console.log(`Leaving room: ${room}`);
-      socket.emit('leave', room);
-    }
-  };
-  
   return (
-    <SocketContext.Provider 
-      value={{ 
-        socket, 
-        isConnected, 
-        messages,
-        latestMessages,
-        send,
-        subscribe,
-        unsubscribe
-      }}
-    >
+    <SocketContext.Provider value={{ isConnected, sendMessage, lastMessage, connect, disconnect }}>
       {children}
     </SocketContext.Provider>
   );

@@ -34,6 +34,7 @@ import { useTheme } from "next-themes"; // Added missing import
 import { ExtendedAgent, agentService } from "@/services/agent-service"; // Added missing import
 import Link from "next/link"; // Added missing import
 import { DollarSign, LayoutDashboard, Layers, Percent, ShieldAlert, Bot, Plus } from "lucide-react"; // Added missing imports
+import { dashboardService, DashboardData } from "@/services/dashboard-service"; // Add this import
 
 // Define mock dashboard data interface
 interface DashboardData {
@@ -130,19 +131,15 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // In production, replace with actual API call
-        // const response = await dashboardApi.getDashboard(farmId);
-        // const dashboardData = response.data;
-        const mockDashboardData: DashboardData = {
-          portfolioValue: 125000,
-          pnl24h: 3450,
-          winRate: 68,
-          avgTradeDuration: "4h 32m",
-          topPair: "BTC/USD",
-          riskExposure: 35,
-          riskExposureTrend: "neutral"
-        };
-        setData(mockDashboardData);
+        const response = await dashboardService.getDashboardData(farmId);
+        
+        if (response.error) {
+          console.error("Error fetching dashboard data:", response.error);
+          setError("Failed to load dashboard data. Please try again later.");
+          return;
+        }
+        
+        setData(response.data);
         setError(null);
       } catch (err) {
         console.error("Error fetching dashboard data:", err);
@@ -198,19 +195,19 @@ export default function DashboardPage() {
   const refreshData = async () => {
     try {
       setLoading(true);
-      // In production, replace with actual API call
-      // const response = await dashboardApi.getDashboard(farmId);
-      // const dashboardData = response.data;
-      const mockDashboardData: DashboardData = {
-        portfolioValue: 126500,
-        pnl24h: 3780,
-        winRate: 70,
-        avgTradeDuration: "4h 45m",
-        topPair: "BTC/USD",
-        riskExposure: 32,
-        riskExposureTrend: "down"
-      };
-      setData(mockDashboardData);
+      const response = await dashboardService.getDashboardData(farmId);
+      
+      if (response.error) {
+        console.error("Error refreshing dashboard data:", response.error);
+        toast({
+          title: "Refresh failed",
+          description: "Could not refresh dashboard data. Please try again later.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      setData(response.data);
       setError(null);
       toast({
         title: "Dashboard refreshed",
