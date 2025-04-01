@@ -179,9 +179,11 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
         }
       };
       
-      // Try the custom API endpoint that handles schema cache issues
+      console.log('Creating Eliza agent with data:', agentData);
+      
+      // First try our most direct approach - the eliza-direct endpoint
       try {
-        const customResponse = await fetch('/api/agents/custom-create', {
+        const directResponse = await fetch('/api/agents/eliza-direct', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -189,41 +191,121 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
           body: JSON.stringify(agentData),
         });
         
-        if (customResponse.ok) {
-          const data = await customResponse.json();
+        const responseData = await directResponse.json();
+        
+        if (directResponse.ok) {
+          console.log('Eliza agent created successfully with direct approach:', responseData);
           toast({
             title: "Agent Created Successfully",
-            description: `${data.agent.name} has been created and is being initialized.`,
+            description: `${responseData.agent.name} has been created and is initializing.`,
           });
           
           if (onSuccess) {
-            onSuccess(data.agent);
+            onSuccess(responseData.agent);
           } else {
             // Navigate to the agent details page
-            router.push(`/dashboard/agents/${data.agent.id}`);
+            router.push(`/dashboard/agents/${responseData.agent.id}`);
           }
           return;
         } else {
-          console.error('Custom API failed with status:', customResponse.status);
+          console.error(`Direct creation endpoint failed (${directResponse.status}):`, responseData.error);
         }
-      } catch (customError) {
-        console.error('Custom API endpoint failed:', customError);
-        // Fall back to regular API
+      } catch (directError) {
+        console.error('Direct endpoint error:', directError);
       }
       
-      // Fall back to using the regular agent creation endpoint if the custom one fails
+      // If direct approach failed, try the specialized Eliza endpoint
+      try {
+        const elizaResponse = await fetch('/api/agents/eliza-create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(agentData),
+        });
+        
+        const responseData = await elizaResponse.json();
+        
+        if (elizaResponse.ok) {
+          console.log('Eliza agent created successfully:', responseData);
+          toast({
+            title: "Agent Created Successfully",
+            description: `${responseData.agent.name} has been created and is initializing.`,
+          });
+          
+          if (onSuccess) {
+            onSuccess(responseData.agent);
+          } else {
+            // Navigate to the agent details page
+            router.push(`/dashboard/agents/${responseData.agent.id}`);
+          }
+          return;
+        } else {
+          console.error(`Eliza creation endpoint failed (${elizaResponse.status}):`, responseData.error);
+        }
+      } catch (elizaError) {
+        console.error('Eliza endpoint error:', elizaError);
+      }
+      
+      // Try with our fallback approaches if the Eliza-specific endpoints fail
+      const fallbackEndpoints = [
+        { name: 'basic create', url: '/api/agents/basic-create' },
+        { name: 'direct insert', url: '/api/agents/direct-insert' },
+        { name: 'custom create', url: '/api/agents/custom-create' },
+      ];
+      
+      for (const endpoint of fallbackEndpoints) {
+        try {
+          console.log(`Attempting ${endpoint.name}...`);
+          const response = await fetch(endpoint.url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(agentData),
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log(`${endpoint.name} succeeded:`, data);
+            
+            toast({
+              title: "Agent Created Successfully",
+              description: `${data.agent.name} has been created, but some backend features may be limited.`,
+            });
+            
+            if (onSuccess) {
+              onSuccess(data.agent);
+            } else {
+              // Navigate to the agent details page
+              router.push(`/dashboard/agents/${data.agent.id}`);
+            }
+            return;
+          } else {
+            const errorText = await response.text();
+            console.error(`${endpoint.name} failed (${response.status}):`, errorText);
+          }
+        } catch (error) {
+          console.error(`${endpoint.name} API error:`, error);
+        }
+      }
+      
+      // Last resort: original agent service
+      console.log('Attempting original agent service...');
       const response = await agentService.createAgent(agentData);
       
       if (response.error) {
+        console.error('Original service failed:', response.error);
         toast({
           variant: "destructive",
           title: "Agent Creation Failed",
           description: response.error,
         });
       } else if (response.data) {
+        console.log('Original service succeeded:', response.data);
         toast({
           title: "Agent Created Successfully",
-          description: `${response.data.name} has been created and is being initialized.`,
+          description: `${response.data.name} has been created, but some backend features may be limited.`,
         });
         
         if (onSuccess) {
@@ -232,6 +314,13 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
           // Navigate to the agent details page
           router.push(`/dashboard/agents/${response.data.id}`);
         }
+      } else {
+        // If all else fails, show an error
+        toast({
+          variant: "destructive",
+          title: "Agent Creation Failed",
+          description: "All creation methods failed. Please try again later.",
+        });
       }
     } catch (error) {
       console.error('Error creating agent:', error);
