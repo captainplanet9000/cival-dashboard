@@ -1,35 +1,20 @@
 export interface PerformanceMetrics {
-  // Time-based metrics
-  startTimestamp: number;
-  endTimestamp: number;
-  timeframe: 'hour' | 'day' | 'week' | 'month' | 'year' | 'custom';
-  
-  // Financial metrics
-  totalPnL: number;
-  absoluteReturn: number;
-  percentageReturn: number;
-  sharpeRatio: number;
-  sortinoRatio: number;
-  maxDrawdown: number;
-  maxDrawdownDuration: number;
-  volatility: number;
-  
-  // Trading metrics
+  timeframe: 'day' | 'week' | 'month';
   totalTrades: number;
-  winningTrades: number;
-  losingTrades: number;
   winRate: number;
+  profitFactor: number;
+  sharpeRatio: number;
+  totalReturn: number;
+  averageReturn: number;
+  annualizedReturn: number;
+  volatility: number;
+  maxDrawdown: number;
+  valueAtRisk: number;
+  recoveryFactor: number;
+  sortinoRatio: number;
   averageWin: number;
   averageLoss: number;
-  largestWin: number;
-  largestLoss: number;
-  profitFactor: number;
-  expectancy: number;
-  
-  // Efficiency metrics
-  averageHoldingTime: number;
-  tradesPerDay: number;
-  recoveryFactor: number;
+  totalPnL: number;
 }
 
 export interface AgentPerformanceAnalysis {
@@ -41,17 +26,27 @@ export interface AgentPerformanceAnalysis {
   weaknesses: string[];
   aiRecommendations: string[];
   anomalies: {
-    type: 'behavioral' | 'performance' | 'risk';
+    type: string;
     description: string;
     severity: 'low' | 'medium' | 'high';
-    detectedAt: number;
+    timestamp: string;
   }[];
-  improvementScore: number; // 0-100
+  improvementScore: number;
   comparisonToBaseline: {
     metric: string;
-    baselineValue: number;
-    currentValue: number;
     percentageDifference: number;
+  }[];
+  performanceHistory: {
+    date: string;
+    value: number;
+  }[];
+  tradeDistribution: {
+    range: string;
+    count: number;
+  }[];
+  performanceAttribution: {
+    factor: string;
+    value: number;
   }[];
 }
 
@@ -59,16 +54,11 @@ export interface StrategyPrediction {
   strategyId: string;
   strategyName: string;
   predictionTimeframe: string;
-  confidenceLevel: number; // 0-1
+  confidenceLevel: number;
   expectedReturn: number;
   probabilityDistribution: {
     returnLevel: number;
     probability: number;
-  }[];
-  marketConditions: {
-    scenario: string;
-    probability: number;
-    expectedPerformance: number;
   }[];
   riskAssessment: {
     expectedDrawdown: number;
@@ -78,45 +68,74 @@ export interface StrategyPrediction {
       impact: number;
     }[];
   };
+  marketConditions: {
+    scenario: string;
+    expectedPerformance: number;
+  }[];
   recommendations: {
-    action: string;
-    reasoning: string;
     priority: 'low' | 'medium' | 'high';
+    title: string;
+    description: string;
+    actionItems?: string[];
+  }[];
+  forecastData: {
+    date: string;
+    expectedReturn: number;
+    upperBound: number;
+    lowerBound: number;
+  }[];
+  riskAnalysis: {
+    factor: string;
+    score: number;
+  }[];
+  marketImpact: {
+    factor: string;
+    description: string;
+    impact: 'positive' | 'negative' | 'neutral';
+    probability: number;
   }[];
 }
 
 export interface PortfolioAnalytics {
-  timestamp: number;
-  allocations: {
+  totalValue: number;
+  cashBalance: number;
+  marginUsage: number;
+  healthScore: number;
+  riskLevel: 'low' | 'medium' | 'high';
+  diversificationScore: number;
+  assetAllocation: {
     assetClass: string;
     percentage: number;
-    absoluteValue: number;
+    value: number;
   }[];
   riskMetrics: {
-    portfolioVolatility: number;
-    correlationMatrix: Record<string, Record<string, number>>;
-    varLevel95: number;
-    expectedShortfall: number;
-    stressTestResults: Record<string, number>;
-  };
-  performanceAttribution: {
-    assetClass: string;
-    contribution: number;
-    weightEffect: number;
-    selectionEffect: number;
+    metric: string;
+    value: number;
+    threshold: number;
   }[];
-  diversificationScore: number; // 0-100
-  efficiencyFrontier: {
-    risk: number;
-    return: number;
-    isOptimal: boolean;
+  performanceMetrics: {
+    metric: string;
+    value: number;
+    change: number;
   }[];
-  rebalancingRecommendations: {
-    assetClass: string;
-    currentAllocation: number;
-    targetAllocation: number;
-    reasoning: string;
+  recommendations: {
+    type: string;
+    description: string;
+    priority: 'low' | 'medium' | 'high';
   }[];
+}
+
+export interface AnalyticsInsight {
+  id: string;
+  title: string;
+  description: string;
+  type: 'info' | 'warning' | 'success';
+  category: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+  recommendation?: string;
+  relatedMetrics?: string[];
+  dismissed?: boolean;
 }
 
 export enum VisualizationType {
@@ -152,22 +171,4 @@ export interface VisualizationConfig {
     filtering: boolean;
     drilldown: boolean;
   };
-}
-
-export interface AnalyticsInsight {
-  id: string;
-  timestamp: number;
-  category: 'performance' | 'risk' | 'behavior' | 'opportunity';
-  title: string;
-  description: string;
-  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
-  relatedEntities: {
-    type: 'agent' | 'strategy' | 'market' | 'asset';
-    id: string;
-    name: string;
-  }[];
-  recommendations: string[];
-  visualizations?: VisualizationConfig[];
-  aiConfidence: number; // 0-1
-  dismissed: boolean;
 } 

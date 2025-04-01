@@ -322,4 +322,24 @@ export function HeatMap({
       </Treemap>
     </RechartsResponsiveContainer>
   );
-} 
+}
+
+// Re-export components with consistent styling
+export const BarChart = RechartsBarChart;
+export const LineChart = RechartsLineChart;
+export const PieChart = RechartsPieChart;
+export const RadarChart = RechartsRadarChart;
+export const ResponsiveContainer = RechartsResponsiveContainer;
+export const CartesianGrid = CartesianGrid;
+export const XAxis = XAxis;
+export const YAxis = YAxis;
+export const Tooltip = Tooltip;
+export const Legend = Legend;
+export const PolarGrid = PolarGrid;
+export const PolarAngleAxis = PolarAngleAxis;
+export const PolarRadiusAxis = PolarRadiusAxis;
+export const Radar = Radar;
+export const Line = Line;
+
+// Add any custom styling or configuration here
+// ... existing code ... 

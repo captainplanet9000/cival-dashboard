@@ -1,18 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { InfoIcon, AlertTriangle, TrendingUp, BarChart3Icon, Activity } from "lucide-react";
 import { 
   BarChart, 
   LineChart,
   PieChart,
   RadarChart,
   HeatMap,
-  ResponsiveContainer 
-} from '../ui/charts';
+  ResponsiveContainer,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
+  Line,
+  Bar,
+  Pie
+} from '@/components/ui/charts';
 import { 
   AgentPerformanceAnalysis, 
   StrategyPrediction, 
@@ -20,9 +35,6 @@ import {
   AnalyticsInsight
 } from '@/types/analytics';
 import { analyticsService } from '@/data-access/services/analytics-service';
-import { Skeleton } from "../ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-import { InfoIcon, AlertTriangle, TrendingUp, BarChart3Icon, Activity } from "lucide-react";
 
 interface PerformanceAnalysisDashboardProps {
   agentId?: string;
@@ -40,44 +52,71 @@ export default function PerformanceAnalysisDashboard({
   const [portfolioAnalytics, setPortfolioAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [insights, setInsights] = useState<AnalyticsInsight[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
+      setError(null);
       try {
-        // Get analytics insights
-        const fetchedInsights = await analyticsService.getAnalyticsInsights();
-        setInsights(fetchedInsights);
+        const [insightsData, portfolioData] = await Promise.all([
+          analyticsService.getAnalyticsInsights(),
+          analyticsService.analyzePortfolio()
+        ]);
         
-        // Get portfolio analytics
-        const portfolio = await analyticsService.analyzePortfolio();
-        setPortfolioAnalytics(portfolio);
+        setInsights(insightsData);
+        setPortfolioAnalytics(portfolioData);
         
-        // Get agent performance analysis if agentId is provided
         if (agentId) {
           const analysis = await analyticsService.analyzeAgentPerformance(agentId, timeframe);
           setAgentAnalysis(analysis);
         }
         
-        // Get strategy prediction if strategyId is provided
         if (strategyId) {
           const prediction = await analyticsService.predictStrategyPerformance(strategyId, '30 days');
           setStrategyPrediction(prediction);
         }
       } catch (error) {
         console.error('Error fetching analytics data:', error);
+        setError('Failed to fetch analytics data. Please try again.');
+        // Implement exponential backoff for retries
+        if (retryCount < 3) {
+          const timeout = Math.pow(2, retryCount) * 1000;
+          setTimeout(() => {
+            setRetryCount(prev => prev + 1);
+          }, timeout);
+        }
       } finally {
         setLoading(false);
       }
     };
     
     fetchData();
-  }, [agentId, strategyId, timeframe]);
+  }, [agentId, strategyId, timeframe, retryCount]);
   
   const handleDismissInsight = async (insightId: string) => {
     await analyticsService.dismissInsight(insightId);
     setInsights(insights.filter(i => i.id !== insightId));
   };
+  
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Error</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setRetryCount(prev => prev + 1)}
+          className="mt-2"
+        >
+          Retry
+        </Button>
+      </Alert>
+    );
+  }
   
   return (
     <div className="space-y-4">
@@ -283,191 +322,200 @@ export default function PerformanceAnalysisDashboard({
                     </CardContent>
                   </Card>
                   
-                  <div className="space-y-3">
-                    <h3 className="text-sm font-medium">AI Insights</h3>
-                    {insights.slice(0, 3).map(insight => (
-                      <Alert key={insight.id} className="flex items-start">
-                        <div className="flex-shrink-0 mr-2">
-                          {insight.severity === 'high' || insight.severity === 'critical' ? (
-                            <AlertTriangle className="h-5 w-5 text-red-500" />
-                          ) : insight.category === 'opportunity' ? (
-                            <TrendingUp className="h-5 w-5 text-green-500" />
-                          ) : (
-                            <InfoIcon className="h-5 w-5 text-blue-500" />
-                          )}
-                        </div>
-                        <div className="flex-grow">
-                          <AlertTitle className="flex items-center">
-                            <span>{insight.title}</span>
-                            <Badge className="ml-2" variant={
-                              insight.severity === 'high' || insight.severity === 'critical' 
-                                ? 'destructive' 
-                                : insight.category === 'opportunity' 
-                                  ? 'default' 
-                                  : 'secondary'
-                            }>
-                              {insight.severity}
-                            </Badge>
-                          </AlertTitle>
-                          <AlertDescription>
-                            {insight.description}
-                          </AlertDescription>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="flex-shrink-0 ml-2"
-                          onClick={() => handleDismissInsight(insight.id)}
-                        >
-                          Dismiss
-                        </Button>
-                      </Alert>
-                    ))}
-                  </div>
+                  <Card className={`${portfolioAnalytics?.healthScore >= 70 ? 'border-green-500' : portfolioAnalytics?.healthScore <= 40 ? 'border-red-500' : ''}`}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Portfolio Health</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {portfolioAnalytics?.healthScore.toFixed(1) || 'N/A'}/100
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {portfolioAnalytics?.riskLevel} risk level
+                      </p>
+                    </CardContent>
+                  </Card>
                 </>
               )}
             </TabsContent>
             
-            <TabsContent value="performance">
+            <TabsContent value="performance" className="space-y-4">
               {loading ? (
                 <div className="space-y-4">
                   <Skeleton className="h-[400px] w-full" />
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    <Skeleton className="h-[200px] w-full" />
                     <Skeleton className="h-[200px] w-full" />
                     <Skeleton className="h-[200px] w-full" />
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-4">
+              ) : agentAnalysis ? (
+                <>
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Trading Performance Analysis</CardTitle>
-                      <CardDescription>
-                        {agentAnalysis?.agentName ? `Agent: ${agentAnalysis.agentName}` : 'Portfolio-wide performance'}
-                      </CardDescription>
+                      <CardTitle>Performance Metrics</CardTitle>
+                      <CardDescription>Detailed analysis of trading performance</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                      <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <h3 className="font-medium mb-2">Trading Metrics</h3>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-sm text-muted-foreground">Total Trades</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.totalTrades || 'N/A'}</p>
+                          <h4 className="text-sm font-medium mb-2">Returns</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Total Return</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.totalReturn * 100).toFixed(2)}%</span>
                             </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Win Rate</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.winRate ? `${(agentAnalysis.metrics.winRate * 100).toFixed(1)}%` : 'N/A'}</p>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Average Return</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.averageReturn * 100).toFixed(2)}%</span>
                             </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Profit Factor</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.profitFactor?.toFixed(2) || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Avg Win/Loss</p>
-                              <p className="text-xl font-semibold">
-                                {agentAnalysis?.metrics.averageWin && agentAnalysis?.metrics.averageLoss
-                                  ? `${(Math.abs(agentAnalysis.metrics.averageWin / agentAnalysis.metrics.averageLoss)).toFixed(2)}`
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-                          
-                          <h3 className="font-medium mt-4 mb-2">Risk Metrics</h3>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-sm text-muted-foreground">Max Drawdown</p>
-                              <p className="text-xl font-semibold">
-                                {agentAnalysis?.metrics.maxDrawdown 
-                                  ? `${(agentAnalysis.metrics.maxDrawdown / (agentAnalysis.metrics.totalPnL > 0 ? agentAnalysis.metrics.totalPnL : 1) * 100).toFixed(1)}%` 
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Recovery Factor</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.recoveryFactor?.toFixed(2) || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.sharpeRatio?.toFixed(2) || 'N/A'}</p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Sortino Ratio</p>
-                              <p className="text-xl font-semibold">{agentAnalysis?.metrics.sortinoRatio?.toFixed(2) || 'N/A'}</p>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Annualized Return</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.annualizedReturn * 100).toFixed(2)}%</span>
                             </div>
                           </div>
                         </div>
                         
                         <div>
-                          <h3 className="font-medium mb-2">AI Analysis</h3>
-                          <div className="mb-4">
-                            <div className="mb-2 flex items-center">
-                              <h4 className="text-sm font-medium">Strengths</h4>
-                              <Badge className="ml-2" variant="outline">{agentAnalysis?.strengths.length || 0}</Badge>
+                          <h4 className="text-sm font-medium mb-2">Risk Metrics</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Volatility</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.volatility * 100).toFixed(2)}%</span>
                             </div>
-                            <ul className="space-y-1 text-sm">
-                              {agentAnalysis?.strengths.map((strength, i) => (
-                                <li key={i} className="flex items-start">
-                                  <span className="text-green-500 mr-2">•</span>
-                                  <span>{strength}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          
-                          <div className="mb-4">
-                            <div className="mb-2 flex items-center">
-                              <h4 className="text-sm font-medium">Weaknesses</h4>
-                              <Badge className="ml-2" variant="outline">{agentAnalysis?.weaknesses.length || 0}</Badge>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Max Drawdown</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.maxDrawdown * 100).toFixed(2)}%</span>
                             </div>
-                            <ul className="space-y-1 text-sm">
-                              {agentAnalysis?.weaknesses.map((weakness, i) => (
-                                <li key={i} className="flex items-start">
-                                  <span className="text-red-500 mr-2">•</span>
-                                  <span>{weakness}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                          
-                          <div>
-                            <div className="mb-2 flex items-center">
-                              <h4 className="text-sm font-medium">Recommendations</h4>
-                              <Badge className="ml-2" variant="outline">{agentAnalysis?.aiRecommendations.length || 0}</Badge>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Value at Risk</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.valueAtRisk * 100).toFixed(2)}%</span>
                             </div>
-                            <ul className="space-y-1 text-sm">
-                              {agentAnalysis?.aiRecommendations.map((rec, i) => (
-                                <li key={i} className="flex items-start">
-                                  <span className="text-blue-500 mr-2">→</span>
-                                  <span>{rec}</span>
-                                </li>
-                              ))}
-                            </ul>
                           </div>
                         </div>
-                      </div>
-                      
-                      <div className="mt-6">
-                        <h3 className="font-medium mb-3">Performance Comparison to Baseline</h3>
-                        <div className="h-[250px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <BarChart 
-                              data={agentAnalysis?.comparisonToBaseline?.map(c => ({
-                                name: c.metric,
-                                value: c.percentageDifference,
-                                baseline: 0
-                              })) || []} 
-                            />
-                          </ResponsiveContainer>
+                        
+                        <div>
+                          <h4 className="text-sm font-medium mb-2">Trading Statistics</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Win Rate</span>
+                              <span className="font-medium">{(agentAnalysis.metrics.winRate * 100).toFixed(2)}%</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Profit Factor</span>
+                              <span className="font-medium">{agentAnalysis.metrics.profitFactor.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                              <span className="font-medium">{agentAnalysis.metrics.sharpeRatio.toFixed(2)}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Trade Distribution</CardTitle>
+                        <CardDescription>Analysis of trade outcomes and patterns</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-[300px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={agentAnalysis.tradeDistribution}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="range" />
+                              <YAxis />
+                              <Tooltip />
+                              <Legend />
+                              <Bar dataKey="count" fill="#8884d8" name="Number of Trades" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Performance Attribution</CardTitle>
+                        <CardDescription>Breakdown of performance factors</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-[300px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Tooltip />
+                              <Legend />
+                              <Pie
+                                data={agentAnalysis.performanceAttribution}
+                                dataKey="value"
+                                nameKey="factor"
+                                cx="50%"
+                                cy="50%"
+                                outerRadius={80}
+                                fill="#8884d8"
+                                label
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {agentAnalysis.strengths.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Performance Analysis</CardTitle>
+                        <CardDescription>AI-generated insights about trading behavior</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="grid grid-cols-2 gap-8">
+                          <div>
+                            <h4 className="font-medium mb-2">Strengths</h4>
+                            <ul className="space-y-2">
+                              {agentAnalysis.strengths.map((strength, index) => (
+                                <li key={index} className="flex items-center text-sm">
+                                  <span className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+                                  {strength}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-medium mb-2">Areas for Improvement</h4>
+                            <ul className="space-y-2">
+                              {agentAnalysis.weaknesses.map((weakness, index) => (
+                                <li key={index} className="flex items-center text-sm">
+                                  <span className="w-2 h-2 rounded-full bg-red-500 mr-2" />
+                                  {weakness}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              ) : (
+                <Card>
+                  <CardContent className="flex items-center justify-center h-[200px]">
+                    <div className="text-center">
+                      <Activity className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-medium">No Agent Selected</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Select an agent to view performance metrics
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
             
-            <TabsContent value="predictions">
+            <TabsContent value="predictions" className="space-y-4">
               {loading ? (
                 <div className="space-y-4">
                   <Skeleton className="h-[400px] w-full" />
@@ -476,129 +524,148 @@ export default function PerformanceAnalysisDashboard({
                     <Skeleton className="h-[200px] w-full" />
                   </div>
                 </div>
-              ) : (
-                <div className="space-y-4">
+              ) : strategyPrediction ? (
+                <>
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-base">Strategy Prediction Analysis</CardTitle>
-                      <CardDescription>
-                        {strategyPrediction?.strategyName 
-                          ? `Strategy: ${strategyPrediction.strategyName} | Timeframe: ${strategyPrediction.predictionTimeframe}`
-                          : 'Portfolio-wide projections'}
-                      </CardDescription>
+                      <CardTitle>Performance Forecast</CardTitle>
+                      <CardDescription>30-day prediction with {strategyPrediction.confidenceLevel}% confidence</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div>
-                          <div className="flex justify-between items-center mb-4">
-                            <div>
-                              <h3 className="font-medium">Expected Performance</h3>
-                              <p className="text-sm text-muted-foreground">
-                                Confidence Level: {strategyPrediction?.confidenceLevel 
-                                  ? `${(strategyPrediction.confidenceLevel * 100).toFixed(0)}%` 
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-2xl font-bold">
-                                {strategyPrediction?.expectedReturn 
-                                  ? `${(strategyPrediction.expectedReturn * 100).toFixed(2)}%` 
-                                  : 'N/A'}
-                              </p>
-                              <Badge variant={
-                                strategyPrediction?.expectedReturn && strategyPrediction.expectedReturn > 0 
-                                  ? 'default' 
-                                  : 'destructive'
-                              }>
-                                {strategyPrediction?.expectedReturn && strategyPrediction.expectedReturn > 0 
-                                  ? 'Positive' 
-                                  : 'Negative'}
-                              </Badge>
-                            </div>
-                          </div>
-                          
-                          <div className="h-[200px] mb-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart 
-                                data={strategyPrediction?.probabilityDistribution.map((p, i) => ({
-                                  name: (p.returnLevel * 100).toFixed(1) + '%',
-                                  value: p.probability
-                                })) || []} 
-                              />
-                            </ResponsiveContainer>
-                          </div>
-                          
-                          <h3 className="font-medium mb-2">Risk Assessment</h3>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="text-sm text-muted-foreground">Expected Drawdown</p>
-                              <p className="text-xl font-semibold">
-                                {strategyPrediction?.riskAssessment.expectedDrawdown 
-                                  ? `${(strategyPrediction.riskAssessment.expectedDrawdown * 100).toFixed(1)}%` 
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">Value at Risk (95%)</p>
-                              <p className="text-xl font-semibold">
-                                {strategyPrediction?.riskAssessment.varLevel95 
-                                  ? `${(strategyPrediction.riskAssessment.varLevel95 * 100).toFixed(1)}%` 
-                                  : 'N/A'}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <h3 className="font-medium mb-2">Market Scenario Analysis</h3>
-                          <div className="h-[150px] mb-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart 
-                                data={strategyPrediction?.marketConditions.map(m => ({
-                                  name: m.scenario,
-                                  value: m.expectedPerformance * 100
-                                })) || []} 
-                              />
-                            </ResponsiveContainer>
-                          </div>
-                          
-                          <h3 className="font-medium mb-2">Stress Test Results</h3>
-                          <div className="h-[150px] mb-4">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart 
-                                data={strategyPrediction?.riskAssessment.stressTestResults.map(s => ({
-                                  name: s.scenario,
-                                  value: s.impact * 100
-                                })) || []} 
-                              />
-                            </ResponsiveContainer>
-                          </div>
-                          
-                          <h3 className="font-medium mb-2">AI Recommendations</h3>
-                          <ul className="space-y-2">
-                            {strategyPrediction?.recommendations.map((rec, i) => (
-                              <li key={i} className="flex items-start p-2 rounded-md border">
-                                <Badge className="mt-0.5 mr-2" variant={
-                                  rec.priority === 'high' 
-                                    ? 'destructive' 
-                                    : rec.priority === 'medium' 
-                                      ? 'default' 
-                                      : 'outline'
-                                }>
-                                  {rec.priority}
-                                </Badge>
-                                <div>
-                                  <p className="font-medium">{rec.action}</p>
-                                  <p className="text-sm text-muted-foreground">{rec.reasoning}</p>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                      <div className="h-[400px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart
+                            data={strategyPrediction.forecastData}
+                            margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" />
+                            <YAxis />
+                            <Tooltip />
+                            <Legend />
+                            <Line 
+                              type="monotone" 
+                              dataKey="expectedReturn" 
+                              stroke="#8884d8" 
+                              name="Expected Return" 
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="upperBound" 
+                              stroke="#82ca9d" 
+                              strokeDasharray="5 5" 
+                              name="Upper Bound" 
+                            />
+                            <Line 
+                              type="monotone" 
+                              dataKey="lowerBound" 
+                              stroke="#ff7300" 
+                              strokeDasharray="5 5" 
+                              name="Lower Bound" 
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
                       </div>
                     </CardContent>
                   </Card>
-                </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Risk Analysis</CardTitle>
+                        <CardDescription>Predicted risk factors and exposure</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="h-[200px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart data={strategyPrediction.riskAnalysis}>
+                              <PolarGrid />
+                              <PolarAngleAxis dataKey="factor" />
+                              <PolarRadiusAxis />
+                              <Radar 
+                                name="Risk Score" 
+                                dataKey="score" 
+                                stroke="#8884d8" 
+                                fill="#8884d8" 
+                                fillOpacity={0.6} 
+                              />
+                            </RadarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Market Impact</CardTitle>
+                        <CardDescription>Predicted market conditions and impact</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {strategyPrediction.marketImpact.map((impact, index) => (
+                            <div key={index} className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium">{impact.factor}</p>
+                                <p className="text-sm text-muted-foreground">{impact.description}</p>
+                              </div>
+                              <Badge variant={impact.impact === 'positive' ? 'default' : impact.impact === 'negative' ? 'destructive' : 'secondary'}>
+                                {impact.probability}%
+                              </Badge>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  {strategyPrediction.recommendations.length > 0 && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>AI Recommendations</CardTitle>
+                        <CardDescription>Strategy optimization suggestions based on predictions</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-4">
+                          {strategyPrediction.recommendations.map((recommendation, index) => (
+                            <div key={index} className="flex items-start space-x-4">
+                              <div className="flex-shrink-0">
+                                <Badge variant={recommendation.priority === 'high' ? 'destructive' : 'default'}>
+                                  {recommendation.priority}
+                                </Badge>
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{recommendation.title}</p>
+                                <p className="text-sm text-muted-foreground">{recommendation.description}</p>
+                                {recommendation.actionItems && (
+                                  <ul className="mt-2 space-y-1">
+                                    {recommendation.actionItems.map((item, itemIndex) => (
+                                      <li key={itemIndex} className="text-sm flex items-center">
+                                        <span className="w-2 h-2 rounded-full bg-primary mr-2" />
+                                        {item}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              ) : (
+                <Card>
+                  <CardContent className="flex items-center justify-center h-[200px]">
+                    <div className="text-center">
+                      <BarChart3Icon className="h-10 w-10 text-muted-foreground mx-auto mb-4" />
+                      <h3 className="text-lg font-medium">No Strategy Selected</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Select a strategy to view predictive analytics
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
             
