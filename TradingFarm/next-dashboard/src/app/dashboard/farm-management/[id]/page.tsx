@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from 'react';
+import React from 'react';
 import { useParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/card';
@@ -490,7 +490,7 @@ export default function FarmDetailPage(): JSX.Element {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Active Agents</span>
-                    <span>{farm?.agents?.filter(a => a.is_active).length || 0}</span>
+                    <span>{farm?.agents?.filter((a: Agent) => a.is_active).length || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Strategies</span>
@@ -570,7 +570,7 @@ export default function FarmDetailPage(): JSX.Element {
             <CardContent>
               {farm?.agents && farm.agents.length > 0 ? (
                 <div className="space-y-4">
-                  {farm.agents.map((agent) => (
+                  {farm.agents.map((agent: Agent) => (
                     <Card key={agent.id} className="border rounded-md p-4">
                       <CardHeader className="p-0 pb-2">
                         <div className="flex justify-between items-center">
@@ -665,7 +665,7 @@ export default function FarmDetailPage(): JSX.Element {
             <CardContent>
               {farm?.wallets && farm.wallets.length > 0 ? (
                 <div className="space-y-4">
-                  {farm.wallets.map((wallet) => (
+                  {farm.wallets.map((wallet: Wallet) => (
                     <div key={wallet.id} className="border rounded-md p-4">
                       <div className="flex justify-between">
                         <div>
