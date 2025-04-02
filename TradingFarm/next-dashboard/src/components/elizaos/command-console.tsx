@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React from 'react';
 import { useSocket } from '@/providers/socket-provider';
 import { format } from 'date-fns';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ interface CommandConsoleProps {
 }
 
 // Utility function for classNames
-const cn = (...classes: string[]) => {
+const cn = (...classes: (string | undefined)[]): string => {
   return classes.filter(Boolean).join(' ');
 };
 
@@ -25,7 +25,7 @@ const CommandConsole: React.FC<CommandConsoleProps> = ({
   height = 'normal',
   autoScroll = true,
   className
-}) => {
+}: CommandConsoleProps) => {
   const [input, setInput] = React.useState('');
   const [messages, setMessages] = React.useState<ConsoleMessage[]>([]);
   const [isMinimized, setIsMinimized] = React.useState(false);
@@ -105,20 +105,27 @@ const CommandConsole: React.FC<CommandConsoleProps> = ({
       setMessages((prev: ConsoleMessage[]) => [...prev, knowledgeMessage]);
     }
   }, [latestMessages, farmId]);
-
-  // Auto scroll to bottom when messages change
+  
+  // Auto-scroll to bottom when messages change
   React.useEffect(() => {
-    if (autoScroll && messagesEndRef.current) {
+    if (autoScroll && messagesEndRef.current && !isMinimized) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, autoScroll]);
+  }, [messages, isMinimized, autoScroll]);
+  
+  // Format timestamp for display
+  const formatTime = (timestamp: string): string => {
+    try {
+      return format(new Date(timestamp), 'HH:mm:ss');
+    } catch (e) {
+      return '00:00:00';
+    }
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Send a command to the socket server
+  const sendCommand = (e: React.MouseEvent<HTMLButtonElement>): void => {
+    if (!input.trim() || !isConnected) return;
     
-    if (!input.trim()) return;
-    
-    // Create a user message
     const userMessage: ConsoleMessage = {
       id: `user-${Date.now()}`,
       content: input,
@@ -126,212 +133,227 @@ const CommandConsole: React.FC<CommandConsoleProps> = ({
       category: 'command' as MessageCategory,
       source: 'user' as MessageSource,
       isUser: true,
-      sender: 'user',
-      metadata: {
-        farmId
-      }
+      sender: 'user'
     };
     
-    // Add to messages
     setMessages((prev: ConsoleMessage[]) => [...prev, userMessage]);
     
-    // Send to server through socket
-    send('ELIZAOS_COMMAND', { command: input, farm_id: farmId });
+    // Emit the command to the socket server
+    send('ELIZAOS_COMMAND', {
+      command: input,
+      farmId,
+      timestamp: new Date().toISOString()
+    });
     
-    // Clear input
     setInput('');
   };
 
-  const getCategoryStyle = (category: MessageCategory): string => {
-    switch (category) {
-      case 'command':
-        return 'bg-blue-500 text-white';
-      case 'query':
-        return 'bg-purple-500 text-white';
-      case 'alert':
-        return 'bg-red-500 text-white';
-      case 'analysis':
-        return 'bg-indigo-500 text-white';
-      case 'system':
-        return 'bg-gray-500 text-white';
-      default:
-        // Handle custom categories
-        if (category === 'response' as any) {
-          return 'bg-green-500 text-white';
-        }
-        if (category === 'knowledge' as any) {
-          return 'bg-yellow-500 text-white';
-        }
-        return 'bg-gray-500 text-white';
+  // Handle Enter key press
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendCommand(e);
     }
   };
-
-  const getSourceIcon = (source: MessageSource): React.ReactNode => {
-    switch (source) {
-      case 'user':
-        return null;
-      case 'system':
-        return <Bot className="h-4 w-4" />;
-      case 'knowledge-base':
-        return <Database className="h-4 w-4" />;
-      default:
-        return <Bot className="h-4 w-4" />;
-    }
+  
+  // Clear all messages
+  const clearMessages = (): void => {
+    // Keep only welcome message
+    const welcomeMessage = messages.find((msg: ConsoleMessage) => msg.id === 'welcome');
+    setMessages(welcomeMessage ? [welcomeMessage] : []);
   };
-
-  // Format message content with markdown-like syntax
-  const formatContent = (content: string): string => {
-    // Replace headers
-    let formattedContent = content.replace(/^# (.+)$/gm, '<h3 class="text-lg font-bold mb-2">$1</h3>');
-    formattedContent = formattedContent.replace(/^## (.+)$/gm, '<h4 class="text-md font-bold mb-1">$1</h4>');
-    formattedContent = formattedContent.replace(/^### (.+)$/gm, '<h5 class="font-bold mb-1">$1</h5>');
+  
+  // Get message style based on category and source
+  const getMessageStyle = (message: ConsoleMessage): {
+    containerClass: string;
+    iconComponent: React.ReactNode;
+    labelText: string;
+    labelClass: string;
+  } => {
+    // Default styles
+    let containerClass = 'bg-muted/30';
+    let iconComponent = <Bot className="h-4 w-4" />;
+    let labelText = 'System';
+    let labelClass = 'bg-muted text-muted-foreground';
     
-    // Replace bold
-    formattedContent = formattedContent.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // User message styles
+    if (message.isUser) {
+      return {
+        containerClass: 'bg-primary/10',
+        iconComponent: null,
+        labelText: 'You',
+        labelClass: 'bg-primary/20 text-primary'
+      };
+    }
     
-    // Replace italics
-    formattedContent = formattedContent.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Style based on message source
+    if (message.source === 'knowledge-base') {
+      return {
+        containerClass: 'bg-blue-500/10',
+        iconComponent: <Database className="h-4 w-4 text-blue-500" />,
+        labelText: 'Knowledge',
+        labelClass: 'bg-blue-500/20 text-blue-700 dark:text-blue-300'
+      };
+    }
     
-    // Replace code
-    formattedContent = formattedContent.replace(/`(.+?)`/g, '<code class="bg-gray-100 dark:bg-gray-800 px-1 rounded">$1</code>');
+    if (message.source === 'strategy') {
+      return {
+        containerClass: 'bg-amber-500/10',
+        iconComponent: <Bot className="h-4 w-4 text-amber-500" />,
+        labelText: 'Strategy',
+        labelClass: 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+      };
+    }
     
-    // Replace links
-    formattedContent = formattedContent.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" class="text-blue-500 hover:underline">$1</a>');
+    // Style based on message category
+    if (message.category === 'alert') {
+      return {
+        containerClass: 'bg-red-500/10',
+        iconComponent: <Bot className="h-4 w-4 text-red-500" />,
+        labelText: 'Alert',
+        labelClass: 'bg-red-500/20 text-red-700 dark:text-red-300'
+      };
+    }
     
-    // Replace bullet lists
-    formattedContent = formattedContent.replace(/^- (.+)$/gm, '<li class="ml-4">$1</li>');
+    if (message.category === 'analysis') {
+      return {
+        containerClass: 'bg-purple-500/10',
+        iconComponent: <Bot className="h-4 w-4 text-purple-500" />,
+        labelText: 'Analysis',
+        labelClass: 'bg-purple-500/20 text-purple-700 dark:text-purple-300'
+      };
+    }
     
-    // Handle paragraphs
-    formattedContent = formattedContent.split('\n\n').map((para: string) => {
-      if (
-        !para.startsWith('<h') && 
-        !para.startsWith('<li') && 
-        para.trim() !== ''
-      ) {
-        return `<p class="mb-2">${para}</p>`;
-      }
-      return para;
-    }).join('');
+    // Default ElizaOS message style
+    return {
+      containerClass: 'bg-green-500/10',
+      iconComponent: <Bot className="h-4 w-4 text-green-500" />,
+      labelText: 'ElizaOS',
+      labelClass: 'bg-green-500/20 text-green-700 dark:text-green-300'
+    };
+  };
+  
+  // Render message content with markdown-like formatting
+  const renderMessageContent = (content: string): React.ReactNode => {
+    // Simple markdown-like formatting
+    // Convert headings
+    const withHeadings = content.replace(/^(#+)\s+(.+)$/gm, (match, hashes, text) => {
+      const level = hashes.length;
+      const size = level === 1 ? 'text-xl font-bold mb-2' 
+                 : level === 2 ? 'text-lg font-bold mb-1' 
+                 : 'text-base font-bold mb-1';
+      return `<h${level} class="${size}">${text}</h${level}>`;
+    });
     
-    // Convert line breaks within paragraphs
-    formattedContent = formattedContent.replace(/\n/g, '<br/>');
+    // Convert bold
+    const withBold = withHeadings.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     
-    return formattedContent;
+    // Convert italic
+    const withItalic = withBold.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Convert lists
+    const withLists = withItalic.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
+    
+    // Split by line breaks and wrap in paragraphs if not already wrapped
+    const formatted = withLists
+      .split('\n')
+      .map(line => {
+        if (line.startsWith('<h') || line.startsWith('<li>')) return line;
+        if (!line.trim()) return '<br>';
+        return `<p>${line}</p>`;
+      })
+      .join('');
+    
+    return <div dangerouslySetInnerHTML={{ __html: formatted }} />;
   };
 
   return (
-    <div className={cn(
-      "flex flex-col border rounded-lg overflow-hidden bg-card",
-      className
-    )}>
-      {/* Header with controls */}
-      <div className="flex items-center justify-between p-3 border-b bg-muted">
-        <div className="flex items-center gap-2">
-          <Bot className="h-5 w-5" />
-          <span className="font-medium">ElizaOS Console</span>
-          <span className={cn(
-            "inline-flex items-center px-2 py-0.5 rounded text-xs",
-            isConnected ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" : 
-                         "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300"
-          )}>
-            {isConnected ? "Connected" : "Disconnected"}
-          </span>
+    <div className={cn("flex flex-col border rounded-md overflow-hidden bg-background", className)}>
+      {/* Console Header */}
+      <div className="flex items-center justify-between p-2 border-b bg-muted/20">
+        <div className="flex items-center">
+          <Bot className="h-5 w-5 mr-2 text-green-500" />
+          <span className="font-medium">ElizaOS Command Console</span>
+          {!isConnected && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">Offline</span>}
         </div>
-        
         <div className="flex items-center gap-1">
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="h-8 w-8"
-          >
-            {isMinimized ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
-          
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => setMessages([])}
-            className="h-8 w-8"
+            className="h-7 w-7" 
+            onClick={clearMessages}
+            title="Clear console"
           >
             <X className="h-4 w-4" />
+          </Button>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="h-7 w-7" 
+            onClick={() => setIsMinimized(!isMinimized)}
+            title={isMinimized ? "Expand" : "Minimize"}
+          >
+            {isMinimized ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </Button>
         </div>
       </div>
       
-      {/* Messages container */}
+      {/* Messages Area */}
       {!isMinimized && (
-        <div className={cn(
-          "flex-1 overflow-y-auto p-3 space-y-3",
-          getConsoleHeight()
-        )}>
-          {messages.map((message: ConsoleMessage) => (
-            <div 
-              key={message.id}
-              className={cn(
-                "flex items-start gap-3 p-3 rounded-lg",
-                message.source === 'user' 
-                  ? "bg-muted ml-6" 
-                  : "border"
-              )}
-            >
-              {message.source !== 'user' && (
-                <div className={cn(
-                  "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-                  getCategoryStyle(message.category)
-                )}>
-                  {getSourceIcon(message.source)}
+        <div className={cn("overflow-y-auto p-3 space-y-3", getConsoleHeight())}>
+          {messages.map((message: ConsoleMessage) => {
+            const { containerClass, iconComponent, labelText, labelClass } = getMessageStyle(message);
+            
+            return (
+              <div key={message.id} className={cn("p-3 rounded-lg", containerClass)}>
+                <div className="flex items-start gap-2">
+                  <div className="flex flex-col items-start">
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      {iconComponent}
+                      <span className={cn("text-xs px-1.5 py-0.5 rounded-full", labelClass)}>
+                        {labelText}
+                      </span>
+                      <span className="text-xs text-muted-foreground ml-1">
+                        {formatTime(message.timestamp)}
+                      </span>
+                    </div>
+                    <div className="text-sm">
+                      {renderMessageContent(message.content)}
+                    </div>
+                  </div>
                 </div>
-              )}
-              
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium">
-                    {message.source === 'user' ? 'You' : 
-                     message.source === 'system' ? 'ElizaOS' : 
-                     message.source === 'knowledge-base' ? 'Knowledge Base' : 
-                     message.source}
-                  </span>
-                  
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(message.timestamp), 'h:mm:ss a')}
-                  </span>
-                </div>
-                
-                <div 
-                  className="text-sm"
-                  dangerouslySetInnerHTML={{ __html: formatContent(message.content) }}
-                />
               </div>
-            </div>
-          ))}
+            );
+          })}
           <div ref={messagesEndRef} />
         </div>
       )}
       
-      {/* Input form */}
+      {/* Input Area */}
       {!isMinimized && (
-        <form onSubmit={handleSubmit} className="p-3 border-t">
+        <div className="p-2 border-t mt-auto">
           <div className="flex gap-2">
             <Input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={isConnected ? "Type a command or question..." : "Connecting..."}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={isConnected ? "Type a command or question..." : "Disconnected..."}
               disabled={!isConnected}
               className="flex-1"
             />
             <Button 
-              type="submit" 
+              onClick={sendCommand} 
               disabled={!isConnected || !input.trim()}
               size="icon"
             >
               <Send className="h-4 w-4" />
             </Button>
           </div>
-        </form>
+        </div>
       )}
     </div>
   );
 };
 
+export { CommandConsole };
 export default CommandConsole;

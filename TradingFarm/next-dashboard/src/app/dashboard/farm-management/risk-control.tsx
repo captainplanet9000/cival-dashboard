@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import React from 'react';
 import { Slider } from '../../../components/ui/slider';
 import { Switch } from '../../../components/ui/switch';
 import { Label } from '../../../components/ui/label';
@@ -9,83 +9,54 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Button } from '../../../components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '../../../components/ui/card';
 import { AlertCircle, AlertTriangle, CheckCircle, Info } from 'lucide-react';
-import { api } from '../../../lib/api-client';
-import { toast } from '../../../components/ui/use-toast';
+import { useToast } from '../../../components/ui/use-toast';
+import { Farm, RiskProfile } from '@/types/farm-types';
 
 interface RiskControlProps {
-  farmId: number;
-  initialRiskProfile?: {
-    max_drawdown: number;
-    max_trade_size?: number;
-    risk_per_trade?: number;
-    volatility_tolerance?: 'low' | 'medium' | 'high';
-  };
-  onUpdate?: () => void;
+  riskProfile: RiskProfile;
+  farm: Farm;
+  onUpdate?: (data: Partial<Farm>) => void;
 }
 
-export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: RiskControlProps) {
-  const [riskProfile, setRiskProfile] = useState({
-    max_drawdown: initialRiskProfile?.max_drawdown || 5,
-    max_trade_size: initialRiskProfile?.max_trade_size || 1000,
-    risk_per_trade: initialRiskProfile?.risk_per_trade || 1,
-    volatility_tolerance: initialRiskProfile?.volatility_tolerance || 'medium'
+export default function RiskControl({ riskProfile, farm, onUpdate }: RiskControlProps) {
+  const { toast } = useToast();
+  const [formData, setFormData] = React.useState({
+    max_drawdown: farm.risk_profile?.max_drawdown || 5,
+    max_trade_size: farm.risk_profile?.max_trade_size || 1000,
+    risk_per_trade: farm.risk_profile?.risk_per_trade || 1,
+    volatility_tolerance: farm.risk_profile?.volatility_tolerance || 'medium' as 'low' | 'medium' | 'high'
   });
   
-  const [loading, setLoading] = useState(false);
-  const [riskScore, setRiskScore] = useState<number | null>(null);
-  const [riskFactors, setRiskFactors] = useState<{name: string; impact: number; description: string}[]>([]);
-  const [autoStop, setAutoStop] = useState(true);
-  const [confirmHighRiskTrades, setConfirmHighRiskTrades] = useState(true);
+  const [loading, setLoading] = React.useState(false);
+  const [autoStop, setAutoStop] = React.useState(true);
+  const [confirmHighRiskTrades, setConfirmHighRiskTrades] = React.useState(true);
   
-  // Load risk assessment data
-  useEffect(() => {
-    const loadRiskAssessment = async () => {
-      try {
-        const response = await api.getFarmRiskProfile(farmId);
-        if (response.data) {
-          setRiskScore(response.data.riskScore);
-          setRiskFactors(response.data.factors);
-        }
-      } catch (error) {
-        console.error('Failed to load risk assessment:', error);
-      }
-    };
-    
-    loadRiskAssessment();
-  }, [farmId]);
-
   // Handle saving risk profile
   const handleSave = async () => {
+    if (!onUpdate) {
+      toast({
+        title: 'Offline Mode',
+        description: 'Cannot update risk profile in offline mode.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setLoading(true);
     try {
-      const response = await api.updateFarm(farmId, {
-        risk_profile: riskProfile,
-        metadata: {
-          risk_controls: {
-            auto_stop: autoStop,
-            confirm_high_risk_trades: confirmHighRiskTrades
-          }
-        }
+      // Only pass the risk_profile in the update payload
+      await onUpdate({
+        risk_profile: formData
       });
       
-      if (response.error) {
-        toast({
-          title: 'Error updating risk profile',
-          description: response.error,
-          variant: 'destructive',
-        });
-      } else {
-        toast({
-          title: 'Risk profile updated',
-          description: 'Farm risk controls have been successfully updated.',
-          variant: 'default',
-        });
-        if (onUpdate) onUpdate();
-      }
+      toast({
+        title: 'Risk profile updated',
+        description: 'Farm risk controls have been successfully updated.',
+      });
     } catch (error) {
       toast({
         title: 'Error updating risk profile',
-        description: 'An unexpected error occurred. Please try again.',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -95,8 +66,8 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
 
   // Calculate risk level based on max drawdown
   const getRiskLevel = () => {
-    if (riskProfile.max_drawdown <= 5) return { level: 'Low', color: 'text-green-600' };
-    if (riskProfile.max_drawdown <= 15) return { level: 'Medium', color: 'text-amber-600' };
+    if (formData.max_drawdown <= 5) return { level: 'Low', color: 'text-green-600' };
+    if (formData.max_drawdown <= 15) return { level: 'Medium', color: 'text-amber-600' };
     return { level: 'High', color: 'text-red-600' };
   };
   
@@ -107,18 +78,16 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>Risk Management Controls</span>
-          {riskScore !== null && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-normal">Risk Score:</span>
-              <span className={`text-lg font-semibold ${
-                riskScore < 0.4 ? 'text-green-600' : 
-                riskScore < 0.7 ? 'text-amber-600' : 
-                'text-red-600'
-              }`}>
-                {Math.round(riskScore * 100)}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-normal">Risk Score:</span>
+            <span className={`text-lg font-semibold ${
+              riskProfile.riskScore < 40 ? 'text-green-600' : 
+              riskProfile.riskScore < 70 ? 'text-amber-600' : 
+              'text-red-600'
+            }`}>
+              {riskProfile.riskScore}
+            </span>
+          </div>
         </CardTitle>
         <CardDescription>
           Configure risk parameters and safety controls for this trading farm
@@ -130,7 +99,7 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
           <div className="flex items-center justify-between">
             <Label htmlFor="max-drawdown" className="text-base">Max Drawdown</Label>
             <span className={`text-sm font-medium ${riskLevel.color}`}>
-              {riskProfile.max_drawdown}% ({riskLevel.level} Risk)
+              {formData.max_drawdown}% ({riskLevel.level} Risk)
             </span>
           </div>
           <Slider
@@ -138,8 +107,8 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
             min={1}
             max={30}
             step={1}
-            value={[riskProfile.max_drawdown]}
-            onValueChange={(values) => setRiskProfile({...riskProfile, max_drawdown: values[0]})}
+            value={[formData.max_drawdown]}
+            onValueChange={(values: number[]) => setFormData({...formData, max_drawdown: values[0]})}
           />
           <p className="text-sm text-gray-500">
             Maximum allowable drawdown before automated risk controls activate
@@ -150,15 +119,15 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="risk-per-trade" className="text-base">Risk Per Trade</Label>
-            <span className="text-sm font-medium">{riskProfile.risk_per_trade}%</span>
+            <span className="text-sm font-medium">{formData.risk_per_trade}%</span>
           </div>
           <Slider
             id="risk-per-trade"
             min={0.1}
             max={5}
             step={0.1}
-            value={[riskProfile.risk_per_trade]}
-            onValueChange={(values) => setRiskProfile({...riskProfile, risk_per_trade: values[0]})}
+            value={[formData.risk_per_trade]}
+            onValueChange={(values: number[]) => setFormData({...formData, risk_per_trade: values[0]})}
           />
           <p className="text-sm text-gray-500">
             Maximum percentage of account to risk on any single trade
@@ -171,9 +140,9 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
           <Input
             id="max-trade-size"
             type="number"
-            value={riskProfile.max_trade_size}
-            onChange={(e) => setRiskProfile({
-              ...riskProfile, 
+            value={formData.max_trade_size}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({
+              ...formData, 
               max_trade_size: parseFloat(e.target.value)
             })}
           />
@@ -186,9 +155,9 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
         <div className="space-y-2">
           <Label htmlFor="volatility" className="text-base">Volatility Tolerance</Label>
           <Select
-            value={riskProfile.volatility_tolerance}
-            onValueChange={(value) => setRiskProfile({
-              ...riskProfile, 
+            value={formData.volatility_tolerance}
+            onValueChange={(value: string) => setFormData({
+              ...formData, 
               volatility_tolerance: value as 'low' | 'medium' | 'high'
             })}
           >
@@ -202,19 +171,19 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
             </SelectContent>
           </Select>
           <p className="text-sm text-gray-500">
-            The level of market volatility this farm can tolerate
+            How much market volatility the system should tolerate before adjusting strategies
           </p>
         </div>
         
-        {/* Automated Risk Controls */}
-        <div className="pt-4 border-t space-y-4">
-          <h3 className="font-medium">Automated Risk Controls</h3>
+        {/* Safety Controls */}
+        <div className="space-y-4 pt-4 border-t">
+          <h3 className="font-medium">Safety Controls</h3>
           
           <div className="flex items-center justify-between">
             <div>
-              <Label htmlFor="auto-stop" className="text-base">Auto-Stop Trading</Label>
+              <Label htmlFor="auto-stop" className="text-base">Auto-Stop Loss</Label>
               <p className="text-sm text-gray-500">
-                Automatically pause trading when drawdown exceeds threshold
+                Automatically stop trading when max drawdown is reached
               </p>
             </div>
             <Switch
@@ -228,7 +197,7 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
             <div>
               <Label htmlFor="confirm-trades" className="text-base">Confirm High-Risk Trades</Label>
               <p className="text-sm text-gray-500">
-                Require explicit confirmation for trades exceeding risk thresholds
+                Require confirmation for trades exceeding risk thresholds
               </p>
             </div>
             <Switch
@@ -240,13 +209,14 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
         </div>
         
         {/* Risk Factors */}
-        {riskFactors.length > 0 && (
-          <div className="pt-4 border-t">
-            <h3 className="font-medium mb-3">Risk Assessment Factors</h3>
+        {riskProfile.factors && riskProfile.factors.length > 0 && (
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="font-medium">Risk Assessment Factors</h3>
+            
             <div className="space-y-3">
-              {riskFactors.map((factor, index) => (
-                <div key={index} className="flex items-start">
-                  <div className={`mt-0.5 mr-2 ${
+              {riskProfile.factors.map((factor, index) => (
+                <div key={index} className="flex items-start gap-3 p-3 bg-muted/50 rounded-md">
+                  <div className={`mt-0.5 ${
                     factor.impact < 0.4 ? 'text-green-500' : 
                     factor.impact < 0.7 ? 'text-amber-500' : 
                     'text-red-500'
@@ -257,7 +227,16 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
                   </div>
                   <div>
                     <p className="font-medium">{factor.name}</p>
-                    <p className="text-sm text-gray-500">{factor.description}</p>
+                    <p className="text-sm text-muted-foreground">{factor.description}</p>
+                  </div>
+                  <div className="ml-auto">
+                    <span className={`text-xs px-2 py-1 rounded-full ${
+                      factor.impact < 0.4 ? 'bg-green-100 text-green-700' : 
+                      factor.impact < 0.7 ? 'bg-amber-100 text-amber-700' : 
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {Math.round(factor.impact * 100)}%
+                    </span>
                   </div>
                 </div>
               ))}
@@ -265,15 +244,11 @@ export default function RiskControl({ farmId, initialRiskProfile, onUpdate }: Ri
           </div>
         )}
       </CardContent>
-      <CardFooter className="flex justify-end gap-2">
-        <Button variant="outline" disabled={loading}>Reset</Button>
-        <Button 
-          onClick={handleSave} 
-          disabled={loading}
-        >
+      <CardFooter>
+        <Button onClick={handleSave} disabled={loading || !onUpdate}>
           {loading ? 'Saving...' : 'Save Risk Profile'}
         </Button>
       </CardFooter>
     </Card>
   );
-} 
+}

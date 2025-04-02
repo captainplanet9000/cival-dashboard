@@ -1,5 +1,14 @@
 // ElizaOS interaction types
-import { Database } from './database.types';
+// Define the Database type inline since database.types.ts appears to be empty
+export type Database = {
+  public: {
+    Tables: Record<string, any>;
+    Views: Record<string, any>;
+    Functions: Record<string, any>;
+    Enums: Record<string, any>;
+    CompositeTypes: Record<string, any>;
+  };
+};
 
 // Define additional tables extending the Database type
 export type ExtendedDatabase = Database & {
@@ -21,8 +30,8 @@ export type ExtendedDatabase = Database & {
           farm_id: string;
           command: string;
           response: string;
-          category?: string;
-          source?: string;
+          category: string;
+          source: string;
           created_at?: string;
           updated_at?: string;
         };
@@ -58,21 +67,25 @@ export type MessageCategory =
   | 'command'      // User input/commands
   | 'query'        // Information requests
   | 'analysis'     // AI analysis of data
-  | 'alert';       // System alerts/notifications
+  | 'alert'        // System alerts/notifications
+  | 'response'     // AI responses
+  | 'knowledge'    // Knowledge base information
+  | 'system';      // System messages
 
 export type MessageSource = 
   | 'knowledge-base' // Information from stored knowledge
   | 'market-data'    // Market information
   | 'strategy'       // Trading strategy information
-  | 'system';        // General system information
+  | 'system'         // General system information
+  | 'user';          // User-generated content
 
 export interface ConsoleMessage {
   id: string;
   content: string;
   timestamp: string;
   isUser: boolean;
-  category?: MessageCategory;
-  source?: MessageSource;
+  category: MessageCategory;
+  source: MessageSource;
   sender?: string;
   isLoading?: boolean;
   isError?: boolean;
@@ -91,4 +104,5 @@ export interface ElizaCommandResponse {
   timestamp: string;
   category: MessageCategory;
   source: MessageSource;
+  metadata?: any;
 }
