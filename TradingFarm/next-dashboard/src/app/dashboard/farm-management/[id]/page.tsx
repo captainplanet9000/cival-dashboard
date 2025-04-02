@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, ReactNode } from 'react';
+import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../../../components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../../components/ui/card';
@@ -8,11 +8,12 @@ import { Loader2, Activity, BarChart2, Wallet, Users, AlertTriangle, RefreshCw, 
 import { Button } from '../../../../components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '../../../../components/ui/alert';
 import { useToast } from '../../../../components/ui/use-toast';
+import RiskControl from '../risk-control';
 
 // Mock API client if the real one is not accessible
 // This would be replaced by the actual API client in a production environment
 const api = {
-  getFarm: async (id: number) => {
+  getFarm: async (id: number): Promise<{ data: Farm | null, error: string | null }> => {
     try {
       // In production, this would call the actual API
       // For now, return demo data after a delay to simulate network
@@ -23,7 +24,7 @@ const api = {
         data: DEMO_FARM,
         error: null
       };
-    } catch (error) {
+    } catch (error: any) {
       console.error("API error:", error);
       return { 
         data: null, 
@@ -32,7 +33,7 @@ const api = {
     }
   },
   
-  updateFarm: async (id: number, data: any) => {
+  updateFarm: async (id: number, data: any): Promise<{ data: { success: boolean } | null, error: string | null }> => {
     try {
       // Simulate update
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -40,7 +41,7 @@ const api = {
         data: { success: true }, 
         error: null
       };
-    } catch (error) {
+    } catch (error: any) {
       return { 
         data: null, 
         error: error instanceof Error ? error.message : 'Error updating farm'
@@ -48,7 +49,13 @@ const api = {
     }
   },
   
-  getFarmRiskProfile: async (id: number) => {
+  getFarmRiskProfile: async (id: number): Promise<{ 
+    data: { 
+      riskScore: number, 
+      factors: Array<{ name: string, impact: number, description: string }> 
+    } | null, 
+    error: string | null 
+  }> => {
     try {
       // Simulate risk profile data
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -63,7 +70,7 @@ const api = {
         }, 
         error: null
       };
-    } catch (error) {
+    } catch (error: any) {
       return { 
         data: null, 
         error: error instanceof Error ? error.message : 'Error fetching risk profile'
@@ -239,21 +246,21 @@ const DEMO_FARM: Farm = {
   ]
 };
 
-export default function FarmDetailPage() {
+export default function FarmDetailPage(): JSX.Element {
   const params = useParams();
   const { toast } = useToast();
   const farmId = parseInt(params.id as string, 10);
-  const [farm, setFarm] = useState<Farm | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isConnected, setIsConnected] = useState(true);
-  const [retryCount, setRetryCount] = useState(0);
+  const [farm, setFarm] = React.useState<Farm | null>(null);
+  const [activeTab, setActiveTab] = React.useState('overview');
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isConnected, setIsConnected] = React.useState(true);
+  const [retryCount, setRetryCount] = React.useState<number>(0);
   const MAX_RETRIES = 2;
   const RETRY_DELAY = 2000;
 
   // Load farm data
-  useEffect(() => {
+  React.useEffect(() => {
     async function loadFarm() {
       try {
         setLoading(true);
@@ -291,7 +298,7 @@ export default function FarmDetailPage() {
         // Attempt retry if we haven't exceeded max retries
         if (retryCount < MAX_RETRIES) {
           setTimeout(() => {
-            setRetryCount(prev => prev + 1);
+            setRetryCount((prev: number) => prev + 1);
           }, RETRY_DELAY);
         }
       } finally {
@@ -331,7 +338,7 @@ export default function FarmDetailPage() {
   }
 
   // Format currency
-  const formatCurrency = (value?: number) => {
+  const formatCurrency = (value?: number): string => {
     if (value === undefined) return 'N/A';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -340,7 +347,7 @@ export default function FarmDetailPage() {
   };
 
   // Format percentage
-  const formatPercentage = (value: number) => {
+  const formatPercentage = (value: number): string => {
     return `${(value * 100).toFixed(2)}%`;
   };
 
