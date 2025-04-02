@@ -1,18 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Search, Plus, FileText, AlertCircle, Tag } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
-import { Search, FileText, BookOpen, Calendar, Tag, AlertCircle } from 'lucide-react';
-import { createBrowserClient } from '@/utils/supabase/client';
 import { useToast } from "@/components/ui/use-toast";
+import { createBrowserClient } from '@/utils/supabase/client';
 
 interface KnowledgeDocument {
-  id: number;
+  id: string;
   title: string;
   content: string;
   category: string;
@@ -21,32 +24,59 @@ interface KnowledgeDocument {
   updated_at: string;
 }
 
+interface NewDocument {
+  title: string;
+  content: string;
+  category: string;
+  tags: string;
+}
+
 export default function KnowledgeBasePage() {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [activeTab, setActiveTab] = React.useState('all');
+  const [activeTags, setActiveTags] = React.useState<string[]>([]);
+  const [documents, setDocuments] = React.useState<KnowledgeDocument[]>([]);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [connectionError, setConnectionError] = React.useState<string | null>(null);
+  const [retryCount, setRetryCount] = React.useState(0);
+  const [newDocument, setNewDocument] = React.useState<NewDocument>({
+    title: '',
+    content: '',
+    category: 'strategy',
+    tags: ''
+  });
   
   const supabase = createBrowserClient();
   const { toast } = useToast();
   const MAX_RETRIES = 2;
   const RETRY_DELAY = 2000;
-
-  useEffect(() => {
+  
+  // All available tags
+  const allTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    documents.forEach((doc: KnowledgeDocument) => {
+      if (doc.tags && Array.isArray(doc.tags)) {
+        doc.tags.forEach((tag: string) => tagsSet.add(tag));
+      }
+    });
+    return Array.from(tagsSet);
+  }, [documents]);
+  
+  React.useEffect(() => {
     async function fetchDocuments() {
       setIsLoading(true);
       setConnectionError(null);
       
       try {
-        // Attempt to fetch knowledge documents from Supabase
+        // Attempt to fetch documents from the knowledge_base table
         const { data, error } = await supabase
-          .from('knowledge_documents')
+          .from('knowledge_base')
           .select('*')
           .order('created_at', { ascending: false });
-        
+          
         if (error) {
+          console.error('Error fetching knowledge documents:', error);
+          
           // Check if this is a timeout error
           if (error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
             throw new Error('Connection to Supabase timed out. Using demo data instead.');
@@ -54,14 +84,18 @@ export default function KnowledgeBasePage() {
             throw error;
           }
         }
-
+        
         if (data && data.length > 0) {
-          setDocuments(data);
+          setDocuments(data as KnowledgeDocument[]);
           setConnectionError(null);
+          toast({
+            title: "Data loaded successfully",
+            description: `Loaded ${data.length} knowledge documents from database`,
+          });
         } else {
-          // No documents found, set demo data
+          // No documents found, set demo data with notification
           setDemoData();
-          setConnectionError("No knowledge documents found. Showing demo data instead.");
+          setConnectionError("No knowledge documents found in the database. Showing demo data instead.");
         }
       } catch (error: any) {
         console.error('Failed to fetch knowledge documents:', error);
@@ -75,7 +109,7 @@ export default function KnowledgeBasePage() {
         // Attempt retry if we haven't exceeded max retries
         if (retryCount < MAX_RETRIES) {
           setTimeout(() => {
-            setRetryCount(prev => prev + 1);
+            setRetryCount((prev: number) => prev + 1);
           }, RETRY_DELAY);
         }
       } finally {
@@ -84,91 +118,146 @@ export default function KnowledgeBasePage() {
     }
 
     fetchDocuments();
-  }, [supabase, retryCount]);
-
+  }, [supabase, retryCount, toast]);
+  
   const setDemoData = () => {
-    // Sample knowledge documents for demo
+    // Set some dummy data if we can't connect to the actual database
     setDocuments([
       {
-        id: 1,
-        title: "Understanding Moving Averages",
-        content: "Moving averages are a key technical indicator used to identify trends...",
-        category: "technical",
-        tags: ["indicators", "trending", "basics"],
-        created_at: "2025-03-15T10:30:00Z",
-        updated_at: "2025-03-15T10:30:00Z"
+        id: '1',
+        title: 'Introduction to RSI Trading',
+        content: 'The Relative Strength Index (RSI) is a momentum oscillator that measures the speed and change of price movements. RSI oscillates between zero and 100. Traditionally, RSI is considered overbought when above 70 and oversold when below 30.',
+        category: 'strategy',
+        tags: ['technical-analysis', 'oscillator', 'beginner'],
+        created_at: '2023-06-15T10:30:00Z',
+        updated_at: '2023-06-15T10:30:00Z'
       },
       {
-        id: 2,
-        title: "RSI Trading Strategies",
-        content: "The Relative Strength Index (RSI) is a momentum oscillator that measures...",
-        category: "technical",
-        tags: ["indicators", "momentum", "overbought", "oversold"],
-        created_at: "2025-03-10T14:20:00Z",
-        updated_at: "2025-03-12T09:45:00Z"
+        id: '2',
+        title: 'Market Cycles and Investor Psychology',
+        content: 'Market cycles are influenced by both economic factors and investor psychology. Understanding the four main phases - accumulation, uptrend, distribution, and downtrend - can help traders identify potential turning points.',
+        category: 'market',
+        tags: ['psychology', 'cycles', 'intermediate'],
+        created_at: '2023-05-20T14:45:00Z',
+        updated_at: '2023-05-22T09:15:00Z'
       },
       {
-        id: 3,
-        title: "Market Cycles Analysis",
-        content: "Understanding market cycles is essential for long-term investing success...",
-        category: "fundamental",
-        tags: ["cycles", "macro", "analysis"],
-        created_at: "2025-03-05T08:15:00Z",
-        updated_at: "2025-03-05T08:15:00Z"
+        id: '3',
+        title: 'Risk Management Fundamentals',
+        content: 'Effective risk management is the cornerstone of successful trading. Key principles include position sizing, setting stop losses, diversification, and never risking more than a small percentage of your capital on a single trade.',
+        category: 'management',
+        tags: ['risk', 'fundamentals', 'beginner'],
+        created_at: '2023-04-10T08:20:00Z',
+        updated_at: '2023-04-11T11:35:00Z'
       },
       {
-        id: 4,
-        title: "Algorithmic Trading Basics",
-        content: "Algorithmic trading uses computer programs to follow a defined set of instructions...",
-        category: "algorithmic",
-        tags: ["automation", "algorithms", "basics"],
-        created_at: "2025-02-28T16:40:00Z",
-        updated_at: "2025-03-01T11:20:00Z"
+        id: '4',
+        title: 'Advanced Candlestick Patterns',
+        content: 'Beyond basic patterns, advanced candlestick formations like the Three Black Crows, Morning Star, and Abandoned Baby can provide powerful signals when combined with volume and support/resistance levels.',
+        category: 'strategy',
+        tags: ['technical-analysis', 'patterns', 'advanced'],
+        created_at: '2023-03-05T16:10:00Z',
+        updated_at: '2023-03-07T13:25:00Z'
       },
       {
-        id: 5,
-        title: "Risk Management Principles",
-        content: "Effective risk management is the cornerstone of successful trading...",
-        category: "psychology",
-        tags: ["risk", "management", "psychology"],
-        created_at: "2025-02-20T13:10:00Z",
-        updated_at: "2025-02-20T13:10:00Z"
+        id: '5',
+        title: 'Understanding Market Correlations',
+        content: 'Assets with positive correlation tend to move in the same direction, while negative correlation indicates opposite movements. Understanding these relationships can help with portfolio construction and hedging strategies.',
+        category: 'market',
+        tags: ['correlation', 'analysis', 'intermediate'],
+        created_at: '2023-02-12T11:50:00Z',
+        updated_at: '2023-02-12T11:50:00Z'
       }
     ]);
   };
-
+  
   const handleRetryConnection = () => {
     setRetryCount(0);
   };
-
-  // Filter documents based on search query and active filter
+  
+  const toggleTag = (tag: string) => {
+    setActiveTags((prev: string[]) => 
+      prev.includes(tag) 
+        ? prev.filter((t: string) => t !== tag) 
+        : [...prev, tag]
+    );
+  };
+  
+  const handleCreateDocument = async () => {
+    if (!newDocument.title || !newDocument.content) {
+      toast({
+        title: "Missing information",
+        description: "Please provide both title and content for the document.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const tagsArray = newDocument.tags
+      .split(',')
+      .map(tag => tag.trim())
+      .filter(tag => tag.length > 0);
+    
+    try {
+      const { error } = await supabase
+        .from('knowledge_base')
+        .insert([
+          {
+            title: newDocument.title,
+            content: newDocument.content,
+            category: newDocument.category,
+            tags: tagsArray
+          }
+        ]);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Document Created",
+        description: "Your knowledge document has been added to the database."
+      });
+      
+      // Reset form and refresh documents
+      setNewDocument({
+        title: '',
+        content: '',
+        category: 'strategy',
+        tags: ''
+      });
+      
+      // Trigger refetch
+      setRetryCount(prev => prev + 1);
+      
+    } catch (error: any) {
+      console.error('Error creating document:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create document",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Filter documents based on search query, active tab, and tags
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          doc.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          doc.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesFilter = activeFilter === 'all' || doc.category === activeFilter;
-    return matchesSearch && matchesFilter;
+                         doc.content.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTab = activeTab === 'all' || doc.category === activeTab;
+    const matchesTags = activeTags.length === 0 || 
+                        (doc.tags && activeTags.every(tag => doc.tags.includes(tag)));
+    
+    return matchesSearch && matchesTab && matchesTags;
   });
-
-  // Format date for display
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return new Intl.DateTimeFormat('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    }).format(date);
-  };
-
+  
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Knowledge Base</h1>
         <p className="text-muted-foreground">
-          Access and manage your trading knowledge and market intelligence
+          Search and manage trading knowledge, strategies, and insights
         </p>
       </div>
-
+      
       {connectionError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -179,136 +268,204 @@ export default function KnowledgeBasePage() {
           </AlertDescription>
         </Alert>
       )}
-
-      <div className="flex items-center justify-between">
-        <div className="relative flex-1 max-w-lg">
+      
+      <div className="flex items-center space-x-2">
+        <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search documents..."
+            placeholder="Search knowledge base..."
             className="pl-8"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex space-x-2">
-          <Button>
-            <FileText className="mr-2 h-4 w-4" />
-            New Document
-          </Button>
-          <Button variant="outline">
-            <Tag className="mr-2 h-4 w-4" />
-            Manage Tags
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New Document
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Create New Knowledge Document</DialogTitle>
+              <DialogDescription>
+                Add new information to your trading knowledge base.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
+                <Input 
+                  id="title" 
+                  placeholder="Document title" 
+                  value={newDocument.title}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewDocument({...newDocument, title: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <select 
+                  id="category"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={newDocument.category}
+                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewDocument({...newDocument, category: e.target.value})}
+                >
+                  <option value="strategy">Strategy</option>
+                  <option value="market">Market</option>
+                  <option value="fundamentals">Fundamentals</option>
+                  <option value="management">Risk Management</option>
+                  <option value="psychology">Psychology</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tags">Tags (comma-separated)</Label>
+                <Input 
+                  id="tags" 
+                  placeholder="technical-analysis, beginner, momentum" 
+                  value={newDocument.tags}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewDocument({...newDocument, tags: e.target.value})}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="content">Content</Label>
+                <Textarea 
+                  id="content" 
+                  placeholder="Write your document content here..." 
+                  rows={8}
+                  value={newDocument.content}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewDocument({...newDocument, content: e.target.value})}
+                />
+              </div>
+              <Button type="button" onClick={handleCreateDocument}>
+                Create Document
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+      
+      {/* Active tags display */}
+      {activeTags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          <div className="flex items-center h-8">
+            <Tag className="h-4 w-4 mr-1" />
+            <span className="text-sm font-medium">Active Filters:</span>
+          </div>
+          {activeTags.map(tag => (
+            <Badge key={tag} variant="secondary" className="cursor-pointer" onClick={() => toggleTag(tag)}>
+              {tag} ✕
+            </Badge>
+          ))}
+          <Button variant="ghost" size="sm" onClick={() => setActiveTags([])}>
+            Clear All
           </Button>
         </div>
-      </div>
-
-      <div className="flex space-x-2 overflow-x-auto pb-2">
-        <Button 
-          variant={activeFilter === 'all' ? 'default' : 'outline'} 
-          size="sm" 
-          onClick={() => setActiveFilter('all')}>
-          All Categories
-        </Button>
-        <Button 
-          variant={activeFilter === 'technical' ? 'default' : 'outline'} 
-          size="sm" 
-          onClick={() => setActiveFilter('technical')}>
-          Technical Analysis
-        </Button>
-        <Button 
-          variant={activeFilter === 'fundamental' ? 'default' : 'outline'} 
-          size="sm" 
-          onClick={() => setActiveFilter('fundamental')}>
-          Fundamental Analysis
-        </Button>
-        <Button 
-          variant={activeFilter === 'algorithmic' ? 'default' : 'outline'} 
-          size="sm" 
-          onClick={() => setActiveFilter('algorithmic')}>
-          Algorithmic Trading
-        </Button>
-        <Button 
-          variant={activeFilter === 'psychology' ? 'default' : 'outline'} 
-          size="sm" 
-          onClick={() => setActiveFilter('psychology')}>
-          Trading Psychology
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Trading Knowledge Documents</CardTitle>
-          <CardDescription>Browse and search your knowledge library</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="flex justify-center py-8">
-              <div className="animate-pulse space-y-4">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-12 bg-muted rounded w-full"></div>
-                ))}
-              </div>
-            </div>
-          ) : filteredDocuments.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[300px]">Title</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Tags</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredDocuments.map((doc) => (
-                  <TableRow key={doc.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center">
-                        <BookOpen className="mr-2 h-4 w-4 text-muted-foreground" />
-                        {doc.title}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {doc.category.charAt(0).toUpperCase() + doc.category.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {doc.tags.map((tag, i) => (
-                          <Badge key={i} variant="secondary" className="mr-1">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Calendar className="mr-2 h-4 w-4 text-muted-foreground" />
-                        {formatDate(doc.created_at)}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm">
-                        View
+      )}
+      
+      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="all">All Documents</TabsTrigger>
+          <TabsTrigger value="strategy">Strategies</TabsTrigger>
+          <TabsTrigger value="market">Market Analysis</TabsTrigger>
+          <TabsTrigger value="fundamentals">Fundamentals</TabsTrigger>
+          <TabsTrigger value="management">Risk Management</TabsTrigger>
+          <TabsTrigger value="psychology">Psychology</TabsTrigger>
+        </TabsList>
+        
+        {/* Documents by category */}
+        <TabsContent value={activeTab}>
+          <Card>
+            <CardHeader>
+              <CardTitle>
+                {activeTab === 'all' ? 'All Knowledge Documents' : 
+                  activeTab === 'strategy' ? 'Strategy Documents' :
+                  activeTab === 'market' ? 'Market Analysis Documents' :
+                  activeTab === 'fundamentals' ? 'Fundamental Analysis Documents' :
+                  activeTab === 'management' ? 'Risk Management Documents' :
+                  'Trading Psychology Documents'}
+              </CardTitle>
+              <CardDescription>
+                {filteredDocuments.length} document{filteredDocuments.length !== 1 && 's'} found
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-pulse space-y-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="h-24 bg-muted rounded w-full"></div>
+                    ))}
+                  </div>
+                </div>
+              ) : filteredDocuments.length > 0 ? (
+                <div className="space-y-4">
+                  {filteredDocuments.map((doc: KnowledgeDocument) => (
+                    <Card key={doc.id} className="overflow-hidden">
+                      <CardHeader className="pb-2">
+                        <div className="flex justify-between items-start">
+                          <CardTitle className="text-lg">{doc.title}</CardTitle>
+                          <Badge>{doc.category}</Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {doc.tags && doc.tags.map(tag => (
+                            <Badge 
+                              key={tag} 
+                              variant="outline" 
+                              className="cursor-pointer hover:bg-accent"
+                              onClick={() => toggleTag(tag)}
+                            >
+                              {tag}
+                            </Badge>
+                          ))}
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-muted-foreground line-clamp-3">
+                          {doc.content}
+                        </p>
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="text-xs text-muted-foreground">
+                            Last updated: {new Date(doc.updated_at).toLocaleDateString()}
+                          </span>
+                          <Button variant="ghost" size="sm" className="flex items-center">
+                            <FileText className="h-4 w-4 mr-1" />
+                            Read More
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <h3 className="text-lg font-medium mb-2">No Documents Found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {searchQuery 
+                      ? `No documents match your search for "${searchQuery}"`
+                      : activeTags.length > 0
+                        ? "No documents match the selected tags"
+                        : "No documents in this category yet"}
+                  </p>
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button>
+                        <Plus className="mr-2 h-4 w-4" />
+                        Create New Document
                       </Button>
-                      <Button variant="ghost" size="sm">
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No knowledge documents found</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[600px]">
+                      {/* Same dialog content as above */}
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

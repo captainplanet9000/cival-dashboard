@@ -1,60 +1,77 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import React from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertCircle, Code, Save, Play, FileDown, ArrowRight, Brain } from 'lucide-react';
-import { createBrowserClient } from '@/utils/supabase/client';
-import { useToast } from "@/components/ui/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertCircle, Plus, Trash, Code, PlayCircle } from 'lucide-react';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/ui/use-toast";
+import { createBrowserClient } from '@/utils/supabase/client';
+
+interface Indicator {
+  id: number;
+  name: string;
+  period: number | null;
+  enabled: boolean;
+}
+
+interface StrategyFormData {
+  name: string;
+  description: string;
+  type: string;
+  riskLevel: number[];
+  indicators: Indicator[];
+}
 
 export default function StrategyBuilderPage() {
-  const [activeTab, setActiveTab] = useState('visual');
-  const [strategyName, setStrategyName] = useState('');
-  const [strategyType, setStrategyType] = useState('technical');
-  const [strategyDescription, setStrategyDescription] = useState('');
-  const [riskLevel, setRiskLevel] = useState([3]); // 1-5 scale
-  const [useAI, setUseAI] = useState(false);
-  const [codeInput, setCodeInput] = useState('// Define your trading strategy\n\nfunction executeStrategy(data) {\n  // Implement your strategy logic here\n  const signal = calculateSignal(data);\n  return signal;\n}\n\nfunction calculateSignal(data) {\n  // Calculate buy/sell signals\n  return { action: "hold", confidence: 0 };\n}');
-  const [indicators, setIndicators] = useState([
+  const [activeTab, setActiveTab] = React.useState('visual');
+  const [strategyName, setStrategyName] = React.useState('');
+  const [strategyType, setStrategyType] = React.useState('technical');
+  const [strategyDescription, setStrategyDescription] = React.useState('');
+  const [riskLevel, setRiskLevel] = React.useState([3]); // 1-5 scale
+  const [useAI, setUseAI] = React.useState(false);
+  const [codeInput, setCodeInput] = React.useState('// Define your trading strategy\n\nfunction executeStrategy(data) {\n  // Implement your strategy logic here\n  const signal = calculateSignal(data);\n  return signal;\n}\n\nfunction calculateSignal(data) {\n  // Calculate buy/sell signals\n  return { action: "hold", confidence: 0 };\n}');
+  const [indicators, setIndicators] = React.useState<Indicator[]>([
     { id: 1, name: 'EMA', period: 14, enabled: true },
     { id: 2, name: 'RSI', period: 14, enabled: false },
-    { id: 3, name: 'MACD', enabled: false },
+    { id: 3, name: 'MACD', period: null, enabled: false },
   ]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isTesting, setIsTesting] = useState(false);
-  const [testResults, setTestResults] = useState(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [connectionError, setConnectionError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [isTesting, setIsTesting] = React.useState(false);
+  const [testResults, setTestResults] = React.useState(null);
+  const [isConnected, setIsConnected] = React.useState(false);
+  const [connectionError, setConnectionError] = React.useState<string | null>(null);
+  const [retryCount, setRetryCount] = React.useState(0);
   
   const supabase = createBrowserClient();
   const { toast } = useToast();
   const MAX_RETRIES = 2;
   const RETRY_DELAY = 2000;
 
-  useEffect(() => {
+  React.useEffect(() => {
     // Establish connection to Supabase
     const connectToSupabase = async () => {
       try {
-        setConnectionError(null);
+        // Test connection with a simple query
         const { data, error } = await supabase
           .from('trading_strategies')
           .select('count')
-          .limit(1)
-          .timeout(5000); // Set a reasonable timeout
-        
+          .limit(1);
+          
         if (error) {
+          console.error('Supabase connection error:', error);
+          
           // Check if this is a timeout error
           if (error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
-            throw new Error('Connection to Supabase timed out. You can still create strategies but saving will be unavailable.');
+            throw new Error('Connection to Supabase timed out.');
           } else {
             throw error;
           }
@@ -62,176 +79,194 @@ export default function StrategyBuilderPage() {
         
         setIsConnected(true);
         setConnectionError(null);
-        console.log('Connected to Supabase successfully');
       } catch (error: any) {
         console.error('Failed to connect to Supabase:', error);
+        
+        const errorMessage = error.message || 'Unknown error occurred';
+        setConnectionError(errorMessage);
         setIsConnected(false);
-        setConnectionError(error.message || 'Failed to connect to database');
         
         // Attempt retry if we haven't exceeded max retries
         if (retryCount < MAX_RETRIES) {
           setTimeout(() => {
-            setRetryCount(prev => prev + 1);
+            setRetryCount((prev: number) => prev + 1);
           }, RETRY_DELAY);
         }
       }
     };
-
+    
     connectToSupabase();
   }, [supabase, retryCount]);
-
+  
   const handleRetryConnection = () => {
-    setRetryCount(0); // This will trigger a reconnection attempt
+    setRetryCount(0);
   };
-
+  
   const handleSaveStrategy = async () => {
     if (!strategyName) {
       toast({
-        title: "Strategy name required",
-        description: "Please provide a name for your strategy.",
-        variant: "destructive",
+        title: "Missing Information",
+        description: "Please provide a name for your strategy",
+        variant: "destructive"
       });
       return;
     }
-
+    
     setIsSaving(true);
+    
     try {
-      // Convert visual builder selections to code if using visual mode
-      const finalCode = activeTab === 'visual' ? generateCodeFromVisual() : codeInput;
-      
-      const strategyData = {
-        name: strategyName,
-        description: strategyDescription,
-        type: strategyType,
-        risk_level: riskLevel[0],
-        code: finalCode,
-        use_ai: useAI,
-        status: 'draft',
-        indicators: JSON.stringify(indicators.filter(i => i.enabled)),
-        created_at: new Date().toISOString(),
-      };
-      
-      if (isConnected) {
-        // Save to Supabase if connected
-        const { data, error } = await supabase
-          .from('trading_strategies')
-          .insert([strategyData])
-          .timeout(8000); // Longer timeout for saving data
+      // If we're not connected to Supabase, save to local storage
+      if (!isConnected) {
+        const localStrategy = {
+          id: Date.now(),
+          name: strategyName,
+          description: strategyDescription,
+          type: strategyType,
+          risk_level: riskLevel[0],
+          indicators: indicators.filter((indicator: Indicator) => indicator.enabled),
+          code: activeTab === 'code' ? codeInput : null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          status: 'draft'
+        };
         
-        if (error) {
-          // Check if this is a timeout error
-          if (error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
-            throw new Error('Connection to Supabase timed out while saving. Please try again later.');
-          } else {
-            throw error;
-          }
-        }
+        // Get existing strategies from local storage
+        const existingStrategies = JSON.parse(localStorage.getItem('offlineStrategies') || '[]');
+        localStorage.setItem('offlineStrategies', JSON.stringify([...existingStrategies, localStrategy]));
         
         toast({
-          title: "Strategy saved",
-          description: "Your trading strategy has been saved successfully to the database.",
+          title: "Strategy Saved Offline",
+          description: "Your strategy has been saved locally. It will be synced when connection is restored."
         });
-      } else {
-        // Handle offline mode - simulate successful save
-        console.log('Offline mode: Would save strategy data:', strategyData);
-        toast({
-          title: "Strategy saved locally",
-          description: "Database connection unavailable. Your strategy was saved locally but not to the database.",
-        });
-        // We could implement local storage here to actually save it
+        
+        setIsSaving(false);
+        return;
       }
+      
+      // Save to Supabase
+      const { data, error } = await supabase
+        .from('trading_strategies')
+        .insert([
+          {
+            name: strategyName,
+            description: strategyDescription,
+            type: strategyType,
+            risk_level: riskLevel[0],
+            indicators: indicators.filter((indicator: Indicator) => indicator.enabled),
+            code: activeTab === 'code' ? codeInput : null,
+            status: 'draft'
+          }
+        ]);
+        
+      if (error) throw error;
+      
+      toast({
+        title: "Strategy Saved",
+        description: "Your trading strategy has been saved successfully"
+      });
+      
+      // Reset form
+      setStrategyName('');
+      setStrategyDescription('');
+      setStrategyType('technical');
+      setRiskLevel([3]);
+      setCodeInput('// Define your trading strategy\n\nfunction executeStrategy(data) {\n  // Implement your strategy logic here\n  const signal = calculateSignal(data);\n  return signal;\n}\n\nfunction calculateSignal(data) {\n  // Calculate buy/sell signals\n  return { action: "hold", confidence: 0 };\n}');
+      setIndicators([
+        { id: 1, name: 'EMA', period: 14, enabled: true },
+        { id: 2, name: 'RSI', period: 14, enabled: false },
+        { id: 3, name: 'MACD', period: null, enabled: false },
+      ]);
+      
     } catch (error: any) {
       console.error('Error saving strategy:', error);
       toast({
-        title: "Error saving strategy",
-        description: error.message || "An error occurred while saving your strategy.",
-        variant: "destructive",
+        title: "Error",
+        description: error.message || "Failed to save strategy",
+        variant: "destructive"
       });
     } finally {
       setIsSaving(false);
     }
   };
-
-  const handleTestStrategy = async () => {
+  
+  const handleTestStrategy = () => {
     setIsTesting(true);
-    try {
-      // Simulate strategy testing with ElizaOS
-      setTimeout(() => {
-        setTestResults({
-          performance: Math.random() * 20 - 5, // -5% to +15%
-          sharpeRatio: 0.8 + Math.random() * 1.2, // 0.8 to 2.0
-          maxDrawdown: -5 - Math.random() * 10, // -5% to -15%
-          winRate: 40 + Math.random() * 40, // 40% to 80%
-          trades: Math.floor(Math.random() * 50) + 10, // 10 to 60 trades
-        });
-        setIsTesting(false);
-      }, 2000);
-    } catch (error) {
-      console.error('Error testing strategy:', error);
-      toast({
-        title: "Error testing strategy",
-        description: "An error occurred while testing your strategy.",
-        variant: "destructive",
+    
+    // Simulate testing the strategy
+    setTimeout(() => {
+      setTestResults({
+        success: true,
+        performance: {
+          winRate: 65.2,
+          profitFactor: 1.8,
+          sharpeRatio: 0.98,
+          drawdown: 12.4
+        },
+        trades: [
+          { date: '2023-09-01', action: 'buy', price: 24150, result: 'win', profit: 450 },
+          { date: '2023-09-03', action: 'sell', price: 24600, result: 'win', profit: 450 },
+          { date: '2023-09-05', action: 'buy', price: 24200, result: 'loss', profit: -350 },
+          { date: '2023-09-07', action: 'sell', price: 23850, result: 'loss', profit: -350 },
+          { date: '2023-09-09', action: 'buy', price: 23900, result: 'win', profit: 520 },
+        ]
       });
       setIsTesting(false);
-    }
+    }, 2000);
   };
-
-  const generateCodeFromVisual = () => {
-    // This would generate code based on the visual builder selections
-    const enabledIndicators = indicators.filter(i => i.enabled);
+  
+  const generateCode = () => {
+    const enabledIndicators = indicators.filter((indicator: Indicator) => indicator.enabled);
     
-    return `// Auto-generated strategy from visual builder
-// Strategy: ${strategyName}
+    return `// Auto-generated trading strategy
+// Strategy: ${strategyName || 'Untitled Strategy'}
 // Type: ${strategyType}
-// Risk Level: ${riskLevel[0]}
-// AI Enhanced: ${useAI ? 'Yes' : 'No'}
+// Generated on: ${new Date().toISOString()}
 
-function executeStrategy(data) {
+function initialize() {
   // Initialize indicators
-  ${enabledIndicators.map(i => `const ${i.name.toLowerCase()} = calculate${i.name}(data, ${i.period || 14});`).join('\n  ')}
+  ${enabledIndicators.map((indicator: Indicator) => {
+    if (indicator.name === 'EMA') return `const ema = EMA(${indicator.period});`;
+    if (indicator.name === 'RSI') return `const rsi = RSI(${indicator.period});`;
+    if (indicator.name === 'MACD') return `const macd = MACD(12, 26, 9);`;
+    if (indicator.name === 'Bollinger') return `const bb = BOLLINGER(20, 2);`;
+    return `// Indicator: ${indicator.name}`;
+  }).join('\n  ')}
   
-  // Trading logic
-  let signal = { action: "hold", confidence: 0 };
+  return {
+    ${enabledIndicators.map((indicator: Indicator) => indicator.name.toLowerCase()).join(',\n    ')}
+  };
+}
+
+function onTick(data, state) {
+  // Your strategy logic here
+  ${enabledIndicators.length === 0 ? '// No indicators selected' : ''}
+  ${indicators.find((indicator: Indicator) => indicator.name === 'RSI' && indicator.enabled) ? 
+    `if (state.rsi.value < 30) {\n    return { signal: 'BUY', reason: 'RSI oversold' };\n  } else if (state.rsi.value > 70) {\n    return { signal: 'SELL', reason: 'RSI overbought' };\n  }` : 
+    ''}
   
-  ${enabledIndicators.length > 0 ? `
-  // Example strategy logic based on selected indicators
-  if (${enabledIndicators.map(i => `${i.name.toLowerCase()}.value > ${i.name.toLowerCase()}.threshold`).join(' && ')}) {
-    signal = { action: "buy", confidence: 0.8 };
-  } else if (${enabledIndicators.map(i => `${i.name.toLowerCase()}.value < ${i.name.toLowerCase()}.threshold`).join(' && ')}) {
-    signal = { action: "sell", confidence: 0.7 };
-  }
-  ` : '// No indicators selected'}
-  
-  return signal;
+  return { signal: 'NEUTRAL' };
 }`;
   };
 
-  const toggleIndicator = (id) => {
-    setIndicators(indicators.map(ind => 
-      ind.id === id ? { ...ind, enabled: !ind.enabled } : ind
+  const toggleIndicator = (id: number) => {
+    setIndicators(indicators.map((indicator: Indicator) => 
+      indicator.id === id ? { ...indicator, enabled: !indicator.enabled } : indicator
     ));
   };
-
-  const updateIndicatorPeriod = (id, period) => {
-    setIndicators(indicators.map(ind => 
-      ind.id === id ? { ...ind, period: parseInt(period) } : ind
+  
+  const updateIndicatorPeriod = (id: number, period: string) => {
+    setIndicators(indicators.map((indicator: Indicator) => 
+      indicator.id === id ? { ...indicator, period: parseInt(period) } : indicator
     ));
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Strategy Builder</h1>
-          <p className="text-muted-foreground">
-            Create and customize trading strategies
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className={`h-3 w-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          <span className="text-sm">{isConnected ? 'Connected to Supabase' : 'Offline Mode'}</span>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Strategy Builder</h1>
+        <p className="text-muted-foreground">
+          Create and test custom trading strategies
+        </p>
       </div>
 
       {connectionError && (
@@ -245,234 +280,173 @@ function executeStrategy(data) {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Strategy Information</CardTitle>
-          <CardDescription>Define the basic properties of your trading strategy</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="strategy-name">Strategy Name</Label>
-              <Input 
-                id="strategy-name" 
-                value={strategyName} 
-                onChange={(e) => setStrategyName(e.target.value)} 
-                placeholder="My Awesome Strategy" 
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="strategy-type">Strategy Type</Label>
-              <Select value={strategyType} onValueChange={setStrategyType}>
-                <SelectTrigger id="strategy-type">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="technical">Technical</SelectItem>
-                  <SelectItem value="fundamental">Fundamental</SelectItem>
-                  <SelectItem value="sentiment">Sentiment</SelectItem>
-                  <SelectItem value="hybrid">Hybrid</SelectItem>
-                  <SelectItem value="ai">AI-driven</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="strategy-description">Description</Label>
-            <Textarea 
-              id="strategy-description" 
-              value={strategyDescription} 
-              onChange={(e) => setStrategyDescription(e.target.value)} 
-              placeholder="Describe your strategy..." 
-              rows={3} 
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="risk-level">Risk Level: {riskLevel[0]}/5</Label>
-            <Slider 
-              id="risk-level" 
-              min={1} 
-              max={5} 
-              step={1} 
-              value={riskLevel} 
-              onValueChange={setRiskLevel} 
-            />
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <Switch id="use-ai" checked={useAI} onCheckedChange={setUseAI} />
-            <Label htmlFor="use-ai">
-              <div className="flex items-center">
-                <Brain className="mr-2 h-4 w-4" />
-                Enhance with ElizaOS AI
-              </div>
-            </Label>
-          </div>
-        </CardContent>
-      </Card>
-
       <Tabs defaultValue="visual" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList>
           <TabsTrigger value="visual">Visual Builder</TabsTrigger>
           <TabsTrigger value="code">Code Editor</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="visual" className="space-y-4 mt-4">
+        <TabsContent value="visual">
           <Card>
             <CardHeader>
-              <CardTitle>Indicators & Signals</CardTitle>
-              <CardDescription>Build your strategy by selecting and configuring indicators</CardDescription>
+              <CardTitle>Strategy Configuration</CardTitle>
+              <CardDescription>Configure your trading strategy parameters</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {indicators.map(indicator => (
-                <div key={indicator.id} className="flex items-center space-x-4 border p-3 rounded-md">
-                  <Switch 
-                    checked={indicator.enabled} 
-                    onCheckedChange={() => toggleIndicator(indicator.id)} 
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="strategy-name">Strategy Name</Label>
+                  <Input 
+                    id="strategy-name" 
+                    placeholder="Enter strategy name" 
+                    value={strategyName}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setStrategyName(e.target.value)}
                   />
-                  <div className="flex-1">
-                    <p className="font-medium">{indicator.name}</p>
-                  </div>
-                  {indicator.enabled && (
-                    <div className="flex items-center space-x-2">
-                      <Label htmlFor={`period-${indicator.id}`}>Period:</Label>
-                      <Input 
-                        id={`period-${indicator.id}`}
-                        type="number"
-                        value={indicator.period || ''} 
-                        onChange={(e) => updateIndicatorPeriod(indicator.id, e.target.value)}
-                        className="w-20" 
-                      />
-                    </div>
-                  )}
                 </div>
-              ))}
+                <div className="space-y-2">
+                  <Label htmlFor="strategy-type">Strategy Type</Label>
+                  <Select 
+                    value={strategyType} 
+                    onValueChange={setStrategyType}
+                  >
+                    <SelectTrigger id="strategy-type">
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="technical">Technical</SelectItem>
+                      <SelectItem value="fundamental">Fundamental</SelectItem>
+                      <SelectItem value="momentum">Momentum</SelectItem>
+                      <SelectItem value="trend">Trend-Following</SelectItem>
+                      <SelectItem value="mean-reversion">Mean Reversion</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
               
-              <Button variant="outline" className="w-full">
-                Add Indicator
-              </Button>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Entry & Exit Rules</CardTitle>
-              <CardDescription>Define when to enter and exit trades</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="border p-3 rounded-md">
-                  <p className="font-medium mb-2">Buy Signal</p>
-                  <div className="flex items-center space-x-2">
-                    <Select defaultValue="above">
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="above">Above</SelectItem>
-                        <SelectItem value="below">Below</SelectItem>
-                        <SelectItem value="crossover">Crosses Above</SelectItem>
-                        <SelectItem value="crossunder">Crosses Below</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <ArrowRight className="h-4 w-4" />
-                    <Input placeholder="Value" className="w-20" />
+              <div className="space-y-2">
+                <Label htmlFor="strategy-description">Description</Label>
+                <Textarea 
+                  id="strategy-description" 
+                  placeholder="Describe your strategy..." 
+                  rows={3}
+                  value={strategyDescription}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setStrategyDescription(e.target.value)}
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Indicators</Label>
+                <div className="border rounded-md p-4 space-y-4">
+                  <div className="flex flex-col gap-3">
+                    {indicators.map((indicator: Indicator, index: number) => (
+                      <div key={indicator.id} className="flex items-center justify-between border-b pb-2">
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="checkbox" 
+                            id={`indicator-${indicator.id}`}
+                            checked={indicator.enabled}
+                            onChange={() => toggleIndicator(indicator.id)}
+                            className="h-4 w-4 rounded border-gray-300"
+                          />
+                          <Label htmlFor={`indicator-${indicator.id}`}>
+                            {indicator.name}
+                          </Label>
+                        </div>
+                        
+                        {indicator.period !== null && (
+                          <div className="flex items-center gap-2">
+                            <Label htmlFor={`period-${indicator.id}`} className="text-sm">
+                              Period:
+                            </Label>
+                            <Input
+                              id={`period-${indicator.id}`}
+                              type="number"
+                              value={indicator.period}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => updateIndicatorPeriod(indicator.id, e.target.value)}
+                              className="w-16 h-8"
+                              disabled={!indicator.enabled}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                </div>
-                
-                <div className="border p-3 rounded-md">
-                  <p className="font-medium mb-2">Sell Signal</p>
-                  <div className="flex items-center space-x-2">
-                    <Select defaultValue="below">
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="above">Above</SelectItem>
-                        <SelectItem value="below">Below</SelectItem>
-                        <SelectItem value="crossover">Crosses Above</SelectItem>
-                        <SelectItem value="crossunder">Crosses Below</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <ArrowRight className="h-4 w-4" />
-                    <Input placeholder="Value" className="w-20" />
-                  </div>
+                  
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Indicator
+                  </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
         </TabsContent>
         
-        <TabsContent value="code" className="mt-4">
+        <TabsContent value="code">
           <Card>
             <CardHeader>
-              <CardTitle>Strategy Code Editor</CardTitle>
-              <CardDescription>Write your strategy in JavaScript/TypeScript</CardDescription>
+              <CardTitle>Code Editor</CardTitle>
+              <CardDescription>Write your strategy in JavaScript</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="relative rounded-md border">
-                <Code className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Textarea 
-                  value={codeInput} 
-                  onChange={(e) => setCodeInput(e.target.value)} 
-                  className="pl-8 font-mono" 
-                  rows={15} 
-                />
+              <div className="space-y-4">
+                <div className="relative rounded-md border bg-slate-950">
+                  <div className="flex items-center px-4 py-2 border-b border-gray-700">
+                    <Code className="h-4 w-4 mr-2 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-300">strategy.js</span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="ml-auto text-xs text-gray-400"
+                      onClick={() => setCodeInput(generateCode())}
+                    >
+                      Generate from Visual Builder
+                    </Button>
+                  </div>
+                  <ScrollArea className="h-96 w-full">
+                    <Textarea
+                      value={codeInput}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCodeInput(e.target.value)}
+                      className="min-h-[400px] font-mono text-gray-300 bg-transparent border-0 resize-none"
+                      placeholder="// Write your strategy code here..."
+                    />
+                  </ScrollArea>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    variant="secondary" 
+                    onClick={handleTestStrategy}
+                    disabled={isTesting}
+                  >
+                    <PlayCircle className="h-4 w-4 mr-2" />
+                    {isTesting ? "Testing..." : "Test Strategy"}
+                  </Button>
+                </div>
+                
+                {testResults && (
+                  <div className="border rounded-md p-4">
+                    <h3 className="font-medium mb-2">Test Results</h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>Win Rate: <span className="font-mono">{testResults.performance.winRate}%</span></div>
+                      <div>Profit Factor: <span className="font-mono">{testResults.performance.profitFactor}</span></div>
+                      <div>Sharpe Ratio: <span className="font-mono">{testResults.performance.sharpeRatio}</span></div>
+                      <div>Max Drawdown: <span className="font-mono">{testResults.performance.drawdown}%</span></div>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-
-      {testResults && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Test Results</CardTitle>
-            <CardDescription>Performance metrics based on historical data</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="border rounded-md p-3 text-center">
-                <p className="text-sm text-muted-foreground">Performance</p>
-                <p className={`text-xl font-bold ${testResults.performance >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                  {testResults.performance.toFixed(2)}%
-                </p>
-              </div>
-              <div className="border rounded-md p-3 text-center">
-                <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
-                <p className="text-xl font-bold">{testResults.sharpeRatio.toFixed(2)}</p>
-              </div>
-              <div className="border rounded-md p-3 text-center">
-                <p className="text-sm text-muted-foreground">Max Drawdown</p>
-                <p className="text-xl font-bold text-red-500">{testResults.maxDrawdown.toFixed(2)}%</p>
-              </div>
-              <div className="border rounded-md p-3 text-center">
-                <p className="text-sm text-muted-foreground">Win Rate</p>
-                <p className="text-xl font-bold">{testResults.winRate.toFixed(1)}%</p>
-              </div>
-              <div className="border rounded-md p-3 text-center">
-                <p className="text-sm text-muted-foreground">Total Trades</p>
-                <p className="text-xl font-bold">{testResults.trades}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="flex justify-end space-x-2">
-        <Button variant="outline" onClick={() => setTestResults(null)}>
-          <FileDown className="mr-2 h-4 w-4" />
-          Export
-        </Button>
-        <Button variant="outline" onClick={handleTestStrategy} disabled={isTesting}>
-          <Play className="mr-2 h-4 w-4" />
-          {isTesting ? 'Testing...' : 'Test Strategy'}
-        </Button>
-        <Button onClick={handleSaveStrategy} disabled={isSaving}>
-          <Save className="mr-2 h-4 w-4" />
-          {isSaving ? 'Saving...' : 'Save Strategy'}
+      
+      <div className="flex justify-end gap-2">
+        <Button variant="outline">Cancel</Button>
+        <Button 
+          onClick={handleSaveStrategy}
+          disabled={isSaving}
+        >
+          {isSaving ? "Saving..." : "Save Strategy"}
         </Button>
       </div>
     </div>

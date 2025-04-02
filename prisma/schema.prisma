@@ -1,0 +1,211 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String             @id @default(uuid())
+  email             String             @unique
+  name              String?
+  passwordHash      String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  strategies        Strategy[]
+  farms             Farm[]
+  apiKeys           ApiKey[]
+  tradingExecutions TradingExecution[]
+
+  @@map("users")
+}
+
+model Strategy {
+  id                String             @id @default(uuid())
+  name              String
+  description       String?
+  code              String
+  language          String             @default("pine") // pine, javascript, etc.
+  userId            String
+  user              User               @relation(fields: [userId], references: [id])
+  isPublic          Boolean            @default(false)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  farms             Farm[]
+  backtests         Backtest[]
+  tradingExecutions TradingExecution[]
+  tags              TagsOnStrategies[]
+
+  @@map("strategies")
+}
+
+model TagsOnStrategies {
+  strategyId String
+  tagId      String
+  strategy   Strategy @relation(fields: [strategyId], references: [id])
+  tag        Tag      @relation(fields: [tagId], references: [id])
+
+  @@id([strategyId, tagId])
+  @@map("tags_on_strategies")
+}
+
+model Tag {
+  id         String             @id @default(uuid())
+  name       String             @unique
+  createdAt  DateTime           @default(now())
+  strategies TagsOnStrategies[]
+
+  @@map("tags")
+}
+
+model Farm {
+  id                String             @id @default(uuid())
+  name              String
+  description       String?
+  userId            String
+  user              User               @relation(fields: [userId], references: [id])
+  exchange          String             @default("bybit") // bybit, coinbase, etc.
+  assetPairs        String[]           @default([])
+  status            FarmStatus         @default(INACTIVE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  strategies        Strategy[]
+  apiKeys           ApiKey[]
+  tradingExecutions TradingExecution[]
+
+  @@map("farms")
+}
+
+model ApiKey {
+  id           String   @id @default(uuid())
+  name         String
+  exchangeName String
+  key          String
+  secret       String
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  farmId       String?
+  farm         Farm?    @relation(fields: [farmId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("api_keys")
+}
+
+model Backtest {
+  id             String          @id @default(uuid())
+  strategyId     String
+  strategy       Strategy        @relation(fields: [strategyId], references: [id])
+  startDate      DateTime
+  endDate        DateTime
+  assetPair      String
+  timeframe      String
+  initialCapital Float
+  result         Json
+  status         BacktestStatus  @default(PENDING)
+  metrics        BacktestMetrics?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("backtests")
+}
+
+model BacktestMetrics {
+  id              String   @id @default(uuid())
+  backtestId      String   @unique
+  backtest        Backtest @relation(fields: [backtestId], references: [id])
+  totalTrades     Int
+  winRate         Float
+  profitFactor    Float
+  sharpeRatio     Float
+  maxDrawdown     Float
+  averageTrade    Float
+  netProfit       Float
+  grossProfit     Float
+  grossLoss       Float
+  largestWin      Float
+  largestLoss     Float
+  averageDuration Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("backtest_metrics")
+}
+
+model TradingExecution {
+  id         String           @id @default(uuid())
+  strategyId String
+  strategy   Strategy         @relation(fields: [strategyId], references: [id])
+  farmId     String
+  farm       Farm             @relation(fields: [farmId], references: [id])
+  userId     String
+  user       User             @relation(fields: [userId], references: [id])
+  status     ExecutionStatus  @default(ACTIVE)
+  trades     Trade[]
+  startTime  DateTime         @default(now())
+  stopTime   DateTime?
+  settings   Json?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@map("trading_executions")
+}
+
+model Trade {
+  id                 String           @id @default(uuid())
+  tradingExecutionId String
+  tradingExecution   TradingExecution @relation(fields: [tradingExecutionId], references: [id])
+  exchange           String
+  assetPair          String
+  side               TradeSide
+  entryPrice         Float
+  exitPrice          Float?
+  quantity           Float
+  entryTime          DateTime
+  exitTime           DateTime?
+  pnl                Float?
+  status             TradeStatus      @default(OPEN)
+  orderIds           String[]
+  notes              String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@map("trades")
+}
+
+enum FarmStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  ERROR
+}
+
+enum BacktestStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+enum ExecutionStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+  ERROR
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+} 

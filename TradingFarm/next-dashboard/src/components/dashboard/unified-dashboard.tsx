@@ -124,6 +124,7 @@ export default function UnifiedDashboard({
   const [isLoading, setIsLoading] = React.useState(false);
   const [showAddWidget, setShowAddWidget] = React.useState(false);
   const [currentLayoutName, setCurrentLayoutName] = React.useState(initialLayout?.name || 'Default Layout');
+  const [currentTime, setCurrentTime] = React.useState<string>('');
   
   // Set up sensors for drag and drop
   const sensors = useSensors(
@@ -138,6 +139,20 @@ export default function UnifiedDashboard({
   React.useEffect(() => {
     loadLayouts();
   }, [farmId]);
+
+  // Update the time only on the client side
+  React.useEffect(() => {
+    // Initial time update
+    setCurrentTime(new Date().toLocaleTimeString());
+    
+    // Update time every second
+    const interval = setInterval(() => {
+      setCurrentTime(new Date().toLocaleTimeString());
+    }, 1000);
+    
+    // Cleanup interval on unmount
+    return () => clearInterval(interval);
+  }, []);
   
   // Load available layouts for the farm
   const loadLayouts = async () => {
@@ -557,7 +572,7 @@ export default function UnifiedDashboard({
         </div>
         
         <div className="flex items-center gap-4">
-          <span className="text-sm text-muted-foreground">Last updated: {new Date().toLocaleTimeString()}</span>
+          <span className="text-sm text-muted-foreground">Last updated: {currentTime}</span>
         </div>
       </div>
 
