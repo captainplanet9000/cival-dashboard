@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { ElizaCommandConsole } from '@/components/eliza/ElizaCommandConsole';
+import React from 'react';
+import ElizaCommandConsole from '@/components/eliza/ElizaCommandConsole';
 import KnowledgeManager from '@/components/eliza/KnowledgeManager';
 import { elizaClient, AgentConfiguration } from '@/utils/eliza/eliza-client';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -13,14 +13,36 @@ import {
 } from 'lucide-react';
 
 export default function ElizaIntegrationExample() {
-  const [agents, setAgents] = useState<any[]>([]);
-  const [farms, setFarms] = useState<any[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
-  const [selectedFarmId, setSelectedFarmId] = useState<number | null>(null);
-  const [isCreatingAgent, setIsCreatingAgent] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  interface Agent {
+    id: number; 
+    name: string; 
+    description: string | null;
+    type?: string;
+    configuration?: {
+      strategy?: string;
+      risk_level?: string;
+      markets?: string[];
+      eliza?: {
+        connected?: boolean;
+        capabilities?: string[];
+      }
+    }
+  }
 
-  useEffect(() => {
+  interface Farm {
+    id: number;
+    name: string;
+    description: string | null;
+  }
+
+  const [agents, setAgents] = React.useState<Agent[]>([]);
+  const [farms, setFarms] = React.useState<Farm[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = React.useState<number | null>(null);
+  const [selectedFarmId, setSelectedFarmId] = React.useState<number | null>(null);
+  const [isCreatingAgent, setIsCreatingAgent] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
     loadData();
   }, []);
 
@@ -28,13 +50,16 @@ export default function ElizaIntegrationExample() {
     setIsLoading(true);
     try {
       // Load farms
-      const farmsResponse = await fetch('/api/mcp/supabase', {
+      const farmsResponse = await fetch('/api/supabase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          tool: 'run_sql',
+          action: 'rpc',
           params: {
-            sql: 'SELECT * FROM farms ORDER BY name',
+            fn: 'get_farms',
+            args: [],
             databaseName: 'neondb',
             projectId: 'default'
           }
@@ -62,13 +87,16 @@ export default function ElizaIntegrationExample() {
 
   const loadAgentsForFarm = async (farmId: number) => {
     try {
-      const agentsResponse = await fetch('/api/mcp/supabase', {
+      const agentsResponse = await fetch('/api/supabase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          tool: 'run_sql',
+          action: 'rpc',
           params: {
-            sql: `SELECT * FROM agents WHERE farm_id = ${farmId} ORDER BY name`,
+            fn: 'get_agents',
+            args: [farmId],
             databaseName: 'neondb',
             projectId: 'default'
           }
@@ -96,23 +124,22 @@ export default function ElizaIntegrationExample() {
     
     try {
       // Create a new agent
-      const agentResponse = await fetch('/api/mcp/supabase', {
+      const agentsResponse = await fetch('/api/supabase', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          tool: 'run_sql',
+          action: 'rpc',
           params: {
-            sql: `
-              INSERT INTO agents (name, farm_id, status, type, configuration) 
-              VALUES (
-                'ElizaDemo Agent ${Date.now().toString().slice(-4)}', 
-                ${selectedFarmId}, 
-                'active', 
-                'eliza_ai',
-                '{"strategy": "mean_reversion", "risk_level": "medium", "markets": ["BTC/USD", "ETH/USD"]}'::jsonb
-              )
-              RETURNING *
-            `,
+            fn: 'create_test_agent',
+            args: [
+              selectedFarmId,
+              'Trading Bot Alpha',
+              'An automated trading bot that uses MACD and RSI indicators',
+              'eliza_ai',
+              JSON.stringify({"strategy": "mean_reversion", "risk_level": "medium", "markets": ["BTC/USD", "ETH/USD"]})
+            ],
             databaseName: 'neondb',
             projectId: 'default'
           }
@@ -141,7 +168,13 @@ export default function ElizaIntegrationExample() {
         
         await elizaClient.storeKnowledge(
           'Market Analysis: Bitcoin Volatility',
-          'Bitcoin has historically demonstrated high volatility, with significant price movements in short timeframes. This volatility presents both opportunities and risks for traders.\n\nKey insights:\n- Bitcoin's volatility has decreased over time as market cap has grown\n- Typical intraday volatility ranges from 1-3%\n- Major news events can trigger volatility spikes of 10% or more\n- Weekend trading tends to show higher volatility with lower liquidity',
+          `Bitcoin has historically demonstrated high volatility, with significant price movements in short timeframes. This volatility presents both opportunities and risks for traders.
+
+Key insights:
+- Bitcoin's volatility has decreased over time as market cap has grown
+- Typical intraday volatility ranges from 1-3%
+- Major news events can trigger volatility spikes of 10% or more
+- Weekend trading tends to show higher volatility with lower liquidity`,
           ['market_analysis', 'bitcoin', 'volatility'],
           [newAgentId]
         );
@@ -159,6 +192,101 @@ export default function ElizaIntegrationExample() {
 
   const currentAgent = agents.find(agent => agent.id === selectedAgentId);
   
+  const renderAgentItem = (agent: Agent) => {
+    return (
+      <div
+        key={agent.id}
+        className={`p-3 border rounded mb-2 cursor-pointer hover:bg-gray-100 
+          ${selectedAgentId === agent.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+        onClick={() => setSelectedAgentId(agent.id)}
+      >
+        <h4 className="text-sm font-medium mb-1">{agent.name}</h4>
+        <p className="text-sm">{agent.description}</p>
+      </div>
+    );
+  };
+
+  const renderFarmItem = (farm: Farm) => {
+    return (
+      <div
+        key={farm.id}
+        className={`p-3 border rounded mb-2 cursor-pointer hover:bg-gray-100 
+          ${selectedFarmId === farm.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}
+        onClick={() => setSelectedFarmId(farm.id)}
+      >
+        <h4 className="text-sm font-medium mb-1">{farm.name}</h4>
+        <p className="text-sm">{farm.description}</p>
+      </div>
+    );
+  };
+
+  const renderAgent = (agent: Agent) => {
+    return (
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5" />
+            {agent.name}
+          </CardTitle>
+          <CardDescription>
+            {agent.description}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-1">Strategy</h4>
+              <p className="text-sm">
+                {agent.configuration?.strategy || 'Not configured'}
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-1">Risk Level</h4>
+              <p className="text-sm">
+                {agent.configuration?.risk_level || 'Not configured'}
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-1">Markets</h4>
+              <div className="flex flex-wrap gap-1">
+                {agent.configuration?.markets?.map((market: string) => (
+                  <span key={market} className="px-2 py-0.5 text-xs bg-muted rounded-full">
+                    {market}
+                  </span>
+                )) || 'No markets configured'}
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-1">ElizaOS Connection</h4>
+              <div className="flex items-center gap-2">
+                <div className={`h-2 w-2 rounded-full ${agent.configuration?.eliza?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <p className="text-sm">
+                  {agent.configuration?.eliza?.connected ? 'Connected' : 'Not connected'}
+                </p>
+              </div>
+            </div>
+            
+            {agent.configuration?.eliza?.connected && (
+              <div>
+                <h4 className="text-sm font-medium mb-1">ElizaOS Capabilities</h4>
+                <div className="flex flex-wrap gap-1">
+                  {agent.configuration?.eliza?.capabilities?.map((cap: string) => (
+                    <span key={cap} className="px-2 py-0.5 text-xs bg-primary/10 text-primary rounded-full">
+                      {cap.replace('_', ' ')}
+                    </span>
+                  )) || 'No capabilities configured'}
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   return (
     <div className="container mx-auto py-8">
       <div className="flex items-center justify-between mb-6">
@@ -223,68 +351,7 @@ export default function ElizaIntegrationExample() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left column for agent information */}
           <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5" />
-                  {currentAgent?.name}
-                </CardTitle>
-                <CardDescription>
-                  {currentAgent?.type === 'eliza_ai' ? 'ElizaOS AI-powered trading agent' : 'Trading agent'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">Strategy</h4>
-                    <p className="text-sm">
-                      {currentAgent?.configuration?.strategy || 'Not configured'}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">Risk Level</h4>
-                    <p className="text-sm">
-                      {currentAgent?.configuration?.risk_level || 'Not configured'}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">Markets</h4>
-                    <div className="flex flex-wrap gap-1">
-                      {currentAgent?.configuration?.markets?.map((market: string) => (
-                        <span key={market} className="px-2 py-0.5 text-xs bg-muted rounded-full">
-                          {market}
-                        </span>
-                      )) || 'No markets configured'}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <h4 className="text-sm font-medium mb-1">ElizaOS Connection</h4>
-                    <div className="flex items-center gap-2">
-                      <div className={`h-2 w-2 rounded-full ${currentAgent?.configuration?.eliza?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                      <p className="text-sm">
-                        {currentAgent?.configuration?.eliza?.connected ? 'Connected' : 'Not connected'}
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {currentAgent?.configuration?.eliza?.connected && (
-                    <div>
-                      <h4 className="text-sm font-medium mb-1">ElizaOS Capabilities</h4>
-                      <div className="flex flex-wrap gap-1">
-                        {currentAgent?.configuration?.eliza?.capabilities?.map((cap: string) => (
-                          <span key={cap} className="px-2 py-0.5 text-xs bg-primary/10 text-primary rounded-full">
-                            {cap.replace('_', ' ')}
-                          </span>
-                        )) || 'No capabilities configured'}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+            {renderAgent(currentAgent!)}
             
             <Card>
               <CardHeader>

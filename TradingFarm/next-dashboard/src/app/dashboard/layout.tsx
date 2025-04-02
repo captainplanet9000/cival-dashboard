@@ -153,27 +153,6 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             </li>
             
-            {/* Strategy Section */}
-            <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Strategies</p>
-            <li>
-              <Link 
-                href="/dashboard/strategies" 
-                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-              >
-                <Briefcase className="w-5 h-5 mr-3" />
-                Strategy Library
-              </Link>
-            </li>
-            <li>
-              <Link 
-                href="/dashboard/strategies/builder" 
-                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-              >
-                <Brain className="w-5 h-5 mr-3" />
-                Strategy Builder
-              </Link>
-            </li>
-            
             {/* Analytics Section */}
             <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Analytics</p>
             <li>
@@ -195,26 +174,47 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             </li>
             
-            {/* ElizaOS Section */}
-            <p className="text-xs text-muted-foreground px-4 py-2 mt-2">AI & System</p>
+            {/* The Brain Section - NEW CONSOLIDATED SECTION */}
+            <p className="text-xs text-muted-foreground px-4 py-2 mt-2">The Brain</p>
             <li>
               <Link 
-                href="/dashboard/elizaos/console" 
+                href="/dashboard/brain" 
                 className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
               >
-                <Zap className="w-5 h-5 mr-3" />
+                <BrainCircuit className="w-5 h-5 mr-3" />
                 AI Command Center
               </Link>
             </li>
             <li>
               <Link 
-                href="/dashboard/knowledge" 
+                href="/dashboard/brain/knowledge" 
                 className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
               >
-                <Brain className="w-5 h-5 mr-3" />
+                <BookOpen className="w-5 h-5 mr-3" />
                 Knowledge Base
               </Link>
             </li>
+            <li>
+              <Link 
+                href="/dashboard/brain/strategies" 
+                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+              >
+                <Briefcase className="w-5 h-5 mr-3" />
+                Strategy Library
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/dashboard/brain/builder" 
+                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+              >
+                <Brain className="w-5 h-5 mr-3" />
+                Strategy Builder
+              </Link>
+            </li>
+            
+            {/* Settings Section */}
+            <p className="text-xs text-muted-foreground px-4 py-2 mt-2">System</p>
             <li>
               <Link 
                 href="/dashboard/settings" 
