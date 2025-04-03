@@ -83,3 +83,41 @@ BEGIN
   ORDER BY t.tablename;
 END;
 $$;
+
+-- Check if the pgvector extension exists
+CREATE OR REPLACE FUNCTION public.pgvector_extension_exists()
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  extension_exists BOOLEAN;
+BEGIN
+  SELECT COUNT(*) > 0 INTO extension_exists
+  FROM pg_extension
+  WHERE extname = 'vector';
+  
+  RETURN extension_exists;
+END;
+$$;
+
+-- Create check_function_exists to verify if a function exists in the database
+CREATE OR REPLACE FUNCTION public.check_function_exists(function_name TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  exists BOOLEAN;
+BEGIN
+  SELECT COUNT(*) > 0 INTO exists
+  FROM pg_proc p
+  JOIN pg_namespace n ON p.pronamespace = n.oid
+  WHERE n.nspname = 'public'
+  AND p.proname = function_name;
+  
+  RETURN exists;
+END;
+$$;

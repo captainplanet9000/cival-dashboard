@@ -1,7 +1,66 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server';
 
-export async function GET(request: NextRequest) {
+// Generate mock orders data
+function generateMockOrders(count: number, filters?: {
+  farmId?: string | null;
+  agentId?: string | null;
+  status?: string | null;
+  type?: string | null;
+}) {
+  const orders = [];
+  const symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'DOGE/USD', 'ADA/USD'];
+  const orderStatuses = ['open', 'filled', 'canceled', 'rejected', 'partial'];
+  const orderTypes = ['market', 'limit', 'stop', 'stop_limit', 'trailing_stop'];
+  const sides = ['buy', 'sell'];
+  
+  for (let i = 0; i < count; i++) {
+    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+    const orderStatus = filters?.status || orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
+    const orderType = filters?.type || orderTypes[Math.floor(Math.random() * orderTypes.length)];
+    const side = sides[Math.floor(Math.random() * sides.length)];
+    const price = symbol.includes('BTC') 
+      ? 50000 + (Math.random() * 10000)
+      : symbol.includes('ETH')
+        ? 3000 + (Math.random() * 500)
+        : 10 + (Math.random() * 100);
+    const amount = symbol.includes('BTC') 
+      ? 0.1 + (Math.random() * 0.5)
+      : symbol.includes('ETH')
+        ? 1 + (Math.random() * 5)
+        : 10 + (Math.random() * 50);
+    
+    const order = {
+      id: `order-${Date.now()}-${i}`,
+      farmId: filters?.farmId || `farm-${Math.floor(Math.random() * 3) + 1}`,
+      agentId: filters?.agentId || (Math.random() > 0.5 ? `agent-${Math.floor(Math.random() * 3) + 1}` : null),
+      symbol,
+      status: orderStatus,
+      type: orderType,
+      side,
+      price: parseFloat(price.toFixed(2)),
+      amount: parseFloat(amount.toFixed(6)),
+      filled: orderStatus === 'filled' ? amount : orderStatus === 'partial' ? amount * Math.random() : 0,
+      remaining: orderStatus === 'filled' ? 0 : orderStatus === 'partial' ? amount * (1 - Math.random()) : amount,
+      cost: parseFloat((price * amount).toFixed(2)),
+      fee: parseFloat((price * amount * 0.001).toFixed(2)),
+      created: new Date(Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)).toISOString(),
+      updated: new Date(Date.now() - Math.floor(Math.random() * 24 * 60 * 60 * 1000)).toISOString(),
+      exchange: Math.random() > 0.5 ? 'Binance' : Math.random() > 0.5 ? 'Coinbase' : 'Kraken',
+      elizaOSData: Math.random() > 0.3 ? {
+        confidence: parseFloat((0.7 + Math.random() * 0.3).toFixed(2)),
+        reasoning: "Entry based on bullish divergence and support level",
+        model: Math.random() > 0.5 ? 'gpt-4' : 'claude-3'
+      } : null
+    };
+    
+    orders.push(order);
+  }
+  
+  return orders;
+}
+
+export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '50');
@@ -11,63 +70,37 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const type = searchParams.get('type');
     
-    // Generate mock orders data
-    const generateMockOrders = (count: number) => {
-      const orders = [];
-      const symbols = ['BTC/USD', 'ETH/USD', 'SOL/USD', 'DOGE/USD', 'ADA/USD'];
-      const orderStatuses = ['open', 'filled', 'canceled', 'rejected', 'partial'];
-      const orderTypes = ['market', 'limit', 'stop', 'stop_limit', 'trailing_stop'];
-      const sides = ['buy', 'sell'];
-      
-      for (let i = 0; i < count; i++) {
-        const symbol = symbols[Math.floor(Math.random() * symbols.length)];
-        const orderStatus = orderStatuses[Math.floor(Math.random() * orderStatuses.length)];
-        const orderType = orderTypes[Math.floor(Math.random() * orderTypes.length)];
-        const side = sides[Math.floor(Math.random() * sides.length)];
-        const price = symbol.includes('BTC') 
-          ? 50000 + (Math.random() * 10000)
-          : symbol.includes('ETH')
-            ? 3000 + (Math.random() * 500)
-            : 10 + (Math.random() * 100);
-        const amount = symbol.includes('BTC') 
-          ? 0.1 + (Math.random() * 0.5)
-          : symbol.includes('ETH')
-            ? 1 + (Math.random() * 5)
-            : 10 + (Math.random() * 50);
-        
-        const order = {
-          id: `order-${Date.now()}-${i}`,
-          farmId: farmId || `farm-${Math.floor(Math.random() * 3) + 1}`,
-          agentId: agentId || (Math.random() > 0.5 ? `agent-${Math.floor(Math.random() * 3) + 1}` : null),
-          symbol,
-          status: status || orderStatus,
-          type: type || orderType,
-          side,
-          price: parseFloat(price.toFixed(2)),
-          amount: parseFloat(amount.toFixed(6)),
-          filled: orderStatus === 'filled' ? amount : orderStatus === 'partial' ? amount * Math.random() : 0,
-          remaining: orderStatus === 'filled' ? 0 : orderStatus === 'partial' ? amount * (1 - Math.random()) : amount,
-          cost: parseFloat((price * amount).toFixed(2)),
-          fee: parseFloat((price * amount * 0.001).toFixed(2)),
-          created: new Date(Date.now() - Math.floor(Math.random() * 7 * 24 * 60 * 60 * 1000)).toISOString(),
-          updated: new Date(Date.now() - Math.floor(Math.random() * 24 * 60 * 60 * 1000)).toISOString(),
-          exchange: Math.random() > 0.5 ? 'Binance' : Math.random() > 0.5 ? 'Coinbase' : 'Kraken',
-          elizaOSData: Math.random() > 0.3 ? {
-            confidence: parseFloat((0.7 + Math.random() * 0.3).toFixed(2)),
-            reasoning: "Entry based on bullish divergence and support level",
-            model: Math.random() > 0.5 ? 'gpt-4' : 'claude-3'
-          } : null
-        };
-        
-        orders.push(order);
+    // Check if we should attempt to use Supabase or use mock data only
+    const useMockOnly = process.env.USE_MOCK_DATA === 'true' || true; // Default to mock data for now
+    
+    let orders = [];
+    
+    if (!useMockOnly) {
+      try {
+        // Try to fetch from Supabase
+        const supabase = createServerClient();
+        const { data, error } = await supabase
+          .from('orders')
+          .select('*')
+          .order('created', { ascending: false });
+          
+        if (error) {
+          console.warn('Falling back to mock data due to Supabase error:', error);
+        } else if (data && data.length > 0) {
+          orders = data;
+        }
+      } catch (dbError) {
+        console.warn('Supabase connection failed, using mock data instead:', dbError);
       }
-      
-      return orders;
-    };
+    }
+    
+    // If no orders from database or useMockOnly is true, generate mock data
+    if (orders.length === 0) {
+      console.log('Using mock order data');
+      orders = generateMockOrders(100, { farmId, agentId, status, type });
+    }
     
     // Filter logic
-    let orders = generateMockOrders(100);
-    
     if (farmId) {
       orders = orders.filter(order => order.farmId === farmId);
     }

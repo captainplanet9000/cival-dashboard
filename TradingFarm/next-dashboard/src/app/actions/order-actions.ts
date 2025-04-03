@@ -7,8 +7,8 @@ import { revalidatePath } from 'next/cache';
  * Create a new order
  */
 export async function createOrder(orderData: {
-  farm_id: number;
-  agent_id?: number;
+  farm_id: string;
+  agent_id?: string;
   exchange: string;
   symbol: string;
   order_type: 'market' | 'limit' | 'stop' | 'stop_limit' | 'trailing_stop';
@@ -18,7 +18,7 @@ export async function createOrder(orderData: {
   stop_price?: number;
   time_in_force?: 'gtc' | 'ioc' | 'fok';
   metadata: {
-    strategy_id?: number;
+    strategy_id?: string;
     reason?: string;
     [key: string]: any;
   };
@@ -65,7 +65,7 @@ export async function createOrder(orderData: {
  * Update order status
  */
 export async function updateOrderStatus(
-  id: number,
+  id: string,
   status: 'new' | 'open' | 'filled' | 'partial_fill' | 'canceled' | 'rejected' | 'expired',
   filledData?: {
     filled_quantity?: number;
@@ -114,7 +114,7 @@ export async function updateOrderStatus(
 /**
  * Cancel an order
  */
-export async function cancelOrder(id: number) {
+export async function cancelOrder(id: string) {
   try {
     const supabase = await createServerClient();
     
@@ -168,7 +168,7 @@ export async function cancelOrder(id: number) {
 /**
  * Get orders by farm
  */
-export async function getOrdersByFarm(farmId: number, limit: number = 50) {
+export async function getOrdersByFarm(farmId: string, limit: number = 50) {
   try {
     const supabase = await createServerClient();
     
@@ -195,7 +195,7 @@ export async function getOrdersByFarm(farmId: number, limit: number = 50) {
 /**
  * Get orders by agent
  */
-export async function getOrdersByAgent(agentId: number, limit: number = 50) {
+export async function getOrdersByAgent(agentId: string, limit: number = 50) {
   try {
     const supabase = await createServerClient();
     
@@ -222,7 +222,7 @@ export async function getOrdersByAgent(agentId: number, limit: number = 50) {
 /**
  * Get order details with trades
  */
-export async function getOrderWithTrades(id: number) {
+export async function getOrderWithTrades(id: string) {
   try {
     const supabase = await createServerClient();
     
@@ -267,7 +267,7 @@ export async function getOrderWithTrades(id: number) {
  * Create a new trade for an order
  */
 export async function createTrade(tradeData: {
-  order_id: number;
+  order_id: string;
   external_id?: string;
   symbol: string;
   exchange: string;
@@ -324,7 +324,7 @@ export async function createTrade(tradeData: {
 /**
  * Update order status after a trade
  */
-async function updateOrderAfterTrade(orderId: number) {
+async function updateOrderAfterTrade(orderId: string) {
   try {
     const supabase = await createServerClient();
     
@@ -389,7 +389,7 @@ async function updateOrderAfterTrade(orderId: number) {
 /**
  * Get open orders
  */
-export async function getOpenOrders(farmId?: number, agentId?: number) {
+export async function getOpenOrders(farmId?: string, agentId?: string) {
   try {
     const supabase = await createServerClient();
     

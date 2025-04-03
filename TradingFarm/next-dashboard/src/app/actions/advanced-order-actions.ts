@@ -9,11 +9,11 @@ import {
   TriggerPriceSource
 } from '@/services/advanced-order-service';
 
-interface OrderData {
-  farm_id: number;
-  agent_id?: number;
+export interface OrderData {
+  farm_id: string;
+  agent_id?: string | null;
   exchange: string;
-  exchange_account_id?: string;
+  exchange_account_id?: string | null;
   symbol: string;
   side: 'buy' | 'sell';
   quantity: number;
@@ -403,7 +403,7 @@ export async function calculatePerformanceMetrics(farmId: number, timeframe: str
 /**
  * Create an alert
  */
-export async function createAlert(farmId: number, title: string, message: string, level: string = 'info', source: string = 'system', metadata: any = {}) {
+export async function createAlert(farmId: string, title: string, message: string, level: string = 'info', source: string = 'system', metadata: any = {}) {
   try {
     const supabase = await createServerClient();
     
@@ -436,7 +436,7 @@ export async function createAlert(farmId: number, title: string, message: string
 /**
  * Create an alert for an order
  */
-export async function createAlertForOrder(orderId: string, farmId: number, message: string) {
+export async function createAlertForOrder(orderId: string, farmId: string, message: string) {
   return createAlert(
     farmId,
     'New Order Created',

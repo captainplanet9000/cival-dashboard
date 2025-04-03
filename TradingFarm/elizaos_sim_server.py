@@ -552,7 +552,7 @@ async def get_agent_commands(agent_id: str):
 def main():
     """Run the ElizaOS simulation server"""
     print("Starting ElizaOS Simulation Server...")
-    uvicorn.run("elizaos_sim_server:app", host="0.0.0.0", port=3000, reload=False)
+    uvicorn.run("elizaos_sim_server:app", host="0.0.0.0", port=3003, reload=True)
 
 if __name__ == "__main__":
     main()

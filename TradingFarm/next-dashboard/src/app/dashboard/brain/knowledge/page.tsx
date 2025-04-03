@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,16 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
 import { createBrowserClient } from '@/utils/supabase/client';
-
-interface KnowledgeDocument {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  tags: string[];
-  created_at: string;
-  updated_at: string;
-}
+import { KnowledgeDocument } from '@/types/knowledge';
+import { DEMO_MODE, demoKnowledgeDocuments } from '@/utils/demo-data';
 
 interface NewDocument {
   title: string;
@@ -68,6 +60,19 @@ export default function KnowledgeBasePage() {
       setConnectionError(null);
       
       try {
+        // If in demo mode or development, use demo data
+        if (DEMO_MODE || process.env.NODE_ENV === 'development') {
+          setTimeout(() => {
+            setDocuments(demoKnowledgeDocuments);
+            setIsLoading(false);
+            toast({
+              title: "Demo Mode Active",
+              description: "Showing knowledge document demo data - no database connection required",
+            });
+          }, 800); // Simulate network delay
+          return;
+        }
+        
         // Attempt to fetch documents from the knowledge_base table
         const { data, error } = await supabase
           .from('knowledge_base')
@@ -76,13 +81,7 @@ export default function KnowledgeBasePage() {
           
         if (error) {
           console.error('Error fetching knowledge documents:', error);
-          
-          // Check if this is a timeout error
-          if (error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
-            throw new Error('Connection to Supabase timed out. Using demo data instead.');
-          } else {
-            throw error;
-          }
+          throw error;
         }
         
         if (data && data.length > 0) {
@@ -94,7 +93,7 @@ export default function KnowledgeBasePage() {
           });
         } else {
           // No documents found, set demo data with notification
-          setDemoData();
+          setDocuments(demoKnowledgeDocuments);
           setConnectionError("No knowledge documents found in the database. Showing demo data instead.");
         }
       } catch (error: any) {
@@ -104,7 +103,7 @@ export default function KnowledgeBasePage() {
         setConnectionError(errorMessage);
         
         // Set demo data
-        setDemoData();
+        setDocuments(demoKnowledgeDocuments);
         
         // Attempt retry if we haven't exceeded max retries
         if (retryCount < MAX_RETRIES) {
@@ -119,57 +118,6 @@ export default function KnowledgeBasePage() {
 
     fetchDocuments();
   }, [supabase, retryCount, toast]);
-  
-  const setDemoData = () => {
-    // Set some dummy data if we can't connect to the actual database
-    setDocuments([
-      {
-        id: '1',
-        title: 'Introduction to RSI Trading',
-        content: 'The Relative Strength Index (RSI) is a momentum oscillator that measures the speed and change of price movements. RSI oscillates between zero and 100. Traditionally, RSI is considered overbought when above 70 and oversold when below 30.',
-        category: 'strategy',
-        tags: ['technical-analysis', 'oscillator', 'beginner'],
-        created_at: '2023-06-15T10:30:00Z',
-        updated_at: '2023-06-15T10:30:00Z'
-      },
-      {
-        id: '2',
-        title: 'Market Cycles and Investor Psychology',
-        content: 'Market cycles are influenced by both economic factors and investor psychology. Understanding the four main phases - accumulation, uptrend, distribution, and downtrend - can help traders identify potential turning points.',
-        category: 'market',
-        tags: ['psychology', 'cycles', 'intermediate'],
-        created_at: '2023-05-20T14:45:00Z',
-        updated_at: '2023-05-22T09:15:00Z'
-      },
-      {
-        id: '3',
-        title: 'Risk Management Fundamentals',
-        content: 'Effective risk management is the cornerstone of successful trading. Key principles include position sizing, setting stop losses, diversification, and never risking more than a small percentage of your capital on a single trade.',
-        category: 'management',
-        tags: ['risk', 'fundamentals', 'beginner'],
-        created_at: '2023-04-10T08:20:00Z',
-        updated_at: '2023-04-11T11:35:00Z'
-      },
-      {
-        id: '4',
-        title: 'Advanced Candlestick Patterns',
-        content: 'Beyond basic patterns, advanced candlestick formations like the Three Black Crows, Morning Star, and Abandoned Baby can provide powerful signals when combined with volume and support/resistance levels.',
-        category: 'strategy',
-        tags: ['technical-analysis', 'patterns', 'advanced'],
-        created_at: '2023-03-05T16:10:00Z',
-        updated_at: '2023-03-07T13:25:00Z'
-      },
-      {
-        id: '5',
-        title: 'Understanding Market Correlations',
-        content: 'Assets with positive correlation tend to move in the same direction, while negative correlation indicates opposite movements. Understanding these relationships can help with portfolio construction and hedging strategies.',
-        category: 'market',
-        tags: ['correlation', 'analysis', 'intermediate'],
-        created_at: '2023-02-12T11:50:00Z',
-        updated_at: '2023-02-12T11:50:00Z'
-      }
-    ]);
-  };
   
   const handleRetryConnection = () => {
     setRetryCount(0);
@@ -195,8 +143,8 @@ export default function KnowledgeBasePage() {
     
     const tagsArray = newDocument.tags
       .split(',')
-      .map(tag => tag.trim())
-      .filter(tag => tag.length > 0);
+      .map((tag: string) => tag.trim())
+      .filter((tag: string) => tag.length > 0);
     
     try {
       const { error } = await supabase
@@ -226,7 +174,7 @@ export default function KnowledgeBasePage() {
       });
       
       // Trigger refetch
-      setRetryCount(prev => prev + 1);
+      setRetryCount((prev: number) => prev + 1);
       
     } catch (error: any) {
       console.error('Error creating document:', error);
@@ -239,12 +187,12 @@ export default function KnowledgeBasePage() {
   };
   
   // Filter documents based on search query, active tab, and tags
-  const filteredDocuments = documents.filter(doc => {
+  const filteredDocuments = documents.filter((doc: KnowledgeDocument) => {
     const matchesSearch = doc.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                          doc.content.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTab = activeTab === 'all' || doc.category === activeTab;
     const matchesTags = activeTags.length === 0 || 
-                        (doc.tags && activeTags.every(tag => doc.tags.includes(tag)));
+                        (doc.tags && activeTags.every((tag: string) => doc.tags!.includes(tag)));
     
     return matchesSearch && matchesTab && matchesTags;
   });
@@ -353,7 +301,7 @@ export default function KnowledgeBasePage() {
             <Tag className="h-4 w-4 mr-1" />
             <span className="text-sm font-medium">Active Filters:</span>
           </div>
-          {activeTags.map(tag => (
+          {activeTags.map((tag: string) => (
             <Badge key={tag} variant="secondary" className="cursor-pointer" onClick={() => toggleTag(tag)}>
               {tag} ✕
             </Badge>

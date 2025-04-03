@@ -185,10 +185,10 @@ export async function allocateCapital(id: string, amount: number) {
       .from('capital_allocation_logs')
       .insert({
         agent_id: id,
-        farm_id: agent.farm_id,
-        previous_amount: agent.capital_allocation,
+        farm_id: agent.farm_id as string, // Cast to string for TypeScript
+        previous_amount: agent.capital_allocation as number, // Cast to number for TypeScript
         new_amount: amount,
-        change_amount: amount - agent.capital_allocation,
+        change_amount: amount - (agent.capital_allocation as number), // Cast to number for TypeScript
         notes: `Capital allocation changed from ${agent.capital_allocation} to ${amount}`
       });
     

@@ -1,12 +1,12 @@
 'use client';
 
-import * as React from 'react';
+import React from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import * as z from 'zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
-  Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -71,6 +71,42 @@ export function FarmCreationDialog({
   async function onSubmit(values: FarmFormValues) {
     setIsSubmitting(true);
     try {
+      // First try direct API route with mock mode enabled
+      try {
+        const apiResponse = await fetch('/api/farms?mock=true', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: values.name,
+            description: values.description || null,
+          }),
+        });
+        
+        if (apiResponse.ok) {
+          const data = await apiResponse.json();
+          
+          toast({
+            title: "Farm created",
+            description: "Your new trading farm has been created successfully.",
+          });
+          
+          // Close the dialog and call success callback
+          setOpen(false);
+          form.reset();
+          
+          if (onSuccess && data.farm) {
+            onSuccess(data.farm);
+          }
+          
+          return;
+        }
+      } catch (apiError) {
+        console.error('API route error, falling back to service:', apiError);
+      }
+      
+      // Fallback to the service approach
       const response = await farmService.createFarm({
         name: values.name,
         description: values.description || null,
@@ -114,15 +150,18 @@ export function FarmCreationDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+    <DialogPrimitive.Root 
+      open={open}
+      onOpenChange={(value: boolean) => setOpen(value)}
+    >
+      <DialogPrimitive.Trigger asChild>
         {trigger || (
           <Button className={className}>
             <PlusCircle className="mr-2 h-4 w-4" />
             Create Farm
           </Button>
         )}
-      </DialogTrigger>
+      </DialogPrimitive.Trigger>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>Create New Trading Farm</DialogTitle>
@@ -182,6 +221,6 @@ export function FarmCreationDialog({
           </form>
         </Form>
       </DialogContent>
-    </Dialog>
+    </DialogPrimitive.Root>
   );
 }

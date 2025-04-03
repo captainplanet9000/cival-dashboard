@@ -3,6 +3,7 @@
 import React from 'react'
 import { LineChart, Plus, Filter, ArrowUpDown, Info, MoreHorizontal, Play, Pause, Edit, Copy, Trash2 } from 'lucide-react'
 import Link from 'next/link'
+import { StrategyCard, StrategyStatus, StrategyMetric } from '@/components/ui/strategy-card'
 
 // Mock data for strategies
 const mockStrategies = [
@@ -10,41 +11,121 @@ const mockStrategies = [
     id: 'strat-001',
     name: 'Momentum Rider',
     description: 'Follows market momentum with adaptive entry and exit points',
-    status: 'active',
+    status: 'active' as StrategyStatus,
+    exchange: 'Bybit',
+    pair: 'BTC/USDT',
+    profitLoss: 8.3,
     type: 'trend',
     timeframe: '4h',
-    performance: '+8.3%',
-    lastUpdated: '2025-03-15T10:30:00Z'
+    metrics: [
+      { name: 'Win Rate', value: '68%', status: 'positive' },
+      { name: 'Avg. Trade', value: '+2.1%', status: 'positive' },
+      { name: 'Max Drawdown', value: '-5.3%', status: 'neutral' },
+      { name: 'Sharpe', value: '1.8', status: 'positive' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-15T10:30:00Z',
+    runCount: 42,
+    isElizaEnabled: true
   },
   {
     id: 'strat-002',
     name: 'Volatility Breakout',
     description: 'Captures price breakouts during high volatility periods',
-    status: 'paused',
+    status: 'inactive' as StrategyStatus,
+    exchange: 'Coinbase',
+    pair: 'ETH/USDT',
+    profitLoss: 4.2,
     type: 'breakout',
     timeframe: '1h',
-    performance: '+4.2%',
-    lastUpdated: '2025-03-18T14:15:00Z'
+    metrics: [
+      { name: 'Win Rate', value: '52%', status: 'neutral' },
+      { name: 'Avg. Trade', value: '+3.5%', status: 'positive' },
+      { name: 'Max Drawdown', value: '-8.7%', status: 'negative' },
+      { name: 'Sharpe', value: '1.2', status: 'neutral' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-18T14:15:00Z',
+    runCount: 27,
+    isElizaEnabled: false
   },
   {
     id: 'strat-003',
     name: 'Mean Reversion VWAP',
     description: 'Trades reversions to VWAP with oversold/overbought filters',
-    status: 'active',
+    status: 'active' as StrategyStatus,
+    exchange: 'Binance',
+    pair: 'SOL/USDT',
+    profitLoss: 5.7,
     type: 'mean-reversion',
     timeframe: '15m',
-    performance: '+5.7%',
-    lastUpdated: '2025-03-19T09:45:00Z'
+    metrics: [
+      { name: 'Win Rate', value: '61%', status: 'positive' },
+      { name: 'Avg. Trade', value: '+1.8%', status: 'positive' },
+      { name: 'Max Drawdown', value: '-4.1%', status: 'neutral' },
+      { name: 'Sharpe', value: '1.5', status: 'positive' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-19T09:45:00Z',
+    runCount: 36,
+    isElizaEnabled: true
   },
   {
     id: 'strat-004',
     name: 'Bollinger Band Scalper',
     description: 'Scalps price movements between Bollinger Bands',
-    status: 'inactive',
+    status: 'error' as StrategyStatus,
+    exchange: 'Kraken',
+    pair: 'XRP/USDT',
+    profitLoss: -1.2,
     type: 'scalping',
     timeframe: '5m',
-    performance: '-1.2%',
-    lastUpdated: '2025-03-14T16:20:00Z'
+    metrics: [
+      { name: 'Win Rate', value: '48%', status: 'negative' },
+      { name: 'Avg. Trade', value: '-0.5%', status: 'negative' },
+      { name: 'Max Drawdown', value: '-9.3%', status: 'negative' },
+      { name: 'Sharpe', value: '0.7', status: 'negative' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-14T16:20:00Z',
+    runCount: 15,
+    isElizaEnabled: false
+  },
+  {
+    id: 'strat-005',
+    name: 'AI Sentiment Trader',
+    description: 'Uses ElizaOS to analyze market sentiment and execute trades based on social media trends',
+    status: 'optimizing' as StrategyStatus,
+    exchange: 'FTX',
+    pair: 'AVAX/USDT',
+    profitLoss: 12.5,
+    type: 'ai',
+    timeframe: '1d',
+    metrics: [
+      { name: 'Win Rate', value: '72%', status: 'positive' },
+      { name: 'Avg. Trade', value: '+4.2%', status: 'positive' },
+      { name: 'Max Drawdown', value: '-6.8%', status: 'neutral' },
+      { name: 'Sharpe', value: '2.1', status: 'positive' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-20T08:10:00Z',
+    runCount: 18,
+    isElizaEnabled: true
+  },
+  {
+    id: 'strat-006',
+    name: 'Grid Trading Bot',
+    description: 'Places buy and sell orders at regular intervals to profit from sideways markets',
+    status: 'backtest' as StrategyStatus,
+    exchange: 'Kucoin',
+    pair: 'DOT/USDT',
+    profitLoss: 3.7,
+    type: 'grid',
+    timeframe: '6h',
+    metrics: [
+      { name: 'Win Rate', value: '58%', status: 'neutral' },
+      { name: 'Avg. Trade', value: '+1.2%', status: 'positive' },
+      { name: 'Max Drawdown', value: '-3.9%', status: 'neutral' },
+      { name: 'Sharpe', value: '1.4', status: 'neutral' }
+    ] as StrategyMetric[],
+    lastRun: '2025-03-17T12:25:00Z',
+    runCount: 22,
+    isElizaEnabled: false
   }
 ]
 
@@ -60,6 +141,47 @@ export default function StrategiesPage() {
     
     return matchesSearch && matchesStatus
   })
+  
+  // Strategy action handlers
+  const handleStart = (id: string) => {
+    console.log(`Starting strategy ${id}`)
+    // Add implementation to start strategy
+  }
+
+  const handleStop = (id: string) => {
+    console.log(`Stopping strategy ${id}`)
+    // Add implementation to stop strategy
+  }
+
+  const handleEdit = (id: string) => {
+    console.log(`Editing strategy ${id}`)
+    // Add implementation to navigate to strategy editor
+  }
+
+  const handleBacktest = (id: string) => {
+    console.log(`Backtesting strategy ${id}`)
+    // Add implementation to start backtest
+  }
+
+  const handleOptimize = (id: string) => {
+    console.log(`Optimizing strategy ${id}`)
+    // Add implementation to start optimization
+  }
+
+  const handleDuplicate = (id: string) => {
+    console.log(`Duplicating strategy ${id}`)
+    // Add implementation to duplicate strategy
+  }
+
+  const handleDelete = (id: string) => {
+    console.log(`Deleting strategy ${id}`)
+    // Add implementation to delete strategy
+  }
+
+  const handleElizaToggle = (id: string, enabled: boolean) => {
+    console.log(`Setting ElizaOS to ${enabled ? 'enabled' : 'disabled'} for strategy ${id}`)
+    // Add implementation to toggle ElizaOS
+  }
   
   return (
     <div className="space-y-6">
@@ -117,16 +239,6 @@ export default function StrategiesPage() {
           Active
         </button>
         <button 
-          onClick={() => setSelectedStatus('paused')}
-          className={`px-3 py-1 text-sm rounded-full ${
-            selectedStatus === 'paused' 
-              ? 'bg-warning/20 text-warning border border-warning/30' 
-              : 'bg-muted text-muted-foreground'
-          }`}
-        >
-          Paused
-        </button>
-        <button 
           onClick={() => setSelectedStatus('inactive')}
           className={`px-3 py-1 text-sm rounded-full ${
             selectedStatus === 'inactive' 
@@ -136,85 +248,70 @@ export default function StrategiesPage() {
         >
           Inactive
         </button>
+        <button 
+          onClick={() => setSelectedStatus('error')}
+          className={`px-3 py-1 text-sm rounded-full ${
+            selectedStatus === 'error' 
+              ? 'bg-destructive/20 text-destructive border border-destructive/30' 
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          Error
+        </button>
+        <button 
+          onClick={() => setSelectedStatus('optimizing')}
+          className={`px-3 py-1 text-sm rounded-full ${
+            selectedStatus === 'optimizing' 
+              ? 'bg-purple-500/20 text-purple-500 border border-purple-500/30' 
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          Optimizing
+        </button>
+        <button 
+          onClick={() => setSelectedStatus('backtest')}
+          className={`px-3 py-1 text-sm rounded-full ${
+            selectedStatus === 'backtest' 
+              ? 'bg-blue-500/20 text-blue-500 border border-blue-500/30' 
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          Backtesting
+        </button>
       </div>
       
-      {/* Strategies Table */}
-      <div className="dashboard-card">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-3 px-4 font-medium">
-                  <div className="flex items-center">
-                    Strategy
-                    <ArrowUpDown className="ml-2 h-3 w-3 text-muted-foreground" />
-                  </div>
-                </th>
-                <th className="text-left py-3 px-4 font-medium">Type</th>
-                <th className="text-left py-3 px-4 font-medium">Timeframe</th>
-                <th className="text-left py-3 px-4 font-medium">Performance</th>
-                <th className="text-left py-3 px-4 font-medium">Status</th>
-                <th className="text-right py-3 px-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStrategies.map((strategy) => (
-                <tr key={strategy.id} className="border-b border-border">
-                  <td className="py-3 px-4">
-                    <div>
-                      <div className="font-medium">{strategy.name}</div>
-                      <div className="text-sm text-muted-foreground">{strategy.description}</div>
-                    </div>
-                  </td>
-                  <td className="py-3 px-4">{strategy.type}</td>
-                  <td className="py-3 px-4">{strategy.timeframe}</td>
-                  <td className="py-3 px-4">
-                    <span className={strategy.performance.startsWith('+') ? 'text-success' : 'text-danger'}>
-                      {strategy.performance}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      strategy.status === 'active' 
-                        ? 'bg-success/10 text-success' 
-                        : strategy.status === 'paused'
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-muted text-muted-foreground'
-                    }`}>
-                      {strategy.status}
-                    </span>
-                  </td>
-                  <td className="py-3 px-4 text-right space-x-2">
-                    {strategy.status === 'active' ? (
-                      <button className="p-1 hover:bg-muted rounded-md" title="Pause strategy">
-                        <Pause className="h-4 w-4" />
-                      </button>
-                    ) : (
-                      <button className="p-1 hover:bg-muted rounded-md" title="Start strategy">
-                        <Play className="h-4 w-4" />
-                      </button>
-                    )}
-                    <Link href={`/dashboard/strategies/builder?id=${strategy.id}`} className="p-1 hover:bg-muted rounded-md inline-block" title="Edit strategy">
-                      <Edit className="h-4 w-4" />
-                    </Link>
-                    <button className="p-1 hover:bg-muted rounded-md" title="Duplicate strategy">
-                      <Copy className="h-4 w-4" />
-                    </button>
-                    <button className="p-1 hover:bg-muted rounded-md" title="Delete strategy">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          {filteredStrategies.length === 0 && (
-            <div className="text-center p-8">
-              <p className="text-muted-foreground">No strategies found matching your filters.</p>
-            </div>
-          )}
-        </div>
+      {/* Strategies Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredStrategies.map((strategy) => (
+          <StrategyCard 
+            key={strategy.id}
+            id={strategy.id}
+            name={strategy.name}
+            description={strategy.description}
+            status={strategy.status}
+            exchange={strategy.exchange}
+            pair={strategy.pair}
+            profitLoss={strategy.profitLoss}
+            metrics={strategy.metrics}
+            lastRun={strategy.lastRun}
+            runCount={strategy.runCount}
+            isElizaEnabled={strategy.isElizaEnabled}
+            onStart={() => handleStart(strategy.id)}
+            onStop={() => handleStop(strategy.id)}
+            onEdit={() => handleEdit(strategy.id)}
+            onBacktest={() => handleBacktest(strategy.id)}
+            onOptimize={() => handleOptimize(strategy.id)}
+            onDuplicate={() => handleDuplicate(strategy.id)}
+            onDelete={() => handleDelete(strategy.id)}
+            onElizaToggle={(enabled) => handleElizaToggle(strategy.id, enabled)}
+          />
+        ))}
+
+        {filteredStrategies.length === 0 && (
+          <div className="dashboard-card col-span-full text-center p-8">
+            <p className="text-muted-foreground">No strategies found matching your filters.</p>
+          </div>
+        )}
       </div>
     </div>
   )

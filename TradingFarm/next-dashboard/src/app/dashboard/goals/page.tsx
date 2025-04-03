@@ -152,7 +152,10 @@ export default function GoalsPage() {
     
     // Apply farm filter
     if (farmFilter !== "all") {
-      result = result.filter((goal: ExtendedGoal) => goal.farm_id === farmFilter);
+      result = result.filter((goal: ExtendedGoal) => 
+        // Ensure string comparison for farm_id
+        goal.farm_id?.toString() === farmFilter.toString()
+      );
     }
     
     // Apply search query
@@ -557,13 +560,13 @@ export default function GoalsPage() {
                 
                 <div className="mt-4">
                   <div className="flex justify-between text-sm text-muted-foreground mb-1">
-                    <span>Progress ({Math.round(goal.progress * 100)}%)</span>
+                    <span>Progress ({goal.progress !== null ? Math.round(goal.progress * 100) : 0}%)</span>
                     <span>{goal.current_value} / {goal.target_value}</span>
                   </div>
                   <div className="h-2 w-full rounded-full bg-muted">
                     <div 
-                      className={`h-2 rounded-full ${getProgressColor(goal.progress)}`} 
-                      style={{ width: `${Math.min(goal.progress * 100, 100)}%` }} 
+                      className={`h-2 rounded-full ${getProgressColor(goal.progress !== null ? goal.progress : 0)}`} 
+                      style={{ width: `${Math.min((goal.progress !== null ? goal.progress : 0) * 100, 100)}%` }} 
                     />
                   </div>
                 </div>

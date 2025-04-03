@@ -1,10 +1,10 @@
 'use client';
 
 import * as React from 'react';
-import { io, type Socket } from 'socket.io-client';
+import io from 'socket.io-client';
 
 interface SocketContextType {
-  socket: Socket | null;
+  socket: any | null;
   isConnected: boolean;
   latestMessages: {
     [key: string]: any;
@@ -31,81 +31,107 @@ export interface SocketProviderProps {
   children: React.ReactNode;
   farmId?: string;
   userId?: string;
+  enableLogging?: boolean;
 }
 
 export function SocketProvider({ 
   children,
   farmId,
-  userId
+  userId,
+  enableLogging = false
 }: SocketProviderProps) {
-  const [socket, setSocket] = React.useState<Socket | null>(null);
+  const [socket, setSocket] = React.useState<any | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [socketUrl, setSocketUrl] = React.useState<string | null>(null);
+  const [socketEnabled, setSocketEnabled] = React.useState<boolean>(false);
+  const [mockModeEnabled, setMockModeEnabled] = React.useState<boolean>(true);
   const [messages, setMessages] = React.useState<any[]>([]);
   const [latestMessages, setLatestMessages] = React.useState<{[key: string]: any}>({});
   
-  // Fetch the socket URL from the API
+  // Fetch the socket URL and configuration from the API
   React.useEffect(() => {
-    const fetchSocketUrl = async () => {
+    const fetchConfig = async () => {
       try {
-        const response = await fetch('/api/config?key=socket_io_url');
+        // Fetch all configuration at once to reduce API calls
+        const response = await fetch('/api/config');
+        
         if (!response.ok) {
-          throw new Error(`Failed to fetch Socket URL: ${response.statusText}`);
+          if (enableLogging) console.log('Failed to fetch socket configuration, using defaults');
+          setSocketUrl('http://localhost:3002');
+          setSocketEnabled(false);
+          setMockModeEnabled(true);
+          return;
         }
         
-        const data = await response.json();
-        // Parse the JSON string if it's stored as a string in the database
-        const url = typeof data.value === 'string' && data.value.startsWith('"') 
-          ? JSON.parse(data.value) 
-          : data.value;
-          
-        setSocketUrl(url);
-      } catch (error: any) {
-        console.error('Error getting Socket URL:', error);
-        // Fallback to default URL
+        const config = await response.json();
+        
+        if (enableLogging) console.log('Socket config:', config);
+        
+        // Set the socket URL
+        setSocketUrl(config.socket_io_url || 'http://localhost:3002');
+        
+        // Check if socket is enabled
+        setSocketEnabled(config.socket_enabled === 'true');
+        
+        // Check if mock mode is enabled
+        setMockModeEnabled(
+          config.mock_api_enabled === 'true' || 
+          config.force_mock_mode === 'true'
+        );
+      } catch (error) {
+        if (enableLogging) console.error('Error fetching socket config:', error);
         setSocketUrl('http://localhost:3002');
+        setSocketEnabled(false);
+        setMockModeEnabled(true);
       }
     };
     
-    fetchSocketUrl();
-  }, []);
+    fetchConfig();
+  }, [enableLogging]);
   
-  // Initialize socket connection when URL is available
+  // Connect to the socket when the URL is available
   React.useEffect(() => {
-    if (!socketUrl) return;
+    // Skip socket connection if socket is disabled or mock mode is enabled
+    if (!socketUrl || !socketEnabled || mockModeEnabled) {
+      if (enableLogging) {
+        console.log('Socket connection skipped:', {
+          socketUrl,
+          socketEnabled,
+          mockModeEnabled
+        });
+      }
+      return;
+    }
+    
+    if (enableLogging) console.log(`Connecting to socket at ${socketUrl}`);
     
     try {
-      // @ts-ignore - Ignoring the type issue with Socket.io
       const socketInstance = io(socketUrl, {
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 3,
         reconnectionDelay: 1000,
         autoConnect: true,
-        query: userId ? { userId } : undefined
-      });
-      
-      socketInstance.on('connect', () => {
-        console.log('Socket connected');
-        setIsConnected(true);
-        
-        // Join farm room if farmId is provided
-        if (farmId) {
-          socketInstance.emit('JOIN_FARM', farmId);
-          // Also join ElizaOS room for commands and knowledge queries
-          socketInstance.emit('JOIN_ELIZAOS', { farmId });
+        forceNew: true,
+        query: {
+          farmId,
+          userId
         }
       });
       
+      socketInstance.on('connect', () => {
+        if (enableLogging) console.log('Socket connected');
+        setIsConnected(true);
+      });
+      
       socketInstance.on('disconnect', () => {
-        console.log('Socket disconnected');
+        if (enableLogging) console.log('Socket disconnected');
         setIsConnected(false);
       });
       
-      socketInstance.on('connect_error', (error: any) => {
-        console.error('Connection error:', error);
-        setIsConnected(false);
+      socketInstance.on('error', (error) => {
+        if (enableLogging) console.error('Socket error:', error);
       });
       
-      // Generic message handler that collects all messages
+      // Listen for all messages using a more compatible approach
       const messageTypes = [
         'ORDER_UPDATE', 
         'PRICE_ALERT', 
@@ -115,72 +141,79 @@ export function SocketProvider({
       ];
       
       messageTypes.forEach(type => {
-        socketInstance.on(type, (message: any) => {
-          // Update all messages
-          setMessages((prev: any[]) => [...prev, { ...message, receivedAt: new Date().toISOString() }]);
-          
-          // Also store the latest message of each type
-          setLatestMessages((prev: any) => ({
+        socketInstance.on(type, (data) => {
+          // Store latest message by event type
+          setLatestMessages(prev => ({
             ...prev,
-            [type]: message
+            [type]: data
           }));
+          
+          // Add to messages history
+          setMessages(prev => [
+            ...prev, 
+            { event: type, data, timestamp: new Date().toISOString() }
+          ]);
+          
+          if (enableLogging) console.log(`Socket event: ${type}`, data);
         });
       });
       
       setSocket(socketInstance);
       
+      // Cleanup on unmount
       return () => {
+        if (enableLogging) console.log('Disconnecting socket');
         messageTypes.forEach(type => {
           socketInstance.off(type);
         });
-        socketInstance.off('connect');
-        socketInstance.off('disconnect');
-        socketInstance.off('connect_error');
         socketInstance.disconnect();
       };
     } catch (error) {
       console.error("Error initializing socket:", error);
       return () => {};
     }
-  }, [socketUrl, farmId, userId]);
+  }, [socketUrl, socketEnabled, mockModeEnabled, farmId, userId, enableLogging]);
   
-  // Send message to the server
-  const send = (event: string, data: any) => {
+  // Define socket event handlers
+  const send = React.useCallback((event: string, data: any) => {
     if (socket && isConnected) {
+      if (enableLogging) console.log(`Sending event: ${event}`, data);
       socket.emit(event, data);
-    } else {
-      console.error('Cannot send message: socket not connected');
+    } else if (enableLogging) {
+      console.log(`Failed to send event: ${event} - socket disconnected`);
     }
-  };
+  }, [socket, isConnected, enableLogging]);
   
-  // Subscribe to a room
-  const subscribe = (room: string) => {
+  const subscribe = React.useCallback((room: string) => {
     if (socket && isConnected) {
-      console.log(`Joining room: ${room}`);
-      socket.emit('join', room);
+      if (enableLogging) console.log(`Subscribing to room: ${room}`);
+      socket.emit('subscribe', { room });
+    } else if (enableLogging) {
+      console.log(`Failed to subscribe to room: ${room} - socket disconnected`);
     }
-  };
+  }, [socket, isConnected, enableLogging]);
   
-  // Unsubscribe from a room
-  const unsubscribe = (room: string) => {
+  const unsubscribe = React.useCallback((room: string) => {
     if (socket && isConnected) {
-      console.log(`Leaving room: ${room}`);
-      socket.emit('leave', room);
+      if (enableLogging) console.log(`Unsubscribing from room: ${room}`);
+      socket.emit('unsubscribe', { room });
+    } else if (enableLogging) {
+      console.log(`Failed to unsubscribe from room: ${room} - socket disconnected`);
     }
+  }, [socket, isConnected, enableLogging]);
+  
+  const value = {
+    socket,
+    isConnected,
+    latestMessages,
+    messages,
+    send,
+    subscribe,
+    unsubscribe
   };
   
   return (
-    <SocketContext.Provider 
-      value={{ 
-        socket, 
-        isConnected, 
-        messages,
-        latestMessages,
-        send,
-        subscribe,
-        unsubscribe
-      }}
-    >
+    <SocketContext.Provider value={value}>
       {children}
     </SocketContext.Provider>
   );

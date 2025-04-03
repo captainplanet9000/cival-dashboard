@@ -43,16 +43,21 @@ function safeGetConfig(config: unknown): Record<string, any> {
 
 // Agent interfaces
 export interface Agent {
-  id: number;
+  id: string;
   name: string;
-  description?: string;
-  farm_id: number;
+  description?: string | null;
+  farm_id: string | null;
   type: string;
   strategy_type?: string;
   status: string;
   risk_level?: string;
   target_markets?: string[];
-  configuration?: AgentConfiguration;
+  config?: Json; // Actual database field
+  configuration?: AgentConfiguration; // Processed configuration for UI
+  instructions?: string | null;
+  permissions?: Json;
+  performance?: Json;
+  user_id?: string | null;
   is_active?: boolean; // Calculated property based on status
   performance_metrics?: {
     win_rate?: number;
@@ -66,12 +71,16 @@ export interface Agent {
 
 export interface ExtendedAgent extends Agent {
   farm_name?: string;
+  farms?: {
+    id: string;
+    name: string;
+  }
 }
 
 export interface AgentCreationRequest {
   name: string;
   description?: string;
-  farm_id: number;
+  farm_id: string;
   type?: string;
   strategy_type?: string;
   risk_level?: string;
@@ -81,8 +90,8 @@ export interface AgentCreationRequest {
 }
 
 export interface AgentHistoryEntry {
-  id: number;
-  agent_id: number;
+  id: string;
+  agent_id: string;
   action: string;
   details?: any;
   timestamp: string;
@@ -102,42 +111,45 @@ export const agentService = {
    */
   async getAgents(): Promise<ApiResponse<ExtendedAgent[]>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch('/api/agents', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      // Query the agents table
-      const { data, error } = await supabase
-        .from('agents')
-        .select(`
-          *,
-          farms:farm_id (name)
-        `)
-        .order('created_at', { ascending: false });
-      
-      if (error) {
-        console.error('Error fetching agents:', error);
-        return { error: error.message };
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agents: ${response.statusText}`);
       }
       
-      // Transform the data to extract the farm name and properly cast configuration
-      const extendedAgents: ExtendedAgent[] = data.map(agent => {
+      const { agents } = await response.json();
+      
+      if (!agents || !Array.isArray(agents)) {
+        return { error: 'Invalid response format from API' };
+      }
+      
+      // Transform the data to extract farm details and properly cast configuration
+      const extendedAgents: ExtendedAgent[] = agents.map(agent => {
         // Safely extract configuration properties
-        const configObj = safeGetConfig(agent.configuration);
-        const performanceMetrics = safeGetConfig(configObj.performance_metrics);
+        const configObj = safeGetConfig(agent.config);
+        const performanceObj = safeGetConfig(agent.performance);
         
         return {
           ...agent,
-          // Cast configuration to the right type
+          // Map config to configuration for UI consistency
           configuration: configObj as AgentConfiguration,
           // Extract properties from configuration
-          description: configObj.description as string | undefined,
+          description: agent.description || configObj.description as string | undefined,
           strategy_type: configObj.strategy_type as string | undefined,
           risk_level: configObj.risk_level as string | undefined,
           target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
           performance_metrics: {
-            win_rate: performanceMetrics.win_rate || 0,
-            profit_loss: performanceMetrics.profit_loss || 0,
-            total_trades: performanceMetrics.total_trades || 0,
-            average_trade_duration: performanceMetrics.average_trade_duration || 0
+            win_rate: performanceObj.win_rate || 0,
+            profit_loss: performanceObj.profit_loss || 0,
+            total_trades: performanceObj.total_trades || 0,
+            average_trade_duration: performanceObj.average_trade_duration || 0
           },
           farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
           is_active: agent.status === 'active'
@@ -154,42 +166,45 @@ export const agentService = {
   /**
    * Get a specific agent by ID
    */
-  async getAgent(id: number): Promise<ApiResponse<ExtendedAgent>> {
+  async getAgent(id: string): Promise<ApiResponse<ExtendedAgent>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch(`/api/agents/${id}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      const { data, error } = await supabase
-        .from('agents')
-        .select(`
-          *,
-          farms:farm_id (name)
-        `)
-        .eq('id', id)
-        .single();
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent: ${response.statusText}`);
+      }
       
-      if (error) {
-        console.error(`Error fetching agent with ID ${id}:`, error);
-        return { error: error.message };
+      const data = await response.json();
+      
+      if (!data) {
+        return { error: 'Agent not found' };
       }
       
       // Safely extract configuration properties
-      const configObj = safeGetConfig(data.configuration);
-      const performanceMetrics = safeGetConfig(configObj.performance_metrics);
+      const configObj = safeGetConfig(data.config);
+      const performanceObj = safeGetConfig(data.performance);
       
       const extendedAgent: ExtendedAgent = {
         ...data,
-        // Cast configuration to the right type
+        // Map config to configuration for UI consistency
         configuration: configObj as AgentConfiguration,
         // Extract properties from configuration
-        description: configObj.description as string | undefined,
+        description: data.description || configObj.description as string | undefined,
         strategy_type: configObj.strategy_type as string | undefined,
         risk_level: configObj.risk_level as string | undefined,
         target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
         performance_metrics: {
-          win_rate: performanceMetrics.win_rate || 0,
-          profit_loss: performanceMetrics.profit_loss || 0,
-          total_trades: performanceMetrics.total_trades || 0,
-          average_trade_duration: performanceMetrics.average_trade_duration || 0
+          win_rate: performanceObj.win_rate || 0,
+          profit_loss: performanceObj.profit_loss || 0,
+          total_trades: performanceObj.total_trades || 0,
+          average_trade_duration: performanceObj.average_trade_duration || 0
         },
         farm_name: data.farms?.name || `Farm ${data.farm_id}`,
         is_active: data.status === 'active'
@@ -197,8 +212,8 @@ export const agentService = {
       
       return { data: extendedAgent };
     } catch (error) {
-      console.error(`Unexpected error fetching agent with ID ${id}:`, error);
-      return { error: 'An unexpected error occurred' };
+      console.error(`Error fetching agent with ID ${id}:`, error);
+      return { error: 'Failed to fetch agent details' };
     }
   },
   
@@ -207,65 +222,44 @@ export const agentService = {
    */
   async createAgent(agentData: AgentCreationRequest): Promise<ApiResponse<ExtendedAgent>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch('/api/agents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(agentData),
+        cache: 'no-store',
+      });
       
-      // Prepare agent data for database
-      // Moving fields that don't exist in the table schema into configuration JSON
-      const agentToCreate = {
-        name: agentData.name,
-        farm_id: agentData.farm_id,
-        status: agentData.status || 'initializing',
-        type: agentData.type || 'eliza', // Setting to eliza by default
-        configuration: {
-          description: agentData.description,
-          strategy_type: agentData.strategy_type,
-          risk_level: agentData.risk_level,
-          target_markets: agentData.target_markets,
-          performance_metrics: {
-            win_rate: 0,
-            profit_loss: 0,
-            total_trades: 0,
-            average_trade_duration: 0
-          },
-          ...agentData.config // Add any additional configuration options
-        }
-      };
+      if (!response.ok) {
+        throw new Error(`Failed to create agent: ${response.statusText}`);
+      }
       
-      console.log('Creating agent with data:', agentToCreate);
+      const data = await response.json();
       
-      const { data, error } = await supabase
-        .from('agents')
-        .insert(agentToCreate)
-        .select(`
-          *,
-          farms:farm_id (name)
-        `)
-        .single();
-      
-      if (error) {
-        console.error('Error creating agent:', error);
-        return { error: error.message };
+      if (!data) {
+        return { error: 'Failed to create agent' };
       }
       
       // Safely extract configuration properties
-      const configObj = safeGetConfig(data.configuration);
-      const performanceMetrics = safeGetConfig(configObj.performance_metrics);
+      const configObj = safeGetConfig(data.config);
+      const performanceObj = safeGetConfig(data.performance);
       
-      // Transform the returned data to match the ExtendedAgent interface
       const createdAgent: ExtendedAgent = {
         ...data,
-        // Cast configuration to the right type
+        // Map config to configuration for UI consistency
         configuration: configObj as AgentConfiguration,
         // Extract properties from configuration
-        description: configObj.description as string || '',
-        strategy_type: configObj.strategy_type as string || '',
-        risk_level: configObj.risk_level as string || '',
-        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+        description: data.description || configObj.description as string | undefined,
+        strategy_type: configObj.strategy_type as string | undefined,
+        risk_level: configObj.risk_level as string | undefined,
+        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
         performance_metrics: {
-          win_rate: performanceMetrics.win_rate || 0,
-          profit_loss: performanceMetrics.profit_loss || 0,
-          total_trades: performanceMetrics.total_trades || 0,
-          average_trade_duration: performanceMetrics.average_trade_duration || 0
+          win_rate: performanceObj.win_rate || 0,
+          profit_loss: performanceObj.profit_loss || 0,
+          total_trades: performanceObj.total_trades || 0,
+          average_trade_duration: performanceObj.average_trade_duration || 0
         },
         farm_name: data.farms?.name || `Farm ${data.farm_id}`,
         is_active: data.status === 'active'
@@ -281,23 +275,26 @@ export const agentService = {
   /**
    * Update an agent
    */
-  async updateAgent(id: number, updates: Partial<Agent>): Promise<ApiResponse<ExtendedAgent>> {
+  async updateAgent(id: string, updates: Partial<Agent>): Promise<ApiResponse<ExtendedAgent>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch(`/api/agents/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updates),
+        cache: 'no-store',
+      });
       
-      const { data, error } = await supabase
-        .from('agents')
-        .update(updates)
-        .eq('id', id)
-        .select(`
-          *,
-          farms:farm_id (name)
-        `)
-        .single();
+      if (!response.ok) {
+        throw new Error(`Failed to update agent: ${response.statusText}`);
+      }
       
-      if (error) {
-        console.error(`Error updating agent with ID ${id}:`, error);
-        return { error: error.message };
+      const data = await response.json();
+      
+      if (!data) {
+        return { error: 'Failed to update agent' };
       }
       
       const updatedAgent: ExtendedAgent = {
@@ -388,51 +385,26 @@ export const agentService = {
   /**
    * Update agent performance metrics
    */
-  async updateAgentPerformance(id: number, performanceData: Partial<Agent['performance_metrics']>): Promise<ApiResponse<ExtendedAgent>> {
+  async updateAgentPerformance(id: string, performanceData: Partial<Agent['performance_metrics']>): Promise<ApiResponse<ExtendedAgent>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch(`/api/agents/${id}/performance`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(performanceData),
+        cache: 'no-store',
+      });
       
-      // Fetch current agent to get existing performance metrics
-      const { data: currentAgent, error: fetchError } = await supabase
-        .from('agents')
-        .select('*')
-        .eq('id', id)
-        .single();
-      
-      if (fetchError) {
-        console.error(`Error fetching agent ${id} for performance update:`, fetchError);
-        return { error: fetchError.message };
+      if (!response.ok) {
+        throw new Error(`Failed to update agent performance: ${response.statusText}`);
       }
       
-      // Type assertion to handle the database schema
-      const agentData = currentAgent as unknown as Agent;
+      const data = await response.json();
       
-      // Ensure we have a performance_metrics object
-      const currentMetrics = agentData.performance_metrics || {};
-      
-      // Merge existing metrics with new data
-      const updatedMetrics = {
-        ...currentMetrics,
-        ...performanceData
-      };
-      
-      // Update the agent with new performance metrics
-      const { data, error } = await supabase
-        .from('agents')
-        .update({
-          performance_metrics: updatedMetrics,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', id)
-        .select(`
-          *,
-          farms:farm_id (name)
-        `)
-        .single();
-      
-      if (error) {
-        console.error(`Error updating agent performance ${id}:`, error);
-        return { error: error.message };
+      if (!data) {
+        return { error: 'Failed to update agent performance' };
       }
       
       const updatedAgent: ExtendedAgent = {
@@ -443,7 +415,7 @@ export const agentService = {
       
       return { data: updatedAgent };
     } catch (error) {
-      console.error(`Unexpected error updating agent performance ${id}:`, error);
+      console.error(`Unexpected error updating agent performance with ID ${id}:`, error);
       return { error: 'An unexpected error occurred' };
     }
   },
@@ -451,25 +423,23 @@ export const agentService = {
   /**
    * Change agent status (activate/deactivate/pause)
    */
-  async changeAgentStatus(id: number, status: string): Promise<ApiResponse<ExtendedAgent>> {
+  async changeAgentStatus(id: string, status: string): Promise<ApiResponse<ExtendedAgent>> {
     return this.updateAgent(id, { status });
   },
   
   /**
    * Delete an agent
    */
-  async deleteAgent(id: number): Promise<ApiResponse<null>> {
+  async deleteAgent(id: string): Promise<ApiResponse<null>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch(`/api/agents/${id}`, {
+        method: 'DELETE',
+        cache: 'no-store',
+      });
       
-      const { error } = await supabase
-        .from('agents')
-        .delete()
-        .eq('id', id);
-      
-      if (error) {
-        console.error(`Error deleting agent with ID ${id}:`, error);
-        return { error: error.message };
+      if (!response.ok) {
+        throw new Error(`Failed to delete agent: ${response.statusText}`);
       }
       
       return { data: null };
@@ -484,16 +454,23 @@ export const agentService = {
    */
   async getAvailableFarms(): Promise<ApiResponse<{ id: number; name: string }[]>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch('/api/farms', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      const { data, error } = await supabase
-        .from('farms')
-        .select('id, name')
-        .order('name');
+      if (!response.ok) {
+        throw new Error(`Failed to fetch farms: ${response.statusText}`);
+      }
       
-      if (error) {
-        console.error('Error fetching farms:', error);
-        return { error: error.message };
+      const data = await response.json();
+      
+      if (!data) {
+        return { error: 'Failed to fetch farms' };
       }
       
       return { data };
@@ -507,31 +484,28 @@ export const agentService = {
    * Get agent activity logs
    * Note: Implementation assumes there's an agent_activity table in the database
    */
-  async getAgentActivity(agentId: number): Promise<ApiResponse<AgentHistoryEntry[]>> {
+  async getAgentActivity(agentId: string): Promise<ApiResponse<AgentHistoryEntry[]>> {
     try {
-      const supabase = createBrowserClient();
+      // Use API route instead of direct Supabase query
+      const response = await fetch(`/api/agents/${agentId}/activity`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      // Since the agent_activity table doesn't exist yet in the database schema,
-      // we're returning an empty array for now. In production, uncomment the query below
-      // when the table is available.
+      if (!response.ok) {
+        throw new Error(`Failed to fetch agent activity: ${response.statusText}`);
+      }
       
-      /*
-      const { data, error } = await supabase
-        .from('agent_activity')
-        .select('*')
-        .eq('agent_id', agentId)
-        .order('timestamp', { ascending: false });
+      const data = await response.json();
       
-      if (error) {
-        console.error(`Error fetching activity for agent with ID ${agentId}:`, error);
-        return { error: error.message };
+      if (!data) {
+        return { error: 'Failed to fetch agent activity' };
       }
       
       return { data };
-      */
-      
-      // Temporary implementation until table exists
-      return { data: [] };
     } catch (error) {
       console.error(`Unexpected error fetching activity for agent with ID ${agentId}:`, error);
       return { error: 'An unexpected error occurred' };

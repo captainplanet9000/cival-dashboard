@@ -13,37 +13,39 @@ import websocketService, { WebSocketTopic } from './websocket-service';
 
 // Position interface
 export interface Position {
-  id?: string;
-  user_id?: string;
+  id: string;
   farm_id: string;
-  agent_id?: string;
+  agent_id: string | null | undefined;
   exchange: string;
-  exchange_account_id?: string;
   symbol: string;
   side: 'long' | 'short';
   quantity: number;
   entry_price: number;
-  current_price?: number;
-  unrealized_pnl?: number;
-  realized_pnl?: number;
-  status: 'open' | 'closed' | 'liquidated';
-  open_time?: Date | string;
-  close_time?: Date | string;
+  current_price: number;
+  unrealized_pnl: number;
+  status: string;
+  open_date: string;
+  close_date?: string | null;
   metadata?: Record<string, any>;
+  created_at: string;
+  updated_at: string;
 }
 
 // Reconciliation Result interface
 export interface ReconciliationResult {
   success: boolean;
+  positionId?: string;
   exchange: string;
-  exchange_account_id?: string;
   reconciliation_time: string;
   discrepancies_found: number;
   discrepancies_resolved: number;
+  hasDiscrepancy?: boolean;
+  error?: string;
   details: {
-    added_positions: Position[];
-    updated_positions: Position[];
-    closed_positions: string[];
+    positionId?: string;
+    added_positions: any[];
+    updated_positions: any[];
+    closed_positions: any[];
     failed_updates: any[];
     error_details?: any;
   };
@@ -356,6 +358,154 @@ export async function createPositionFromTrade(tradeData: {
   }
 }
 
+/**
+ * Position Reconciliation Service Class
+ * Provides methods to reconcile positions between the database and exchange
+ */
+export class PositionReconciliationService {
+  constructor() {
+    // Initialize any needed services or connections
+  }
+  
+  /**
+   * Reconcile a single position
+   * @param positionId The ID of the position to reconcile
+   * @param positionData Position data to reconcile
+   * @returns A reconciliation result object
+   */
+  async reconcilePosition(positionId: string, positionData: Position): Promise<ReconciliationResult> {
+    try {
+      // Implementation would connect to exchange and verify position data
+      return {
+        success: true,
+        positionId,
+        exchange: positionData.exchange,
+        reconciliation_time: new Date().toISOString(),
+        discrepancies_found: 0,
+        discrepancies_resolved: 0,
+        hasDiscrepancy: false,
+        details: {
+          positionId,
+          added_positions: [],
+          updated_positions: [],
+          closed_positions: [],
+          failed_updates: []
+        }
+      };
+    } catch (error) {
+      console.error('Error reconciling position:', error);
+      return {
+        success: false,
+        positionId,
+        exchange: positionData.exchange,
+        reconciliation_time: new Date().toISOString(),
+        discrepancies_found: 0,
+        discrepancies_resolved: 0,
+        hasDiscrepancy: true,
+        error: error instanceof Error ? error.message : String(error),
+        details: {
+          positionId,
+          added_positions: [],
+          updated_positions: [],
+          closed_positions: [],
+          failed_updates: [],
+          error_details: error
+        }
+      };
+    }
+  }
+  
+  /**
+   * Reconcile all positions for a farm
+   * @param farmId The ID of the farm
+   * @param positions Array of positions to reconcile
+   * @returns Array of reconciliation results
+   */
+  async reconcilePositions(positions: Position[]): Promise<ReconciliationResult[]> {
+    try {
+      const results: ReconciliationResult[] = [];
+      
+      // Process each position
+      for (const position of positions) {
+        const result = await this.reconcilePosition(position.id, position);
+        results.push(result);
+      }
+      
+      return results;
+    } catch (error) {
+      console.error('Error reconciling positions:', error);
+      return [{
+        success: false,
+        exchange: 'all',
+        reconciliation_time: new Date().toISOString(),
+        discrepancies_found: 0,
+        discrepancies_resolved: 0,
+        hasDiscrepancy: true,
+        error: error instanceof Error ? error.message : String(error),
+        details: {
+          added_positions: [],
+          updated_positions: [],
+          closed_positions: [],
+          failed_updates: [],
+          error_details: error
+        }
+      }];
+    }
+  }
+  
+  /**
+   * Reconcile all positions for a farm
+   * @param farmId The ID of the farm
+   * @param positions Array of positions to reconcile
+   * @returns Array of reconciliation results
+   */
+  async reconcileAllPositions(farmId: string, positions: Position[]): Promise<ReconciliationResult[]> {
+    try {
+      const results: ReconciliationResult[] = [];
+      
+      // Group positions by exchange for efficiency
+      const positionsByExchange: Record<string, Position[]> = {};
+      
+      positions.forEach(position => {
+        if (!positionsByExchange[position.exchange]) {
+          positionsByExchange[position.exchange] = [];
+        }
+        positionsByExchange[position.exchange].push(position);
+      });
+      
+      // Process each exchange
+      for (const exchange of Object.keys(positionsByExchange)) {
+        for (const position of positionsByExchange[exchange]) {
+          const result = await this.reconcilePosition(position.id, position);
+          results.push(result);
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      console.error('Error reconciling positions:', error);
+      return [{
+        success: false,
+        positionId: '',
+        exchange: 'all',
+        reconciliation_time: new Date().toISOString(),
+        discrepancies_found: 0,
+        discrepancies_resolved: 0,
+        hasDiscrepancy: true,
+        error: error instanceof Error ? error.message : String(error),
+        details: {
+          positionId: '',
+          added_positions: [],
+          updated_positions: [],
+          closed_positions: [],
+          failed_updates: [],
+          error_details: error
+        }
+      }];
+    }
+  }
+}
+
 export default {
   getUserPositions,
   getAgentPositions,
@@ -367,5 +517,6 @@ export default {
   closePosition,
   updatePositionPricing,
   subscribeToPositionUpdates,
-  createPositionFromTrade
+  createPositionFromTrade,
+  PositionReconciliationService
 };

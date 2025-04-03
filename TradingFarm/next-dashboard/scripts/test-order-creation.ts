@@ -22,8 +22,8 @@ const supabase = createClient<Database>(supabaseUrl, supabaseKey);
 
 // Sample order data for testing
 const sampleOrder: OrderData = {
-  farm_id: 1,
-  agent_id: 2,
+  farm_id: "7f8d3a2e-1c5b-4f6a-9d8e-7c6b5a4f3d2e",
+  agent_id: "5e6f7d8c-9a1b-2c3d-4e5f-6g7h8j9k0l1m",
   exchange: 'binance',
   symbol: 'BTC/USDT',
   side: 'buy',

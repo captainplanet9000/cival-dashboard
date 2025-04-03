@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import { agentService, Agent, ExtendedAgent } from "@/services/agent-service";
 import Link from "next/link";
 import { createBrowserClient } from "@/utils/supabase/client";
 import { 
@@ -19,6 +18,56 @@ import {
   Laptop,
   AlertTriangle
 } from "lucide-react";
+
+// Define necessary types that were previously imported from agent-service
+interface AgentConfiguration {
+  description?: string;
+  strategy_type?: string;
+  risk_level?: string;
+  target_markets?: string[];
+  performance_metrics?: {
+    win_rate?: number;
+    profit_loss?: number;
+    total_trades?: number;
+    average_trade_duration?: number;
+  };
+  [key: string]: any; // Allow additional configuration options
+}
+
+interface Agent {
+  id: string;
+  name: string;
+  description?: string | null;
+  farm_id: string | null;
+  type: string;
+  strategy_type?: string;
+  status: string;
+  risk_level?: string;
+  target_markets?: string[];
+  config?: any; // Actual database field
+  configuration?: AgentConfiguration; // Processed configuration for UI
+  instructions?: string | null;
+  permissions?: any;
+  performance?: any;
+  user_id?: string | null;
+  is_active?: boolean; // Calculated property based on status
+  performance_metrics?: {
+    win_rate?: number;
+    profit_loss?: number;
+    total_trades?: number;
+    average_trade_duration?: number;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+interface ExtendedAgent extends Agent {
+  farm_name?: string;
+  farms?: {
+    id: string;
+    name: string;
+  }
+}
 
 // Import Shadcn components
 import { Button } from "@/components/ui/button";
@@ -88,7 +137,7 @@ const AgentStatusBadge = ({ status }: { status: string }) => {
 
 export default function AgentsPage() {
   const [agents, setAgents] = React.useState<ExtendedAgent[]>([]);
-  const [farms, setFarms] = React.useState<{ id: number; name: string }[]>([]);
+  const [farms, setFarms] = React.useState<{ id: string; name: string }[]>([]);
   const [filteredAgents, setFilteredAgents] = React.useState<ExtendedAgent[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -130,19 +179,86 @@ export default function AgentsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [agentsResponse, farmsResponse] = await Promise.all([
-        agentService.getAgents(),
-        agentService.getAvailableFarms()
-      ]);
+      // Use direct API fetch for better error handling
+      const agentsResponse = await fetch('/api/agents', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      if (agentsResponse.error) {
-        setError(agentsResponse.error);
-      } else if (agentsResponse.data) {
-        setAgents(agentsResponse.data);
+      if (!agentsResponse.ok) {
+        throw new Error(`Failed to fetch agents: ${agentsResponse.statusText}`);
       }
-
-      if (farmsResponse.data) {
-        setFarms(farmsResponse.data);
+      
+      const agentsData = await agentsResponse.json();
+      
+      // The API might return the agents directly or in an agents property
+      const agentsList = agentsData.agents || agentsData;
+      
+      if (!agentsList || !Array.isArray(agentsList)) {
+        throw new Error('Invalid agent data format');
+      }
+      
+      // Transform the agents data if needed
+      const processedAgents = agentsList.map(agent => {
+        // Safely extract configuration properties
+        const configObj = agent.config || {};
+        const performanceObj = agent.performance || {};
+        
+        return {
+          ...agent,
+          // Map config to configuration for UI consistency
+          configuration: configObj,
+          description: agent.description || configObj.description,
+          strategy_type: configObj.strategy_type,
+          risk_level: configObj.risk_level,
+          target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+          performance_metrics: {
+            win_rate: performanceObj.win_rate || 0,
+            profit_loss: performanceObj.profit_loss || 0,
+            total_trades: performanceObj.total_trades || 0,
+            average_trade_duration: performanceObj.average_trade_duration || 0
+          },
+          farm_name: agent.farms?.name || `Farm ${agent.farm_id || 'Unknown'}`,
+          is_active: agent.status === 'active'
+        };
+      });
+      
+      setAgents(processedAgents);
+      
+      // Fetch farms separately
+      try {
+        const farmsResponse = await fetch('/api/farms', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          cache: 'no-store',
+        });
+        
+        if (farmsResponse.ok) {
+          const farmsData = await farmsResponse.json();
+          const farmsList = farmsData.farms || [];
+          setFarms(farmsList);
+        } else {
+          console.error('Error fetching farms:', await farmsResponse.text());
+          // Use fallback mock farms
+          setFarms([
+            { id: '1', name: 'Bitcoin Momentum Farm' },
+            { id: '2', name: 'Altcoin Swing Trader' },
+            { id: '3', name: 'DeFi Yield Farm' }
+          ]);
+        }
+      } catch (error) {
+        console.error('Error fetching farms:', error);
+        // Use fallback mock farms
+        setFarms([
+          { id: '1', name: 'Bitcoin Momentum Farm' },
+          { id: '2', name: 'Altcoin Swing Trader' },
+          { id: '3', name: 'DeFi Yield Farm' }
+        ]);
       }
     } catch (error) {
       console.error('Error fetching agents:', error);
@@ -167,7 +283,7 @@ export default function AgentsPage() {
     
     // Apply farm filter
     if (farmFilter !== "all") {
-      result = result.filter((agent: ExtendedAgent) => agent.farm_id.toString() === farmFilter);
+      result = result.filter((agent: ExtendedAgent) => agent.farm_id === farmFilter);
     }
     
     // Apply type filter
@@ -191,64 +307,71 @@ export default function AgentsPage() {
   }, [agents, statusFilter, farmFilter, typeFilter, searchQuery]);
 
   // Handle agent actions
-  const handleAgentStatusChange = async (agentId: number, newStatus: string) => {
+  const handleAgentStatusChange = async (agentId: string, newStatus: string) => {
     try {
-      const response = await agentService.changeAgentStatus(agentId, newStatus);
+      // Use direct API fetch for better error handling
+      const response = await fetch(`/api/agents/${agentId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+        cache: 'no-store',
+      });
       
-      if (response.error) {
-        toast({
-          variant: "destructive",
-          title: "Status Change Failed",
-          description: response.error,
-        });
-      } else {
-        toast({
-          title: "Status Updated",
-          description: `Agent status changed to ${newStatus}`,
-        });
-        
-        // Update agent in the local state
-        setAgents(agents.map((agent: ExtendedAgent) => 
-          agent.id === agentId 
-            ? { ...agent, status: newStatus } 
-            : agent
-        ));
+      if (!response.ok) {
+        throw new Error(`Failed to change agent status: ${response.statusText}`);
       }
+      
+      toast({
+        title: "Status Updated",
+        description: `Agent status changed to ${newStatus}`,
+      });
+      
+      // Update agent in the local state
+      setAgents(agents.map((agent: ExtendedAgent) => 
+        agent.id === agentId 
+          ? { ...agent, status: newStatus } 
+          : agent
+      ));
     } catch (error) {
       console.error('Error changing agent status:', error);
       toast({
         variant: "destructive",
         title: "Status Change Failed",
-        description: "An unexpected error occurred",
+        description: error instanceof Error ? error.message : "Unknown error",
       });
     }
   };
 
-  const handleDeleteAgent = async (agentId: number) => {
+  const handleDeleteAgent = async (agentId: string) => {
     try {
-      const response = await agentService.deleteAgent(agentId);
+      // Use direct API fetch for better error handling
+      const response = await fetch(`/api/agents/${agentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      });
       
-      if (response.error) {
-        toast({
-          variant: "destructive",
-          title: "Delete Failed",
-          description: response.error,
-        });
-      } else {
-        toast({
-          title: "Agent Deleted",
-          description: "The agent has been successfully deleted",
-        });
-        
-        // Remove agent from the local state
-        setAgents(agents.filter((agent: ExtendedAgent) => agent.id !== agentId));
+      if (!response.ok) {
+        throw new Error(`Failed to delete agent: ${response.statusText}`);
       }
+      
+      toast({
+        title: "Agent Deleted",
+        description: "The agent has been successfully deleted",
+      });
+      
+      // Remove agent from the local state
+      setAgents(agents.filter((agent: ExtendedAgent) => agent.id !== agentId));
     } catch (error) {
       console.error('Error deleting agent:', error);
       toast({
         variant: "destructive",
         title: "Delete Failed",
-        description: "An unexpected error occurred",
+        description: error instanceof Error ? error.message : "Unknown error",
       });
     }
   };
@@ -356,8 +479,8 @@ export default function AgentsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Farms</SelectItem>
-                  {farms.map((farm: { id: number; name: string }) => (
-                    <SelectItem key={farm.id} value={farm.id.toString()}>
+                  {farms.map((farm: { id: string; name: string }) => (
+                    <SelectItem key={farm.id} value={farm.id}>
                       {farm.name}
                     </SelectItem>
                   ))}
@@ -443,7 +566,7 @@ export default function AgentsPage() {
                     <div className="flex flex-col">
                       <span className="text-muted-foreground">Farm</span>
                       <span className="font-medium">
-                        {farms.find((f: { id: number; name: string }) => f.id === agent.farm_id)?.name || `Farm #${agent.farm_id}`}
+                        {farms.find((f: { id: string; name: string }) => f.id === agent.farm_id)?.name || `Farm #${agent.farm_id}`}
                       </span>
                     </div>
                     

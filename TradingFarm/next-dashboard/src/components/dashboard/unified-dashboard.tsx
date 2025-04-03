@@ -482,7 +482,11 @@ export default function UnifiedDashboard({
           >
             <div className="font-medium">{notification.message}</div>
             <div className="text-xs opacity-70 mt-1">
-              {new Date(notification.time).toLocaleTimeString()}
+              <span suppressHydrationWarning>
+                {typeof window !== 'undefined' 
+                  ? new Date(notification.time).toLocaleTimeString() 
+                  : ''}
+              </span>
             </div>
           </div>
         ))}

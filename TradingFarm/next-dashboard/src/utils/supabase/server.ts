@@ -3,19 +3,19 @@
  * Use this in server components and server actions to interact with Supabase
  */
 import { createClient } from '@supabase/supabase-js';
-import { type Database } from '@/types/database.types';
+import { Database } from '@/types/database.types';
+import { ExtendedDatabase } from '@/types/supabase-extensions';
 
 // Load configuration from environment or fallback to our known values
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgvlzvswzpfoywfxehis.supabase.co';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczNjgzMTU1OSwiZXhwIjoyMDUyNDA3NTU5fQ.TZLKwHuMxv9xtSc0wJ7DG5ivjw0K-7NztPeLRsGqMAA';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.RXkvfJuYTPCcQNSOxCEzRg0NRreSHtJCK9gZHBUX4Ls';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.ccYwDhIJXjmfp4tpc6bDlHKsLDqs7ivQpmugaa0uHXU';
 
 /**
- * Creates a Supabase client for use in server environments
+ * Create a Supabase client for use in server-side contexts
  * This version works with both pages/ and app/ directory setups
  */
-export async function createServerClient() {
-  return createClient<Database>(
+export function createServerClient() {
+  return createClient<ExtendedDatabase>(
     supabaseUrl,
     supabaseAnonKey,
     {
@@ -31,25 +31,39 @@ export async function createServerClient() {
 }
 
 /**
- * Creates a Supabase admin client for use in server environments
- * Using the service role key to bypass RLS policies
- * !CAUTION: Only use this in secure server contexts, never on the client side
+ * Create an admin Supabase client with service role privileges
+ * ONLY USE THIS IN TRUSTED SERVER CONTEXTS - NEVER EXPOSE IN CLIENT CODE
  */
 export async function createServerAdminClient() {
-  return createClient<Database>(
+  return createClient<ExtendedDatabase>(
     supabaseUrl,
-    supabaseServiceKey,
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
     {
       auth: {
         persistSession: false,
-        autoRefreshToken: false,
+        autoRefreshToken: false
       },
       global: {
-        headers: { 
-          'x-application-name': 'trading-farm-dashboard-admin',
-          'x-admin-access': 'true'
-        }
+        headers: { 'x-application-name': 'trading-farm-dashboard-admin' }
       }
     }
   );
+}
+
+/**
+ * Get the authenticated user from the server context
+ */
+export async function getAuthenticatedUser() {
+  const supabase = createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
+/**
+ * Get the authenticated session from the server context
+ */
+export async function getSession() {
+  const supabase = createServerClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  return session;
 }

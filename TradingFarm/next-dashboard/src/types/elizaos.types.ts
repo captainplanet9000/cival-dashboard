@@ -1,14 +1,5 @@
 // ElizaOS interaction types
-// Define the Database type inline since database.types.ts appears to be empty
-export type Database = {
-  public: {
-    Tables: Record<string, any>;
-    Views: Record<string, any>;
-    Functions: Record<string, any>;
-    Enums: Record<string, any>;
-    CompositeTypes: Record<string, any>;
-  };
-};
+import { Database } from './database.types';
 
 // Define additional tables extending the Database type
 export type ExtendedDatabase = Database & {

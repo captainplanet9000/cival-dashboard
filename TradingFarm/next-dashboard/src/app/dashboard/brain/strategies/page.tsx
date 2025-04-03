@@ -12,16 +12,8 @@ import { Search, Plus, Code, FileDown, FileUp, Eye, Play, Pause, Copy, Trash, Ar
 import { createBrowserClient } from '@/utils/supabase/client';
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/components/ui/use-toast";
-
-interface Strategy {
-  id: number;
-  name: string;
-  category: string;
-  status: 'active' | 'paused' | 'testing' | 'failed';
-  type: string;
-  performance: number;
-  created_at: string;
-}
+import { Strategy } from '@/types/strategy';
+import { DEMO_MODE, demoStrategies } from '@/utils/demo-data';
 
 export default function StrategyLibraryPage() {
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -41,6 +33,19 @@ export default function StrategyLibraryPage() {
       setConnectionError(null);
       
       try {
+        // If in demo mode or development, use demo data
+        if (DEMO_MODE || process.env.NODE_ENV === 'development') {
+          setTimeout(() => {
+            setStrategies(demoStrategies);
+            setIsLoading(false);
+            toast({
+              title: "Demo Mode Active",
+              description: "Showing strategy demo data - no database connection required",
+            });
+          }, 800); // Simulate network delay
+          return;
+        }
+
         // Attempt to fetch strategies from the trading_strategies table
         const { data, error } = await supabase
           .from('trading_strategies')
@@ -49,13 +54,7 @@ export default function StrategyLibraryPage() {
           
         if (error) {
           console.error('Error fetching trading strategies:', error);
-          
-          // Check if this is a timeout error
-          if (error.message?.includes('timeout') || error.message?.includes('deadline exceeded')) {
-            throw new Error('Connection to Supabase timed out. Using demo data instead.');
-          } else {
-            throw error;
-          }
+          throw error;
         }
         
         if (data && data.length > 0) {
@@ -67,7 +66,7 @@ export default function StrategyLibraryPage() {
           });
         } else {
           // No strategies found, set demo data with notification
-          setDemoData();
+          setStrategies(demoStrategies);
           setConnectionError("No strategies found in the database. Showing demo data instead.");
         }
       } catch (error: any) {
@@ -77,7 +76,7 @@ export default function StrategyLibraryPage() {
         setConnectionError(errorMessage);
         
         // Set demo data
-        setDemoData();
+        setStrategies(demoStrategies);
         
         // Attempt retry if we haven't exceeded max retries
         if (retryCount < MAX_RETRIES) {
@@ -92,17 +91,6 @@ export default function StrategyLibraryPage() {
 
     fetchStrategies();
   }, [supabase, retryCount, toast]);
-
-  const setDemoData = () => {
-    // Set some dummy data if we can't connect to the actual database
-    setStrategies([
-      { id: 1, name: 'EMA Crossover', category: 'momentum', status: 'active', type: 'Technical', performance: 12.5, created_at: new Date().toISOString() },
-      { id: 2, name: 'RSI Reversal', category: 'reversal', status: 'active', type: 'Technical', performance: 8.2, created_at: new Date().toISOString() },
-      { id: 3, name: 'Bollinger Squeeze', category: 'volatility', status: 'paused', type: 'Technical', performance: 15.7, created_at: new Date().toISOString() },
-      { id: 4, name: 'News Sentiment', category: 'fundamental', status: 'active', type: 'AI', performance: 9.1, created_at: new Date().toISOString() },
-      { id: 5, name: 'Volume Profile', category: 'order-flow', status: 'testing', type: 'Technical', performance: 7.3, created_at: new Date().toISOString() },
-    ]);
-  };
 
   const handleRetryConnection = () => {
     setRetryCount(0);

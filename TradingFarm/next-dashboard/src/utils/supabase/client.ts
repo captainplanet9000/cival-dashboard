@@ -3,7 +3,7 @@
  * Use this in client components to interact with Supabase
  */
 import { createClient } from '@supabase/supabase-js';
-import type { Database } from '@/types/database.types';
+import type { ExtendedDatabase } from '@/types/supabase-extensions';
 
 // Load configuration from environment or fallback to our known values
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgvlzvswzpfoywfxehis.supabase.co';
@@ -13,7 +13,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOi
  * Creates a Supabase client for use in browser environments
  */
 export function createBrowserClient() {
-  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  return createClient<ExtendedDatabase>(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
       autoRefreshToken: true,

@@ -16,6 +16,7 @@ import {
   RefreshCcw,
   BarChart
 } from "lucide-react";
+import { DEMO_MODE } from "@/utils/demo-data";
 
 // Import Shadcn components
 import { Button } from "@/components/ui/button";
@@ -42,20 +43,23 @@ export default function FarmsPage() {
   React.useEffect(() => {
     const setupRealtimeSubscription = async () => {
       try {
-        const subscription = supabase
-          .channel('farms-channel')
-          .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'farms' 
-          }, (payload) => {
-            fetchFarms();
-          })
-          .subscribe();
+        // Only set up real-time subscriptions when not in demo mode
+        if (!DEMO_MODE && process.env.NODE_ENV !== 'development') {
+          const subscription = supabase
+            .channel('farms-channel')
+            .on('postgres_changes', { 
+              event: '*', 
+              schema: 'public', 
+              table: 'farms' 
+            }, (payload) => {
+              fetchFarms();
+            })
+            .subscribe();
 
-        return () => {
-          supabase.removeChannel(subscription);
-        };
+          return () => {
+            supabase.removeChannel(subscription);
+          };
+        }
       } catch (error) {
         console.error('Error setting up realtime subscription:', error);
       }
@@ -70,20 +74,60 @@ export default function FarmsPage() {
     setError(null);
     
     try {
+      // If in demo mode or development, add a slight delay to simulate network latency
+      if (DEMO_MODE || process.env.NODE_ENV === 'development') {
+        setTimeout(async () => {
+          const response = await farmService.getFarms();
+          if (response.data) {
+            setFarms(response.data);
+            toast({
+              title: "Demo Mode Active",
+              description: "Showing farm demo data - no database connection required",
+            });
+          }
+          setLoading(false);
+        }, 800);
+        return;
+      }
+      
       const response = await farmService.getFarms();
       
       if (response.error) {
         setError(response.error);
+        toast({
+          title: "Error Loading Farms",
+          description: response.error,
+          variant: "destructive"
+        });
       } else if (response.data) {
         setFarms(response.data);
+        toast({
+          title: "Data Loaded Successfully",
+          description: `Loaded ${response.data.length} farms from database`,
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching farms:', error);
       setError('Failed to load farms. Please try again later.');
+      toast({
+        title: "Connection Error",
+        description: "Using demo data as fallback",
+        variant: "destructive"
+      });
+      
+      // Use demo data as fallback
+      try {
+        const response = await farmService.getFarms();
+        if (response.data) {
+          setFarms(response.data);
+        }
+      } catch (fallbackError) {
+        console.error('Failed to load fallback data:', fallbackError);
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   React.useEffect(() => {
     fetchFarms();
@@ -115,7 +159,7 @@ export default function FarmsPage() {
   };
 
   // Handle farm deletion
-  const handleDeleteFarm = async (farmId: number) => {
+  const handleDeleteFarm = async (farmId: string) => {
     if (!confirm("Are you sure you want to delete this farm? All associated agents will also be deleted. This action cannot be undone.")) {
       return;
     }

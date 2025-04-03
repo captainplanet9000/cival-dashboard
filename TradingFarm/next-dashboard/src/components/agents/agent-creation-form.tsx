@@ -133,11 +133,16 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
         }
         
         if (farmsResponse.data) {
-          setFarms(farmsResponse.data);
+          // Ensure farms is always an array
+          const farmsArray = Array.isArray(farmsResponse.data) 
+            ? farmsResponse.data 
+            : (farmsResponse.data as any)?.farms || [];
+          
+          setFarms(farmsArray);
           
           // Auto-select first farm if only one is available
-          if (farmsResponse.data.length === 1) {
-            form.setValue('farm_id', farmsResponse.data[0].id);
+          if (farmsArray.length === 1) {
+            form.setValue('farm_id', farmsArray[0].id.toString());
           }
         }
       } catch (error) {
@@ -164,7 +169,7 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
       const agentData: AgentCreationRequest = {
         name: values.name,
         description: values.description,
-        farm_id: values.farm_id,
+        farm_id: values.farm_id?.toString(), // Convert number to string for Supabase
         type: 'eliza', // Set the agent type explicitly to match database schema
         strategy_type: values.strategy_type,
         risk_level: values.risk_level,
