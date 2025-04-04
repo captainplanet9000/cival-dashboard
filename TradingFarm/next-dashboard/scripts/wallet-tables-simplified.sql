@@ -133,149 +133,61 @@ ALTER TABLE public.wallet_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wallet_balance_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.wallet_settings ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies for wallets
-CREATE POLICY "Users can view their own wallets"
-ON public.wallets FOR SELECT
-TO authenticated
-USING (
-  owner_id::TEXT = auth.uid()::TEXT
-);
+-- Create basic RLS policies for all wallet tables
+-- These policies only check the direct ownership (wallet.owner_id)
+-- and avoid referencing potentially non-existent columns in the farms table
 
-CREATE POLICY "Farm users can view wallets in their farms"
-ON public.wallets FOR SELECT
+-- Wallets table policies
+CREATE POLICY "Users can access their own wallets"
+ON public.wallets
 TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.farms
-    WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-    AND farms.id::TEXT = wallets.farm_id::TEXT
-  )
-);
+USING (owner_id::TEXT = auth.uid()::TEXT);
 
-CREATE POLICY "Users can create their own wallets"
-ON public.wallets FOR INSERT
-TO authenticated
-WITH CHECK (
-  owner_id::TEXT = auth.uid()::TEXT
-);
-
-CREATE POLICY "Farm admins can create farm wallets"
-ON public.wallets FOR INSERT
-TO authenticated
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM public.farms
-    WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-    AND farms.id::TEXT = wallets.farm_id::TEXT
-  )
-);
-
-CREATE POLICY "Users can update their own wallets"
-ON public.wallets FOR UPDATE
-TO authenticated
-USING (
-  owner_id::TEXT = auth.uid()::TEXT
-);
-
-CREATE POLICY "Farm admins can update farm wallets"
-ON public.wallets FOR UPDATE
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.farms
-    WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-    AND farms.id::TEXT = wallets.farm_id::TEXT
-  )
-);
-
-CREATE POLICY "Users can delete their own wallets"
-ON public.wallets FOR DELETE
-TO authenticated
-USING (
-  owner_id::TEXT = auth.uid()::TEXT
-);
-
-CREATE POLICY "Farm admins can delete farm wallets"
-ON public.wallets FOR DELETE
-TO authenticated
-USING (
-  EXISTS (
-    SELECT 1 FROM public.farms
-    WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-    AND farms.id::TEXT = wallets.farm_id::TEXT
-  )
-);
-
--- Similar policies for related tables
-CREATE POLICY "Users can view their wallet transactions"
-ON public.wallet_transactions FOR SELECT
+-- Wallet transactions table policies
+CREATE POLICY "Users can access wallet transactions for their wallets"
+ON public.wallet_transactions
 TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.wallets
     WHERE wallets.id = wallet_transactions.wallet_id
-    AND (
-      wallets.owner_id::TEXT = auth.uid()::TEXT
-      OR EXISTS (
-        SELECT 1 FROM public.farms
-        WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-        AND farms.id::TEXT = wallets.farm_id::TEXT
-      )
-    )
+    AND wallets.owner_id::TEXT = auth.uid()::TEXT
   )
 );
 
-CREATE POLICY "Users can view their wallet alerts"
-ON public.wallet_alerts FOR SELECT
+-- Wallet alerts table policies
+CREATE POLICY "Users can access wallet alerts for their wallets"
+ON public.wallet_alerts
 TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.wallets
     WHERE wallets.id = wallet_alerts.wallet_id
-    AND (
-      wallets.owner_id::TEXT = auth.uid()::TEXT
-      OR EXISTS (
-        SELECT 1 FROM public.farms
-        WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-        AND farms.id::TEXT = wallets.farm_id::TEXT
-      )
-    )
+    AND wallets.owner_id::TEXT = auth.uid()::TEXT
   )
 );
 
-CREATE POLICY "Users can view their wallet balance history"
-ON public.wallet_balance_history FOR SELECT
+-- Wallet balance history table policies
+CREATE POLICY "Users can access wallet balance history for their wallets"
+ON public.wallet_balance_history
 TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.wallets
     WHERE wallets.id = wallet_balance_history.wallet_id
-    AND (
-      wallets.owner_id::TEXT = auth.uid()::TEXT
-      OR EXISTS (
-        SELECT 1 FROM public.farms
-        WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-        AND farms.id::TEXT = wallets.farm_id::TEXT
-      )
-    )
+    AND wallets.owner_id::TEXT = auth.uid()::TEXT
   )
 );
 
-CREATE POLICY "Users can view their wallet settings"
-ON public.wallet_settings FOR SELECT
+-- Wallet settings table policies
+CREATE POLICY "Users can access wallet settings for their wallets"
+ON public.wallet_settings
 TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.wallets
     WHERE wallets.id = wallet_settings.wallet_id
-    AND (
-      wallets.owner_id::TEXT = auth.uid()::TEXT
-      OR EXISTS (
-        SELECT 1 FROM public.farms
-        WHERE farms.user_id::TEXT = auth.uid()::TEXT 
-        AND farms.id::TEXT = wallets.farm_id::TEXT
-      )
-    )
+    AND wallets.owner_id::TEXT = auth.uid()::TEXT
   )
 );
 

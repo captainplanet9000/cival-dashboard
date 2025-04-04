@@ -1,8 +1,9 @@
 /**
  * Wallet Service
- * Manages farm wallets, including balance updates and exchange connections
+ * Manages wallet interactions for the Trading Farm system
  */
 import { createServerClient } from '@/utils/supabase/server';
+import { createBrowserClient } from '@/utils/supabase/client';
 import { ExchangeService } from './exchange-service';
 import { QueueService, QueueNames } from './queue/queue-service';
 
@@ -17,47 +18,70 @@ export interface WalletBalance {
 export interface WalletConfig {
   id?: string;
   farmId: string;
-  userId: string;
-  walletName: string;
-  exchangeId: string;
-  apiKey: string;
-  apiSecret: string;
-  apiPassphrase?: string;
-  isTestnet?: boolean;
-  alertThreshold?: number;
-  alertEnabled?: boolean;
+  ownerId: string;
+  name: string;
+  address: string;
+  network: string;
+  exchange?: string;
+  balance?: number;
+  currency: string;
+  status?: 'active' | 'inactive' | 'pending';
+}
+
+export interface WalletTransaction {
+  id?: string;
+  walletId: string;
+  type: 'deposit' | 'withdrawal' | 'transfer' | 'trade' | 'fee';
+  amount: number;
+  currency: string;
+  timestamp?: string;
+  status?: 'completed' | 'pending' | 'failed';
+  txHash?: string;
+  destination?: string;
+  source?: string;
+  fee?: number;
+  feeCurrency?: string;
+  note?: string;
 }
 
 export interface WalletAlert {
+  id?: string;
   walletId: string;
-  currency: string;
-  currentBalance: number;
-  threshold: number;
+  type: 'low_balance' | 'large_deposit' | 'suspicious_activity' | 'other';
   message: string;
-  timestamp: string;
+  timestamp?: string;
+  resolved?: boolean;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+
+export interface WalletSettings {
+  walletId: string;
+  lowBalanceThreshold?: number;
+  alertsEnabled?: boolean;
+  autoRefresh?: boolean;
+  refreshInterval?: number;
 }
 
 export class WalletService {
   /**
-   * Create a new wallet for a farm
+   * Create a new wallet
    */
   static async createWallet(walletConfig: WalletConfig): Promise<string> {
     const supabase = await createServerClient();
     
     const { data, error } = await supabase
-      .from('farm_wallets')
+      .from('wallets')
       .insert({
         farm_id: walletConfig.farmId,
-        user_id: walletConfig.userId,
-        wallet_name: walletConfig.walletName,
-        exchange_id: walletConfig.exchangeId,
-        api_key: walletConfig.apiKey,
-        api_secret: walletConfig.apiSecret,
-        api_passphrase: walletConfig.apiPassphrase,
-        is_testnet: walletConfig.isTestnet || false,
-        alert_threshold: walletConfig.alertThreshold,
-        alert_enabled: walletConfig.alertEnabled || false,
-        status: 'active',
+        owner_id: walletConfig.ownerId,
+        name: walletConfig.name,
+        address: walletConfig.address,
+        network: walletConfig.network,
+        exchange: walletConfig.exchange,
+        balance: walletConfig.balance || 0,
+        currency: walletConfig.currency,
+        status: walletConfig.status || 'active',
       })
       .select('id')
       .single();
@@ -67,10 +91,37 @@ export class WalletService {
       throw new Error(`Failed to create wallet: ${error.message}`);
     }
     
-    // Queue an initial balance update
-    await this.queueBalanceUpdate(data.id);
+    // Create default wallet settings
+    await this.createWalletSettings({
+      walletId: data.id,
+      alertsEnabled: true,
+      autoRefresh: true,
+      refreshInterval: 15
+    });
     
     return data.id;
+  }
+  
+  /**
+   * Create wallet settings
+   */
+  static async createWalletSettings(settings: WalletSettings): Promise<void> {
+    const supabase = await createServerClient();
+    
+    const { error } = await supabase
+      .from('wallet_settings')
+      .insert({
+        wallet_id: settings.walletId,
+        low_balance_threshold: settings.lowBalanceThreshold,
+        alerts_enabled: settings.alertsEnabled,
+        auto_refresh: settings.autoRefresh,
+        refresh_interval: settings.refreshInterval
+      });
+      
+    if (error) {
+      console.error('Error creating wallet settings:', error);
+      throw new Error(`Failed to create wallet settings: ${error.message}`);
+    }
   }
   
   /**
@@ -80,16 +131,15 @@ export class WalletService {
     const supabase = await createServerClient();
     
     const { error } = await supabase
-      .from('farm_wallets')
+      .from('wallets')
       .update({
-        wallet_name: updates.walletName,
-        exchange_id: updates.exchangeId,
-        api_key: updates.apiKey,
-        api_secret: updates.apiSecret,
-        api_passphrase: updates.apiPassphrase,
-        is_testnet: updates.isTestnet,
-        alert_threshold: updates.alertThreshold,
-        alert_enabled: updates.alertEnabled,
+        name: updates.name,
+        address: updates.address,
+        network: updates.network,
+        exchange: updates.exchange,
+        balance: updates.balance,
+        currency: updates.currency,
+        status: updates.status,
       })
       .eq('id', walletId);
       
@@ -97,9 +147,28 @@ export class WalletService {
       console.error('Error updating wallet:', error);
       throw new Error(`Failed to update wallet: ${error.message}`);
     }
+  }
+  
+  /**
+   * Update wallet settings
+   */
+  static async updateWalletSettings(walletId: string, updates: Partial<WalletSettings>): Promise<void> {
+    const supabase = await createServerClient();
     
-    // Queue a balance update after config changes
-    await this.queueBalanceUpdate(walletId);
+    const { error } = await supabase
+      .from('wallet_settings')
+      .update({
+        low_balance_threshold: updates.lowBalanceThreshold,
+        alerts_enabled: updates.alertsEnabled,
+        auto_refresh: updates.autoRefresh,
+        refresh_interval: updates.refreshInterval
+      })
+      .eq('wallet_id', walletId);
+      
+    if (error) {
+      console.error('Error updating wallet settings:', error);
+      throw new Error(`Failed to update wallet settings: ${error.message}`);
+    }
   }
   
   /**
@@ -109,7 +178,7 @@ export class WalletService {
     const supabase = await createServerClient();
     
     const { error } = await supabase
-      .from('farm_wallets')
+      .from('wallets')
       .delete()
       .eq('id', walletId);
       
@@ -126,10 +195,7 @@ export class WalletService {
     const supabase = await createServerClient();
     
     const { data, error } = await supabase
-      .from('farm_wallets')
-      .select('*')
-      .eq('id', walletId)
-      .single();
+      .rpc('get_wallet_with_details', { p_wallet_id: walletId });
       
     if (error) {
       console.error('Error fetching wallet:', error);
@@ -146,7 +212,7 @@ export class WalletService {
     const supabase = await createServerClient();
     
     const { data, error } = await supabase
-      .from('farm_wallets')
+      .from('wallets')
       .select('*')
       .eq('farm_id', farmId);
       
@@ -159,149 +225,282 @@ export class WalletService {
   }
   
   /**
-   * Update wallet balances
+   * Get wallet settings
    */
-  static async updateWalletBalance(walletId: string): Promise<Record<string, number>> {
+  static async getWalletSettings(walletId: string) {
     const supabase = await createServerClient();
     
-    // Get wallet details
-    const { data: wallet, error: walletError } = await supabase
-      .from('farm_wallets')
+    const { data, error } = await supabase
+      .from('wallet_settings')
       .select('*')
+      .eq('wallet_id', walletId)
+      .single();
+      
+    if (error) {
+      console.error('Error fetching wallet settings:', error);
+      throw new Error(`Failed to fetch wallet settings: ${error.message}`);
+    }
+    
+    return data;
+  }
+  
+  /**
+   * Record a wallet transaction
+   */
+  static async recordTransaction(transaction: WalletTransaction): Promise<string> {
+    const supabase = await createServerClient();
+    
+    const { data, error } = await supabase
+      .from('wallet_transactions')
+      .insert({
+        wallet_id: transaction.walletId,
+        type: transaction.type,
+        amount: transaction.amount,
+        currency: transaction.currency,
+        timestamp: transaction.timestamp || new Date().toISOString(),
+        status: transaction.status || 'completed',
+        tx_hash: transaction.txHash,
+        destination: transaction.destination,
+        source: transaction.source,
+        fee: transaction.fee,
+        fee_currency: transaction.feeCurrency,
+        note: transaction.note
+      })
+      .select('id')
+      .single();
+      
+    if (error) {
+      console.error('Error recording transaction:', error);
+      throw new Error(`Failed to record transaction: ${error.message}`);
+    }
+    
+    // Update wallet balance
+    await this.updateWalletBalance(transaction.walletId, transaction.amount, transaction.type);
+    
+    // Record balance history
+    await this.recordBalanceHistory(transaction.walletId);
+    
+    return data.id;
+  }
+  
+  /**
+   * Update wallet balance based on a transaction
+   */
+  private static async updateWalletBalance(walletId: string, amount: number, type: string): Promise<void> {
+    const supabase = await createServerClient();
+    
+    // Get current wallet
+    const { data: wallet, error: fetchError } = await supabase
+      .from('wallets')
+      .select('balance, currency')
       .eq('id', walletId)
       .single();
       
-    if (walletError || !wallet) {
-      console.error('Error fetching wallet for balance update:', walletError);
-      throw new Error(`Failed to fetch wallet: ${walletError?.message}`);
+    if (fetchError || !wallet) {
+      console.error('Error fetching wallet for balance update:', fetchError);
+      throw new Error(`Failed to fetch wallet: ${fetchError?.message}`);
     }
     
-    try {
-      // Connect to exchange and get balances
-      const exchange = await ExchangeService.getExchangeClient(
-        wallet.exchange_id,
-        wallet.api_key,
-        wallet.api_secret,
-        wallet.api_passphrase,
-        wallet.is_testnet
-      );
+    let newBalance = wallet.balance;
+    
+    // Calculate new balance based on transaction type
+    switch(type) {
+      case 'deposit':
+        newBalance += amount;
+        break;
+      case 'withdrawal':
+      case 'fee':
+        newBalance -= amount;
+        break;
+      case 'transfer':
+        // For transfers, amount can be positive (incoming) or negative (outgoing)
+        newBalance += amount;
+        break;
+      // For 'trade' type, we'd need more complex logic handled elsewhere
+    }
+    
+    // Update wallet balance
+    const { error: updateError } = await supabase
+      .from('wallets')
+      .update({ 
+        balance: newBalance,
+        last_updated: new Date().toISOString()
+      })
+      .eq('id', walletId);
       
-      const balances = await exchange.fetchBalance();
+    if (updateError) {
+      console.error('Error updating wallet balance:', updateError);
+      throw new Error(`Failed to update wallet balance: ${updateError.message}`);
+    }
+    
+    // Check for balance alerts
+    await this.checkLowBalanceAlert(walletId, newBalance, wallet.currency);
+  }
+  
+  /**
+   * Record wallet balance history
+   */
+  static async recordBalanceHistory(walletId: string): Promise<void> {
+    const supabase = await createServerClient();
+    
+    // Get current wallet
+    const { data: wallet, error: fetchError } = await supabase
+      .from('wallets')
+      .select('balance, currency')
+      .eq('id', walletId)
+      .single();
       
-      // Format balances
-      const formattedBalances: Record<string, number> = {};
-      Object.entries(balances.total).forEach(([currency, amount]) => {
-        if (amount > 0) {
-          formattedBalances[currency] = amount;
-        }
+    if (fetchError || !wallet) {
+      console.error('Error fetching wallet for history recording:', fetchError);
+      return;
+    }
+    
+    // Record balance history
+    const { error } = await supabase
+      .from('wallet_balance_history')
+      .insert({
+        wallet_id: walletId,
+        balance: wallet.balance,
+        currency: wallet.currency,
+        timestamp: new Date().toISOString()
       });
       
-      // Update wallet record with new balances
-      const { error: updateError } = await supabase
-        .from('farm_wallets')
-        .update({
-          balance: formattedBalances,
-          last_balance_update: new Date().toISOString()
-        })
-        .eq('id', walletId);
-        
-      if (updateError) {
-        console.error('Error updating wallet balance:', updateError);
-        throw new Error(`Failed to update wallet balance: ${updateError.message}`);
-      }
-      
-      // Check for balance alerts
-      if (wallet.alert_enabled && wallet.alert_threshold) {
-        await this.checkBalanceAlerts(walletId, formattedBalances);
-      }
-      
-      return formattedBalances;
-    } catch (error) {
-      console.error('Error fetching balances from exchange:', error);
-      throw new Error(`Failed to fetch balances: ${error.message}`);
+    if (error) {
+      console.error('Error recording balance history:', error);
     }
   }
   
   /**
-   * Queue a balance update job
+   * Check for low balance alerts
    */
-  static async queueBalanceUpdate(walletId: string): Promise<void> {
-    const queue = QueueService.getQueue(QueueNames.FARM_MANAGEMENT);
-    
-    await queue.add('update-wallet-balance', {
-      walletId
-    }, {
-      attempts: 3,
-      backoff: {
-        type: 'exponential',
-        delay: 5000
-      }
-    });
-  }
-  
-  /**
-   * Check for balance alerts
-   */
-  static async checkBalanceAlerts(
-    walletId: string, 
-    balances: Record<string, number>
-  ): Promise<WalletAlert[]> {
+  static async checkLowBalanceAlert(walletId: string, balance: number, currency: string): Promise<void> {
     const supabase = await createServerClient();
     
-    // Get wallet details
-    const { data: wallet, error: walletError } = await supabase
-      .from('farm_wallets')
-      .select('*')
-      .eq('id', walletId)
+    // Get wallet settings
+    const { data: settings, error: settingsError } = await supabase
+      .from('wallet_settings')
+      .select('low_balance_threshold, alerts_enabled')
+      .eq('wallet_id', walletId)
       .single();
       
-    if (walletError || !wallet) {
-      console.error('Error fetching wallet for alerts:', walletError);
-      return [];
+    if (settingsError || !settings) {
+      console.error('Error fetching wallet settings for alert check:', settingsError);
+      return;
     }
     
-    if (!wallet.alert_enabled || !wallet.alert_threshold) {
-      return [];
-    }
-    
-    const alerts: WalletAlert[] = [];
-    
-    // Convert balances to USD value
-    const usdBalances = await this.convertBalancesToUSD(balances);
-    const totalUsdValue = Object.values(usdBalances).reduce((sum, val) => sum + val, 0);
-    
-    // Check if total value is below threshold
-    if (totalUsdValue < wallet.alert_threshold) {
-      const alert: WalletAlert = {
-        walletId,
-        currency: 'USD',
-        currentBalance: totalUsdValue,
-        threshold: wallet.alert_threshold,
-        message: `Wallet balance ($${totalUsdValue.toFixed(2)}) is below alert threshold ($${wallet.alert_threshold.toFixed(2)})`,
-        timestamp: new Date().toISOString()
-      };
+    // Check if alerts are enabled and balance is below threshold
+    if (settings.alerts_enabled && 
+        settings.low_balance_threshold && 
+        balance < settings.low_balance_threshold) {
       
-      alerts.push(alert);
-      
-      // Add alert to database
-      await supabase
-        .from('notifications')
+      // Create an alert
+      const { error } = await supabase
+        .from('wallet_alerts')
         .insert({
-          user_id: wallet.user_id,
-          type: 'wallet_alert',
-          title: 'Wallet Balance Alert',
-          message: alert.message,
-          data: {
-            walletId,
-            walletName: wallet.wallet_name,
-            farmId: wallet.farm_id,
-            alert
-          },
-          read: false
+          wallet_id: walletId,
+          type: 'low_balance',
+          message: `Wallet balance (${balance} ${currency}) is below the threshold (${settings.low_balance_threshold} ${currency})`,
+          timestamp: new Date().toISOString(),
+          resolved: false
         });
+        
+      if (error) {
+        console.error('Error creating low balance alert:', error);
+      }
+    }
+  }
+  
+  /**
+   * Get wallet transactions
+   */
+  static async getWalletTransactions(walletId: string, limit = 50, offset = 0) {
+    const supabase = await createServerClient();
+    
+    const { data, error } = await supabase
+      .from('wallet_transactions')
+      .select('*')
+      .eq('wallet_id', walletId)
+      .order('timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
+      
+    if (error) {
+      console.error('Error fetching wallet transactions:', error);
+      throw new Error(`Failed to fetch wallet transactions: ${error.message}`);
     }
     
-    return alerts;
+    return data || [];
+  }
+  
+  /**
+   * Get wallet alerts
+   */
+  static async getWalletAlerts(walletId: string, includeResolved = false, limit = 50, offset = 0) {
+    const supabase = await createServerClient();
+    
+    let query = supabase
+      .from('wallet_alerts')
+      .select('*')
+      .eq('wallet_id', walletId);
+      
+    if (!includeResolved) {
+      query = query.eq('resolved', false);
+    }
+    
+    const { data, error } = await query
+      .order('timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
+      
+    if (error) {
+      console.error('Error fetching wallet alerts:', error);
+      throw new Error(`Failed to fetch wallet alerts: ${error.message}`);
+    }
+    
+    return data || [];
+  }
+  
+  /**
+   * Resolve a wallet alert
+   */
+  static async resolveAlert(alertId: string, userId: string): Promise<void> {
+    const supabase = await createServerClient();
+    
+    const { error } = await supabase
+      .from('wallet_alerts')
+      .update({
+        resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_by: userId
+      })
+      .eq('id', alertId);
+      
+    if (error) {
+      console.error('Error resolving wallet alert:', error);
+      throw new Error(`Failed to resolve wallet alert: ${error.message}`);
+    }
+  }
+  
+  /**
+   * Get wallet balance history
+   */
+  static async getWalletBalanceHistory(walletId: string, days = 30) {
+    const supabase = await createServerClient();
+    
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    const { data, error } = await supabase
+      .from('wallet_balance_history')
+      .select('*')
+      .eq('wallet_id', walletId)
+      .gte('timestamp', startDate.toISOString())
+      .order('timestamp', { ascending: true });
+      
+    if (error) {
+      console.error('Error fetching wallet balance history:', error);
+      throw new Error(`Failed to fetch wallet balance history: ${error.message}`);
+    }
+    
+    return data || [];
   }
   
   /**
@@ -333,22 +532,5 @@ export class WalletService {
       console.error('Error converting balances to USD:', error);
       return {};
     }
-  }
-  
-  /**
-   * Reconcile wallet balances with transaction logs
-   */
-  static async reconcileWalletBalance(walletId: string) {
-    const supabase = await createServerClient();
-    
-    const { data, error } = await supabase
-      .rpc('reconcile_wallet_balances', { p_wallet_id: walletId });
-      
-    if (error) {
-      console.error('Error reconciling wallet balance:', error);
-      throw new Error(`Failed to reconcile wallet balance: ${error.message}`);
-    }
-    
-    return data || [];
   }
 }
