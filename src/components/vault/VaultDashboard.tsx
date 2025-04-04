@@ -6,13 +6,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { VaultAccount, Transaction, VaultBalance, TransactionStatus, TransactionType } from '@/types/vault-banking';
-import { vaultBankingService } from '@/data-access/services/vault-banking-service';
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertCircle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, Eye, RefreshCw, Shield, AlertTriangle, Plus } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
+import { VaultMaster, VaultAccount, VaultBalance, TransactionStatus, TransactionType, VaultTransaction } from '@/types/vault';
+import { vaultService } from '@/services/vaultService';
 import TransactionList from './TransactionList';
 import AccountBalanceChart from './AccountBalanceChart';
-import { AlertCircle, ArrowDownRight, ArrowUpRight, CheckCircle2, Clock, Eye, RefreshCw, Shield, AlertTriangle } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { toast } from '@/components/ui/use-toast';
 
 interface VaultDashboardProps {
   userId: string;
@@ -21,99 +23,133 @@ interface VaultDashboardProps {
 
 export default function VaultDashboard({ userId, selectedAccountId }: VaultDashboardProps) {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [masterVault, setMasterVault] = useState<VaultMaster | null>(null);
   const [accounts, setAccounts] = useState<VaultAccount[]>([]);
   const [activeAccount, setActiveAccount] = useState<VaultAccount | null>(null);
   const [accountBalance, setAccountBalance] = useState<VaultBalance | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [transactions, setTransactions] = useState<VaultTransaction[]>([]);
+  const [pendingActions, setPendingActions] = useState<VaultTransaction[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
-  const [securityScore, setSecurityScore] = useState(0);
-  const [pendingActions, setPendingActions] = useState<Transaction[]>([]);
-  
+  const [securityScore, setSecurityScore] = useState(75); // Default score
+
   useEffect(() => {
-    const fetchAccounts = async () => {
-      try {
-        const fetchedAccounts = await vaultBankingService.getAccounts(userId);
-        setAccounts(fetchedAccounts);
-        
-        // Set the active account
-        if (selectedAccountId && fetchedAccounts.some(a => a.id === selectedAccountId)) {
-          const selected = fetchedAccounts.find(a => a.id === selectedAccountId) || null;
-          setActiveAccount(selected);
-        } else if (fetchedAccounts.length > 0) {
-          setActiveAccount(fetchedAccounts[0]);
-        }
-      } catch (error) {
-        console.error('Error fetching accounts:', error);
-      } finally {
-        setLoading(false);
+    loadUserVaults();
+  }, [userId]);
+
+  useEffect(() => {
+    if (selectedAccountId && accounts.length > 0) {
+      const account = accounts.find(a => a.id === selectedAccountId);
+      if (account) {
+        setActiveAccount(account);
       }
-    };
-    
-    fetchAccounts();
-  }, [userId, selectedAccountId]);
-  
+    }
+  }, [selectedAccountId, accounts]);
+
   useEffect(() => {
     if (activeAccount) {
-      const fetchAccountData = async () => {
-        try {
-          setLoading(true);
-          
-          // Fetch account balance
-          const balance = await vaultBankingService.getBalance(activeAccount.id);
-          setAccountBalance(balance);
-          
-          // Fetch recent transactions
-          const recentTransactions = await vaultBankingService.getTransactions({
-            accountId: activeAccount.id,
-            limit: 10
-          });
-          setTransactions(recentTransactions);
-          
-          // Fetch pending actions
-          const pendingTxs = await vaultBankingService.getTransactions({
-            accountId: activeAccount.id,
-            statuses: [TransactionStatus.PENDING]
-          });
-          setPendingActions(pendingTxs);
-          
-          // Calculate security score
-          calculateSecurityScore(activeAccount);
-        } catch (error) {
-          console.error('Error fetching account data:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      
-      fetchAccountData();
+      loadAccountData(activeAccount.id);
     }
   }, [activeAccount]);
-  
-  const calculateSecurityScore = (account: VaultAccount) => {
-    let score = 0;
-    
-    // Basic account security
-    if (account.securityLevel === 'maximum') score += 40;
-    else if (account.securityLevel === 'enhanced') score += 25;
-    else score += 10;
-    
-    // Access rules
-    if (account.accessRules.twoFactorRequired) score += 20;
-    if (account.accessRules.whitelistedIps && account.accessRules.whitelistedIps.length > 0) score += 15;
-    if (account.accessRules.approvalRequired) score += 15;
-    
-    // Risk score (lower is better)
-    score += Math.max(0, 10 - account.riskScore / 10);
-    
-    setSecurityScore(score);
+
+  const loadUserVaults = async () => {
+    try {
+      setLoading(true);
+      
+      // Get user's master vaults
+      const vaults = await vaultService.getUserMasterVaults();
+      
+      if (vaults.length === 0) {
+        // User has no vaults, create one
+        const newVault = await vaultService.createMasterVault('My Vault', 'Primary vault for financial operations');
+        setMasterVault(newVault);
+        
+        // Create a default trading account
+        await vaultService.createVaultAccount(
+          newVault.id, 
+          'Main Trading Account', 
+          'trading', 
+          'USD'
+        );
+        
+        // Reload accounts
+        const accounts = await vaultService.getVaultAccountsByMaster(newVault.id);
+        setAccounts(accounts);
+        
+        if (accounts.length > 0) {
+          setActiveAccount(accounts[0]);
+        }
+      } else {
+        // User has vaults, use the first one
+        setMasterVault(vaults[0]);
+        
+        // Get accounts for this vault
+        const accounts = await vaultService.getVaultAccountsByMaster(vaults[0].id);
+        setAccounts(accounts);
+        
+        if (accounts.length > 0) {
+          // If there's a selected account ID, use it; otherwise use the first account
+          if (selectedAccountId) {
+            const selected = accounts.find(a => a.id === selectedAccountId);
+            setActiveAccount(selected || accounts[0]);
+          } else {
+            setActiveAccount(accounts[0]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error loading vaults:', error);
+      toast({
+        title: "Error loading vaults",
+        description: "Could not load your vault data. Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
-  
-  const handleSelectAccount = (account: VaultAccount) => {
-    setActiveAccount(account);
-    router.push(`/dashboard/vault/${account.id}`);
+
+  const loadAccountData = async (accountId: string) => {
+    try {
+      setLoading(true);
+      
+      // Get account balance
+      const balance = await vaultService.getBalance(accountId);
+      setAccountBalance(balance);
+      
+      // Get recent transactions
+      const txs = await vaultService.getTransactions({
+        accountId,
+        limit: 10
+      });
+      setTransactions(txs);
+      
+      // Get pending actions
+      const pendingTxs = await vaultService.getTransactions({
+        accountId,
+        statuses: [TransactionStatus.PENDING]
+      });
+      setPendingActions(pendingTxs);
+    } catch (error) {
+      console.error('Error loading account data:', error);
+      toast({
+        title: "Error loading account data",
+        description: "Could not load account details. Please try again later.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
-  
+
+  const handleAccountChange = (accountId: string) => {
+    const account = accounts.find(a => a.id === accountId);
+    if (account) {
+      setActiveAccount(account);
+      router.push(`/dashboard/vault/${accountId}`);
+    }
+  };
+
   const handleRefresh = async () => {
     if (!activeAccount) return;
     
@@ -121,33 +157,43 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
       setLoading(true);
       
       // Refresh account data
-      const account = await vaultBankingService.getAccount(activeAccount.id);
+      const account = await vaultService.getVaultAccount(activeAccount.id);
       setActiveAccount(account);
       
       // Refresh account balance
-      const balance = await vaultBankingService.getBalance(activeAccount.id);
+      const balance = await vaultService.getBalance(activeAccount.id);
       setAccountBalance(balance);
       
       // Refresh transactions
-      const recentTransactions = await vaultBankingService.getTransactions({
+      const recentTransactions = await vaultService.getTransactions({
         accountId: activeAccount.id,
         limit: 10
       });
       setTransactions(recentTransactions);
       
       // Refresh pending actions
-      const pendingTxs = await vaultBankingService.getTransactions({
+      const pendingTxs = await vaultService.getTransactions({
         accountId: activeAccount.id,
         statuses: [TransactionStatus.PENDING]
       });
       setPendingActions(pendingTxs);
+
+      toast({
+        title: "Refreshed",
+        description: "Account data has been refreshed.",
+      });
     } catch (error) {
       console.error('Error refreshing data:', error);
+      toast({
+        title: "Refresh failed",
+        description: "Could not refresh account data. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
   };
-  
+
   const getSecurityLevelColor = (level: string) => {
     switch (level) {
       case 'maximum': return 'text-green-500 bg-green-100';
@@ -156,7 +202,7 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
       default: return 'text-gray-500 bg-gray-100';
     }
   };
-  
+
   const getTransactionStatusColor = (status: TransactionStatus) => {
     switch (status) {
       case TransactionStatus.COMPLETED: return 'bg-green-100 text-green-600';
@@ -167,7 +213,7 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
       default: return 'bg-gray-100 text-gray-600';
     }
   };
-  
+
   const getTransactionTypeIcon = (type: TransactionType) => {
     switch (type) {
       case TransactionType.DEPOSIT:
@@ -187,7 +233,16 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
         return <Eye className="w-4 h-4" />;
     }
   };
-  
+
+  const handleCreateAccount = () => {
+    router.push('/dashboard/vault/new-account');
+  };
+
+  const handleCreateTransaction = (type: 'deposit' | 'withdraw' | 'transfer') => {
+    if (!activeAccount) return;
+    router.push(`/dashboard/vault/transaction/new?type=${type}&accountId=${activeAccount.id}`);
+  };
+
   if (loading && !activeAccount) {
     return (
       <div className="space-y-4">
@@ -201,7 +256,7 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
       </div>
     );
   }
-  
+
   if (accounts.length === 0 && !loading) {
     return (
       <Card className="border-dashed">
@@ -213,54 +268,48 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
           <p className="text-sm text-muted-foreground mb-4">
             Create your first vault account to start managing your funds securely.
           </p>
-          <Button onClick={() => router.push('/dashboard/vault/new')}>
+          <Button onClick={handleCreateAccount}>
             Create Vault Account
           </Button>
         </CardContent>
       </Card>
     );
   }
-  
+
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">Vault Banking</h1>
-        <div className="flex space-x-2">
-          <Button variant="outline" size="sm" onClick={handleRefresh}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Vault Dashboard</h1>
+          <p className="text-muted-foreground">Manage your funds and transactions securely</p>
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <Select value={activeAccount?.id} onValueChange={handleAccountChange}>
+            <SelectTrigger className="w-[220px]">
+              <SelectValue placeholder="Select Account" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Accounts</SelectLabel>
+                {accounts.map(account => (
+                  <SelectItem key={account.id} value={account.id}>
+                    {account.name} ({account.currency})
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+          
+          <Button variant="outline" size="icon" onClick={handleRefresh}>
+            <RefreshCw className="h-4 w-4" />
           </Button>
-          <Button onClick={() => router.push('/dashboard/vault/new')}>
+          
+          <Button onClick={handleCreateAccount}>
+            <Plus className="h-4 w-4 mr-2" />
             New Account
           </Button>
         </div>
-      </div>
-      
-      {/* Account selector */}
-      <div className="flex overflow-x-auto pb-2 space-x-2 scrollbar-hide">
-        {accounts.map(account => (
-          <Card 
-            key={account.id} 
-            className={`min-w-[220px] cursor-pointer transition-all ${activeAccount?.id === account.id ? 'ring-2 ring-primary' : 'hover:bg-secondary/10'}`}
-            onClick={() => handleSelectAccount(account)}
-          >
-            <CardHeader className="py-3">
-              <CardTitle className="text-sm font-medium line-clamp-1">{account.name}</CardTitle>
-              <div className="flex items-center justify-between">
-                <Badge variant="outline" className={getSecurityLevelColor(account.securityLevel)}>
-                  {account.securityLevel}
-                </Badge>
-                {!account.isActive && (
-                  <Badge variant="destructive">Inactive</Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="py-2">
-              <p className="text-xl font-bold">{formatCurrency(account.balance, account.currency)}</p>
-              <p className="text-xs text-muted-foreground">{account.type}</p>
-            </CardContent>
-          </Card>
-        ))}
       </div>
       
       {activeAccount && accountBalance && (
@@ -327,6 +376,21 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
               </Card>
             </div>
             
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button variant="outline" onClick={() => handleCreateTransaction('deposit')} className="flex-1">
+                <ArrowDownRight className="h-4 w-4 mr-2" />
+                Deposit
+              </Button>
+              <Button variant="outline" onClick={() => handleCreateTransaction('withdraw')} className="flex-1">
+                <ArrowUpRight className="h-4 w-4 mr-2" />
+                Withdraw
+              </Button>
+              <Button variant="outline" onClick={() => handleCreateTransaction('transfer')} className="flex-1">
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Transfer
+              </Button>
+            </div>
+            
             <Card>
               <CardHeader>
                 <CardTitle>Balance History</CardTitle>
@@ -366,11 +430,11 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
                           <div>
                             <p className="text-sm font-medium">{transaction.description || transaction.type}</p>
                             <p className="text-xs text-muted-foreground">
-                              {new Date(transaction.timestamp).toLocaleString()}
+                              {new Date(transaction.createdAt).toLocaleString()}
                             </p>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="flex items-center gap-2">
                           <p className={`text-sm font-medium ${
                             transaction.type === TransactionType.DEPOSIT || 
                             transaction.type === TransactionType.INTEREST || 
@@ -404,134 +468,129 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
           </TabsContent>
           
           <TabsContent value="transactions">
-            <Card>
-              <CardHeader>
-                <CardTitle>Transaction History</CardTitle>
-                <CardDescription>View and manage all your transactions</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {pendingActions.length > 0 && (
-                  <div className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
-                    <div className="flex items-start">
-                      <AlertTriangle className="w-5 h-5 text-yellow-500 mr-2 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium">Pending Actions Required</h4>
-                        <p className="text-sm text-muted-foreground mb-2">
-                          You have {pendingActions.length} transaction{pendingActions.length !== 1 ? 's' : ''} that require your attention
-                        </p>
-                        <Button size="sm" variant="secondary" onClick={() => {}}>
-                          Review Pending Actions
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                <TransactionList 
-                  accountId={activeAccount.id}
-                  userId={userId}
-                  onUpdate={handleRefresh}
-                />
-              </CardContent>
-            </Card>
+            <TransactionList 
+              accountId={activeAccount.id} 
+              userId={userId} 
+              onUpdate={handleRefresh}
+            />
           </TabsContent>
           
           <TabsContent value="security">
             <Card>
               <CardHeader>
-                <CardTitle>Account Security</CardTitle>
-                <CardDescription>Review and enhance your account security</CardDescription>
+                <CardTitle>Security Settings</CardTitle>
+                <CardDescription>Manage the security of your vault account</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="mb-6">
-                  <h3 className="text-lg font-medium flex items-center mb-2">
-                    <Shield className="w-5 h-5 mr-2 text-blue-500" />
-                    Security Overview
-                  </h3>
-                  <div className="flex items-center mb-4">
-                    <div className="mr-4">
-                      <div className="text-3xl font-bold">
-                        {securityScore}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Security Score
-                      </div>
-                    </div>
-                    <div className="flex-1">
-                      <div className="w-full bg-secondary h-3 rounded-full">
-                        <div 
-                          className={`h-3 rounded-full ${
-                            securityScore > 70 ? 'bg-green-500' : securityScore > 40 ? 'bg-yellow-500' : 'bg-red-500'
-                          }`}
-                          style={{ width: `${securityScore}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                        <span>Weak</span>
-                        <span>Good</span>
-                        <span>Excellent</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="grid gap-4">
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">Security Settings</h4>
-                    <ul className="space-y-2">
-                      <li className="flex items-center justify-between">
-                        <span className="text-sm">Two-Factor Authentication</span>
-                        <Badge variant={activeAccount.accessRules.twoFactorRequired ? "default" : "outline"}>
-                          {activeAccount.accessRules.twoFactorRequired ? "Enabled" : "Disabled"}
-                        </Badge>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span className="text-sm">Withdrawal Approval</span>
-                        <Badge variant={activeAccount.accessRules.approvalRequired ? "default" : "outline"}>
-                          {activeAccount.accessRules.approvalRequired ? "Required" : "Not Required"}
-                        </Badge>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span className="text-sm">IP Whitelist</span>
-                        <Badge variant={activeAccount.accessRules.whitelistedIps && activeAccount.accessRules.whitelistedIps.length > 0 ? "default" : "outline"}>
-                          {activeAccount.accessRules.whitelistedIps && activeAccount.accessRules.whitelistedIps.length > 0 
-                            ? `${activeAccount.accessRules.whitelistedIps.length} IPs` 
-                            : "Not Set"}
-                        </Badge>
-                      </li>
-                      <li className="flex items-center justify-between">
-                        <span className="text-sm">Withdrawal Time Lock</span>
-                        <Badge variant="outline">
-                          {activeAccount.accessRules.withdrawalTimelock} hours
-                        </Badge>
-                      </li>
-                    </ul>
-                  </div>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Security Level</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <Badge className={getSecurityLevelColor(activeAccount.securityLevel)}>
+                        {activeAccount.securityLevel.charAt(0).toUpperCase() + activeAccount.securityLevel.slice(1)}
+                      </Badge>
+                      <p className="text-sm mt-2">
+                        {activeAccount.securityLevel === 'maximum' && 'All security features are enabled.'}
+                        {activeAccount.securityLevel === 'enhanced' && 'Advanced security features are enabled.'}
+                        {activeAccount.securityLevel === 'standard' && 'Basic security features are enabled.'}
+                      </p>
+                      <Button variant="outline" size="sm" className="mt-4">
+                        Upgrade Security
+                      </Button>
+                    </CardContent>
+                  </Card>
                   
-                  <div className="p-4 border rounded-lg">
-                    <h4 className="font-medium mb-2">Withdrawal Limits</h4>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <p className="text-sm text-muted-foreground">Daily Limit</p>
-                        <p className="text-lg font-medium">{formatCurrency(activeAccount.accessRules.withdrawalLimit, activeAccount.currency)}</p>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm font-medium">Access Control</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-sm">Two-Factor Authentication</span>
+                          <Badge variant={activeAccount.settings.twoFactorRequired ? "success" : "outline"}>
+                            {activeAccount.settings.twoFactorRequired ? "Enabled" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm">Transaction Approvals</span>
+                          <Badge variant={activeAccount.settings.approvalRequired ? "success" : "outline"}>
+                            {activeAccount.settings.approvalRequired ? "Required" : "Optional"}
+                          </Badge>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm">Withdrawal Timelock</span>
+                          <span className="text-sm font-medium">{activeAccount.settings.withdrawalTimelock} hours</span>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Weekly Limit</p>
-                        <p className="text-lg font-medium">{formatCurrency(activeAccount.accessRules.withdrawalLimit * 5, activeAccount.currency)}</p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Monthly Limit</p>
-                        <p className="text-lg font-medium">{formatCurrency(activeAccount.accessRules.withdrawalLimit * 20, activeAccount.currency)}</p>
-                      </div>
-                    </div>
-                  </div>
+                      <Button variant="outline" size="sm" className="mt-4">
+                        Manage Access Controls
+                      </Button>
+                    </CardContent>
+                  </Card>
                 </div>
                 
-                <div className="mt-6">
-                  <Button onClick={() => router.push(`/dashboard/vault/${activeAccount.id}/security`)}>
-                    Manage Security Settings
-                  </Button>
-                </div>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Withdrawal Limits</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-sm">Single Transaction Limit</span>
+                        <span className="text-sm font-medium">{formatCurrency(activeAccount.settings.withdrawalLimit, activeAccount.currency)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Daily Limit</span>
+                        <span className="text-sm font-medium">{formatCurrency(activeAccount.settings.withdrawalLimit * 2, activeAccount.currency)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-sm">Monthly Limit</span>
+                        <span className="text-sm font-medium">{formatCurrency(activeAccount.settings.withdrawalLimit * 30, activeAccount.currency)}</span>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="mt-4">
+                      Adjust Limits
+                    </Button>
+                  </CardContent>
+                </Card>
+                
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium">Security Activity Log</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground mb-2">Recent security events for this account</p>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-2 p-2 rounded bg-secondary/30">
+                        <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">Successful login from your usual device</p>
+                          <p className="text-xs text-muted-foreground">Today, 10:45 AM</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 p-2 rounded bg-secondary/30">
+                        <Clock className="w-4 h-4 text-blue-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">Withdrawal time lock enforced</p>
+                          <p className="text-xs text-muted-foreground">Yesterday, 3:22 PM</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-2 p-2 rounded bg-secondary/30">
+                        <AlertTriangle className="w-4 h-4 text-yellow-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">Large transaction flagged for review</p>
+                          <p className="text-xs text-muted-foreground">Jan 15, 2023, 11:30 AM</p>
+                        </div>
+                      </div>
+                    </div>
+                    <Button variant="outline" size="sm" className="mt-4">
+                      View Full Activity Log
+                    </Button>
+                  </CardContent>
+                </Card>
               </CardContent>
             </Card>
           </TabsContent>
@@ -540,56 +599,53 @@ export default function VaultDashboard({ userId, selectedAccountId }: VaultDashb
             <Card>
               <CardHeader>
                 <CardTitle>Account Settings</CardTitle>
-                <CardDescription>Manage your vault account settings</CardDescription>
+                <CardDescription>Manage your vault account preferences</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <h3 className="text-sm font-medium mb-1">Account Name</h3>
-                      <p>{activeAccount.name}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium mb-1">Account Type</h3>
-                      <p>{activeAccount.type}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium mb-1">Currency</h3>
-                      <p>{activeAccount.currency}</p>
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-medium mb-1">Status</h3>
-                      <Badge variant={activeAccount.isActive ? "default" : "destructive"}>
-                        {activeAccount.isActive ? "Active" : "Inactive"}
-                      </Badge>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">Account Information</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-sm text-muted-foreground">Name</div>
+                      <div className="text-sm font-medium">{activeAccount.name}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Type</div>
+                      <div className="text-sm font-medium capitalize">{activeAccount.type}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Currency</div>
+                      <div className="text-sm font-medium">{activeAccount.currency}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Risk Level</div>
+                      <div className="text-sm font-medium capitalize">{activeAccount.riskLevel}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Status</div>
+                      <div className="text-sm font-medium">{activeAccount.isActive ? 'Active' : 'Inactive'}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Created</div>
+                      <div className="text-sm">{new Date(activeAccount.createdAt).toLocaleDateString()}</div>
                     </div>
                   </div>
                   
-                  {activeAccount.address && (
-                    <div>
-                      <h3 className="text-sm font-medium mb-1">Blockchain Address</h3>
-                      <div className="font-mono text-xs bg-secondary/20 p-2 rounded">
-                        {activeAccount.address}
-                      </div>
-                    </div>
-                  )}
-                  
-                  <div>
-                    <h3 className="text-sm font-medium mb-1">Created At</h3>
-                    <p>{new Date(activeAccount.createdAt).toLocaleString()}</p>
-                  </div>
-                  
-                  <div className="pt-4 border-t">
-                    <h3 className="text-lg font-medium mb-2">Danger Zone</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Button variant="outline">
-                        Edit Account
-                      </Button>
-                      <Button variant="destructive">
-                        {activeAccount.isActive ? "Deactivate Account" : "Activate Account"}
-                      </Button>
+                  <div className="space-y-2">
+                    <h3 className="text-sm font-medium">Linked Information</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="text-sm text-muted-foreground">Address</div>
+                      <div className="text-sm font-medium truncate">{activeAccount.address || 'No address'}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Farm ID</div>
+                      <div className="text-sm">{activeAccount.farmId || 'Not linked to a farm'}</div>
+                      
+                      <div className="text-sm text-muted-foreground">Agent ID</div>
+                      <div className="text-sm">{activeAccount.agentId || 'Not linked to an agent'}</div>
                     </div>
                   </div>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-2 pt-4">
+                  <Button variant="outline">Edit Account Information</Button>
+                  <Button variant={activeAccount.isActive ? "destructive" : "default"}>
+                    {activeAccount.isActive ? 'Deactivate Account' : 'Activate Account'}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

@@ -31,11 +31,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { vaultBankingService } from '@/data-access/services/vault-banking-service';
-import { Transaction, TransactionStatus, TransactionType, TransactionFilter } from '@/types/vault-banking';
+import { vaultService } from '@/services/vaultService';
+import { VaultTransaction, TransactionStatus, TransactionType, TransactionFilter } from '@/types/vault';
 import { formatCurrency } from '@/lib/utils';
 import { ArrowDownRight, ArrowUpRight, RefreshCw, CheckCircle2, AlertCircle, Eye, Clock, X, Check, Search, Filter, Download } from 'lucide-react';
 import { format } from 'date-fns';
+import { toast } from '@/components/ui/use-toast';
 
 interface TransactionListProps {
   accountId: string;
@@ -44,9 +45,9 @@ interface TransactionListProps {
 }
 
 export default function TransactionList({ accountId, userId, onUpdate }: TransactionListProps) {
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactions, setTransactions] = useState<VaultTransaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<VaultTransaction | null>(null);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
   const [approvalNote, setApprovalNote] = useState('');
@@ -63,13 +64,18 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      const data = await vaultBankingService.getTransactions({
+      const data = await vaultService.getTransactions({
         ...filter,
         accountId // Always ensure the accountId is used
       });
       setTransactions(data);
     } catch (error) {
       console.error('Error fetching transactions:', error);
+      toast({
+        title: "Error fetching transactions",
+        description: "Could not load transactions. Please try again later.",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -79,7 +85,7 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
     if (!selectedTransaction) return;
     
     try {
-      await vaultBankingService.updateTransactionStatus(
+      await vaultService.updateTransactionStatus(
         selectedTransaction.id,
         TransactionStatus.COMPLETED,
         userId,
@@ -90,8 +96,18 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
       setApprovalNote('');
       fetchTransactions();
       if (onUpdate) onUpdate();
+      
+      toast({
+        title: "Transaction approved",
+        description: "The transaction has been successfully approved.",
+      });
     } catch (error) {
       console.error('Error approving transaction:', error);
+      toast({
+        title: "Error approving transaction",
+        description: "Could not approve the transaction. Please try again.",
+        variant: "destructive"
+      });
     }
   };
   
@@ -99,7 +115,7 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
     if (!selectedTransaction) return;
     
     try {
-      await vaultBankingService.updateTransactionStatus(
+      await vaultService.updateTransactionStatus(
         selectedTransaction.id,
         TransactionStatus.CANCELLED,
         userId,
@@ -110,49 +126,39 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
       setRejectNote('');
       fetchTransactions();
       if (onUpdate) onUpdate();
+      
+      toast({
+        title: "Transaction rejected",
+        description: "The transaction has been cancelled.",
+      });
     } catch (error) {
       console.error('Error rejecting transaction:', error);
+      toast({
+        title: "Error rejecting transaction",
+        description: "Could not reject the transaction. Please try again.",
+        variant: "destructive"
+      });
     }
   };
   
   const handleTypeFilterChange = (value: string) => {
     if (value === 'all') {
-      // Remove type filter
-      const { types, ...rest } = filter;
-      setFilter(rest);
+      setFilter(prev => ({ ...prev, types: undefined }));
     } else {
-      setFilter({
-        ...filter,
-        types: [value as TransactionType]
-      });
+      setFilter(prev => ({ ...prev, types: [value as TransactionType] }));
     }
   };
   
   const handleStatusFilterChange = (value: string) => {
     if (value === 'all') {
-      // Remove status filter
-      const { statuses, ...rest } = filter;
-      setFilter(rest);
+      setFilter(prev => ({ ...prev, statuses: undefined }));
     } else {
-      setFilter({
-        ...filter,
-        statuses: [value as TransactionStatus]
-      });
+      setFilter(prev => ({ ...prev, statuses: [value as TransactionStatus] }));
     }
   };
   
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (!value || value.trim() === '') {
-      // Remove search filter
-      const { search, ...rest } = filter;
-      setFilter(rest);
-    } else {
-      setFilter({
-        ...filter,
-        search: value
-      });
-    }
+    setFilter(prev => ({ ...prev, search: e.target.value || undefined }));
   };
   
   const getTransactionTypeIcon = (type: TransactionType) => {
@@ -192,11 +198,12 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
     }
   };
   
-  const getTransactionAmount = (transaction: Transaction) => {
+  const getTransactionAmount = (transaction: VaultTransaction) => {
     const isPositive = 
       transaction.type === TransactionType.DEPOSIT || 
       transaction.type === TransactionType.INTEREST || 
-      transaction.type === TransactionType.REWARD;
+      transaction.type === TransactionType.REWARD ||
+      (transaction.type === TransactionType.TRANSFER && transaction.destinationId === accountId);
     
     return (
       <div className={`text-right ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -226,7 +233,7 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
           />
         </div>
         
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <Select onValueChange={handleTypeFilterChange} defaultValue="all">
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Type" />
@@ -304,17 +311,17 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
                         {transaction.description || `${transaction.type} Transaction`}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {transaction.reference}
+                        {transaction.reference || (transaction.sourceType === 'vault_account' && transaction.destinationType === 'vault_account' ? 'Internal Transfer' : transaction.sourceType === 'vault_account' ? 'Outgoing' : 'Incoming')}
                       </p>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div>
                       <p className="text-xs">
-                        {format(new Date(transaction.timestamp), 'MMM d, yyyy')}
+                        {format(new Date(transaction.createdAt), 'MMM d, yyyy')}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {format(new Date(transaction.timestamp), 'h:mm a')}
+                        {format(new Date(transaction.createdAt), 'h:mm a')}
                       </p>
                     </div>
                   </TableCell>
@@ -324,7 +331,7 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
                   <TableCell>
                     {getTransactionAmount(transaction)}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell>
                     <div className="flex justify-end space-x-1">
                       <Button 
                         variant="ghost" 
@@ -356,9 +363,12 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
                                   Are you sure you want to approve this {transaction.type.toLowerCase()} transaction for {formatCurrency(transaction.amount, transaction.currency)}?
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
-                              <div className="mb-4">
-                                <p className="text-sm font-medium mb-2">Add a note (optional):</p>
-                                <Input 
+                              <div className="grid gap-2 py-4">
+                                <label htmlFor="note" className="text-sm font-medium">
+                                  Add a note (optional)
+                                </label>
+                                <Input
+                                  id="note"
                                   value={approvalNote}
                                   onChange={(e) => setApprovalNote(e.target.value)}
                                   placeholder="Reason for approval"
@@ -366,13 +376,13 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
                               </div>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleApproveTransaction} className="bg-green-500 hover:bg-green-600">
+                                <AlertDialogAction onClick={handleApproveTransaction}>
                                   Approve
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                          
+
                           <AlertDialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
                             <AlertDialogTrigger asChild>
                               <Button 
@@ -390,20 +400,26 @@ export default function TransactionList({ accountId, userId, onUpdate }: Transac
                                 <AlertDialogTitle>Reject Transaction</AlertDialogTitle>
                                 <AlertDialogDescription>
                                   Are you sure you want to reject this {transaction.type.toLowerCase()} transaction for {formatCurrency(transaction.amount, transaction.currency)}?
+                                  This action cannot be undone.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
-                              <div className="mb-4">
-                                <p className="text-sm font-medium mb-2">Reason for rejection:</p>
-                                <Input 
+                              <div className="grid gap-2 py-4">
+                                <label htmlFor="rejectNote" className="text-sm font-medium">
+                                  Add a note (optional)
+                                </label>
+                                <Input
+                                  id="rejectNote"
                                   value={rejectNote}
                                   onChange={(e) => setRejectNote(e.target.value)}
-                                  placeholder="Why are you rejecting this transaction?"
-                                  required
+                                  placeholder="Reason for rejection"
                                 />
                               </div>
                               <AlertDialogFooter>
                                 <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleRejectTransaction} className="bg-red-500 hover:bg-red-600">
+                                <AlertDialogAction 
+                                  onClick={handleRejectTransaction}
+                                  className="bg-red-500 hover:bg-red-600"
+                                >
                                   Reject
                                 </AlertDialogAction>
                               </AlertDialogFooter>
