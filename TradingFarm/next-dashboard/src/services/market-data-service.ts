@@ -8,6 +8,7 @@
  */
 import { createServerClient } from '@/utils/supabase/server';
 import { createBrowserClient } from '@/utils/supabase/client';
+import { invalidateMarketDataCache } from '@/utils/cache-invalidation';
 
 export type TimeInterval = '1m' | '5m' | '15m' | '30m' | '1h' | '4h' | '1d' | '1w';
 export type DataSource = 'coinapi' | 'marketstack' | 'exchange' | 'cache';
@@ -102,9 +103,10 @@ export class MarketDataService {
       // Cache the results
       await this.saveToCache('ohlcv', options.symbol, options.interval || '1h', data, isServerSide);
       
+      // Return requested number of records
       return data.slice(0, options.limit || data.length);
     } catch (error) {
-      console.error('Error fetching OHLCV data:', error);
+      console.error(`Error fetching OHLCV data for ${options.symbol}:`, error);
       return [];
     }
   }
@@ -216,6 +218,35 @@ export class MarketDataService {
     } catch (error) {
       console.error('Error searching symbols:', error);
       return [];
+    }
+  }
+
+  /**
+   * Refresh market data and invalidate cache
+   */
+  static async refreshMarketData(symbol: string, interval?: TimeInterval): Promise<void> {
+    try {
+      // First invalidate Redis cache
+      if (symbol) {
+        await invalidateMarketDataCache(symbol);
+      } else {
+        // If no symbol specified, invalidate all market data
+        await invalidateMarketDataCache();
+      }
+      
+      // Then invalidate internal cache (Supabase)
+      const supabase = await createServerClient();
+      await supabase.from('market_data_cache').upsert({
+        id: `refresh_${Date.now()}`,
+        symbol: symbol || 'ALL',
+        interval: interval || 'ALL',
+        timestamp: new Date().toISOString(),
+        is_refresh_trigger: true
+      });
+      
+      console.log(`Market data cache invalidated for symbol: ${symbol || 'ALL'}, interval: ${interval || 'ALL'}`);
+    } catch (error) {
+      console.error('Error refreshing market data:', error);
     }
   }
 

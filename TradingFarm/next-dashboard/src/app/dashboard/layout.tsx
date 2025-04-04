@@ -19,9 +19,12 @@ import {
   Banknote,
   Shield,
   Briefcase,
-  Zap
+  Zap,
+  Database,
+  Clock
 } from "lucide-react";
 import { websocketConfig } from "@/config/app-config";
+import { usePathname } from 'next/navigation';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -42,6 +45,8 @@ const ConnectionStatus = () => {
 };
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const pathname = usePathname();
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
@@ -102,6 +107,17 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <Wallet className="w-5 h-5 mr-3" />
                 Balances
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/dashboard/farm/wallets" 
+                className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
+                  pathname.includes('/dashboard/farm/wallets') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                }`}
+              >
+                <Wallet className="w-5 h-5 mr-3" />
+                Wallets
               </Link>
             </li>
             <li>
@@ -222,6 +238,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               >
                 <Settings className="w-5 h-5 mr-3" />
                 Settings
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/dashboard/cache-analytics"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent"
+              >
+                <Database className="h-5 w-5" />
+                Cache Analytics
+              </Link>
+            </li>
+            <li>
+              <Link 
+                href="/dashboard/queue-monitor"
+                className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium hover:bg-accent"
+              >
+                <Clock className="h-5 w-5" />
+                Queue Monitor
               </Link>
             </li>
           </ul>

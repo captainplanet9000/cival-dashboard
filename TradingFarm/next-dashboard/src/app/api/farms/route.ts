@@ -2,6 +2,9 @@
 import { NextRequest, NextResponse } from '@/types/next-types';
 import { createServerClient } from '@/utils/supabase/server';
 import { v4 as uuidv4 } from 'uuid';
+import { withRouteCache } from '@/utils/cache-middleware';
+import { CACHE_POLICIES } from '@/services/redis-service';
+import { invalidateFarmCache, invalidateNamespace } from '@/utils/cache-invalidation';
 
 // Helper to get the authenticated user
 async function getUser() {
@@ -14,7 +17,7 @@ async function getUser() {
  * GET /api/farms
  * Get all farms for the authenticated user
  */
-export async function GET(request: NextRequest) {
+async function getFarms(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '10');
@@ -95,6 +98,22 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// Apply cache middleware to GET handler
+export const GET = withRouteCache(
+  'farm', 
+  getFarms, 
+  {
+    // Extract user ID and page/limit from request for cache key
+    keyFn: (req: NextRequest) => {
+      const url = new URL(req.url);
+      const page = url.searchParams.get('page') || '1';
+      const limit = url.searchParams.get('limit') || '10';
+      return `list:page=${page}:limit=${limit}`;
+    },
+    policy: CACHE_POLICIES.FARM
+  }
+);
+
 /**
  * POST /api/farms
  * Create a new farm
@@ -169,6 +188,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Invalidate farm cache after creating a new farm
+    await invalidateNamespace('farm');
+    
     return NextResponse.json({ data });
   } catch (error) {
     console.error('Error processing farm creation:', error);

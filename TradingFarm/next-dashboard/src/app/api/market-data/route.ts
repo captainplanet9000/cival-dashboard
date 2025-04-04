@@ -1,7 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
+import { NextRequest } from '@/types/next-types';
 import { createServerClient } from '@/utils/supabase/server';
 import { MarketDataService, TimeInterval } from '@/services/market-data-service';
 import { z } from 'zod';
+import { withRouteCache } from '@/utils/cache-middleware';
+import { CACHE_POLICIES } from '@/services/redis-service';
+import { invalidateMarketDataCache } from '@/utils/cache-invalidation';
 
 // Schema for validating market data requests
 const marketDataSchema = z.object({
@@ -19,9 +23,9 @@ const orderBookSchema = z.object({
 });
 
 /**
- * GET endpoint to fetch market data
+ * Handle GET request for market data
  */
-export async function GET(request: NextRequest) {
+async function getMarketData(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const dataType = searchParams.get('type') || 'ohlcv';
@@ -50,6 +54,46 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Apply caching to the GET endpoint
+export const GET = withRouteCache(
+  'market-data',
+  getMarketData,
+  {
+    // Generate a unique cache key based on the request parameters
+    keyFn: (req: NextRequest) => {
+      const url = new URL(req.url);
+      const type = url.searchParams.get('type') || 'ohlcv';
+      const symbol = url.searchParams.get('symbol') || '';
+      
+      switch (type) {
+        case 'ohlcv':
+          const interval = url.searchParams.get('interval') || '1h';
+          const limit = url.searchParams.get('limit') || '100';
+          const source = url.searchParams.get('source') || 'coinapi';
+          return `${type}:${symbol}:${interval}:${limit}:${source}`;
+        
+        case 'orderbook':
+          const exchange = url.searchParams.get('exchange') || 'default';
+          return `${type}:${symbol}:${exchange}`;
+        
+        case 'summary':
+          const symbols = url.searchParams.get('symbols') || '';
+          const summarySource = url.searchParams.get('source') || 'coinapi';
+          return `${type}:${symbols}:${summarySource}`;
+        
+        case 'search':
+          const query = url.searchParams.get('query') || '';
+          return `${type}:${query}`;
+        
+        default:
+          return url.searchParams.toString();
+      }
+    },
+    // Use market data cache policy (1 minute TTL)
+    policy: CACHE_POLICIES.MARKET_DATA
+  }
+);
 
 /**
  * POST endpoint for batch market data requests
@@ -130,10 +174,10 @@ export async function POST(request: NextRequest) {
  */
 async function handleOHLCVRequest(searchParams: URLSearchParams) {
   const symbol = searchParams.get('symbol');
-  const interval = searchParams.get('interval') as TimeInterval || '1h';
+  const interval = searchParams.get('interval') as TimeInterval | undefined;
   const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 100;
   const source = searchParams.get('source') || 'coinapi';
-  const exchange = searchParams.get('exchange');
+  const exchange = searchParams.get('exchange') || undefined;
   
   const validation = marketDataSchema.safeParse({
     symbol,
@@ -152,7 +196,7 @@ async function handleOHLCVRequest(searchParams: URLSearchParams) {
   
   const data = await MarketDataService.getOHLCV({
     symbol: symbol!,
-    interval,
+    interval: interval!,
     limit,
     source: source as any,
     exchange
@@ -171,7 +215,7 @@ async function handleOHLCVRequest(searchParams: URLSearchParams) {
  */
 async function handleOrderBookRequest(searchParams: URLSearchParams) {
   const symbol = searchParams.get('symbol');
-  const exchange = searchParams.get('exchange');
+  const exchange = searchParams.get('exchange') || undefined;
   
   const validation = orderBookSchema.safeParse({
     symbol,
@@ -185,7 +229,7 @@ async function handleOrderBookRequest(searchParams: URLSearchParams) {
     );
   }
   
-  const orderBook = await MarketDataService.getOrderBook(symbol!, exchange || undefined);
+  const orderBook = await MarketDataService.getOrderBook(symbol!, exchange);
   
   if (!orderBook) {
     return NextResponse.json(
