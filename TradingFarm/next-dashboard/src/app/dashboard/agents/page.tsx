@@ -16,7 +16,8 @@ import {
   Search,
   RefreshCcw,
   Laptop,
-  AlertTriangle
+  AlertTriangle,
+  PlusCircle
 } from "lucide-react";
 
 // Define necessary types that were previously imported from agent-service
@@ -80,6 +81,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AgentCreationDialog } from "@/components/agents/agent-creation-dialog";
+import { ElizaAgentCreationDialog } from "@/components/eliza/ElizaAgentCreationDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -443,7 +445,37 @@ export default function AgentsPage() {
             Manage your automated trading agents and their configurations
           </p>
         </div>
-        <AgentCreationDialog onSuccess={handleAgentCreated} />
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => {
+            setStatusFilter("all");
+            setFarmFilter("all");
+            setTypeFilter("all");
+            setSearchQuery("");
+          }}>
+            <RefreshCcw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button>
+                <PlusCircle className="h-4 w-4 mr-2" />
+                Create Agent
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem asChild>
+                <div className="w-full px-2 py-1.5">
+                  <AgentCreationDialog onSuccess={handleAgentCreated} buttonText="Standard Agent" />
+                </div>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <div className="w-full px-2 py-1.5">
+                  <ElizaAgentCreationDialog onSuccess={fetchAgents} buttonText="ElizaOS Agent" />
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       <Card>

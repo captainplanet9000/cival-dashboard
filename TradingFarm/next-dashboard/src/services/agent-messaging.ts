@@ -1,5 +1,6 @@
 import { createBrowserClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
+import { elizaAgentService, MessageSourceType, MessageCategoryType, AgentMessage as ElizaAgentMessage } from '@/services/eliza-agent-service';
 
 export interface AgentMessage {
   id: string;
@@ -34,7 +35,7 @@ export interface AgentCommunicationResponse {
 }
 
 // ElizaOS Command Response Types
-export type CommandResponseType = 'COMMAND_RESPONSE' | 'KNOWLEDGE_RESPONSE' | 'SYSTEM_RESPONSE' | 'ERROR_RESPONSE';
+export type CommandResponseType = 'COMMAND_RESPONSE' | 'KNOWLEDGE_RESPONSE' | 'SYSTEM_RESPONSE' | 'ERROR_RESPONSE' | 'TRADE_EXECUTION' | 'MARKET_DATA' | 'TOOL_EXECUTION';
 
 export interface ElizaCommandResponse {
   id: string;
@@ -42,7 +43,7 @@ export interface ElizaCommandResponse {
   type: CommandResponseType;
   content: string;
   category: AgentMessage['message_type'];
-  source: 'knowledge-base' | 'market-data' | 'strategy' | 'system';
+  source: MessageSourceType;
   metadata?: any;
   timestamp: string;
 }
@@ -189,28 +190,46 @@ class AgentMessagingService {
     context: Record<string, any> = {}
   ): Promise<AgentCommunicationResponse> {
     try {
-      const response = await fetch('/api/agents/eliza-command', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agentId,
-          command,
-          context
-        }),
-      });
+      // Use the new ElizaOS agent service for command execution
+      const isCommandFormat = command.startsWith('/');
       
-      if (!response.ok) {
-        throw new Error(`API responded with status: ${response.status}`);
+      if (isCommandFormat) {
+        // Strip the leading / for command format
+        const commandText = command.substring(1);
+        const result = await elizaAgentService.sendCommand(agentId, commandText, context);
+        
+        if (result.error) {
+          return {
+            success: false,
+            error: result.error
+          };
+        }
+        
+        return {
+          success: true,
+          data: result.data
+        };
+      } else {
+        // Process as a message rather than a command
+        const category: MessageCategoryType = 
+          command.endsWith('?') ? 'query' :
+          command.toLowerCase().includes('analyze') ? 'analysis' :
+          'command';
+        
+        const result = await elizaAgentService.sendMessage(agentId, command, category, context);
+        
+        if (result.error) {
+          return {
+            success: false,
+            error: result.error
+          };
+        }
+        
+        return {
+          success: true,
+          data: result.data
+        };
       }
-      
-      const data = await response.json();
-      
-      return {
-        success: true,
-        data: data.response
-      };
     } catch (error: any) {
       console.error('Error sending ElizaOS command:', error);
       return {
@@ -229,10 +248,146 @@ class AgentMessagingService {
     query: string,
     filters: Record<string, any> = {}
   ): Promise<AgentCommunicationResponse> {
-    return this.sendElizaCommand(agentId, query, { 
-      type: 'knowledge_query',
-      filters 
-    });
+    try {
+      // Use the ElizaOS agent knowledge base query
+      const result = await elizaAgentService.getAgentKnowledge(agentId, query);
+      
+      if (result.error) {
+        return {
+          success: false,
+          error: result.error
+        };
+      }
+      
+      // Format the knowledge results
+      return {
+        success: true,
+        data: result.data
+      };
+    } catch (error: any) {
+      console.error('Error querying knowledge base:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get agent messages using the new ElizaOS message format
+   */
+  async getElizaMessages(
+    agentId: string,
+    limit: number = 50
+  ): Promise<AgentCommunicationResponse> {
+    try {
+      const result = await elizaAgentService.getAgentConversation(agentId, limit);
+      
+      if (result.error) {
+        return {
+          success: false,
+          error: result.error
+        };
+      }
+      
+      // Map the ElizaOS message format to the older format for backward compatibility
+      const messages = result.data?.map(msg => ({
+        id: msg.id,
+        sender_id: msg.role === 'user' ? 'user' : agentId,
+        sender_name: msg.role === 'user' ? 'User' : `Agent ${agentId}`,
+        recipient_id: msg.role === 'user' ? agentId : 'user',
+        content: msg.content,
+        message_type: msg.category,
+        priority: msg.category === 'alert' ? 'high' : 'medium',
+        timestamp: msg.timestamp,
+        read: true,
+        metadata: {
+          source: msg.source,
+          is_response: msg.role === 'agent',
+          ...msg.metadata
+        }
+      }));
+      
+      return {
+        success: true,
+        data: messages
+      };
+    } catch (error: any) {
+      console.error('Error fetching ElizaOS messages:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Execute a trading action through the agent
+   */
+  async executeTradingAction(
+    agentId: string,
+    action: string,
+    symbol: string,
+    amount: number,
+    additionalParams: Record<string, any> = {}
+  ): Promise<AgentCommunicationResponse> {
+    try {
+      const tradingAction = {
+        action_type: action.toUpperCase() as 'BUY' | 'SELL' | 'CLOSE' | 'MODIFY',
+        symbol,
+        quantity: amount,
+        ...additionalParams
+      };
+      
+      const result = await elizaAgentService.executeTradingAction(agentId, tradingAction);
+      
+      if (result.error) {
+        return {
+          success: false,
+          error: result.error
+        };
+      }
+      
+      return {
+        success: true,
+        data: result.data
+      };
+    } catch (error: any) {
+      console.error('Error executing trading action:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get the trading permissions for an agent
+   */
+  async getTradingPermissions(
+    agentId: string
+  ): Promise<AgentCommunicationResponse> {
+    try {
+      const result = await elizaAgentService.getTradingPermissions(agentId);
+      
+      if (result.error) {
+        return {
+          success: false,
+          error: result.error
+        };
+      }
+      
+      return {
+        success: true,
+        data: result.data
+      };
+    } catch (error: any) {
+      console.error('Error getting trading permissions:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
   }
 
   subscribeToMessages(

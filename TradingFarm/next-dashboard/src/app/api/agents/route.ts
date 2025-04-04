@@ -1,4 +1,4 @@
-import { NextResponse, NextRequest } from 'next/server';
+import { NextResponse, NextRequest } from '@/types/next-types';
 import { createServerClient } from '@/utils/supabase/server';
 import { v4 as uuidv4 } from 'uuid';
 import { Database } from '@/types/database.types';

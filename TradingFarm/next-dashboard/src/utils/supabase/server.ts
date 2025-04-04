@@ -6,15 +6,21 @@ import { createClient } from '@supabase/supabase-js';
 import { Database } from '@/types/database.types';
 import { ExtendedDatabase } from '@/types/supabase-extensions';
 
-// Load configuration from environment or fallback to our known values
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgvlzvswzpfoywfxehis.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.ccYwDhIJXjmfp4tpc6bDlHKsLDqs7ivQpmugaa0uHXU';
+// Load configuration from environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 /**
  * Create a Supabase client for use in server-side contexts
  * This version works with both pages/ and app/ directory setups
  */
 export function createServerClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('⚠️ Supabase server connection failed: Missing environment variables');
+    throw new Error('Missing Supabase environment configuration');
+  }
+
   return createClient<ExtendedDatabase>(
     supabaseUrl,
     supabaseAnonKey,
@@ -35,9 +41,14 @@ export function createServerClient() {
  * ONLY USE THIS IN TRUSTED SERVER CONTEXTS - NEVER EXPOSE IN CLIENT CODE
  */
 export async function createServerAdminClient() {
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('⚠️ Supabase admin connection failed: Missing service role key');
+    throw new Error('Missing Supabase service role key');
+  }
+
   return createClient<ExtendedDatabase>(
     supabaseUrl,
-    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    supabaseServiceKey,
     {
       auth: {
         persistSession: false,

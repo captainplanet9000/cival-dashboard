@@ -1,265 +1,180 @@
-import { NextResponse } from 'next/server';
+// TradingFarm/next-dashboard/src/app/api/farms/route.ts
+import { NextRequest, NextResponse } from '@/types/next-types';
 import { createServerClient } from '@/utils/supabase/server';
+import { v4 as uuidv4 } from 'uuid';
 
-// Mock data for when authentication fails or no farms are found
-const mockFarms = [
-  {
-    id: "1",
-    name: "Bitcoin Momentum Farm",
-    description: "Trading farm focused on BTC momentum strategies",
-    user_id: "mock-user-id",
-    created_at: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "active",
-    exchange: "binance",
-    api_keys: {},
-    config: {},
-    agents_count: 3
-  },
-  {
-    id: "2",
-    name: "Altcoin Swing Trader",
-    description: "Farm for short-term swing trading on major altcoins",
-    user_id: "mock-user-id",
-    created_at: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "active",
-    exchange: "coinbase",
-    api_keys: {},
-    config: {},
-    agents_count: 5
-  },
-  {
-    id: "3",
-    name: "DeFi Yield Farm",
-    description: "Optimizing yield farming opportunities across DeFi protocols",
-    user_id: "mock-user-id",
-    created_at: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    status: "active",
-    exchange: "bybit",
-    api_keys: {},
-    config: {},
-    agents_count: 2
-  }
-];
+// Helper to get the authenticated user
+async function getUser() {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
 
-// Check if mock mode is enabled by environment variables
-const isMockModeEnabled = () => {
-  return process.env.NEXT_PUBLIC_FORCE_MOCK_MODE === 'true' || 
-         process.env.NEXT_PUBLIC_MOCK_API_ENABLED === 'true';
-};
-
-export async function GET(req: Request) {
+/**
+ * GET /api/farms
+ * Get all farms for the authenticated user
+ */
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '10');
+  const mock = searchParams.get('mock') === 'true';
+  
+  // Calculate offset
+  const offset = (page - 1) * limit;
+  
   try {
-    const url = new URL(req.url);
-    const searchParams = url.searchParams;
-    const limit = parseInt(searchParams.get('limit') || '10');
-    const offset = parseInt(searchParams.get('offset') || '0');
-    
-    // Check if mock mode is enabled or requested
-    if (isMockModeEnabled() || searchParams.get('mock') === 'true') {
-      console.log('Using mock farm data in API');
-      const paginatedMocks = mockFarms.slice(offset, offset + limit);
+    // If mock mode is enabled, return mock data
+    if (mock) {
       return NextResponse.json({
-        farms: paginatedMocks,
-        total: mockFarms.length,
-        limit,
-        offset,
-        hasMore: offset + limit < mockFarms.length
+        data: Array.from({ length: limit }).map((_, i) => ({
+          id: `mock-${i + offset + 1}`,
+          name: `Mock Farm ${i + offset + 1}`,
+          description: `This is a mock farm for testing purposes ${i + offset + 1}`,
+          owner_id: 'mock-user',
+          is_active: Math.random() > 0.3,
+          agents_count: Math.floor(Math.random() * 5),
+          elizaos_agents_count: Math.floor(Math.random() * 3),
+          risk_profile: {
+            max_drawdown: Math.floor(Math.random() * 20) + 5,
+            risk_per_trade: Math.floor(Math.random() * 3) + 1,
+            volatility_tolerance: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)]
+          },
+          performance_metrics: {
+            win_rate: Math.random() * 0.7 + 0.3,
+            profit_factor: Math.random() * 2 + 1,
+            sharpe_ratio: Math.random() * 1.5 + 0.5,
+            max_drawdown: Math.random() * 0.2 + 0.05
+          },
+          created_at: new Date(Date.now() - Math.random() * 10000000000).toISOString(),
+          updated_at: new Date().toISOString()
+        })),
+        count: limit,
+        total: 100
       });
     }
     
-    const supabase = await createServerClient();
+    // Get the authenticated user
+    const user = await getUser();
     
-    // Get the user ID from the authentication session
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    // If no authenticated user, return mock data instead of 401
     if (!user) {
-      console.log('No authenticated user, using mock data');
-      const paginatedMocks = mockFarms.slice(offset, offset + limit);
-      return NextResponse.json({
-        farms: paginatedMocks,
-        total: mockFarms.length,
-        limit,
-        offset,
-        hasMore: offset + limit < mockFarms.length
-      });
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
-    // Query farms from Supabase
+
+    // Get all farms for the authenticated user
+    const supabase = await createServerClient();
     const { data: farms, error, count } = await supabase
       .from('farms')
-      .select('*, agents(count)', { count: 'exact' })
-      .eq('user_id', user.id)
-      .range(offset, offset + limit - 1)
-      .order('created_at', { ascending: false });
+      .select('*, agents(count), elizaos_agents(count)', { count: 'exact' })
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     
     if (error) {
       console.error('Error fetching farms:', error);
-      // Return mock data instead of error
-      const paginatedMocks = mockFarms.slice(offset, offset + limit);
-      return NextResponse.json({
-        farms: paginatedMocks,
-        total: mockFarms.length,
-        limit,
-        offset,
-        hasMore: offset + limit < mockFarms.length
-      });
+      return NextResponse.json(
+        { error: 'Failed to fetch farms' },
+        { status: 500 }
+      );
     }
-    
-    // If no farms returned, use mock data
-    if (!farms || farms.length === 0) {
-      console.log('No farms found for user, using mock data');
-      const paginatedMocks = mockFarms.slice(offset, offset + limit);
-      return NextResponse.json({
-        farms: paginatedMocks,
-        total: mockFarms.length,
-        limit,
-        offset,
-        hasMore: offset + limit < mockFarms.length
-      });
-    }
-    
-    // Transform the data to include agent counts
-    const transformedFarms = farms.map(farm => {
-      const agentCount = farm.agents ? (farm.agents as any).count : 0;
-      
-      return {
-        ...farm,
-        agents_count: agentCount,
-        // Remove the agents relationship from the response
-        agents: undefined
-      };
-    });
-    
-    // Return the response with proper metadata
+
     return NextResponse.json({
-      farms: transformedFarms,
-      total: count || farms.length,
-      limit,
-      offset,
-      hasMore: count ? offset + limit < count : false
+      data: farms,
+      count: farms.length,
+      total: count
     });
   } catch (error) {
-    console.error('Farms API error:', error);
-    // Return mock data instead of error
-    const limit = 10;
-    const offset = 0;
-    return NextResponse.json({
-      farms: mockFarms,
-      total: mockFarms.length,
-      limit,
-      offset,
-      hasMore: offset + limit < mockFarms.length
-    });
+    console.error('Error processing farms request:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: Request) {
+/**
+ * POST /api/farms
+ * Create a new farm
+ */
+export async function POST(request: NextRequest) {
   try {
-    const requestData = await req.json();
-    const url = new URL(req.url);
-    const searchParams = url.searchParams;
+    const requestData = await request.json();
+    const { name, description, mock } = requestData;
     
-    // Check if mock mode is enabled or requested
-    if (isMockModeEnabled() || searchParams.get('mock') === 'true') {
-      console.log('Using mock farm creation in API');
-      const newMockFarm = {
-        id: `mock-${Date.now()}`,
-        name: requestData.name,
-        description: requestData.description,
-        user_id: "mock-user-id",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: "active",
-        exchange: requestData.exchange || "default",
-        api_keys: requestData.api_keys || {},
-        config: requestData.config || {},
-        agents_count: 0
-      };
-      return NextResponse.json({ farm: newMockFarm });
+    // Validate required fields
+    if (!name) {
+      return NextResponse.json(
+        { error: 'Farm name is required' },
+        { status: 400 }
+      );
     }
     
-    const supabase = await createServerClient();
+    // If mock mode is enabled, return mock response
+    if (mock) {
+      const newMockFarm = {
+        id: uuidv4(),
+        name,
+        description: description || '',
+        owner_id: 'mock-user',
+        is_active: true,
+        agents_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      return NextResponse.json({ data: newMockFarm });
+    }
     
-    // Get the user ID from the authentication session
-    const { data: { user } } = await supabase.auth.getUser();
+    // Get the authenticated user
+    const user = await getUser();
     
     if (!user) {
-      // Return mock data instead of 401 error
-      const newMockFarm = {
-        id: `mock-${Date.now()}`,
-        name: requestData.name,
-        description: requestData.description,
-        user_id: "mock-user-id",
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: "active",
-        exchange: requestData.exchange || "default",
-        api_keys: requestData.api_keys || {},
-        config: requestData.config || {},
-        agents_count: 0
-      };
-      return NextResponse.json({ farm: newMockFarm });
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-    
-    // Prepare the farm data with the authenticated user ID
-    const farmData = {
-      name: requestData.name,
-      description: requestData.description,
-      user_id: user.id,
-      status: requestData.status || "active",
-      exchange: requestData.exchange || "default",
-      api_keys: requestData.api_keys || {},
-      config: requestData.config || {}
-    };
-    
-    // Insert the farm data into Supabase
-    const { data: farm, error } = await supabase
+
+    // Create a new farm
+    const supabase = await createServerClient();
+    const { data, error } = await supabase
       .from('farms')
-      .insert(farmData)
+      .insert({
+        name,
+        description: description || '',
+        owner_id: user.id,
+        is_active: true,
+        status_summary: {
+          goals_total: 0,
+          goals_completed: 0,
+          goals_in_progress: 0,
+          goals_not_started: 0,
+          goals_cancelled: 0,
+          agents_total: 0,
+          agents_active: 0,
+          updated_at: new Date().toISOString()
+        }
+      })
       .select()
       .single();
     
     if (error) {
       console.error('Error creating farm:', error);
-      // Return mock data instead of error
-      const newMockFarm = {
-        id: `mock-${Date.now()}`,
-        name: requestData.name,
-        description: requestData.description,
-        user_id: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: requestData.status || "active",
-        exchange: requestData.exchange || "default",
-        api_keys: requestData.api_keys || {},
-        config: requestData.config || {},
-        agents_count: 0
-      };
-      return NextResponse.json({ farm: newMockFarm });
+      return NextResponse.json(
+        { error: 'Failed to create farm' },
+        { status: 500 }
+      );
     }
-    
-    return NextResponse.json({ farm });
+
+    return NextResponse.json({ data });
   } catch (error) {
-    console.error('Farm creation error:', error);
-    // Return mock data instead of error
-    const requestData = { name: "New Farm", description: "Created due to error" };
-    const newMockFarm = {
-      id: `mock-${Date.now()}`,
-      name: requestData.name,
-      description: requestData.description,
-      user_id: "mock-user-id",
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      status: "active",
-      exchange: "default",
-      api_keys: {},
-      config: {},
-      agents_count: 0
-    };
-    return NextResponse.json({ farm: newMockFarm });
+    console.error('Error processing farm creation:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

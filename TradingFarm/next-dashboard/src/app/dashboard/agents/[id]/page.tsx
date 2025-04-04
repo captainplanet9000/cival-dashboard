@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { CommandTerminal, CommandMessage } from "@/components/ui/command-terminal";
-import { Chart } from "@/components/ui/chart";
+import Chart from "@/components/ui/chart"; // Fix the Chart component reference
 import { 
   ArrowLeft, 
   Bot, 
@@ -23,16 +23,37 @@ import {
   ArrowUpRight, 
   ArrowDownRight,
   AlertCircle,
-  Info
+  Info,
+  PlayCircle,
+  PauseCircle,
+  StopCircle
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { DEMO_MODE, demoAgents } from "@/utils/demo-data";
-import { elizaService } from "@/services/eliza-service";
+import { elizaOSAgentService, ElizaAgent } from '@/services/elizaos-agent-service';
+import { useElizaAgents } from "@/hooks/useElizaAgents";
+import { useElizaOS } from "@/hooks/useElizaOS";
 
-// Placeholder for agent service (would be implemented in a real app)
+// Get agent from API or fallback to demo data
 const getAgent = async (id: string) => {
   // In demo mode, return a demo agent
   if (DEMO_MODE || process.env.NODE_ENV === 'development') {
+    try {
+      // Try to fetch from the real API first
+      const response = await fetch(`/api/elizaos/agents/${id}`);
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
+        return {
+          data: result.data,
+          error: null
+        };
+      }
+    } catch (error) {
+      console.log('Using demo data fallback due to API error:', error);
+    }
+    
+    // Fallback to demo data if API fails
     const agent = demoAgents.find(a => a.id.toString() === id) || demoAgents[0];
     return {
       data: agent,
@@ -40,11 +61,28 @@ const getAgent = async (id: string) => {
     };
   }
   
-  // In production, fetch from Supabase
-  return {
-    data: null,
-    error: "Agent not found"
-  };
+  // In production, fetch from real API
+  try {
+    const response = await fetch(`/api/elizaos/agents/${id}`);
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      return {
+        data: result.data,
+        error: null
+      };
+    } else {
+      return {
+        data: null,
+        error: result.error || "Failed to fetch agent"
+      };
+    }
+  } catch (error) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : "An unexpected error occurred"
+    };
+  }
 };
 
 export default function AgentDetailPage() {
@@ -54,14 +92,164 @@ export default function AgentDetailPage() {
   const { id } = params;
   const agentId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '1';
   
-  const [agent, setAgent] = React.useState<any>(null);
+  const [agent, setAgent] = React.useState<ElizaAgent | null>(null);
   const [isLoading, setIsLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState("dashboard");
   const [commandMessages, setCommandMessages] = React.useState<CommandMessage[]>([]);
   const [isProcessingCommand, setIsProcessingCommand] = React.useState(false);
   const [performanceData, setPerformanceData] = React.useState<any>(null);
-  
+
+  // Use the ElizaOS hooks for agent control
+  const { controlAgent } = useElizaAgents();
+  const { executeCommand, queryKnowledge } = useElizaOS();
+
+  // Currency formatter
+  const formatter = (value: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(value);
+  };
+
+  // Status badge variant mapping
+  const getStatusVariant = (status: string): "default" | "destructive" | "outline" | "secondary" => {
+    switch (status) {
+      case 'active': return "default";
+      case 'paused': return "secondary";
+      case 'error': return "destructive";
+      default: return "outline";
+    }
+  };
+
+  // Fetch agent data
+  React.useEffect(() => {
+    const fetchAgent = async () => {
+      setIsLoading(true);
+      setError(null);
+      
+      try {
+        // Simulate network delay in demo mode
+        if (DEMO_MODE || process.env.NODE_ENV === 'development') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        const { data, error } = await getAgent(agentId);
+        
+        if (error) {
+          setError(error);
+          toast({
+            title: "Error",
+            description: `Failed to load agent: ${error}`,
+            variant: "destructive"
+          });
+        } else if (data) {
+          setAgent(data);
+          
+          // Generate welcome message for the command console
+          setCommandMessages([
+            {
+              id: nanoid(),
+              content: `Welcome to the command console for ${data.name}. Type 'help' to see available commands.`,
+              timestamp: new Date().toISOString(),
+              isUser: false,
+              category: 'system',
+              source: 'system'
+            }
+          ]);
+          
+          // Generate performance data for the chart
+          setPerformanceData(generatePerformanceData());
+        } else {
+          setError("Agent not found");
+          toast({
+            title: "Error",
+            description: "Agent not found",
+            variant: "destructive"
+          });
+        }
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
+        setError(errorMessage);
+        toast({
+          title: "Error",
+          description: errorMessage,
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    fetchAgent();
+  }, [agentId, toast]);
+
+  // Handle agent control actions (start, stop, pause, resume)
+  const handleControlAgent = async (action: 'start' | 'stop' | 'pause' | 'resume') => {
+    if (!agent) return;
+    
+    try {
+      // Update local state optimistically
+      const statusMap: Record<string, string> = {
+        'start': 'active',
+        'stop': 'idle',
+        'pause': 'paused',
+        'resume': 'active'
+      };
+      
+      setAgent((prev: ElizaAgent | null) => prev ? {
+        ...prev,
+        status: statusMap[action] as 'active' | 'idle' | 'paused' | 'error' | 'initializing'
+      } : null);
+      
+      // Call the API
+      const updatedAgent = await controlAgent(agent.id, action);
+      
+      // Update state with the response
+      setAgent((prev: ElizaAgent | null) => prev ? {
+        ...prev,
+        ...updatedAgent
+      } : null);
+      
+      // Show success message
+      const actionText = {
+        'start': 'started',
+        'stop': 'stopped',
+        'pause': 'paused',
+        'resume': 'resumed'
+      }[action];
+      
+      toast({
+        title: `Agent ${actionText}`,
+        description: `${agent.name} has been ${actionText} successfully`,
+      });
+      
+      // Add event to command console
+      setCommandMessages((prevMessages: CommandMessage[]) => [
+        ...prevMessages,
+        {
+          id: nanoid(),
+          content: `Agent has been ${actionText}`,
+          timestamp: new Date().toISOString(),
+          isUser: false,
+          category: 'system',
+          source: 'system'
+        }
+      ]);
+      
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : `Failed to ${action} agent`;
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive"
+      });
+      
+      // Revert optimistic update
+      setAgent((prev: ElizaAgent | null) => prev);
+    }
+  };
+
   // Agent performance chart configuration
   const chartOptions = {
     chart: {
@@ -119,70 +307,6 @@ export default function AgentDetailPage() {
     }
   };
   
-  // Fetch agent data
-  React.useEffect(() => {
-    const fetchAgent = async () => {
-      setIsLoading(true);
-      setError(null);
-      
-      try {
-        // Simulate network delay in demo mode
-        if (DEMO_MODE || process.env.NODE_ENV === 'development') {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        const { data, error } = await getAgent(agentId);
-        
-        if (error) {
-          setError(error);
-          toast({
-            title: "Error",
-            description: `Failed to load agent: ${error}`,
-            variant: "destructive"
-          });
-        } else if (data) {
-          setAgent(data);
-          
-          // Generate welcome message for the command console
-          setCommandMessages([{
-            id: nanoid(),
-            content: `Connected to Agent "${data.name}" (ID: ${data.id}). Type 'help' for available commands.`,
-            timestamp: new Date(),
-            type: "system",
-            source: "system"
-          }]);
-          
-          // Generate mock performance data
-          generatePerformanceData();
-          
-          toast({
-            title: "Agent Loaded",
-            description: `Successfully loaded agent "${data.name}"`
-          });
-        } else {
-          setError("Agent not found");
-          toast({
-            title: "Error",
-            description: "Agent not found",
-            variant: "destructive"
-          });
-        }
-      } catch (error) {
-        console.error("Error fetching agent:", error);
-        setError("Failed to load agent");
-        toast({
-          title: "Error",
-          description: "Failed to load agent",
-          variant: "destructive"
-        });
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    fetchAgent();
-  }, [agentId, toast]);
-  
   // Generate mock performance data for the chart
   const generatePerformanceData = () => {
     const today = new Date();
@@ -212,7 +336,7 @@ export default function AgentDetailPage() {
       benchmarkSeries.push([date.getTime(), parseFloat(benchmarkValue.toFixed(2))]);
     }
     
-    setPerformanceData({
+    return {
       series: [
         {
           name: 'Agent Performance',
@@ -224,56 +348,59 @@ export default function AgentDetailPage() {
         }
       ],
       options: chartOptions
-    });
+    };
   };
   
   // Process agent-specific commands
   const handleSendCommand = async (command: string) => {
+    if (!agent) return;
+    
     setIsProcessingCommand(true);
     
     try {
-      // Augment the command with agent context
-      const agentCommand = `agent ${agentId} ${command}`;
-      
-      // Process the command through ElizaOS service
-      const updatedMessages = await elizaService.processCommand(agentCommand);
-      
-      // Remove the first message which is the user command
-      // We'll create our own with the original command for better UX
-      const commandMessages = updatedMessages.slice(1);
-      
-      // Add user command as first message
-      setCommandMessages(prev => [
-        ...prev, 
+      // Add user command to the console
+      setCommandMessages((prev: CommandMessage[]) => [
         {
           id: nanoid(),
           content: command,
-          timestamp: new Date(),
-          type: 'command',
+          timestamp: new Date().toISOString(),
+          isUser: true,
+          category: 'command',
           source: 'user'
         },
-        ...commandMessages
+        ...prev
+      ]);
+      
+      // Process the command through ElizaOS
+      await executeCommand(command, agent.farm_id.toString());
+      
+      // Add a response since executeCommand doesn't return one
+      setCommandMessages((prev: CommandMessage[]) => [
+        ...prev,
+        {
+          id: nanoid(),
+          content: `Command "${command}" executed successfully`,
+          timestamp: new Date().toISOString(),
+          isUser: false,
+          category: 'response',
+          source: 'system'
+        }
       ]);
     } catch (error) {
       console.error("Error processing command:", error);
       
       // Add error message
-      setCommandMessages(prev => [
+      setCommandMessages((prev: CommandMessage[]) => [
         ...prev,
         {
           id: nanoid(),
           content: `Error processing command: ${error instanceof Error ? error.message : "Unknown error"}`,
-          timestamp: new Date(),
-          type: "alert",
+          timestamp: new Date().toISOString(),
+          isUser: false,
+          category: "alert",
           source: "system"
         }
       ]);
-      
-      toast({
-        title: "Command Error",
-        description: "Failed to process command",
-        variant: "destructive"
-      });
     } finally {
       setIsProcessingCommand(false);
     }
@@ -342,124 +469,60 @@ export default function AgentDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge 
-            variant={agent.status === 'active' ? "success" : agent.status === 'paused' ? "warning" : "secondary"}
+            variant={getStatusVariant(agent.status)}
           >
             {agent.status}
           </Badge>
-          <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          
+          {/* Agent Control Buttons */}
+          <div className="flex items-center gap-2 ml-4">
+            {agent.status !== 'active' && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handleControlAgent('start')}
+                className="flex items-center gap-1"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Start
+              </Button>
+            )}
+            
+            {agent.status === 'active' && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handleControlAgent('pause')}
+                className="flex items-center gap-1"
+              >
+                <PauseCircle className="h-4 w-4" />
+                Pause
+              </Button>
+            )}
+            
+            {agent.status === 'paused' && (
+              <Button 
+                size="sm" 
+                variant="outline"
+                onClick={() => handleControlAgent('resume')}
+                className="flex items-center gap-1"
+              >
+                <PlayCircle className="h-4 w-4" />
+                Resume
+              </Button>
+            )}
+            
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => handleControlAgent('stop')}
+              className="flex items-center gap-1"
+            >
+              <StopCircle className="h-4 w-4" />
+              Stop
+            </Button>
+          </div>
         </div>
-      </div>
-      
-      {/* Agent overview cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Agent Details</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <dl className="space-y-2">
-              <div className="flex justify-between">
-                <dt className="text-sm font-medium text-muted-foreground">ID:</dt>
-                <dd className="text-sm">{agent.id}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-sm font-medium text-muted-foreground">Type:</dt>
-                <dd className="text-sm">{agent.role}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-sm font-medium text-muted-foreground">Status:</dt>
-                <dd className="text-sm">{agent.status}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-sm font-medium text-muted-foreground">Farm:</dt>
-                <dd className="text-sm">
-                  <Link href={`/dashboard/farms/${agent.farm_id}`} className="text-blue-600 hover:underline">
-                    Farm {agent.farm_id}
-                  </Link>
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-sm font-medium text-muted-foreground">Strategy:</dt>
-                <dd className="text-sm">
-                  <Link href={`/dashboard/brain/strategies/${agent.strategy_id}`} className="text-blue-600 hover:underline">
-                    Strategy {agent.strategy_id}
-                  </Link>
-                </dd>
-              </div>
-            </dl>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Performance</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">30-Day Return</span>
-                <div className="flex items-center">
-                  <span className={agent.performance > 0 ? "text-green-600" : "text-red-600"}>
-                    {agent.performance > 0 ? (
-                      <ArrowUpRight className="h-4 w-4" />
-                    ) : (
-                      <ArrowDownRight className="h-4 w-4" />
-                    )}
-                  </span>
-                  <span className={`text-lg font-bold ${agent.performance > 0 ? "text-green-600" : "text-red-600"}`}>
-                    {agent.performance > 0 ? '+' : ''}{agent.performance}%
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Transactions</span>
-                <span className="text-sm font-medium">267</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Win Rate</span>
-                <span className="text-sm font-medium">68%</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">Risk Score</span>
-                <span className="text-sm font-medium">Medium (4.2)</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Current Positions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">BTC-USD</span>
-                <div className="flex items-center gap-1">
-                  <Badge variant="outline">Long</Badge>
-                  <span className="text-sm font-medium">0.35 BTC</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">ETH-USD</span>
-                <div className="flex items-center gap-1">
-                  <Badge variant="outline">Long</Badge>
-                  <span className="text-sm font-medium">4.2 ETH</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-muted-foreground">SOL-USD</span>
-                <div className="flex items-center gap-1">
-                  <Badge variant="outline">Short</Badge>
-                  <span className="text-sm font-medium">75 SOL</span>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
       
       {/* Tabs for agent content */}

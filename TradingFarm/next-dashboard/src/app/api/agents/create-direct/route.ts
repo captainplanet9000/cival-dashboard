@@ -1,5 +1,4 @@
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from '@/types/next-types';
 import { createServerClient } from '@/utils/supabase/server';
 import { Database } from '@/types/database.types';
 import postgres from 'postgres';

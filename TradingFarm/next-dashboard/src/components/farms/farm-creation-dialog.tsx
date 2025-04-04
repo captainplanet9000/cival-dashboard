@@ -71,65 +71,63 @@ export function FarmCreationDialog({
   async function onSubmit(values: FarmFormValues) {
     setIsSubmitting(true);
     try {
-      // First try direct API route with mock mode enabled
-      try {
-        const apiResponse = await fetch('/api/farms?mock=true', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            name: values.name,
-            description: values.description || null,
-          }),
-        });
-        
-        if (apiResponse.ok) {
-          const data = await apiResponse.json();
-          
-          toast({
-            title: "Farm created",
-            description: "Your new trading farm has been created successfully.",
-          });
-          
-          // Close the dialog and call success callback
-          setOpen(false);
-          form.reset();
-          
-          if (onSuccess && data.farm) {
-            onSuccess(data.farm);
-          }
-          
-          return;
-        }
-      } catch (apiError) {
-        console.error('API route error, falling back to service:', apiError);
-      }
-      
-      // Fallback to the service approach
-      const response = await farmService.createFarm({
-        name: values.name,
-        description: values.description || null,
+      // Call the API directly to ensure proper backend storage
+      const apiResponse = await fetch('/api/farms', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: values.name,
+          description: values.description || null,
+        }),
       });
-
-      if (response.error) {
-        toast({
-          variant: "destructive",
-          title: "Failed to create farm",
-          description: response.error,
-        });
-      } else if (response.data) {
+      
+      if (apiResponse.ok) {
+        const data = await apiResponse.json();
+        
         toast({
           title: "Farm created",
           description: "Your new trading farm has been created successfully.",
         });
-
+        
         // Close the dialog and call success callback
         setOpen(false);
         form.reset();
         
-        if (onSuccess) {
-          onSuccess(response.data);
+        if (onSuccess && data.farm) {
+          onSuccess(data.farm);
+        }
+        
+        return;
+      } else {
+        // If API fails, try the service approach as fallback
+        console.error('API route error, falling back to service:', await apiResponse.text());
+        
+        const response = await farmService.createFarm({
+          name: values.name,
+          description: values.description || null,
+        });
+
+        if (response.error) {
+          toast({
+            variant: "destructive",
+            title: "Failed to create farm",
+            description: response.error,
+          });
+        } else if (response.data) {
+          toast({
+            title: "Farm created",
+            description: "Your new trading farm has been created successfully.",
+          });
+
+          // Close the dialog and call success callback
+          setOpen(false);
+          form.reset();
+          
+          if (onSuccess) {
+            onSuccess(response.data);
+          }
         }
       }
     } catch (error) {

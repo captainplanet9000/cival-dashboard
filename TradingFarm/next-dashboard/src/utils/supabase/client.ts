@@ -5,14 +5,33 @@
 import { createClient } from '@supabase/supabase-js';
 import type { ExtendedDatabase } from '@/types/supabase-extensions';
 
-// Load configuration from environment or fallback to our known values
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://bgvlzvswzpfoywfxehis.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJndmx6dnN3enBmb3l3ZnhlaGlzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzY4MzE1NTksImV4cCI6MjA1MjQwNzU1OX0.ccYwDhIJXjmfp4tpc6bDlHKsLDqs7ivQpmugaa0uHXU';
+// Load configuration from environment variables
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+// Validate configuration is available
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Supabase URL or Anon Key missing from environment variables');
+  // Don't throw error here to avoid breaking the build, but log a clear message
+}
 
 /**
  * Creates a Supabase client for use in browser environments
  */
 export function createBrowserClient() {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('⚠️ Supabase connection failed: Missing environment variables');
+    // Return a dummy client that won't actually connect but won't break the app
+    // This is better than returning null which would cause runtime errors
+    return createClient('https://placeholder.supabase.co', 'placeholder-key', {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+  }
+
   return createClient<ExtendedDatabase>(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,

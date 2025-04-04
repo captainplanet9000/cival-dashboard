@@ -9,27 +9,28 @@ import { Database } from '@/types/database.types';
 // Define the Goal interface (matching the Supabase schema)
 export interface Goal {
   id: string;
-  name: string;
-  description: string | null;
-  type: string;
-  status: string;
+  title: string;
+  description?: string;
+  farm_id: string;
+  status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'waiting';
+  target_value: number;
+  current_value: number;
+  progress: number;
   created_at: string;
   updated_at: string;
   completed_at?: string;
-  deadline: string | null;
-  farm_id: string | null; // Updated to string to match Supabase IDs
-  user_id: string | null; // Updated to allow null to match data from Supabase
-  target_value: number | null;
-  current_value: number | null;
-  progress: number | null;
-  metrics?: {
-    startValue?: number;
-    currentValue?: number;
-    targetValue?: number;
-    [key: string]: any;
+  parent_goal_id?: string;
+  dependencies?: Array<{goal_id: string, title?: string}>;
+  dependency_type?: 'sequential' | 'parallel' | 'none';
+  template_id?: string;
+  performance_metrics?: any;
+  ai_settings?: {
+    allowed_models: string[];
+    prompt_template: string;
+    evaluation_criteria: string;
+    use_knowledge_base: boolean;
+    max_autonomous_steps: number;
   };
-  strategy?: string;
-  priority: string;
 }
 
 // API response types
@@ -445,5 +446,518 @@ export const goalService = {
       console.error('Error fetching goals:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
     }
-  }
+  },
+
+  /**
+   * Get agents assigned to a goal
+   */
+  async getGoalAgents(goalId: string): Promise<ApiResponse<{agents: any[], elizaAgents: any[]}>> {
+    try {
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      // Use the farm API endpoint to get agents for this goal
+      const farmId = goal.farm_id;
+      if (!farmId) {
+        return { error: 'Goal has no associated farm' };
+      }
+      
+      const url = `${getApiUrl('farms')}/${farmId}/goals/${goalId}/agents`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        // Try using Supabase as fallback
+        const supabase = createBrowserClient();
+        
+        // Get regular agents
+        const { data: agents } = await supabase
+          .from('agents')
+          .select('*')
+          .eq('farm_id', farmId)
+          .eq('goal_id', goalId);
+        
+        // Get ElizaOS agents if available
+        let elizaAgents = [];
+        try {
+          const { data: elizaData } = await supabase
+            .from('elizaos_agents')
+            .select('*')
+            .eq('farm_id', farmId)
+            .eq('goal_id', goalId);
+          
+          if (elizaData) {
+            elizaAgents = elizaData;
+          }
+        } catch (e) {
+          console.warn('Could not fetch ElizaOS agents:', e);
+        }
+        
+        return {
+          data: {
+            agents: agents || [],
+            elizaAgents: elizaAgents
+          }
+        };
+      }
+      
+      const result = await response.json();
+      return { data: result.data };
+    } catch (error) {
+      console.error('Error fetching goal agents:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Assign an agent to a goal
+   */
+  async assignAgentToGoal(goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+    try {
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      const farmId = goal.farm_id;
+      if (!farmId) {
+        return { error: 'Goal has no associated farm' };
+      }
+      
+      const url = `${getApiUrl('farms')}/${farmId}/assign-goal`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          goal_id: goalId,
+          agent_id: agentId,
+          is_eliza_agent: isElizaAgent
+        }),
+      });
+      
+      if (!response.ok) {
+        // Try using Supabase as fallback
+        const supabase = createBrowserClient();
+        
+        // Determine which table to update
+        const table = isElizaAgent ? 'elizaos_agents' : 'agents';
+        
+        // Verify agent exists and belongs to this farm
+        const { data: agent, error: agentError } = await supabase
+          .from(table)
+          .select('id, farm_id')
+          .eq('id', agentId)
+          .single();
+        
+        if (agentError || !agent || agent.farm_id !== farmId) {
+          return { error: 'Agent not found or does not belong to the same farm as the goal' };
+        }
+        
+        // Update agent
+        const { error } = await supabase
+          .from(table)
+          .update({ goal_id: goalId })
+          .eq('id', agentId);
+        
+        if (error) {
+          return { error: error.message };
+        }
+      }
+      
+      return { data: null };
+    } catch (error) {
+      console.error('Error assigning agent to goal:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Unassign an agent from a goal
+   */
+  async unassignAgentFromGoal(goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+    try {
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      const farmId = goal.farm_id;
+      if (!farmId) {
+        return { error: 'Goal has no associated farm' };
+      }
+      
+      const url = `${getApiUrl('farms')}/${farmId}/unassign-goal`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          agent_id: agentId,
+          is_eliza_agent: isElizaAgent
+        }),
+      });
+      
+      if (!response.ok) {
+        // Try using Supabase as fallback
+        const supabase = createBrowserClient();
+        
+        // Determine which table to update
+        const table = isElizaAgent ? 'elizaos_agents' : 'agents';
+        
+        // Verify agent exists and belongs to this farm
+        const { data: agent, error: agentError } = await supabase
+          .from(table)
+          .select('id, farm_id, goal_id')
+          .eq('id', agentId)
+          .single();
+        
+        if (agentError || !agent || agent.farm_id !== farmId) {
+          return { error: 'Agent not found or does not belong to the same farm as the goal' };
+        }
+        
+        // Verify agent is assigned to this goal
+        if (agent.goal_id !== goalId) {
+          return { error: 'Agent is not assigned to this goal' };
+        }
+        
+        // Update agent
+        const { error } = await supabase
+          .from(table)
+          .update({ goal_id: null })
+          .eq('id', agentId);
+        
+        if (error) {
+          return { error: error.message };
+        }
+      }
+      
+      return { data: null };
+    } catch (error) {
+      console.error('Error unassigning agent from goal:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Update goal progress
+   * This will update the current_value and progress of the goal
+   */
+  async updateGoalProgress(id: string, currentValue: number): Promise<ApiResponse<Goal>> {
+    try {
+      const { data: goal, error: getError } = await this.getGoalById(id);
+      
+      if (getError || !goal) {
+        return { error: getError || 'Goal not found' };
+      }
+      
+      // Calculate progress as percentage of target
+      const targetValue = goal.target_value || 1; // Avoid division by zero
+      const progress = Math.min(1, Math.max(0, currentValue / targetValue));
+      
+      // If goal is completed, set status and completed_at
+      let status = goal.status;
+      let completed_at = goal.completed_at;
+      
+      if (progress >= 1 && status !== 'completed') {
+        status = 'completed';
+        completed_at = new Date().toISOString();
+      } else if (progress < 1 && status === 'completed') {
+        status = 'in_progress';
+        completed_at = undefined; // Fix: Change null to undefined to match TypeScript type
+      } else if (progress > 0 && status === 'not_started') {
+        status = 'in_progress';
+      }
+      
+      // Update the goal
+      return await this.updateGoal(id, {
+        current_value: currentValue,
+        progress,
+        status,
+        completed_at
+      });
+    } catch (error) {
+      console.error('Error updating goal progress:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Get goals by farm ID for server components
+   */
+  async getGoalsByFarmServer(farmId: string): Promise<ApiResponse<Goal[]>> {
+    try {
+      const supabase = await createServerClient();
+      
+      const { data, error } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('farm_id', farmId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching goals by farm ID:', error);
+        return { error: error.message };
+      }
+      
+      return { data };
+    } catch (error) {
+      console.error('Error fetching goals by farm:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Add a dependency between goals
+   */
+  async addDependency(
+    goalId: string, 
+    dependencyGoalId: string
+  ): Promise<ApiResponse<Goal>> {
+    try {
+      // Get current dependencies
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      // Verify the dependency goal exists
+      const { data: depGoal, error: depGoalError } = await this.getGoalById(dependencyGoalId);
+      
+      if (depGoalError || !depGoal) {
+        return { error: depGoalError || 'Dependency goal not found' };
+      }
+      
+      // Make sure the goals are in the same farm
+      if (goal.farm_id !== depGoal.farm_id) {
+        return { error: 'Goals must be in the same farm to create dependencies' };
+      }
+      
+      // Check for circular dependency
+      if (dependencyGoalId === goalId) {
+        return { error: 'Cannot add self as dependency' };
+      }
+      
+      // Check if the dependency already exists
+      const dependencies = goal.dependencies || [];
+      if (dependencies.some(dep => dep.goal_id === dependencyGoalId)) {
+        return { error: 'Dependency already exists' };
+      }
+      
+      // Add new dependency
+      const updatedDependencies = [
+        ...dependencies,
+        { goal_id: dependencyGoalId, title: depGoal.title }
+      ];
+      
+      // Update goal
+      return await this.updateGoal(goalId, {
+        dependencies: updatedDependencies,
+        // If first dependency, set dependency type to sequential by default
+        dependency_type: goal.dependency_type || (dependencies.length === 0 ? 'sequential' : undefined)
+      });
+    } catch (error) {
+      console.error('Error adding goal dependency:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Remove a dependency between goals
+   */
+  async removeDependency(
+    goalId: string, 
+    dependencyGoalId: string
+  ): Promise<ApiResponse<Goal>> {
+    try {
+      // Get current dependencies
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      // Remove dependency
+      const dependencies = goal.dependencies || [];
+      const updatedDependencies = dependencies.filter(dep => dep.goal_id !== dependencyGoalId);
+      
+      if (dependencies.length === updatedDependencies.length) {
+        return { error: 'Dependency not found' };
+      }
+      
+      // Update goal
+      return await this.updateGoal(goalId, {
+        dependencies: updatedDependencies,
+        // If no dependencies left, set dependency type to none
+        dependency_type: updatedDependencies.length === 0 ? 'none' : undefined
+      });
+    } catch (error) {
+      console.error('Error removing goal dependency:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Set goal dependency type
+   */
+  async setDependencyType(
+    goalId: string, 
+    dependencyType: 'sequential' | 'parallel' | 'none'
+  ): Promise<ApiResponse<Goal>> {
+    try {
+      return await this.updateGoal(goalId, {
+        dependency_type: dependencyType
+      });
+    } catch (error) {
+      console.error('Error setting goal dependency type:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Set parent goal
+   */
+  async setParentGoal(
+    goalId: string, 
+    parentGoalId: string | null
+  ): Promise<ApiResponse<Goal>> {
+    try {
+      if (parentGoalId) {
+        // Verify the parent goal exists
+        const { data: parentGoal, error: parentGoalError } = await this.getGoalById(parentGoalId);
+        
+        if (parentGoalError || !parentGoal) {
+          return { error: parentGoalError || 'Parent goal not found' };
+        }
+        
+        // Get current goal
+        const { data: goal, error: goalError } = await this.getGoalById(goalId);
+        
+        if (goalError || !goal) {
+          return { error: goalError || 'Goal not found' };
+        }
+        
+        // Make sure the goals are in the same farm
+        if (goal.farm_id !== parentGoal.farm_id) {
+          return { error: 'Goals must be in the same farm to create parent-child relationship' };
+        }
+        
+        // Check for circular dependency
+        if (parentGoalId === goalId) {
+          return { error: 'Cannot add self as parent' };
+        }
+      }
+      
+      // Update goal
+      return await this.updateGoal(goalId, {
+        parent_goal_id: parentGoalId || null
+      });
+    } catch (error) {
+      console.error('Error setting parent goal:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Get child goals
+   */
+  async getChildGoals(
+    goalId: string
+  ): Promise<ApiResponse<Goal[]>> {
+    try {
+      const supabase = createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('parent_goal_id', goalId)
+        .order('created_at', { ascending: true });
+      
+      if (error) {
+        return { error: error.message };
+      }
+      
+      return { data };
+    } catch (error) {
+      console.error('Error getting child goals:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
+  
+  /**
+   * Check if goal can be started
+   */
+  async canStartGoal(goalId: string): Promise<ApiResponse<{can_start: boolean, blocking_dependencies?: any[]}>> {
+    try {
+      // Get goal
+      const { data: goal, error: goalError } = await this.getGoalById(goalId);
+      
+      if (goalError || !goal) {
+        return { error: goalError || 'Goal not found' };
+      }
+      
+      // If goal already started or completed, it can't be started again
+      if (goal.status === 'in_progress' || goal.status === 'completed') {
+        return { data: { can_start: false } };
+      }
+      
+      // If no dependencies or dependency type is none, can start
+      if (!goal.dependencies || goal.dependencies.length === 0 || goal.dependency_type === 'none') {
+        return { data: { can_start: true } };
+      }
+      
+      // Check dependencies based on dependency type
+      const dependencies = goal.dependencies;
+      const blockingDependencies = [];
+      
+      // For each dependency, check its status
+      for (const dep of dependencies) {
+        const { data: depGoal } = await this.getGoalById(dep.goal_id);
+        
+        if (depGoal) {
+          if (goal.dependency_type === 'sequential') {
+            // For sequential, all dependencies must be completed
+            if (depGoal.status !== 'completed') {
+              blockingDependencies.push({
+                id: depGoal.id,
+                title: depGoal.title,
+                status: depGoal.status
+              });
+            }
+          } else if (goal.dependency_type === 'parallel') {
+            // For parallel, all dependencies must be at least in progress
+            if (depGoal.status !== 'in_progress' && depGoal.status !== 'completed') {
+              blockingDependencies.push({
+                id: depGoal.id,
+                title: depGoal.title,
+                status: depGoal.status
+              });
+            }
+          }
+        }
+      }
+      
+      return { 
+        data: { 
+          can_start: blockingDependencies.length === 0,
+          blocking_dependencies: blockingDependencies.length > 0 ? blockingDependencies : undefined
+        } 
+      };
+    } catch (error) {
+      console.error('Error checking if goal can be started:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+    }
+  },
 };
