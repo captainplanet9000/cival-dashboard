@@ -2,7 +2,10 @@ export enum ExchangeType {
   BYBIT = 'bybit',
   COINBASE = 'coinbase',
   HYPERLIQUID = 'hyperliquid',
-  OKX = 'okx'
+  OKX = 'okx',
+  BINANCE = 'binance',
+  KRAKEN = 'kraken',
+  FTX = 'ftx'
 }
 
 export enum OrderType {

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import mockDataService from './mocks-index';
+import { mockFarmManager, mockFarmResponse } from './mocks-farm';
 
 // Create a mock implementation of the Supabase client
 export function createMockClient() {
@@ -19,6 +20,9 @@ export function createMockClient() {
       };
     }
   };
+
+  // Initiate mock farm manager
+  mockFarmManager.initialize();
 
   return {
     // Auth methods
@@ -50,7 +54,15 @@ export function createMockClient() {
               // Map table names to mock data
               switch (table) {
                 case 'farms':
-                  result = value ? [mockDataService.getFarm(value)] : mockDataService.getFarms();
+                  // Use the persistent farm manager
+                  if (column === 'id') {
+                    const farm = mockFarmManager.getFarmById(value);
+                    result = farm ? [farm] : [];
+                  } else if (column === 'owner_id') {
+                    result = mockFarmManager.getFarmsByOwnerId(value);
+                  } else {
+                    result = mockFarmManager.getAllFarms();
+                  }
                   break;
                 case 'agents':
                   result = value ? [mockDataService.getAgent(value)] : mockDataService.getStandardAgents();
@@ -100,7 +112,14 @@ export function createMockClient() {
             },
             in: (column: string, values: any[]) => ({
               then: (callback: Function) => {
-                callback({ data: [], error: null });
+                let result: any[] = [];
+                // Handle 'in' queries for farms
+                if (table === 'farms' && column === 'id') {
+                  result = values
+                    .map(id => mockFarmManager.getFarmById(id))
+                    .filter(Boolean);
+                }
+                callback({ data: result, error: null });
               }
             }),
             order: () => ({
@@ -110,16 +129,13 @@ export function createMockClient() {
                   let result: any[] = [];
                   switch(table) {
                     case 'farms':
-                      result = mockDataService.getFarms();
+                      result = mockFarmManager.getAllFarms();
                       break;
                     case 'agents':
                       result = mockDataService.getStandardAgents();
                       break;
                     case 'eliza_agents':
                       result = mockDataService.getElizaAgents();
-                      break;
-                    case 'orders':
-                      result = mockDataService.mockOrders;
                       break;
                     case 'markets':
                       result = mockDataService.getMarkets();
@@ -131,13 +147,19 @@ export function createMockClient() {
                 }
               }),
               then: (callback: Function) => {
-                const result = table === 'farms' ? mockDataService.getFarms() : [];
+                // Use persistent farm manager for farms
+                const result = table === 'farms' 
+                  ? mockFarmManager.getAllFarms() 
+                  : [];
                 callback({ data: result, error: null });
               }
             }),
             limit: () => ({
               then: (callback: Function) => {
-                const result = table === 'farms' ? mockDataService.getFarms() : [];
+                // Use persistent farm manager for farms
+                const result = table === 'farms' 
+                  ? mockFarmManager.getAllFarms() 
+                  : [];
                 callback({ data: result, error: null });
               }
             }),
@@ -146,7 +168,8 @@ export function createMockClient() {
               let result: any[] = [];
               switch(table) {
                 case 'farms':
-                  result = mockDataService.getFarms();
+                  // Use the persistent farm manager
+                  result = mockFarmManager.getAllFarms();
                   break;
                 case 'agents':
                   result = mockDataService.getStandardAgents();
@@ -164,22 +187,43 @@ export function createMockClient() {
             }
           };
         },
-        insert: () => ({
+        insert: (data) => ({
           then: (callback: Function) => {
-            callback({ data: { id: 'new-mock-id' }, error: null });
+            if (table === 'farms') {
+              // Use the persistent farm manager for farm creation
+              const newFarm = mockFarmManager.createFarm(data);
+              callback({ data: newFarm, error: null });
+            } else {
+              // Default mock response for other tables
+              callback({ data: { id: 'new-mock-id', ...data }, error: null });
+            }
           }
         }),
-        update: () => ({
-          eq: () => ({
+        update: (data) => ({
+          eq: (column: string, value: any) => ({
             then: (callback: Function) => {
-              callback({ data: {}, error: null });
+              if (table === 'farms' && column === 'id') {
+                // Use the persistent farm manager for farm updates
+                const updatedFarm = mockFarmManager.updateFarm(value, data);
+                callback({ data: updatedFarm, error: null });
+              } else {
+                // Default mock response for other tables
+                callback({ data: { id: value, ...data }, error: null });
+              }
             }
           })
         }),
         delete: () => ({
-          eq: () => ({
+          eq: (column: string, value: any) => ({
             then: (callback: Function) => {
-              callback({ data: {}, error: null });
+              if (table === 'farms' && column === 'id') {
+                // Use the persistent farm manager for farm deletion
+                const success = mockFarmManager.deleteFarm(value);
+                callback({ data: { success }, error: null });
+              } else {
+                // Default mock response for other tables
+                callback({ data: { success: true }, error: null });
+              }
             }
           })
         }),

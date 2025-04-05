@@ -21,7 +21,12 @@ import {
   Briefcase,
   Zap,
   Database,
-  Clock
+  Clock,
+  Store,
+  BarChart,
+  CreditCard,
+  Building2,
+  ArrowRightLeft
 } from "lucide-react";
 import { websocketConfig } from "@/config/app-config";
 import { usePathname } from 'next/navigation';
@@ -98,8 +103,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             </li>
             
-            {/* Banking & Vault Section - New */}
+            {/* Banking & Vault Section - Updated */}
             <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Banking</p>
+            <li>
+              <Link 
+                href="/dashboard/banking/unified" 
+                className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
+                  pathname.includes('/dashboard/banking/unified') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                }`}
+              >
+                <Building2 className="w-5 h-5 mr-3" />
+                Unified Banking
+              </Link>
+            </li>
             <li>
               <Link 
                 href="/dashboard/banking" 
@@ -111,22 +127,24 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </li>
             <li>
               <Link 
-                href="/dashboard/farm/wallets" 
+                href="/dashboard/banking/vault" 
                 className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
-                  pathname.includes('/dashboard/farm/wallets') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                  pathname.includes('/dashboard/banking/vault') ? 'bg-accent text-accent-foreground' : 'text-foreground'
                 }`}
               >
-                <Wallet className="w-5 h-5 mr-3" />
-                Legacy Wallets
+                <Shield className="w-5 h-5 mr-3" />
+                Vault
               </Link>
             </li>
             <li>
               <Link 
-                href="/dashboard/banking/vault" 
-                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
+                href="/dashboard/banking/exchange" 
+                className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
+                  pathname.includes('/dashboard/banking/exchange') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                }`}
               >
-                <Shield className="w-5 h-5 mr-3" />
-                Vault
+                <ArrowRightLeft className="w-5 h-5 mr-3" />
+                Exchange
               </Link>
             </li>
             <li>
@@ -138,38 +156,28 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 Transactions
               </Link>
             </li>
-            
-            {/* Trading Section */}
-            <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Trading</p>
             <li>
               <Link 
-                href="/dashboard/orders" 
-                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-              >
-                <BookOpen className="w-5 h-5 mr-3" />
-                Orders
-              </Link>
-            </li>
-            <li>
-              <Link 
-                href="/dashboard/trades" 
-                className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
-              >
-                <Repeat className="w-5 h-5 mr-3" />
-                Trades
-              </Link>
-            </li>
-            <li>
-              <Link 
-                href="/dashboard/flash-loans" 
+                href="/dashboard/banking/flash-loans" 
                 className="flex items-center p-2 text-foreground rounded-md hover:bg-accent hover:text-accent-foreground"
               >
                 <Zap className="w-5 h-5 mr-3" />
                 Flash Loans
               </Link>
             </li>
+            <li>
+              <Link 
+                href="/dashboard/banking/storage" 
+                className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
+                  pathname.includes('/dashboard/banking/storage') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                }`}
+              >
+                <Store className="w-5 h-5 mr-3" />
+                Storage
+              </Link>
+            </li>
             
-            {/* Analytics Section */}
+            {/* Analytics Section - Updated */}
             <p className="text-xs text-muted-foreground px-4 py-2 mt-2">Analytics</p>
             <li>
               <Link 
@@ -189,8 +197,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 Risk Analysis
               </Link>
             </li>
+            <li>
+              <Link 
+                href="/dashboard/analytics/market-insights" 
+                className={`flex items-center p-2 rounded-md hover:bg-accent hover:text-accent-foreground ${
+                  pathname.includes('/dashboard/analytics/market-insights') ? 'bg-accent text-accent-foreground' : 'text-foreground'
+                }`}
+              >
+                <BarChart className="w-5 h-5 mr-3" />
+                Market Insights
+              </Link>
+            </li>
             
-            {/* The Brain Section - NEW CONSOLIDATED SECTION */}
+            {/* The Brain Section */}
             <p className="text-xs text-muted-foreground px-4 py-2 mt-2">The Brain</p>
             <li>
               <Link 

@@ -24,11 +24,19 @@
 import { createClient } from '@supabase/supabase-js';
 import { createServerClient } from '@/utils/supabase/server';
 import { unifiedBankingService, LegacyWallet } from '@/services/unifiedBankingService';
-import { VaultAccountType } from '@/types/vault';
+import { VaultAccountType, TransactionStatus } from '@/types/vault';
 import chalk from 'chalk';
 import ora from 'ora';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+
+// Define the type for our parsed arguments
+interface MigrationArgs {
+  dryRun: boolean;
+  farm?: string;
+  verbose: boolean;
+  [key: string]: unknown;
+}
 
 // Parse command line arguments
 const argv = yargs(hideBin(process.argv))
@@ -47,7 +55,7 @@ const argv = yargs(hideBin(process.argv))
     default: false
   })
   .help()
-  .parse();
+  .parse() as MigrationArgs;
 
 // Initialize supabase client
 const supabase = createServerClient();
@@ -59,7 +67,7 @@ async function migrateToUnifiedBanking() {
   console.log(chalk.blue.bold('==================================='));
   console.log();
   
-  if (argv['dry-run']) {
+  if (argv.dryRun) {
     console.log(chalk.yellow('Running in DRY RUN mode - no changes will be made'));
     console.log();
   }
@@ -87,7 +95,8 @@ async function migrateToUnifiedBanking() {
       farmSpinner.succeed(`Loaded ${farms.length} farms`);
     }
   } catch (error) {
-    farmSpinner.fail(`Failed to load farms: ${error.message}`);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    farmSpinner.fail(`Failed to load farms: ${errorMessage}`);
     process.exit(1);
   }
   
@@ -101,7 +110,7 @@ async function migrateToUnifiedBanking() {
     const vaultSpinner = ora('Creating master vault').start();
     
     try {
-      if (!argv['dry-run']) {
+      if (!argv.dryRun) {
         // Check if master vault already exists
         const { data, error } = await supabase
           .from('vault_master')
@@ -126,7 +135,8 @@ async function migrateToUnifiedBanking() {
         vaultSpinner.succeed(`Would create master vault for: ${farm.name}`);
       }
     } catch (error) {
-      vaultSpinner.fail(`Failed to create master vault: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      vaultSpinner.fail(`Failed to create master vault: ${errorMessage}`);
       console.log(chalk.yellow('Skipping this farm and continuing with next'));
       continue;
     }
@@ -143,10 +153,11 @@ async function migrateToUnifiedBanking() {
         
       if (error) throw error;
       
-      legacyWallets = data;
+      legacyWallets = data || [];
       walletsSpinner.succeed(`Loaded ${legacyWallets.length} legacy wallets`);
     } catch (error) {
-      walletsSpinner.fail(`Failed to load legacy wallets: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      walletsSpinner.fail(`Failed to load legacy wallets: ${errorMessage}`);
       continue;
     }
     
@@ -157,7 +168,7 @@ async function migrateToUnifiedBanking() {
       const walletSpinner = ora(`Migrating wallet: ${wallet.name}`).start();
       
       try {
-        if (!argv['dry-run']) {
+        if (!argv.dryRun) {
           // Migrate the wallet
           await unifiedBankingService.migrateLegacyWallet(wallet, masterVault.id);
           walletSpinner.succeed(`Migrated: ${wallet.name} with balance ${wallet.balance} ${wallet.currency}`);
@@ -165,7 +176,8 @@ async function migrateToUnifiedBanking() {
           walletSpinner.succeed(`Would migrate: ${wallet.name} with balance ${wallet.balance} ${wallet.currency}`);
         }
       } catch (error) {
-        walletSpinner.fail(`Failed to migrate wallet ${wallet.name}: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        walletSpinner.fail(`Failed to migrate wallet ${wallet.name}: ${errorMessage}`);
       }
     }
     
@@ -173,7 +185,7 @@ async function migrateToUnifiedBanking() {
     const txSpinner = ora('Migrating transaction history').start();
     
     try {
-      if (!argv['dry-run']) {
+      if (!argv.dryRun) {
         const { data, error } = await supabase
           .from('transactions')
           .select('*')
@@ -184,7 +196,7 @@ async function migrateToUnifiedBanking() {
         // For each transaction, create an equivalent transaction in the new system
         let migratedCount = 0;
         
-        for (const tx of data) {
+        for (const tx of data || []) {
           // This is just a simplified example; you would need more sophisticated mapping
           try {
             await unifiedBankingService.createTransaction({
@@ -204,35 +216,37 @@ async function migrateToUnifiedBanking() {
                 migration_date: new Date().toISOString(),
                 original_data: tx
               },
-              status: mapTransactionStatus(tx.status),
+              status: mapTransactionStatus(tx.status) as TransactionStatus,
               approvalsRequired: 0
             });
             
             migratedCount++;
           } catch (error) {
             if (argv.verbose) {
-              console.log(`  Error migrating transaction ${tx.id}: ${error.message}`);
+              const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+              console.log(`  Error migrating transaction ${tx.id}: ${errorMessage}`);
             }
           }
         }
         
-        txSpinner.succeed(`Migrated ${migratedCount} of ${data.length} transactions`);
+        txSpinner.succeed(`Migrated ${migratedCount} of ${data?.length || 0} transactions`);
       } else {
         const { count } = await supabase
           .from('transactions')
           .select('*', { count: 'exact', head: true })
           .eq('farm_id', farm.id);
           
-        txSpinner.succeed(`Would migrate ${count} transactions`);
+        txSpinner.succeed(`Would migrate ${count || 0} transactions`);
       }
     } catch (error) {
-      txSpinner.fail(`Failed to migrate transactions: ${error.message}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      txSpinner.fail(`Failed to migrate transactions: ${errorMessage}`);
     }
     
     // Step 2.5: Perform validation
     console.log(chalk.blue('Validating migration:'));
     
-    if (!argv['dry-run']) {
+    if (!argv.dryRun) {
       // Validate balances
       const balanceSpinner = ora('Validating balances').start();
       
@@ -243,7 +257,7 @@ async function migrateToUnifiedBanking() {
           .select('balance')
           .eq('farm_id', farm.id);
           
-        const legacyTotal = legacyData.reduce((sum, w) => sum + (w.balance || 0), 0);
+        const legacyTotal = (legacyData || []).reduce((sum, w) => sum + (w.balance || 0), 0);
         
         // Get balance from new system
         const { data: newData } = await supabase
@@ -251,7 +265,7 @@ async function migrateToUnifiedBanking() {
           .select('balance')
           .eq('farm_id', farm.id);
           
-        const newTotal = newData.reduce((sum, a) => sum + (a.balance || 0), 0);
+        const newTotal = (newData || []).reduce((sum, a) => sum + (a.balance || 0), 0);
         
         // Check if balances match
         const difference = Math.abs(legacyTotal - newTotal);
@@ -263,7 +277,8 @@ async function migrateToUnifiedBanking() {
           balanceSpinner.warn(`Balance mismatch: Legacy=${legacyTotal}, New=${newTotal}, Diff=${difference}`);
         }
       } catch (error) {
-        balanceSpinner.fail(`Balance validation failed: ${error.message}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        balanceSpinner.fail(`Balance validation failed: ${errorMessage}`);
       }
     }
     
@@ -290,7 +305,7 @@ function mapTransactionType(legacyType: string): string {
     'trade': 'allocation'
   };
   
-  return typeMap[legacyType.toLowerCase()] || 'transfer';
+  return typeMap[legacyType?.toLowerCase()] || 'transfer';
 }
 
 function mapTransactionStatus(legacyStatus: string): string {
@@ -304,11 +319,12 @@ function mapTransactionStatus(legacyStatus: string): string {
     // Add any other legacy statuses here
   };
   
-  return statusMap[legacyStatus.toLowerCase()] || 'completed';
+  return statusMap[legacyStatus?.toLowerCase()] || 'completed';
 }
 
 // Run the migration
 migrateToUnifiedBanking().catch(error => {
-  console.error(chalk.red('Migration failed:'), error);
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+  console.error(chalk.red('Migration failed:'), errorMessage);
   process.exit(1);
 }); 

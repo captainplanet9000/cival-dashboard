@@ -2,6 +2,9 @@ import { BybitConnector } from './connectors/bybit-connector';
 import { CoinbaseConnector } from './connectors/coinbase-connector';
 import { HyperliquidConnector } from './connectors/hyperliquid-connector';
 import { OKXConnector } from './connectors/okx-connector';
+import { BinanceConnector } from './connectors/binance-connector';
+import { KrakenConnector } from './connectors/kraken-connector';
+import { FTXConnector } from './connectors/ftx-connector';
 import { ExchangeType, OrderType, OrderSide, TimeInForce } from '../../types/exchange-types';
 
 export class ExchangeConnector {
@@ -33,7 +36,39 @@ export class ExchangeConnector {
       )
     );
     
-    // Add other exchange connectors as needed
+    this.connectors.set(
+      ExchangeType.OKX,
+      new OKXConnector(
+        process.env.OKX_API_KEY!,
+        process.env.OKX_API_SECRET!,
+        process.env.OKX_PASSPHRASE!
+      )
+    );
+    
+    this.connectors.set(
+      ExchangeType.BINANCE,
+      new BinanceConnector(
+        process.env.BINANCE_API_KEY!,
+        process.env.BINANCE_API_SECRET!
+      )
+    );
+    
+    this.connectors.set(
+      ExchangeType.KRAKEN,
+      new KrakenConnector(
+        process.env.KRAKEN_API_KEY!,
+        process.env.KRAKEN_API_SECRET!
+      )
+    );
+    
+    this.connectors.set(
+      ExchangeType.FTX,
+      new FTXConnector(
+        process.env.FTX_API_KEY!,
+        process.env.FTX_API_SECRET!,
+        process.env.FTX_SUBACCOUNT
+      )
+    );
   }
   
   /**
