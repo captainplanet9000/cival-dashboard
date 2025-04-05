@@ -43,7 +43,7 @@ export interface VaultAccount {
   id: string;
   masterId: string;
   name: string;
-  type: VaultAccountType;
+  type: VaultAccountType | string;
   balance: number;
   lockedAmount: number;
   currency: string;
@@ -54,10 +54,12 @@ export interface VaultAccount {
   securityLevel: 'standard' | 'enhanced' | 'maximum';
   isActive: boolean;
   settings: {
-    withdrawalLimit: number;
-    withdrawalTimelock: number;
-    approvalRequired: boolean;
-    twoFactorRequired: boolean;
+    twoFactorRequired?: boolean;
+    withdrawalLimit?: number;
+    withdrawalTimelock?: number;
+    approvalRequired?: boolean;
+    allowExternalTransfers?: boolean;
+    customFields?: Record<string, any>;
   };
   createdAt: string;
   updatedAt: string;
@@ -65,14 +67,14 @@ export interface VaultAccount {
 
 export interface VaultTransaction {
   id: string;
-  type: TransactionType;
+  type: TransactionType | string;
   amount: number;
   currency: string;
   sourceId: string;
   sourceType: string;
   destinationId: string;
   destinationType: string;
-  status: TransactionStatus;
+  status: TransactionStatus | string;
   fee?: number;
   feeCurrency?: string;
   hash?: string;
@@ -81,8 +83,8 @@ export interface VaultTransaction {
   network?: string;
   confirmations?: number;
   approvalsRequired: number;
-  approvalsCurrent: number;
-  approverIds: string[];
+  approvalsCurrent?: number;
+  approverIds?: string[];
   metadata?: Record<string, any>;
   initiatedBy: string;
   approvedBy?: string;
@@ -105,43 +107,32 @@ export interface VaultBalance {
   }[];
 }
 
-export interface TransactionFilter {
-  accountId?: string;
-  types?: TransactionType[];
-  statuses?: TransactionStatus[];
-  fromDate?: string;
-  toDate?: string;
-  minAmount?: number;
-  maxAmount?: number;
-  search?: string;
-  limit?: number;
-  offset?: number;
-}
-
 export interface SecurityPolicy {
   id: string;
   accountId: string;
   withdrawalRules: {
-    limits: {
-      daily: number;
-      weekly: number;
-      monthly: number;
-    };
-    whitelistedAddresses: string[];
     requireApprovalThreshold: number;
-    cooldownPeriod: number;
+    dailyLimit: number;
+    monthlyLimit: number;
+    allowedAddresses?: string[];
+    blockedAddresses?: string[];
+    timelock?: number; // In hours
   };
   accessRules: {
-    ipWhitelist: string[];
-    requiredAuthMethods: string[];
-    sessionTimeout: number;
-    inactivityLockout: boolean;
+    allowedIpAddresses?: string[];
+    allowedCountries?: string[];
+    twoFactorRequired: boolean;
+    allowedDevices?: string[];
+    deviceVerification: boolean;
+    passwordRequiredForHighValueTx: boolean;
   };
   alertRules: {
-    unusualActivityThreshold: number;
-    largeTransferThreshold: number;
-    newDeviceNotification: boolean;
-    failedLoginThreshold: number;
+    alertOnLogin: boolean;
+    alertOnHighValueTx: boolean;
+    alertOnSuspiciousTx: boolean;
+    alertThreshold: number;
+    alertEmail?: string;
+    alertPhone?: string;
   };
   createdAt: string;
   updatedAt: string;
@@ -151,11 +142,24 @@ export interface AuditLogEntry {
   id: string;
   timestamp: string;
   action: string;
-  userId: string;
+  userId?: string;
   ipAddress?: string;
   userAgent?: string;
   accountId?: string;
   transactionId?: string;
   details?: Record<string, any>;
   severity: 'info' | 'warning' | 'critical';
+}
+
+export interface TransactionFilter {
+  accountId?: string;
+  types?: TransactionType[] | string[];
+  statuses?: TransactionStatus[] | string[];
+  fromDate?: string;
+  toDate?: string;
+  minAmount?: number;
+  maxAmount?: number;
+  search?: string;
+  limit?: number;
+  offset?: number;
 } 

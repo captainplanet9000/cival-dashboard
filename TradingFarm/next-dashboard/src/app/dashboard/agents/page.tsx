@@ -80,8 +80,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AgentCreationDialog } from "@/components/agents/agent-creation-dialog";
-import { ElizaAgentCreationDialog } from "@/components/eliza/ElizaAgentCreationDialog";
+import { UnifiedAgentCreationDialog } from "@/components/agents/unified-agent-creation-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -465,12 +464,7 @@ export default function AgentsPage() {
             <DropdownMenuContent>
               <DropdownMenuItem asChild>
                 <div className="w-full px-2 py-1.5">
-                  <AgentCreationDialog onSuccess={handleAgentCreated} buttonText="Standard Agent" />
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <div className="w-full px-2 py-1.5">
-                  <ElizaAgentCreationDialog onSuccess={fetchAgents} buttonText="ElizaOS Agent" />
+                  <UnifiedAgentCreationDialog onSuccess={handleAgentCreated} />
                 </div>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -570,7 +564,7 @@ export default function AgentsPage() {
               Clear Filters
             </Button>
           ) : (
-            <AgentCreationDialog />
+            <UnifiedAgentCreationDialog />
           )}
         </div>
       ) : (

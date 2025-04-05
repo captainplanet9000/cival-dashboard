@@ -11,7 +11,7 @@ import {
   Settings, 
   History,
   BookOpenCheck,
-  BriefcaseBusiness,
+  Briefcase,
   Blocks
 } from 'lucide-react';
 
@@ -34,14 +34,14 @@ export function Sidebar({ farmId }: SidebarProps) {
       icon: LineChart
     },
     {
-      name: 'Wallets',
-      href: `/dashboard/${farmId}/wallets`,
+      name: 'Vault',
+      href: `/dashboard/${farmId}/vault`,
       icon: Wallet
     },
     {
       name: 'Strategies',
       href: `/dashboard/${farmId}/strategies`,
-      icon: BriefcaseBusiness
+      icon: Briefcase
     },
     {
       name: 'Transactions',

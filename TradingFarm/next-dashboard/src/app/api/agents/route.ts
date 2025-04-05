@@ -136,6 +136,14 @@ const mockAgents: AgentResult[] = [
 ];
 
 const isMockModeEnabled = () => {
+  // Check for window global config first (client-side)
+  if (typeof window !== 'undefined' && 
+      window.devConfig && 
+      (window.devConfig.mockDataConfig.enabled || window.devConfig.mockDataConfig.forceMockMode)) {
+    return true;
+  }
+  
+  // Fallback to environment variables (server-side)
   return process.env.NEXT_PUBLIC_FORCE_MOCK_MODE === 'true' || 
          process.env.NEXT_PUBLIC_MOCK_API_ENABLED === 'true';
 };
@@ -259,30 +267,38 @@ export async function POST(request: NextRequest) {
   try {
     const requestData = await request.json();
     
+    // Mock mode handling enhanced for both regular and ElizaOS agents
     if (isMockModeEnabled()) {
-      console.log('Using mock agent creation in API');
+      console.log('Creating agent in mock mode:', requestData);
+      
+      const mockId = `mock-agent-${Date.now().toString().substring(7)}`;
+      const now = new Date().toISOString();
+      
+      // Create a new mock agent based on the request
       const newMockAgent: AgentResult = {
-        id: `mock-${Date.now()}`,
-        name: requestData.name,
-        farm_id: requestData.farm_id,
-        user_id: null,
-        status: requestData.status || 'initializing',
-        type: requestData.type || 'eliza',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        id: mockId,
+        name: requestData.name || 'New Mock Agent',
+        farm_id: requestData.farm_id || null,
+        user_id: requestData.user_id || 'mock-user-1',
+        status: requestData.status || 'active',
+        type: requestData.type || 'standard', // Could be 'standard', 'eliza', etc.
+        created_at: now,
+        updated_at: now,
         config: {
-          description: requestData.description || '',
-          strategy_type: requestData.strategy_type || 'custom',
-          risk_level: requestData.risk_level || 'medium',
-          target_markets: requestData.target_markets || [],
+          description: requestData.description || requestData.config?.description || '',
+          strategy_type: requestData.strategy_type || requestData.config?.strategy_type || 'default',
+          risk_level: requestData.risk_level || requestData.config?.risk_level || 'medium',
+          target_markets: requestData.target_markets || requestData.config?.target_markets || ['BTC/USDT'],
           performance_metrics: {
             win_rate: 0,
             profit_loss: 0,
             total_trades: 0,
-            average_trade_duration: 0
+            average_trade_duration: 0,
+            ...(requestData.performance_metrics || requestData.config?.performance_metrics || {})
           },
           ...(requestData.config || {})
         },
+        instructions: requestData.instructions || null,
         performance: {
           win_rate: 0,
           profit_loss: 0,
@@ -290,9 +306,24 @@ export async function POST(request: NextRequest) {
           average_trade_duration: 0
         }
       };
+      
+      // If farm_id is provided, add farm details
+      if (requestData.farm_id) {
+        // Find the farm in mock data or create a placeholder
+        newMockAgent.farms = {
+          id: requestData.farm_id,
+          name: `Farm ${requestData.farm_id}`
+        };
+      }
+      
+      // Add the new agent to the mock agents array for future requests
+      mockAgents.push(newMockAgent);
+      
+      console.log('Created mock agent:', newMockAgent);
+      
       return NextResponse.json({ 
         agent: newMockAgent,
-        message: 'Agent created successfully (mock)' 
+        message: `${requestData.type === 'eliza' ? 'ElizaOS' : 'Standard'} agent created successfully (mock)` 
       });
     }
     

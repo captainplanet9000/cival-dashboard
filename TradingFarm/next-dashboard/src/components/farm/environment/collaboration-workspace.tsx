@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -64,20 +64,20 @@ interface CollaborationWorkspaceProps {
 }
 
 export function CollaborationWorkspace({ farmId }: CollaborationWorkspaceProps) {
-  const [activeTab, setActiveTab] = useState('chat');
-  const [members, setMembers] = useState<Member[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [knowledgeBase, setKnowledgeBase] = useState<KnowledgeItem[]>([]);
-  const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState({
+  const [activeTab, setActiveTab] = React.useState('chat');
+  const [members, setMembers] = React.useState<Member[]>([]);
+  const [messages, setMessages] = React.useState<Message[]>([]);
+  const [knowledgeBase, setKnowledgeBase] = React.useState<KnowledgeItem[]>([]);
+  const [newMessage, setNewMessage] = React.useState('');
+  const [loading, setLoading] = React.useState({
     members: false,
     messages: false,
     knowledge: false
   });
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = React.useState('');
 
   // Fetch members, messages, and knowledge base on component mount
-  useEffect(() => {
+  React.useEffect(() => {
     fetchMembers();
     fetchMessages();
     fetchKnowledgeBase();
@@ -148,7 +148,7 @@ export function CollaborationWorkspace({ farmId }: CollaborationWorkspaceProps) 
           senderName: 'John Trader',
           senderAvatar: '/avatars/user-01.png',
           isAgent: false,
-          content: 'I\'ve set up a new trend following strategy for BTC. Can anyone review it?',
+          content: "I've set up a new trend following strategy for BTC. Can anyone review it?",
           timestamp: '2025-04-03T14:30:00Z'
         },
         {
@@ -157,7 +157,7 @@ export function CollaborationWorkspace({ farmId }: CollaborationWorkspaceProps) 
           senderName: 'TrendBot',
           senderAvatar: '/avatars/bot-01.png',
           isAgent: true,
-          content: 'I analyzed your strategy parameters. The fast period (9) and slow period (21) look good for the current market volatility. I would suggest increasing the signal period from 9 to 12 for better filtering of false signals.',
+          content: "Looking at your strategy parameters, I recommend increasing the lookback period from 14 to 21 days due to recent market conditions.",
           timestamp: '2025-04-03T14:32:00Z'
         },
         {
@@ -166,7 +166,7 @@ export function CollaborationWorkspace({ farmId }: CollaborationWorkspaceProps) 
           senderName: 'Sarah Analyst',
           senderAvatar: '/avatars/user-02.png',
           isAgent: false,
-          content: 'I agree with TrendBot. Also, have you considered adding a volume filter? Recent BTC movements have had low volume which could lead to false breakouts.',
+          content: "I agree with TrendBot. Also, have you considered adding a volume filter? Recent BTC movements have had low volume which could lead to false breakouts.",
           timestamp: '2025-04-03T14:35:00Z'
         },
         {
@@ -175,7 +175,7 @@ export function CollaborationWorkspace({ farmId }: CollaborationWorkspaceProps) 
           senderName: 'MeanReversionAgent',
           senderAvatar: '/avatars/bot-02.png',
           isAgent: true,
-          content: 'I've detected increased volatility in BTC over the past 4 hours. This may impact trend following strategies. Consider adjusting your parameters or using a volatility filter.',
+          content: "I've detected increased volatility in BTC over the past 4 hours. This may impact trend following strategies. Consider adjusting your parameters or using a volatility filter.",
           timestamp: '2025-04-03T14:40:00Z',
           attachments: [
             {

@@ -47,10 +47,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 
+// Import the unified dialog instead of the separate one
+import { UnifiedAgentCreationDialog } from "@/components/agents/unified-agent-creation-dialog";
+
 // Service and Hooks
 import { ElizaAgent, elizaOSAgentService } from '@/services/elizaos-agent-service';
 import { useElizaAgents } from '@/hooks/useElizaAgents';
-import { ElizaAgentCreationDialog } from '@/components/eliza/ElizaAgentCreationDialog';
 
 export default function ElizaAgentsPage() {
   const { agents, loading, error, refreshAgents, controlAgent } = useElizaAgents();
@@ -130,7 +132,7 @@ export default function ElizaAgentsPage() {
               Create and manage your AI agents for automated trading and market analysis
             </p>
           </div>
-          <ElizaAgentCreationDialog onSuccess={refreshAgents} />
+          <UnifiedAgentCreationDialog onSuccess={refreshAgents} />
         </div>
         
         {/* Filters and View Controls */}
@@ -255,7 +257,7 @@ export default function ElizaAgentsPage() {
                 }
               </p>
               {agents.length === 0 ? (
-                <ElizaAgentCreationDialog 
+                <UnifiedAgentCreationDialog 
                   buttonText="Create First Agent" 
                   onSuccess={refreshAgents} 
                 />

@@ -117,7 +117,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 }`}
               >
                 <Wallet className="w-5 h-5 mr-3" />
-                Wallets
+                Legacy Wallets
               </Link>
             </li>
             <li>
