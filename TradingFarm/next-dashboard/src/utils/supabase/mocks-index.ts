@@ -96,6 +96,25 @@ import {
   getAggregateFeedbackRatings
 } from './mocks-analytics';
 
+import {
+  StorageStatus,
+  StorageType,
+  mockAgentStorages,
+  mockFarmStorages,
+  mockStorageAllocations,
+  mockStorageTransactions,
+  mockStorageAuditLogs,
+  getAgentStorageById,
+  getFarmStorageById,
+  getAgentStoragesByAgentId,
+  getFarmStoragesByFarmId,
+  getStorageAllocationsByStorageId,
+  getStorageAllocationsByAllocatedTo,
+  getStorageTransactionsByStorageId,
+  getStorageAuditLogsByStorageId,
+  getStorageHealthStatus
+} from './mocks-storage';
+
 // Re-export all imported mock data
 export {
   // Base mock data
@@ -142,6 +161,15 @@ export {
   mockAdoptionFunnel,
   mockUserFeedback,
   
+  // Storage mock data
+  StorageStatus,
+  StorageType,
+  mockAgentStorages,
+  mockFarmStorages,
+  mockStorageAllocations, 
+  mockStorageTransactions,
+  mockStorageAuditLogs,
+  
   // Helper functions from individual modules
   getFarmById,
   getUserById,
@@ -183,7 +211,18 @@ export {
   getSystemMetricsByDateRange,
   getAdoptionFunnelData,
   getUserFeedbackByFeature,
-  getAggregateFeedbackRatings
+  getAggregateFeedbackRatings,
+  
+  // Storage helper functions
+  getAgentStorageById,
+  getFarmStorageById,
+  getAgentStoragesByAgentId,
+  getFarmStoragesByFarmId,
+  getStorageAllocationsByStorageId,
+  getStorageAllocationsByAllocatedTo,
+  getStorageTransactionsByStorageId,
+  getStorageAuditLogsByStorageId,
+  getStorageHealthStatus
 };
 
 // Integrated helper functions that combine data from multiple mock sources
@@ -206,6 +245,7 @@ export function getCompleteFarmData(farmId: string) {
     new Date().toISOString().split('T')[0]
   );
   const riskMetrics = getRiskMetricsByFarmId(farmId);
+  const farmStorages = getFarmStoragesByFarmId(farmId);
   
   return {
     farm,
@@ -215,7 +255,8 @@ export function getCompleteFarmData(farmId: string) {
     orders,
     exchangeConnections,
     performance,
-    riskMetrics
+    riskMetrics,
+    farmStorages
   };
 }
 
@@ -234,6 +275,7 @@ export function getCompleteAgentData(agentId: string) {
   const configuration = getAgentConfigurationByAgentId(agentId);
   const conversations = getAgentConversationsByAgentId(agentId);
   const orders = getOrdersByAgentId(agentId);
+  const agentStorages = getAgentStoragesByAgentId(agentId);
   
   // Get performance data for the last 30 days
   const performance = getAgentPerformanceByDateRange(
@@ -255,7 +297,36 @@ export function getCompleteAgentData(agentId: string) {
     conversations,
     orders,
     performance,
-    strategyPerformance
+    strategyPerformance,
+    agentStorages
+  };
+}
+
+/**
+ * Get complete storage data for a specific entity
+ */
+export function getCompleteStorageData(storageId: string, storageType: StorageType) {
+  let storage = null;
+  
+  if (storageType === StorageType.AGENT) {
+    storage = getAgentStorageById(storageId);
+  } else if (storageType === StorageType.FARM) {
+    storage = getFarmStorageById(storageId);
+  }
+  
+  if (!storage) return null;
+  
+  const allocations = getStorageAllocationsByStorageId(storageId, storageType);
+  const transactions = getStorageTransactionsByStorageId(storageId, storageType);
+  const auditLogs = getStorageAuditLogsByStorageId(storageId, storageType);
+  const healthStatus = getStorageHealthStatus(storageId, storageType);
+  
+  return {
+    storage,
+    allocations,
+    transactions,
+    auditLogs,
+    healthStatus
   };
 }
 
@@ -461,7 +532,8 @@ export const mockDataService = {
   getCompleteExchangeData,
   getCompleteGoalData,
   getCompleteMarketData,
-  getDashboardData
+  getDashboardData,
+  getCompleteStorageData
 };
 
 // Export mock data service as default

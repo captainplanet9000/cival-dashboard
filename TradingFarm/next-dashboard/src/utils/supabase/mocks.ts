@@ -198,6 +198,9 @@ export const mockVaultMaster = [
   },
 ];
 
+// Rename mockVaultMaster to mockVaults for consistency
+export const mockVaults = mockVaultMaster;
+
 // Mock vault transactions
 export const mockVaultTransactions = [
   {
@@ -337,4 +340,26 @@ export function mockErrorResponse(message = 'Mock error', delay = 500) {
       resolve({ data: null, error: { message } });
     }, delay);
   });
+}
+
+// Helper functions for getting vault data
+export function getFarmById(farmId: string) {
+  return mockFarms.find(farm => farm.id === farmId);
+}
+
+export function getUserById(userId: string) {
+  return mockUsers.find(user => user.id === userId);
+}
+
+export function getVaultsByFarmId(farmId: string) {
+  return mockVaults.filter(vault => vault.farm_id === farmId);
+}
+
+export function getAccountsByVaultId(vaultId: number) {
+  const vault = mockVaults.find(v => v.id === vaultId);
+  return vault ? vault.accounts : [];
+}
+
+export function getTransactionsByAccountId(accountId: number) {
+  return mockVaultTransactions.filter(tx => tx.account_id === accountId);
 }

@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Queue Monitor Dashboard
  * A dashboard for monitoring Bull queues and jobs
