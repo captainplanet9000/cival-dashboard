@@ -1,5 +1,4 @@
 # Project ID for the Supabase project
-project_id = "bgvlzvswzpfoywfxehis"
-
-# API URL for the Supabase project
-api_url = "https://bgvlzvswzpfoywfxehis.supabase.co"
+[api]
+project_ref_id = "bgvlzvswzpfoywfxehis"
+url = "https://bgvlzvswzpfoywfxehis.supabase.co"

@@ -9,7 +9,8 @@
     "start": "next start",
     "start:full": "NODE_ENV=production node server.js",
     "lint": "next lint",
-    "ingest:farmdocs": "node src/scripts/run-farm-docs-ingestion.js"
+    "ingest:farmdocs": "node src/scripts/run-farm-docs-ingestion.js",
+    "setup:llm": "node src/scripts/create-llm-tables.js"
   },
   "dependencies": {
     "@bull-board/api": "^6.8.0",
