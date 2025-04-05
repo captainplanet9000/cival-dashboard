@@ -36,17 +36,35 @@ import {
   ServerOff, 
   Sliders, 
   HardDriveUpload,
-  RefreshCw
+  RefreshCw,
+  CreditCard,
+  Loader2
 } from 'lucide-react';
 import { storageService } from '@/services/storageService';
 import { integrationService } from '@/services/integrationService';
 import { AgentStorage, StorageStats, StorageType, StorageStatus } from '@/types/storage';
-import { formatBytes } from '@/lib/utils';
+import { formatBytes, formatDate } from '@/lib/utils';
 import StorageAllocationTable from './StorageAllocationTable';
 import StorageTransactionList from './StorageTransactionList';
 import { toast } from '@/components/ui/use-toast';
 import StorageExpansionDialog from './StorageExpansionDialog';
 import StorageUsageChart from './StorageUsageChart';
+import {
+  Label,
+  Input,
+  Textarea,
+  Switch,
+  Slider,
+  Separator
+} from "@/components/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from "@/components/ui/dialog";
 
 interface AgentStorageDashboardProps {
   agentId: string;
@@ -65,6 +83,43 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
   // Storage usage history for chart
   const [usageHistory, setUsageHistory] = useState<{ date: string; used: number }[]>([]);
 
+  // New state for settings
+  const [settingsChanged, setSettingsChanged] = useState(false);
+  const [updatingSettings, setUpdatingSettings] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<{
+    name: string;
+    description: string;
+    autoExpand: boolean;
+    expansionThreshold: number;
+    maxCapacity: number;
+    backupEnabled: boolean;
+    encryptionEnabled: boolean;
+  }>({
+    name: '',
+    description: '',
+    autoExpand: false,
+    expansionThreshold: 80,
+    maxCapacity: 0,
+    backupEnabled: false,
+    encryptionEnabled: false
+  });
+
+  // Add health check state
+  const [runningHealthCheck, setRunningHealthCheck] = useState(false);
+  const [healthCheckResults, setHealthCheckResults] = useState<{
+    status: 'good' | 'warning' | 'critical';
+    details: {
+      consistencyCheck: boolean;
+      performanceIssues: boolean;
+      encryptionStatus: boolean;
+      backupStatus: boolean;
+      utilizationStatus: 'good' | 'warning' | 'critical';
+      recentErrors: number;
+      recommendations: string[];
+    };
+  } | null>(null);
+  const [showHealthResults, setShowHealthResults] = useState(false);
+
   useEffect(() => {
     loadAgentStorages();
   }, [agentId]);
@@ -73,6 +128,21 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
     if (selectedStorage) {
       loadStorageStats();
       loadUsageHistory();
+    }
+  }, [selectedStorage]);
+
+  useEffect(() => {
+    if (selectedStorage) {
+      setSettingsForm({
+        name: selectedStorage.name,
+        description: selectedStorage.description || '',
+        autoExpand: selectedStorage.settings.autoExpand || false,
+        expansionThreshold: selectedStorage.settings.expansionThresholdPercent || 80,
+        maxCapacity: selectedStorage.settings.maxCapacity || selectedStorage.capacity * 2,
+        backupEnabled: selectedStorage.settings.backupEnabled || false,
+        encryptionEnabled: selectedStorage.settings.encryptionEnabled || false
+      });
+      setSettingsChanged(false);
     }
   }, [selectedStorage]);
 
@@ -214,6 +284,97 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
       case StorageStatus.MAINTENANCE: return 'text-blue-500 bg-blue-100';
       default: return 'text-gray-500 bg-gray-100';
     }
+  };
+
+  // Handle settings changes
+  const handleSettingChange = (field: string, value: any) => {
+    setSettingsForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    setSettingsChanged(true);
+  };
+
+  // Save settings
+  const handleSaveSettings = async () => {
+    if (!selectedStorage) return;
+    
+    try {
+      setUpdatingSettings(true);
+      
+      const updates = {
+        name: settingsForm.name,
+        description: settingsForm.description,
+        settings: {
+          ...selectedStorage.settings,
+          autoExpand: settingsForm.autoExpand,
+          expansionThresholdPercent: settingsForm.expansionThreshold,
+          maxCapacity: settingsForm.maxCapacity,
+          backupEnabled: settingsForm.backupEnabled,
+          encryptionEnabled: settingsForm.encryptionEnabled
+        }
+      };
+      
+      await storageService.updateAgentStorage(selectedStorage.id, updates);
+      
+      toast({
+        title: "Settings Updated",
+        description: "Storage settings have been successfully updated"
+      });
+      
+      setSettingsChanged(false);
+      
+      // Reload storage data
+      await loadAgentStorages();
+      
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      toast({
+        title: "Update Failed",
+        description: (error as Error).message || "Could not update settings",
+        variant: "destructive"
+      });
+    } finally {
+      setUpdatingSettings(false);
+    }
+  };
+
+  // Add health check function
+  const handleHealthCheck = async () => {
+    if (!selectedStorage) return;
+    
+    try {
+      setRunningHealthCheck(true);
+      
+      const results = await storageService.runAgentStorageHealthCheck(selectedStorage.id);
+      
+      setHealthCheckResults(results);
+      setShowHealthResults(true);
+      
+      // Update storage stats to reflect current health
+      loadStorageStats();
+      
+      toast({
+        title: "Health Check Complete",
+        description: `Storage health: ${results.status.toUpperCase()}`,
+        variant: results.status === 'good' ? 'default' : 
+               (results.status === 'warning' ? 'warning' : 'destructive')
+      });
+    } catch (error) {
+      console.error('Error running health check:', error);
+      toast({
+        title: "Health Check Failed",
+        description: (error as Error).message || "Could not complete health check",
+        variant: "destructive"
+      });
+    } finally {
+      setRunningHealthCheck(false);
+    }
+  };
+
+  // Add function to close health results
+  const handleCloseHealthResults = () => {
+    setShowHealthResults(false);
   };
 
   if (loading && !selectedStorage) {
@@ -381,9 +542,24 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
                   </div>
                 </CardContent>
                 <CardFooter className="pt-0">
-                  <Button variant="outline" size="sm" className="w-full">
-                    <AlertCircle className="h-4 w-4 mr-2" />
-                    Health Check
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={handleHealthCheck}
+                    disabled={runningHealthCheck}
+                  >
+                    {runningHealthCheck ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Checking...
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="h-4 w-4 mr-2" />
+                        Health Check
+                      </>
+                    )}
                   </Button>
                 </CardFooter>
               </Card>
@@ -398,93 +574,92 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
                       {storageStats?.allocationCount || 0}
                     </div>
                     <div className="text-xs text-muted-foreground">
-                      Active allocations
+                      {formatBytes(selectedStorage.usedSpace)} allocated of {formatBytes(selectedStorage.capacity)}
                     </div>
-                    <div className="mt-2">
-                      <Progress 
-                        value={(selectedStorage.usedSpace / selectedStorage.capacity) * 100} 
-                        className="h-2"
-                      />
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {formatBytes(selectedStorage.usedSpace)} allocated of {formatBytes(selectedStorage.capacity)}
+                    <div className="h-[100px] mt-4">
+                      <div className="w-full h-full bg-secondary/30 relative rounded-lg overflow-hidden">
+                        <div className="absolute inset-0 grid grid-cols-4 grid-rows-4 gap-1 p-1">
+                          {/* Example allocation blocks */}
+                          <div className="bg-blue-500/60 rounded col-span-2 row-span-2" title="Algorithm Data">
+                            <div className="w-full h-full flex items-center justify-center text-[8px] text-white font-medium">
+                              45%
+                            </div>
+                          </div>
+                          <div className="bg-green-500/60 rounded col-span-1 row-span-1" title="Market Data">
+                            <div className="w-full h-full flex items-center justify-center text-[8px] text-white font-medium">
+                              30%
+                            </div>
+                          </div>
+                          <div className="bg-yellow-500/60 rounded col-span-1 row-span-1" title="Models">
+                            <div className="w-full h-full flex items-center justify-center text-[8px] text-white font-medium">
+                              15%
+                            </div>
+                          </div>
+                          <div className="bg-purple-500/60 rounded col-span-1 row-span-1" title="Logs">
+                            <div className="w-full h-full flex items-center justify-center text-[8px] text-white font-medium">
+                              5%
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </CardContent>
                 <CardFooter className="pt-0">
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    className="w-full"
-                    onClick={() => setActiveTab('allocations')}
-                  >
-                    <Database className="h-4 w-4 mr-2" />
-                    Manage Allocations
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Allocation
                   </Button>
                 </CardFooter>
               </Card>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Storage Usage History</CardTitle>
-                  <CardDescription>
-                    30-day view of storage utilization
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="h-[300px]">
-                  <StorageUsageChart 
-                    data={usageHistory.map(item => ({ 
-                      date: item.date, 
-                      used: item.used,
-                      reserved: 0 // Agent storage doesn't use reservations
-                    }))} 
-                    capacity={selectedStorage.capacity}
-                    showReserved={false}
-                  />
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <StorageUsageChart 
+                usageHistory={usageHistory}
+                title="Storage Usage Over Time"
+                description="Historical view of storage utilization"
+              />
               
               <Card>
-                <CardHeader>
-                  <CardTitle>Storage Content</CardTitle>
-                  <CardDescription>
-                    Main data types stored in this volume
-                  </CardDescription>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Storage Properties</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">Model Data</span>
-                        <span className="text-sm">{formatBytes(selectedStorage.capacity * 0.45)}</span>
-                      </div>
-                      <Progress value={45} className="h-2" />
+                <CardContent className="p-0">
+                  <div className="border-b">
+                    <div className="grid grid-cols-2 py-2 px-4">
+                      <div className="text-sm font-medium">Created</div>
+                      <div className="text-sm">{formatDate(selectedStorage.createdAt)}</div>
                     </div>
-                    
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">Market History</span>
-                        <span className="text-sm">{formatBytes(selectedStorage.capacity * 0.3)}</span>
-                      </div>
-                      <Progress value={30} className="h-2" />
+                  </div>
+                  <div className="border-b">
+                    <div className="grid grid-cols-2 py-2 px-4">
+                      <div className="text-sm font-medium">Max Capacity</div>
+                      <div className="text-sm">{formatBytes(selectedStorage.settings.maxCapacity || selectedStorage.capacity * 2)}</div>
                     </div>
-                    
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">Trading Records</span>
-                        <span className="text-sm">{formatBytes(selectedStorage.capacity * 0.15)}</span>
-                      </div>
-                      <Progress value={15} className="h-2" />
+                  </div>
+                  <div className="border-b">
+                    <div className="grid grid-cols-2 py-2 px-4">
+                      <div className="text-sm font-medium">Auto-expand</div>
+                      <div className="text-sm">{selectedStorage.settings.autoExpand ? 'Enabled' : 'Disabled'}</div>
                     </div>
-                    
-                    <div>
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">Configuration</span>
-                        <span className="text-sm">{formatBytes(selectedStorage.capacity * 0.05)}</span>
+                  </div>
+                  <div className="border-b">
+                    <div className="grid grid-cols-2 py-2 px-4">
+                      <div className="text-sm font-medium">Encryption</div>
+                      <div className="text-sm">{selectedStorage.settings.encryptionEnabled ? 'Enabled' : 'Disabled'}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="grid grid-cols-2 py-2 px-4">
+                      <div className="text-sm font-medium">Vault Account</div>
+                      <div className="text-sm">
+                        {selectedStorage.vaultAccountId ? (
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {selectedStorage.vaultAccountId.substring(0, 8)}...
+                          </Badge>
+                        ) : 'None'}
                       </div>
-                      <Progress value={5} className="h-2" />
                     </div>
                   </div>
                 </CardContent>
@@ -494,16 +669,17 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
           
           <TabsContent value="allocations">
             <StorageAllocationTable 
-              storageId={selectedStorage?.id || ''} 
+              storageId={selectedStorage.id} 
               storageType={StorageType.AGENT}
-              onUpdate={handleRefresh}
+              onAllocationChanged={loadAgentStorages}
             />
           </TabsContent>
           
           <TabsContent value="transactions">
             <StorageTransactionList 
-              storageId={selectedStorage?.id || ''} 
+              storageId={selectedStorage.id}
               storageType={StorageType.AGENT}
+              limit={20}
             />
           </TabsContent>
           
@@ -512,119 +688,311 @@ export default function AgentStorageDashboard({ agentId, userId }: AgentStorageD
               <CardHeader>
                 <CardTitle>Storage Settings</CardTitle>
                 <CardDescription>
-                  Manage settings for your agent storage volume
+                  Manage your storage configuration and preferences
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium">Basic Information</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="text-sm text-muted-foreground">Name</div>
-                      <div className="text-sm font-medium">{selectedStorage.name}</div>
-                      
-                      <div className="text-sm text-muted-foreground">Type</div>
-                      <div className="text-sm font-medium">{selectedStorage.storageType}</div>
-                      
-                      <div className="text-sm text-muted-foreground">Status</div>
-                      <div className="text-sm">
-                        <Badge className={getStatusColor(selectedStorage.status)}>
-                          {selectedStorage.status}
-                        </Badge>
-                      </div>
-                      
-                      <div className="text-sm text-muted-foreground">Created</div>
-                      <div className="text-sm">{new Date(selectedStorage.createdAt).toLocaleDateString()}</div>
-                    </div>
+                    <Label htmlFor="storageName">Storage Name</Label>
+                    <Input 
+                      id="storageName" 
+                      value={settingsForm.name}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleSettingChange('name', e.target.value)}
+                    />
                   </div>
                   
                   <div className="space-y-2">
-                    <h3 className="text-sm font-medium">Advanced Settings</h3>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="text-sm text-muted-foreground">Auto-expand</div>
-                      <div className="text-sm font-medium">
-                        {selectedStorage.settings.autoExpand ? 'Enabled' : 'Disabled'}
+                    <Label htmlFor="storageType">Storage Type</Label>
+                    <Input 
+                      id="storageType" 
+                      value={selectedStorage.storageType}
+                      disabled
+                    />
+                  </div>
+                  
+                  <div className="col-span-1 md:col-span-2 space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea 
+                      id="description" 
+                      rows={3}
+                      value={settingsForm.description}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleSettingChange('description', e.target.value)}
+                    />
+                  </div>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Capacity Management</h3>
+                  
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="autoExpand">Auto-expansion</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Automatically expand storage when capacity is reached
+                        </p>
                       </div>
-                      
-                      <div className="text-sm text-muted-foreground">Expansion Threshold</div>
-                      <div className="text-sm font-medium">
-                        {selectedStorage.settings.expansionThresholdPercent || 85}%
+                      <Switch 
+                        id="autoExpand"
+                        checked={settingsForm.autoExpand}
+                        onCheckedChange={(checked) => handleSettingChange('autoExpand', checked)}
+                      />
+                    </div>
+                    
+                    {settingsForm.autoExpand && (
+                      <>
+                        <div className="space-y-2">
+                          <div className="flex justify-between">
+                            <Label htmlFor="expansionThreshold">Expansion Threshold</Label>
+                            <span className="text-sm">{settingsForm.expansionThreshold}%</span>
+                          </div>
+                          <Slider
+                            id="expansionThreshold"
+                            min={50}
+                            max={95}
+                            step={5}
+                            value={[settingsForm.expansionThreshold]}
+                            onValueChange={(values) => handleSettingChange('expansionThreshold', values[0])}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Storage will expand when utilization exceeds this threshold
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="maxCapacity">Maximum Capacity</Label>
+                          <div className="pt-2">
+                            <Slider
+                              id="maxCapacity"
+                              min={selectedStorage.capacity}
+                              max={selectedStorage.capacity * 10}
+                              step={selectedStorage.capacity}
+                              value={[settingsForm.maxCapacity]}
+                              onValueChange={(values) => handleSettingChange('maxCapacity', values[0])}
+                            />
+                            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+                              <span>Current: {formatBytes(selectedStorage.capacity)}</span>
+                              <span>Max: {formatBytes(settingsForm.maxCapacity)}</span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Storage will not expand beyond this limit
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                
+                <Separator />
+                
+                <div>
+                  <h3 className="text-lg font-medium mb-4">Security & Backup</h3>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="encryption">Encryption</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Encrypt stored data for enhanced security
+                        </p>
                       </div>
-                      
-                      <div className="text-sm text-muted-foreground">Max Capacity</div>
-                      <div className="text-sm font-medium">
-                        {formatBytes(selectedStorage.settings.maxCapacity || selectedStorage.capacity * 2)}
+                      <Switch 
+                        id="encryption"
+                        checked={settingsForm.encryptionEnabled}
+                        onCheckedChange={(checked) => handleSettingChange('encryptionEnabled', checked)}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label htmlFor="backup">Automatic Backups</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Regularly back up your storage data
+                        </p>
                       </div>
-                      
-                      <div className="text-sm text-muted-foreground">Encryption</div>
-                      <div className="text-sm font-medium">
-                        {selectedStorage.settings.encryptionEnabled ? 'Enabled' : 'Disabled'}
-                      </div>
+                      <Switch 
+                        id="backup"
+                        checked={settingsForm.backupEnabled}
+                        onCheckedChange={(checked) => handleSettingChange('backupEnabled', checked)}
+                      />
                     </div>
                   </div>
                 </div>
                 
-                <div className="border-t pt-4">
-                  <h3 className="text-sm font-medium mb-2">Linked Resources</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Vault Account</span>
-                      <span className="text-sm">
-                        {selectedStorage.vaultAccountId ? (
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {selectedStorage.vaultAccountId.substring(0, 8)}...
-                          </Badge>
-                        ) : 'None'}
-                      </span>
-                    </div>
+                {selectedStorage.vaultAccountId && (
+                  <>
+                    <Separator />
                     
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">Agent ID</span>
-                      <span className="text-sm">
-                        <Badge variant="outline" className="font-mono text-xs">
-                          {selectedStorage.agentId.substring(0, 8)}...
-                        </Badge>
-                      </span>
+                    <div>
+                      <h3 className="text-lg font-medium mb-4">Linked Vault Account</h3>
+                      
+                      <div className="p-4 bg-secondary/20 rounded-md flex items-start gap-3">
+                        <div className="text-primary">
+                          <CreditCard className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium">
+                            This storage is linked to a vault account
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ID: {selectedStorage.vaultAccountId.substring(0, 8)}...
+                          </p>
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            className="px-0 h-auto text-xs"
+                            onClick={() => router.push(`/dashboard/vault/accounts/${selectedStorage.vaultAccountId}`)}
+                          >
+                            View Account Details
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-
-                <div className="border-t pt-4">
-                  <h3 className="text-sm font-medium mb-2">Performance Optimizations</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center">
-                      <Cpu className="h-4 w-4 mr-2 text-blue-500" />
-                      <span className="text-sm">Model inference prioritization</span>
-                    </div>
-                    
-                    <div className="flex items-center">
-                      <Database className="h-4 w-4 mr-2 text-green-500" />
-                      <span className="text-sm">Optimized for high-frequency data</span>
-                    </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </CardContent>
-              <CardFooter className="flex justify-between border-t pt-4">
-                <Button variant="outline">
-                  <Sliders className="h-4 w-4 mr-2" />
-                  Edit Settings
+              <CardFooter className="flex justify-end gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    if (selectedStorage) {
+                      // Reset form to current settings
+                      setSettingsForm({
+                        name: selectedStorage.name,
+                        description: selectedStorage.description || '',
+                        autoExpand: selectedStorage.settings.autoExpand || false,
+                        expansionThreshold: selectedStorage.settings.expansionThresholdPercent || 80,
+                        maxCapacity: selectedStorage.settings.maxCapacity || selectedStorage.capacity * 2,
+                        backupEnabled: selectedStorage.settings.backupEnabled || false,
+                        encryptionEnabled: selectedStorage.settings.encryptionEnabled || false
+                      });
+                      setSettingsChanged(false);
+                    }
+                  }}
+                  disabled={!settingsChanged || updatingSettings}
+                >
+                  Cancel
                 </Button>
-                <Button variant="destructive">
-                  <ServerOff className="h-4 w-4 mr-2" />
-                  Deactivate Storage
+                <Button 
+                  onClick={handleSaveSettings}
+                  disabled={!settingsChanged || updatingSettings}
+                >
+                  {updatingSettings ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Changes'
+                  )}
                 </Button>
               </CardFooter>
             </Card>
           </TabsContent>
         </Tabs>
       )}
-      
-      <StorageExpansionDialog
-        open={isExpansionDialogOpen}
-        onOpenChange={setIsExpansionDialogOpen}
-        currentCapacity={selectedStorage?.capacity || 0}
-        onExpand={handleExpandStorage}
-      />
+
+      {selectedStorage && (
+        <StorageExpansionDialog 
+          open={isExpansionDialogOpen}
+          onOpenChange={setIsExpansionDialogOpen}
+          currentCapacity={selectedStorage.capacity}
+          onExpand={handleExpandStorage}
+        />
+      )}
+
+      {healthCheckResults && showHealthResults && (
+        <Dialog open={showHealthResults} onOpenChange={setShowHealthResults}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                Storage Health Check
+                <Badge className={
+                  healthCheckResults.status === 'good' ? 'bg-green-100 text-green-800' :
+                  healthCheckResults.status === 'warning' ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-red-100 text-red-800'
+                }>
+                  {healthCheckResults.status.toUpperCase()}
+                </Badge>
+              </DialogTitle>
+              <DialogDescription>
+                Detailed health check results for {selectedStorage?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-sm font-medium mb-2">System Status</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="text-muted-foreground">Data Consistency:</div>
+                  <div className={healthCheckResults.details.consistencyCheck ? 'text-green-600' : 'text-red-600'}>
+                    {healthCheckResults.details.consistencyCheck ? 'Verified' : 'Issues Detected'}
+                  </div>
+                  
+                  <div className="text-muted-foreground">Performance:</div>
+                  <div className={!healthCheckResults.details.performanceIssues ? 'text-green-600' : 'text-red-600'}>
+                    {!healthCheckResults.details.performanceIssues ? 'Optimal' : 'Issues Detected'}
+                  </div>
+                  
+                  <div className="text-muted-foreground">Encryption:</div>
+                  <div className={healthCheckResults.details.encryptionStatus ? 'text-green-600' : 'text-yellow-600'}>
+                    {healthCheckResults.details.encryptionStatus ? 'Enabled' : 'Disabled'}
+                  </div>
+                  
+                  <div className="text-muted-foreground">Backups:</div>
+                  <div className={healthCheckResults.details.backupStatus ? 'text-green-600' : 'text-yellow-600'}>
+                    {healthCheckResults.details.backupStatus ? 'Enabled' : 'Disabled'}
+                  </div>
+                  
+                  <div className="text-muted-foreground">Utilization:</div>
+                  <div className={
+                    healthCheckResults.details.utilizationStatus === 'good' ? 'text-green-600' :
+                    healthCheckResults.details.utilizationStatus === 'warning' ? 'text-yellow-600' :
+                    'text-red-600'
+                  }>
+                    {healthCheckResults.details.utilizationStatus.charAt(0).toUpperCase() + 
+                     healthCheckResults.details.utilizationStatus.slice(1)}
+                  </div>
+                  
+                  <div className="text-muted-foreground">Recent Errors:</div>
+                  <div className={healthCheckResults.details.recentErrors === 0 ? 'text-green-600' : 'text-red-600'}>
+                    {healthCheckResults.details.recentErrors}
+                  </div>
+                </div>
+              </div>
+              
+              {healthCheckResults.details.recommendations.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium mb-2">Recommendations</h3>
+                  <ul className="list-disc pl-5 space-y-1 text-sm">
+                    {healthCheckResults.details.recommendations.map((rec, i) => (
+                      <li key={i} className="text-muted-foreground">{rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+            
+            <DialogFooter className="flex gap-2 justify-between sm:justify-end">
+              <Button variant="outline" onClick={handleCloseHealthResults}>
+                Close
+              </Button>
+              {healthCheckResults.status !== 'good' && (
+                <Button onClick={() => {
+                  setActiveTab('settings');
+                  handleCloseHealthResults();
+                }}>
+                  Go to Settings
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 } 

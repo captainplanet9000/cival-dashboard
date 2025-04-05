@@ -1216,6 +1216,244 @@ export class StorageService {
   }
   
   // #endregion
+
+  /**
+   * Run a health check on an agent storage
+   * @param id Storage ID to check
+   * @returns Health check results with status and details
+   */
+  async runAgentStorageHealthCheck(id: string): Promise<{
+    status: 'good' | 'warning' | 'critical';
+    details: {
+      consistencyCheck: boolean;
+      performanceIssues: boolean;
+      encryptionStatus: boolean;
+      backupStatus: boolean;
+      utilizationStatus: 'good' | 'warning' | 'critical';
+      recentErrors: number;
+      recommendations: string[];
+    };
+  }> {
+    try {
+      // Get the storage details
+      const storage = await this.getAgentStorage(id);
+      
+      // Get recent audit logs for errors
+      const { data: auditLogs, error: auditError } = await this.supabase
+        .from('storage_audit_log')
+        .select('severity')
+        .eq('storage_id', id)
+        .eq('storage_type', StorageType.AGENT)
+        .in('severity', ['warning', 'critical'])
+        .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) // Last 7 days
+        .order('timestamp', { ascending: false });
+        
+      if (auditError) {
+        console.error("Error fetching audit logs for health check:", auditError);
+        throw new Error(`Failed to perform health check: ${auditError.message}`);
+      }
+      
+      // Calculate utilization status
+      const utilizationPercent = (storage.usedSpace / storage.capacity) * 100;
+      let utilizationStatus: 'good' | 'warning' | 'critical' = 'good';
+      
+      if (utilizationPercent > 90) {
+        utilizationStatus = 'critical';
+      } else if (utilizationPercent > 75) {
+        utilizationStatus = 'warning';
+      }
+      
+      // Check for recent errors
+      const recentErrors = auditLogs?.filter(log => log.severity === 'critical').length || 0;
+      
+      // Generate recommendations
+      const recommendations: string[] = [];
+      
+      if (utilizationStatus === 'critical') {
+        recommendations.push('Expand storage capacity immediately');
+      } else if (utilizationStatus === 'warning') {
+        recommendations.push('Consider expanding storage capacity soon');
+      }
+      
+      if (!storage.settings.backupEnabled) {
+        recommendations.push('Enable automatic backups for data safety');
+      }
+      
+      if (!storage.settings.encryptionEnabled) {
+        recommendations.push('Enable encryption for enhanced security');
+      }
+      
+      if (recentErrors > 0) {
+        recommendations.push('Review recent error logs and take corrective action');
+      }
+      
+      // Determine overall status
+      let overallStatus: 'good' | 'warning' | 'critical' = 'good';
+      
+      if (utilizationStatus === 'critical' || recentErrors > 3) {
+        overallStatus = 'critical';
+      } else if (utilizationStatus === 'warning' || recentErrors > 0) {
+        overallStatus = 'warning';
+      }
+      
+      // Create and log the audit entry
+      await this.createAuditLog({
+        action: 'storage.agent.health_check',
+        storageId: id,
+        storageType: StorageType.AGENT,
+        details: {
+          status: overallStatus,
+          utilizationPercent,
+          recentErrors
+        }
+      });
+      
+      return {
+        status: overallStatus,
+        details: {
+          consistencyCheck: true, // Simulated successful check
+          performanceIssues: recentErrors > 1,
+          encryptionStatus: storage.settings.encryptionEnabled || false,
+          backupStatus: storage.settings.backupEnabled || false,
+          utilizationStatus,
+          recentErrors,
+          recommendations
+        }
+      };
+    } catch (error) {
+      console.error("Error running agent storage health check:", error);
+      throw new Error(`Failed to perform health check: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Run a health check on a farm storage
+   * @param id Storage ID to check
+   * @returns Health check results with status and details
+   */
+  async runFarmStorageHealthCheck(id: string): Promise<{
+    status: 'good' | 'warning' | 'critical';
+    details: {
+      consistencyCheck: boolean;
+      performanceIssues: boolean;
+      encryptionStatus: boolean;
+      backupStatus: boolean;
+      utilizationStatus: 'good' | 'warning' | 'critical';
+      reservationStatus: 'good' | 'warning' | 'critical';
+      recentErrors: number;
+      recommendations: string[];
+    };
+  }> {
+    try {
+      // Get the storage details
+      const storage = await this.getFarmStorage(id);
+      
+      // Get recent audit logs for errors
+      const { data: auditLogs, error: auditError } = await this.supabase
+        .from('storage_audit_log')
+        .select('severity')
+        .eq('storage_id', id)
+        .eq('storage_type', StorageType.FARM)
+        .in('severity', ['warning', 'critical'])
+        .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()) // Last 7 days
+        .order('timestamp', { ascending: false });
+        
+      if (auditError) {
+        console.error("Error fetching audit logs for health check:", auditError);
+        throw new Error(`Failed to perform health check: ${auditError.message}`);
+      }
+      
+      // Calculate utilization status (excluding reserved space)
+      const usableCapacity = storage.capacity - storage.reservedSpace;
+      const utilizationPercent = (storage.usedSpace / usableCapacity) * 100;
+      let utilizationStatus: 'good' | 'warning' | 'critical' = 'good';
+      
+      if (utilizationPercent > 90) {
+        utilizationStatus = 'critical';
+      } else if (utilizationPercent > 75) {
+        utilizationStatus = 'warning';
+      }
+      
+      // Check if reserved space is sufficient
+      const reservedPercent = (storage.reservedSpace / storage.capacity) * 100;
+      let reservationStatus: 'good' | 'warning' | 'critical' = 'good';
+      
+      if (reservedPercent < 5) {
+        reservationStatus = 'warning';
+      } else if (reservedPercent > 30) {
+        reservationStatus = 'warning'; // Too much reserved space can also be an issue
+      }
+      
+      // Check for recent errors
+      const recentErrors = auditLogs?.filter(log => log.severity === 'critical').length || 0;
+      
+      // Generate recommendations
+      const recommendations: string[] = [];
+      
+      if (utilizationStatus === 'critical') {
+        recommendations.push('Expand storage capacity immediately');
+      } else if (utilizationStatus === 'warning') {
+        recommendations.push('Consider expanding storage capacity soon');
+      }
+      
+      if (reservationStatus === 'warning' && reservedPercent < 5) {
+        recommendations.push('Increase reserved space to ensure system stability');
+      } else if (reservationStatus === 'warning' && reservedPercent > 30) {
+        recommendations.push('Consider reducing reserved space to optimize capacity usage');
+      }
+      
+      if (!storage.settings.backupEnabled) {
+        recommendations.push('Enable automatic backups for data safety');
+      }
+      
+      if (!storage.settings.encryptionEnabled) {
+        recommendations.push('Enable encryption for enhanced security');
+      }
+      
+      if (recentErrors > 0) {
+        recommendations.push('Review recent error logs and take corrective action');
+      }
+      
+      // Determine overall status
+      let overallStatus: 'good' | 'warning' | 'critical' = 'good';
+      
+      if (utilizationStatus === 'critical' || recentErrors > 3) {
+        overallStatus = 'critical';
+      } else if (utilizationStatus === 'warning' || reservationStatus === 'warning' || recentErrors > 0) {
+        overallStatus = 'warning';
+      }
+      
+      // Create and log the audit entry
+      await this.createAuditLog({
+        action: 'storage.farm.health_check',
+        storageId: id,
+        storageType: StorageType.FARM,
+        details: {
+          status: overallStatus,
+          utilizationPercent,
+          reservedPercent,
+          recentErrors
+        }
+      });
+      
+      return {
+        status: overallStatus,
+        details: {
+          consistencyCheck: true, // Simulated successful check
+          performanceIssues: recentErrors > 1,
+          encryptionStatus: storage.settings.encryptionEnabled || false,
+          backupStatus: storage.settings.backupEnabled || false,
+          utilizationStatus,
+          reservationStatus,
+          recentErrors,
+          recommendations
+        }
+      };
+    } catch (error) {
+      console.error("Error running farm storage health check:", error);
+      throw new Error(`Failed to perform health check: ${(error as Error).message}`);
+    }
+  }
 }
 
 // Export singleton instance

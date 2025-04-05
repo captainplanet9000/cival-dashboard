@@ -12,7 +12,8 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "migrate-vault": "ts-node src/scripts/migrate-to-unified-vault.ts",
-    "process-payments": "ts-node src/scripts/process-storage-payments.ts"
+    "process-payments": "ts-node src/scripts/process-storage-payments.ts",
+    "test:storage-integration": "ts-node src/scripts/test-storage-integration.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
