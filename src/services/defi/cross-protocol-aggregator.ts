@@ -1,13 +1,60 @@
-import { ProtocolType, ProtocolPosition, ProtocolCategory } from '../../types/defi-protocol-types';
+import { ProtocolType, ProtocolPosition, ProtocolCategory, ProtocolAction } from '../../types/defi-protocol-types';
 import { ProtocolServiceFactory } from './protocol-service-factory';
+import { ProtocolConnectorFactory } from './protocol-connector-factory';
+import { ErrorHandler } from './error-handler';
+
+interface SwapRate {
+  protocol: ProtocolType;
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  outputAmount: string;
+  priceImpact: number;
+  fees: number;
+  route?: any;
+  estimatedGas?: string;
+  estimatedTimeMs?: number;
+}
+
+interface LendingRate {
+  protocol: ProtocolType;
+  token: string;
+  supplyAPY: number;
+  borrowAPY: number;
+  totalSupply: string;
+  totalBorrow: string;
+  utilizationRate: number;
+  ltv: number;
+  liquidationThreshold: number;
+}
+
+interface BorrowRate {
+  protocol: ProtocolType;
+  token: string;
+  stableRate?: number;
+  variableRate: number;
+  availableLiquidity: string;
+  totalBorrowed: string;
+  collateralRequired: number;
+}
+
+interface PositionAggregation {
+  totalValueUSD: number;
+  positionsByProtocol: Record<ProtocolType, number>;
+  positionsByAsset: Record<string, number>;
+  positions: any[];
+}
 
 /**
  * Class for aggregating data and operations across multiple DeFi protocols
  */
 export class CrossProtocolAggregator {
   private static instance: CrossProtocolAggregator;
+  private errorHandler: ErrorHandler;
   
-  private constructor() {}
+  private constructor() {
+    this.errorHandler = ErrorHandler.getInstance();
+  }
   
   /**
    * Get singleton instance
@@ -287,6 +334,393 @@ export class CrossProtocolAggregator {
       console.error('Error executing optimized swap:', error);
       throw error;
     }
+  }
+  
+  /**
+   * Get all supported protocols
+   */
+  public getSupportedProtocols(): ProtocolType[] {
+    return [
+      ProtocolType.AAVE,
+      ProtocolType.UNISWAP,
+      ProtocolType.VERTEX,
+      ProtocolType.GMX,
+      ProtocolType.SUSHISWAP,
+      ProtocolType.MORPHO
+    ];
+  }
+  
+  /**
+   * Get best swap rates across multiple DEX protocols
+   */
+  public async getBestSwapRates(
+    inputToken: string,
+    outputToken: string,
+    inputAmount: string,
+    chainId: number = 1
+  ): Promise<SwapRate[]> {
+    const swapProtocols = [
+      ProtocolType.UNISWAP,
+      ProtocolType.SUSHISWAP
+    ];
+    
+    const ratesPromises = swapProtocols.map(async (protocol) => {
+      try {
+        const connector = await ProtocolConnectorFactory.getConnector(protocol, chainId);
+        
+        // Handle different DEX interfaces - each might have different method for quotes
+        if (protocol === ProtocolType.UNISWAP) {
+          // We need to cast the connector to access specific connector methods
+          const uniswapConnector = connector as any;
+          if (typeof uniswapConnector.getSwapQuote === 'function') {
+            const quote = await uniswapConnector.getSwapQuote({
+              tokenIn: inputToken,
+              tokenOut: outputToken,
+              amount: inputAmount,
+              exactIn: true
+            });
+            
+            return {
+              protocol,
+              inputToken,
+              outputToken,
+              inputAmount,
+              outputAmount: quote.amountOut,
+              priceImpact: quote.priceImpact,
+              fees: 0.003, // 0.3% for most pools
+              route: quote.route,
+              estimatedGas: '150000'
+            };
+          }
+        } 
+        else if (protocol === ProtocolType.SUSHISWAP) {
+          // We need to cast the connector to access specific connector methods
+          const sushiConnector = connector as any;
+          if (typeof sushiConnector.getQuote === 'function') {
+            const quote = await sushiConnector.getQuote(
+              inputToken,
+              outputToken,
+              inputAmount
+            );
+            
+            return {
+              protocol,
+              inputToken,
+              outputToken,
+              inputAmount,
+              outputAmount: quote.outputAmount,
+              priceImpact: quote.priceImpact,
+              fees: 0.003, // 0.3% for most pools
+              route: quote.path,
+              estimatedGas: quote.estimatedGas
+            };
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        this.errorHandler.handleError(error, protocol.toString(), "GET_SWAP_RATE");
+        return null;
+      }
+    });
+    
+    const results = await Promise.all(ratesPromises);
+    
+    // Filter out null results and sort by output amount (descending)
+    return results
+      .filter(Boolean)
+      .sort((a, b) => 
+        parseFloat((b?.outputAmount as string) || '0') - parseFloat((a?.outputAmount as string) || '0')
+      ) as SwapRate[];
+  }
+  
+  /**
+   * Get best lending rates across lending protocols
+   */
+  public async getBestLendingRates(
+    token: string,
+    chainId: number = 1
+  ): Promise<LendingRate[]> {
+    const lendingProtocols = [
+      ProtocolType.AAVE,
+      ProtocolType.MORPHO
+    ];
+    
+    const ratesPromises = lendingProtocols.map(async (protocol) => {
+      try {
+        const connector = await ProtocolConnectorFactory.getConnector(protocol, chainId);
+        
+        if (protocol === ProtocolType.AAVE) {
+          // We need to cast the connector to access specific connector methods
+          const aaveConnector = connector as any;
+          if (typeof aaveConnector.getReserveData === 'function') {
+            const reserveData = await aaveConnector.getReserveData();
+            const tokenData = reserveData.find((r: any) => 
+              r.address.toLowerCase() === token.toLowerCase() || 
+              r.symbol.toLowerCase() === token.toLowerCase()
+            );
+            
+            if (!tokenData) return null;
+            
+            return {
+              protocol,
+              token: tokenData.symbol,
+              supplyAPY: tokenData.supplyAPY,
+              borrowAPY: tokenData.borrowAPY,
+              totalSupply: tokenData.totalSupply,
+              totalBorrow: tokenData.totalBorrow,
+              utilizationRate: tokenData.utilizationRate,
+              ltv: tokenData.ltv,
+              liquidationThreshold: tokenData.liquidationThreshold
+            };
+          }
+        }
+        else if (protocol === ProtocolType.MORPHO) {
+          // We need to cast the connector to access specific connector methods
+          const morphoConnector = connector as any;
+          if (typeof morphoConnector.getMarkets === 'function') {
+            const markets = await morphoConnector.getMarkets();
+            const tokenMarket = markets.find((m: any) => 
+              m.underlyingToken?.toLowerCase() === token.toLowerCase() || 
+              m.symbol?.toLowerCase() === token.toLowerCase()
+            );
+            
+            if (!tokenMarket) return null;
+            
+            return {
+              protocol,
+              token: tokenMarket.symbol,
+              supplyAPY: tokenMarket.supplyAPY,
+              borrowAPY: tokenMarket.borrowAPY,
+              totalSupply: tokenMarket.totalSupply,
+              totalBorrow: tokenMarket.totalBorrow,
+              utilizationRate: tokenMarket.utilizationRate,
+              ltv: tokenMarket.ltv,
+              liquidationThreshold: tokenMarket.liquidationThreshold
+            };
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        this.errorHandler.handleError(error, protocol.toString(), "GET_LENDING_RATE");
+        return null;
+      }
+    });
+    
+    const results = await Promise.all(ratesPromises);
+    
+    // Filter out null results and sort by supply APY (descending)
+    return results
+      .filter(Boolean)
+      .sort((a, b) => ((b?.supplyAPY as number) || 0) - ((a?.supplyAPY as number) || 0)) as LendingRate[];
+  }
+  
+  /**
+   * Get best borrowing rates across lending protocols
+   */
+  public async getBestBorrowRates(
+    token: string,
+    chainId: number = 1
+  ): Promise<BorrowRate[]> {
+    const lendingProtocols = [
+      ProtocolType.AAVE,
+      ProtocolType.MORPHO
+    ];
+    
+    const ratesPromises = lendingProtocols.map(async (protocol) => {
+      try {
+        const connector = await ProtocolConnectorFactory.getConnector(protocol, chainId);
+        
+        if (protocol === ProtocolType.AAVE) {
+          // We need to cast the connector to access specific connector methods
+          const aaveConnector = connector as any;
+          if (typeof aaveConnector.getReserveData === 'function') {
+            const reserveData = await aaveConnector.getReserveData();
+            const tokenData = reserveData.find((r: any) => 
+              r.address.toLowerCase() === token.toLowerCase() || 
+              r.symbol.toLowerCase() === token.toLowerCase()
+            );
+            
+            if (!tokenData) return null;
+            
+            return {
+              protocol,
+              token: tokenData.symbol,
+              variableRate: tokenData.borrowAPY,
+              availableLiquidity: (
+                parseFloat(tokenData.totalSupply) - parseFloat(tokenData.totalBorrow)
+              ).toString(),
+              totalBorrowed: tokenData.totalBorrow,
+              collateralRequired: 1 / tokenData.ltv
+            };
+          }
+        }
+        else if (protocol === ProtocolType.MORPHO) {
+          // We need to cast the connector to access specific connector methods
+          const morphoConnector = connector as any;
+          if (typeof morphoConnector.getMarkets === 'function') {
+            const markets = await morphoConnector.getMarkets();
+            const tokenMarket = markets.find((m: any) => 
+              m.underlyingToken?.toLowerCase() === token.toLowerCase() || 
+              m.symbol?.toLowerCase() === token.toLowerCase()
+            );
+            
+            if (!tokenMarket) return null;
+            
+            return {
+              protocol,
+              token: tokenMarket.symbol,
+              variableRate: tokenMarket.borrowAPY,
+              availableLiquidity: (
+                parseFloat(tokenMarket.totalSupply) - parseFloat(tokenMarket.totalBorrow)
+              ).toString(),
+              totalBorrowed: tokenMarket.totalBorrow,
+              collateralRequired: 1 / tokenMarket.ltv
+            };
+          }
+        }
+        
+        return null;
+      } catch (error) {
+        this.errorHandler.handleError(error, protocol.toString(), "GET_BORROW_RATE");
+        return null;
+      }
+    });
+    
+    const results = await Promise.all(ratesPromises);
+    
+    // Filter out null results and sort by variable rate (ascending)
+    return results
+      .filter(Boolean)
+      .sort((a, b) => ((a?.variableRate as number) || 0) - ((b?.variableRate as number) || 0)) as BorrowRate[];
+  }
+  
+  /**
+   * Execute swap using the best available route
+   */
+  public async executeBestSwap(
+    inputToken: string,
+    outputToken: string,
+    inputAmount: string,
+    minOutputAmount: string,
+    walletAddress: string,
+    chainId: number = 1
+  ): Promise<any> {
+    // 1. Get best swap rates
+    const rates = await this.getBestSwapRates(
+      inputToken,
+      outputToken,
+      inputAmount,
+      chainId
+    );
+    
+    if (!rates.length) {
+      throw new Error(`No available routes found for ${inputToken} -> ${outputToken}`);
+    }
+    
+    // 2. Select best rate (already sorted)
+    const bestRoute = rates[0];
+    
+    // 3. Execute swap using the protocol with best rate
+    const connector = await ProtocolConnectorFactory.getConnector(bestRoute.protocol, chainId);
+    
+    // Connect wallet if needed
+    await ProtocolConnectorFactory.connectWallet(bestRoute.protocol);
+    
+    // 4. Execute the swap with retry mechanism
+    return await this.errorHandler.retryWithBackoff(
+      async () => {
+        return await connector.executeAction(
+          ProtocolAction.SWAP,
+          {
+            tokenIn: inputToken,
+            tokenOut: outputToken,
+            amountIn: inputAmount,
+            minAmountOut: minOutputAmount,
+            recipient: walletAddress
+          }
+        );
+      },
+      { maxRetries: 3 },
+      bestRoute.protocol.toString(),
+      "EXECUTE_SWAP"
+    );
+  }
+  
+  /**
+   * Aggregate user positions across protocols
+   */
+  public async aggregatePositions(
+    walletAddress: string,
+    chainIds: number[] = [1, 42161, 137, 10] // Ethereum, Arbitrum, Polygon, Optimism
+  ): Promise<PositionAggregation> {
+    const protocols = this.getSupportedProtocols();
+    const allPositions = [];
+    let totalValueUSD = 0;
+    const positionsByProtocol: Record<ProtocolType, number> = {} as Record<ProtocolType, number>;
+    const positionsByAsset: Record<string, number> = {};
+    
+    // Initialize positionsByProtocol with 0 values
+    protocols.forEach(protocol => {
+      positionsByProtocol[protocol] = 0;
+    });
+    
+    // For each chain and protocol, get user positions
+    for (const chainId of chainIds) {
+      for (const protocol of protocols) {
+        try {
+          const connector = await ProtocolConnectorFactory.getConnector(protocol, chainId);
+          
+          // Skip if connector doesn't support this chain
+          if (!connector) continue;
+          
+          // Connect connector (read-only)
+          await connector.connect({ address: walletAddress });
+          
+          // Get positions for this protocol on this chain
+          const positions = await connector.getUserPositions(walletAddress);
+          
+          if (positions.length > 0) {
+            // Add chain and protocol info to positions
+            const enhancedPositions = positions.map(pos => ({
+              ...pos,
+              chainId,
+              protocol
+            }));
+            
+            // Add to all positions
+            allPositions.push(...enhancedPositions);
+            
+            // Calculate value for this protocol and add to running totals
+            const protocolValue = enhancedPositions.reduce(
+              (sum, pos) => sum + (pos.positionValue || 0), 
+              0
+            );
+            
+            // Update totals
+            totalValueUSD += protocolValue;
+            positionsByProtocol[protocol] += protocolValue;
+            
+            // Update by asset
+            enhancedPositions.forEach(pos => {
+              const assetKey = pos.assetSymbol || 'unknown';
+              positionsByAsset[assetKey] = (positionsByAsset[assetKey] || 0) + (pos.positionValue || 0);
+            });
+          }
+        } catch (error) {
+          this.errorHandler.handleError(error, protocol.toString(), "AGGREGATE_POSITIONS");
+          // Continue with next protocol even if this one fails
+        }
+      }
+    }
+    
+    return {
+      totalValueUSD,
+      positionsByProtocol,
+      positionsByAsset,
+      positions: allPositions
+    };
   }
 }
 
