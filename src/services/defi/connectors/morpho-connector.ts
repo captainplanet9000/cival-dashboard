@@ -46,17 +46,24 @@ export class MorphoConnector implements ProtocolConnectorInterface {
     }
   }
   
-  async connect(walletAddress: string): Promise<boolean> {
+  async connect(credentials?: Record<string, string>): Promise<boolean> {
     try {
+      // Check if address is provided in credentials
+      if (!credentials || !credentials.address) {
+        throw new Error('Wallet address not provided in credentials');
+      }
+      
+      const walletAddress = credentials.address;
       this.userAddress = walletAddress;
       this.isAuthenticated = true;
       
-      // In a production implementation, we would validate the wallet connection
+      // In a real implementation, we would validate the wallet connection
       // and potentially set up event listeners for wallet changes
       
       return true;
     } catch (error) {
       console.error('Failed to connect to Morpho:', error);
+      this.isAuthenticated = false;
       return false;
     }
   }

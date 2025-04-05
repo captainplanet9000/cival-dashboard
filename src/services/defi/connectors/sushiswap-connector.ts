@@ -57,8 +57,14 @@ export class SushiswapConnector implements ProtocolConnectorInterface {
     }
   }
   
-  async connect(walletAddress: string): Promise<boolean> {
+  async connect(credentials?: Record<string, string>): Promise<boolean> {
     try {
+      // Check if address is provided in credentials
+      if (!credentials || !credentials.address) {
+        throw new Error('Wallet address not provided in credentials');
+      }
+      
+      const walletAddress = credentials.address;
       this.userAddress = walletAddress;
       this.isAuthenticated = true;
       
@@ -68,6 +74,7 @@ export class SushiswapConnector implements ProtocolConnectorInterface {
       return true;
     } catch (error) {
       console.error('Failed to connect to SushiSwap:', error);
+      this.isAuthenticated = false;
       return false;
     }
   }

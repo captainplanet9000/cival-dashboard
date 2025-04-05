@@ -98,14 +98,21 @@ export class ProtocolConnectorFactory {
         await this.walletProvider.switchChain(targetChainId);
       }
       
-      // Connect to protocol
+      // Connect to protocol with the appropriate credentials
+      // Each protocol connector expects different credentials
+      const credentials: Record<string, string> = {};
+      
+      // For GMX, which expects an ethers signer
       if (protocol === ProtocolType.GMX) {
-        // For GMX, which expects an ethers signer
-        return await (connector as GmxConnector).connect(signer as ethers.Signer);
+        // Pass the signer as a string in the credentials
+        // The connector will cast it back to an ethers.Signer
+        credentials.signer = signer as unknown as string;
       } else {
         // For other protocols that expect an address
-        return await connector.connect(walletInfo.address);
+        credentials.address = walletInfo.address;
       }
+      
+      return await connector.connect(credentials);
     } catch (error) {
       console.error(`Failed to connect wallet to ${protocol}:`, error);
       throw error;

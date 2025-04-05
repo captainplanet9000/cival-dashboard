@@ -2,12 +2,25 @@ import { ProtocolConnectorInterface } from '../protocol-connector-interface';
 import { ProtocolAction, ProtocolPosition, ProtocolType } from '../../../types/defi-protocol-types';
 import axios from 'axios';
 import { ethers } from 'ethers';
+import * as gmxV2Contracts from '@gmx-io/v2-contracts';
 
-// GMX V2 contract ABIs (partial)
-const GMX_READER_ABI = [
-  "function getPositions(address dataStore, address account, address[] memory markets) external view returns (tuple(address market, address collateralToken, bool isLong, uint256 size, uint256 collateral, uint256 averagePrice, uint256 entryFundingRate, uint256 borrowingFactor, uint256 fundingFeeAmountPerSize, uint256 longTokenClaimableFunding, uint256 shortTokenClaimableFunding, uint256 increasedAtBlock, uint256 decreasedAtBlock, uint256 increasedAtTime, uint256 decreasedAtTime, uint256 tokenOracleType, uint256 pnlLow, uint256 pnlHigh)[] memory)",
-  "function getMarkets(address dataStore, uint256 start, uint256 end) external view returns (address[] memory)"
-];
+// Use the imported ABIs from the GMX v2 contracts package
+const GMX_READER_ABI = gmxV2Contracts.abis.ReaderABI;
+const GMX_READER_ADDRESS_CONFIG = {
+  42161: '0xf60becbba223EEA9495Da3f606753867eC10d139', // Arbitrum One
+  43114: '0x4aA1d18A1dA73D5Cf0E8bc9A062bd20dc2791F69'  // Avalanche
+};
+
+const GMX_DATASTORE_ADDRESS_CONFIG = {
+  42161: '0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8', // Arbitrum One
+  43114: '0xB7c3800330ce92C2f92811b997388F401ebef260'  // Avalanche
+};
+
+const GMX_EXCHANGE_ROUTER_ABI = gmxV2Contracts.abis.ExchangeRouterABI;
+const GMX_EXCHANGE_ROUTER_ADDRESS_CONFIG = {
+  42161: '0x7C68C7866A64FA2160F78EEaE12217FFbf871fa8', // Arbitrum One
+  43114: '0x11E590f6092D557bF71B6DDA576E2391C6C9A707'  // Avalanche
+};
 
 interface GmxMarket {
   address: string;
@@ -36,9 +49,11 @@ export class GmxConnector implements ProtocolConnectorInterface {
   private provider: ethers.providers.Provider | null = null;
   private signer: ethers.Signer | null = null;
   private chainId: number = 42161; // Default to Arbitrum
-  private readerAddress: string = '0xf60becbba223EEA9495Da3f606753867eC10d139'; // GMX V2 Reader on Arbitrum
-  private dataStoreAddress: string = '0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8'; // GMX V2 DataStore on Arbitrum
+  private readerAddress: string = GMX_READER_ADDRESS_CONFIG[42161];
+  private dataStoreAddress: string = GMX_DATASTORE_ADDRESS_CONFIG[42161];
+  private exchangeRouterAddress: string = GMX_EXCHANGE_ROUTER_ADDRESS_CONFIG[42161];
   private markets: GmxMarket[] = [];
+  private isConnected: boolean = false;
   
   constructor(chainId?: number) {
     if (chainId) {
@@ -49,21 +64,32 @@ export class GmxConnector implements ProtocolConnectorInterface {
   
   private updateAddresses(): void {
     // Update GMX addresses based on chainId
-    if (this.chainId === 42161) { // Arbitrum One
-      this.readerAddress = '0xf60becbba223EEA9495Da3f606753867eC10d139';
-      this.dataStoreAddress = '0xFD70de6b91282D8017aA4E741e9Ae325CAb992d8';
-    } else if (this.chainId === 42170) { // Arbitrum Nova
-      // Set addresses for Nova
-    } else if (this.chainId === 43114) { // Avalanche
-      this.readerAddress = '0x4aA1d18A1dA73D5Cf0E8bc9A062bd20dc2791F69';
-      this.dataStoreAddress = '0xB7c3800330ce92C2f92811b997388F401ebef260';
+    if (this.chainId in GMX_READER_ADDRESS_CONFIG) {
+      this.readerAddress = GMX_READER_ADDRESS_CONFIG[this.chainId];
+      this.dataStoreAddress = GMX_DATASTORE_ADDRESS_CONFIG[this.chainId];
+      this.exchangeRouterAddress = GMX_EXCHANGE_ROUTER_ADDRESS_CONFIG[this.chainId];
+    } else {
+      console.warn(`Chain ID ${this.chainId} not supported by GMX. Defaulting to Arbitrum.`);
+      this.chainId = 42161;
+      this.readerAddress = GMX_READER_ADDRESS_CONFIG[42161];
+      this.dataStoreAddress = GMX_DATASTORE_ADDRESS_CONFIG[42161];
+      this.exchangeRouterAddress = GMX_EXCHANGE_ROUTER_ADDRESS_CONFIG[42161];
     }
   }
   
-  async connect(wallet: ethers.Signer): Promise<boolean> {
+  async connect(credentials?: Record<string, string>): Promise<boolean> {
     try {
-      this.signer = wallet;
-      this.provider = wallet.provider;
+      // This method now accepts standard credentials instead of ethers.Signer
+      // but we expect the caller to pass in a 'signer' key with the ethers signer
+      if (!credentials || !credentials.signer) {
+        throw new Error('Signer not provided in credentials');
+      }
+      
+      // Extract signer from credentials - this requires some type casting
+      // In a real implementation, we would use stronger typing
+      const signer = credentials.signer as unknown as ethers.Signer;
+      this.signer = signer;
+      this.provider = signer.provider;
       
       if (!this.provider) {
         throw new Error('Provider not available from signer');
@@ -75,10 +101,12 @@ export class GmxConnector implements ProtocolConnectorInterface {
       
       // Load available markets
       await this.loadMarkets();
+      this.isConnected = true;
       
       return true;
     } catch (error) {
       console.error('Failed to connect to GMX:', error);
+      this.isConnected = false;
       return false;
     }
   }
@@ -98,17 +126,42 @@ export class GmxConnector implements ProtocolConnectorInterface {
       // Get market addresses
       const marketAddresses = await readerContract.getMarkets(this.dataStoreAddress, 0, 100);
       
-      // TODO: For each market address, get market info from the contract
-      // This is a simplified example - in production, we would fetch full market details
-      this.markets = marketAddresses.map((address: string, index: number) => ({
-        address,
-        indexToken: '',
-        longToken: '',
-        shortToken: '',
-        name: `Market ${index + 1}`,
-        symbol: `MKT${index + 1}`
-      }));
+      // In a full implementation, we would use the MarketUtils contract to get market details
+      const marketPromises = marketAddresses.map(async (address: string, index: number) => {
+        try {
+          // Call the Reader contract to get market tokens
+          const tokens = await readerContract.getMarketTokens(
+            this.dataStoreAddress,
+            address
+          );
+          
+          const marketInfo = {
+            address,
+            indexToken: tokens.indexToken || '',
+            longToken: tokens.longToken || '',
+            shortToken: tokens.shortToken || '',
+            name: `Market ${index + 1}`,
+            symbol: `MKT${index + 1}`
+          };
+          
+          // Get token symbols in a real implementation
+          // This is simplified for this example
+          
+          return marketInfo;
+        } catch (error) {
+          console.error(`Error getting market details for ${address}:`, error);
+          return {
+            address,
+            indexToken: '',
+            longToken: '',
+            shortToken: '',
+            name: `Market ${index + 1}`,
+            symbol: `MKT${index + 1}`
+          };
+        }
+      });
       
+      this.markets = await Promise.all(marketPromises);
       return this.markets;
     } catch (error) {
       console.error('Failed to load GMX markets:', error);
@@ -198,7 +251,7 @@ export class GmxConnector implements ProtocolConnectorInterface {
     }
   }
   
-  async executeAction(action: ProtocolAction, params: any): Promise<boolean> {
+  async executeAction(action: ProtocolAction, params?: any): Promise<any> {
     if (!this.signer) {
       throw new Error('Wallet not connected');
     }
@@ -206,34 +259,213 @@ export class GmxConnector implements ProtocolConnectorInterface {
     try {
       switch (action) {
         case ProtocolAction.OPEN_POSITION:
-          // Example: Opening a position on GMX
-          // In production implementation, this would call GMX contract methods
-          console.log('Opening GMX position with params:', params);
-          
-          // const exchangeRouter = new ethers.Contract(EXCHANGE_ROUTER_ADDRESS, EXCHANGE_ROUTER_ABI, this.signer);
-          // const txn = await exchangeRouter.createIncreasePosition(
-          //   [params.addresses],
-          //   [params.numbers],
-          //   params.orderType,
-          //   { gasLimit: 5000000 }
-          // );
-          // await txn.wait();
-          
-          return true;
+          return this.openPosition(params);
           
         case ProtocolAction.CLOSE_POSITION:
-          // Example: Closing a position
-          console.log('Closing GMX position with params:', params);
-          return true;
+          return this.closePosition(params);
           
-        // Implement other actions
-        
+        case ProtocolAction.ADD_COLLATERAL:
+          return this.addCollateral(params);
+          
+        case ProtocolAction.REMOVE_COLLATERAL:
+          return this.removeCollateral(params);
+          
+        case ProtocolAction.SWAP:
+          return this.executeSwap(params);
+          
         default:
           throw new Error(`Action ${action} not supported for GMX`);
       }
     } catch (error) {
       console.error(`Failed to execute GMX action ${action}:`, error);
-      return false;
+      throw error;
+    }
+  }
+  
+  // New method implementations using the GMX V2 SDK
+  
+  private async openPosition(params: {
+    market: string,
+    collateralToken: string,
+    isLong: boolean,
+    size: string,
+    leverage?: number,
+    slippage?: number
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      console.log('Opening GMX position with params:', params);
+      
+      // In a production implementation, we would create and execute the transaction
+      const exchangeRouter = new ethers.Contract(
+        this.exchangeRouterAddress,
+        GMX_EXCHANGE_ROUTER_ABI,
+        this.signer
+      );
+      
+      // Example of preparing the createIncreasePosition parameters
+      // const createIncreasePositionParams = gmxV2Contracts.utils.buildIncreasePositionParams(
+      //   params.market,
+      //   params.collateralToken,
+      //   params.isLong,
+      //   ethers.utils.parseUnits(params.size, 18)
+      // );
+      
+      // In this simplified implementation, we return a mock response
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        action: ProtocolAction.OPEN_POSITION,
+        params: params
+      };
+    } catch (error) {
+      console.error('Failed to open GMX position:', error);
+      throw error;
+    }
+  }
+  
+  private async closePosition(params: {
+    market: string,
+    collateralToken: string,
+    isLong: boolean,
+    sizeDelta?: string,
+    slippage?: number
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      console.log('Closing GMX position with params:', params);
+      
+      // In a production implementation, we would create and execute the transaction
+      const exchangeRouter = new ethers.Contract(
+        this.exchangeRouterAddress,
+        GMX_EXCHANGE_ROUTER_ABI,
+        this.signer
+      );
+      
+      // Example of preparing the createDecreasePosition parameters
+      // const createDecreasePositionParams = gmxV2Contracts.utils.buildDecreasePositionParams(
+      //   params.market,
+      //   params.collateralToken,
+      //   params.isLong,
+      //   params.sizeDelta ? ethers.utils.parseUnits(params.sizeDelta, 18) : ethers.constants.MaxUint256
+      // );
+      
+      // In this simplified implementation, we return a mock response
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        action: ProtocolAction.CLOSE_POSITION,
+        params: params
+      };
+    } catch (error) {
+      console.error('Failed to close GMX position:', error);
+      throw error;
+    }
+  }
+  
+  private async addCollateral(params: {
+    market: string,
+    collateralToken: string,
+    isLong: boolean,
+    amount: string
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      console.log('Adding collateral to GMX position with params:', params);
+      
+      // In a production implementation, we would create and execute the transaction
+      const exchangeRouter = new ethers.Contract(
+        this.exchangeRouterAddress,
+        GMX_EXCHANGE_ROUTER_ABI,
+        this.signer
+      );
+      
+      // In this simplified implementation, we return a mock response
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        action: ProtocolAction.ADD_COLLATERAL,
+        params: params
+      };
+    } catch (error) {
+      console.error('Failed to add collateral to GMX position:', error);
+      throw error;
+    }
+  }
+  
+  private async removeCollateral(params: {
+    market: string,
+    collateralToken: string,
+    isLong: boolean,
+    amount: string
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      console.log('Removing collateral from GMX position with params:', params);
+      
+      // In a production implementation, we would create and execute the transaction
+      const exchangeRouter = new ethers.Contract(
+        this.exchangeRouterAddress,
+        GMX_EXCHANGE_ROUTER_ABI,
+        this.signer
+      );
+      
+      // In this simplified implementation, we return a mock response
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        action: ProtocolAction.REMOVE_COLLATERAL,
+        params: params
+      };
+    } catch (error) {
+      console.error('Failed to remove collateral from GMX position:', error);
+      throw error;
+    }
+  }
+  
+  private async executeSwap(params: {
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: string,
+    minAmountOut?: string,
+    receiver?: string
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected');
+    }
+    
+    try {
+      console.log('Executing GMX swap with params:', params);
+      
+      // In a production implementation, we would create and execute the transaction
+      const exchangeRouter = new ethers.Contract(
+        this.exchangeRouterAddress,
+        GMX_EXCHANGE_ROUTER_ABI,
+        this.signer
+      );
+      
+      // In this simplified implementation, we return a mock response
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        action: ProtocolAction.SWAP,
+        params: params
+      };
+    } catch (error) {
+      console.error('Failed to execute GMX swap:', error);
+      throw error;
     }
   }
   

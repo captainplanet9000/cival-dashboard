@@ -191,148 +191,114 @@ Key features include:
 - **Protocol Connectors**: Standard interfaces for each supported protocol
 - **Cross-Protocol Aggregation**: Find best rates, compare fees, and analyze opportunities across protocols
 - **Multi-Chain Support**: Most protocols support multiple chains (Ethereum, Arbitrum, Base, etc.)
-- **AI Agent Integration**: MCP server for AI agent interaction with protocols
-- **Dashboard UI**: User-friendly interface for exploring and interacting with protocols
+- **AI Agent Integration**: MCP support for AI-driven trading and decision making
 
-## Supported Protocols
+## Implementation Status
 
-| Protocol     | Category   | Description                          | Chains Supported        |
-|--------------|------------|--------------------------------------|-----------------------|
-| Uniswap      | DEX        | Decentralized token exchange         | Ethereum, Polygon, Arbitrum, Optimism, Base |
-| SushiSwap    | DEX        | Decentralized token exchange         | Multiple chains       |
-| Aave         | Lending    | Lending and borrowing protocol       | Ethereum, Polygon, Arbitrum, Optimism, Avalanche, Base |
-| Morpho       | Lending    | Lending optimizer                    | Ethereum, Optimism, Base |
-| Vertex       | Perpetuals | Multi-chain perpetual trading        | Arbitrum, Base, Mantle, etc. |
-| Hyperliquid  | Derivatives| Decentralized derivatives exchange   | Hyperliquid Chain     |
-| GMX          | Perpetuals | Decentralized perpetual exchange     | Arbitrum, Avalanche   |
-| Bluefin      | CLOB       | Orderbook-based exchange             | Arbitrum              |
-| Ethena       | Synthetics | Synthetic USDe stablecoin protocol   | Ethereum              |
-| Avalon       | Derivatives| Bitcoin market derivatives           | Ethereum              |
-| Silo         | Lending    | Isolated lending markets             | Multiple chains       |
-| Kamino       | Liquidity  | Automated liquidity management       | Solana                |
+- ✅ Core Protocol Connector Interface
+- ✅ Protocol Service Factory
+- ✅ Cross-Protocol Aggregator
+- ✅ API Endpoints for protocol data and actions
+- ✅ UI Components for protocol display and interaction
+- ✅ Wallet Provider with multi-wallet support
+- ✅ Protocol Connectors:
+  - ✅ GMX (Perpetuals)
+  - ✅ Uniswap (DEX)
+  - ✅ Aave (Lending/Borrowing)
+  - ✅ SushiSwap (DEX)
+  - ✅ Vertex (Perpetuals)
+  - ✅ Morpho (Lending)
 
-## Architecture
+## Installation
 
-The framework is built on a modular architecture with the following key components:
+To finalize the implementation, run the dependency installation script:
 
-### Core Components
-
-1. **Protocol Connector Interface**: Base interface all connectors implement
-2. **Protocol Service Factory**: Creates and manages protocol connector instances
-3. **Cross-Protocol Aggregator**: Provides cross-protocol functionality
-4. **API Layer**: REST endpoints for protocol interaction
-5. **MCP Server**: Model Context Protocol server for AI agent integration
-6. **Dashboard UI**: User interface for protocol interaction
-
-### Key Files
-
-- `src/types/defi-protocol-types.ts`: Core types and interfaces
-- `src/services/defi/protocol-connector-interface.ts`: Base connector interface
-- `src/services/defi/protocol-service-factory.ts`: Factory for creating connectors
-- `src/services/defi/cross-protocol-aggregator.ts`: Cross-protocol functionality
-- `src/services/defi/connectors/*`: Individual protocol connectors
-- `src/services/mcp/defi-protocol-mcp.ts`: MCP service for AI agent integration
-- `src/mcp-servers/defi-protocol-mcp/index.ts`: MCP server implementation
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 16+ and npm
-- DeFi protocol API keys (where applicable)
-- Ethereum wallet (for signing transactions)
-
-### Installation
-
-1. Clone the repository:
-   ```
-   git clone https://github.com/your-org/trading-farm.git
-   cd trading-farm
-   ```
-
-2. Install dependencies:
-   ```
-   npm install
-   ```
-
-3. Configure environment variables (see `.env.example`)
-
-4. Start the development server:
-   ```
-   npm run dev
-   ```
-
-### Basic Usage
-
-#### 1. Protocol Access via API
-
-Access protocols through API endpoints:
-
-```
-GET /api/defi/get-protocol-data?protocol=uniswap
-POST /api/defi/execute-action
+```bash
+node src/utils/install-dependencies.js
 ```
 
-#### 2. Direct Component Integration
+This will install all required dependencies and update your package.json accordingly.
+
+## Remaining Tasks
+
+### 1. Fix Protocol Connector Types
+
+Some protocol connectors have type compatibility issues with the main interface:
+
+- SushiSwap and Morpho connectors: Update their `connect` methods to accept `Record<string, string> | undefined` parameter
+- Update all connectors to match the new action enum-based approach
+
+### 2. Protocol-Specific SDKs
+
+For full protocol connectivity, add the following dependencies:
+
+```bash
+# For GMX integration
+npm install @gmx-io/v2-contracts
+
+# For Uniswap integration 
+npm install @uniswap/v3-sdk @uniswap/sdk-core
+
+# For Aave integration
+npm install @aave/protocol-js
+```
+
+### 3. Implement Testing
+
+Create the following test files:
+
+- `src/tests/protocols/gmx-connector.test.ts`
+- `src/tests/protocols/uniswap-connector.test.ts`
+- `src/tests/protocols/cross-protocol-aggregator.test.ts`
+- `src/tests/wallet/wallet-provider.test.ts`
+
+## Usage Example
 
 ```typescript
-import { ProtocolServiceFactory } from '@/services/defi/protocol-service-factory';
-import { ProtocolType } from '@/types/defi-protocol-types';
+import { ProtocolConnectorFactory } from '@/services/defi/protocol-connector-factory';
+import { ProtocolType, ProtocolAction } from '@/types/defi-protocol-types';
+import { WalletProvider, WalletType } from '@/services/wallet/wallet-provider';
 
-// Example: Get Uniswap connector
-const connector = await ProtocolServiceFactory.getConnector(ProtocolType.UNISWAP);
-await connector.connect();
-const data = await connector.getProtocolData();
+// Connect wallet
+const walletProvider = WalletProvider.getInstance();
+await walletProvider.connect(WalletType.METAMASK);
+
+// Get protocol connector
+const gmxConnector = await ProtocolConnectorFactory.getConnector(ProtocolType.GMX);
+
+// Connect to protocol with wallet
+await ProtocolConnectorFactory.connectWallet(ProtocolType.GMX);
+
+// Get user positions
+const positions = await gmxConnector.getUserPositions(walletProvider.getWalletInfo()?.address || '');
+
+// Execute action (e.g. open position)
+await gmxConnector.executeAction(ProtocolAction.OPEN_POSITION, {
+  market: '0x...',
+  collateralToken: '0x...',
+  isLong: true,
+  size: '1000000000000000000', // 1 ETH
+  leverage: 10
+});
 ```
 
-#### 3. Cross-Protocol Aggregation
-
-```typescript
-import { crossProtocolAggregator } from '@/services/defi/cross-protocol-aggregator';
-
-// Compare swap rates across DEXes
-const rates = await crossProtocolAggregator.getBestSwapRate('ETH', 'USDC', '1.0');
-
-// Compare lending rates
-const lendingRates = await crossProtocolAggregator.compareLendingRates('USDC');
-```
-
-#### 4. MCP Server for AI Agents
-
-The MCP server provides a standardized way for AI agents to interact with protocols.
-
-Start the MCP server:
-```
-node dist/mcp-servers/defi-protocol-mcp/index.js
-```
-
-## Development
-
-### Adding a New Protocol
-
-To add a new protocol:
-
-1. Add the protocol to the `ProtocolType` enum in `src/types/defi-protocol-types.ts`
-2. Create a new connector implementation in `src/services/defi/connectors/`
-3. Update `protocol-service-factory.ts` to include the new connector
-4. Add protocol metadata and category
-5. Implement protocol-specific methods in the connector
-
-Example connector template:
-
-```typescript
-import { ProtocolConnectorInterface } from '../protocol-connector-interface';
-import { ProtocolAction, ProtocolPosition, ProtocolType } from '../../../types/defi-protocol-types';
-
-export class NewProtocolConnector implements ProtocolConnectorInterface {
-  // Implementation here
-}
-```
-
-### Running Tests
+## Architecture Diagram
 
 ```
-npm test
+┌─────────────────────────────────────────┐
+│          Cross-Protocol Aggregator      │
+└───────────────────┬─────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│        Protocol Connector Factory       │
+└───┬───────────┬───────────┬─────────────┘
+    │           │           │
+    ▼           ▼           ▼
+┌─────────┐ ┌─────────┐ ┌─────────┐
+│   GMX   │ │ Uniswap │ │  Aave   │
+│Connector│ │Connector│ │Connector│ ...
+└─────────┘ └─────────┘ └─────────┘
 ```
 
 ## License

@@ -1,6 +1,28 @@
 import { ProtocolConnectorInterface } from '../protocol-connector-interface';
 import { ProtocolAction, ProtocolPosition, ProtocolType } from '../../../types/defi-protocol-types';
 import axios from 'axios';
+import { ethers } from 'ethers';
+import { Token, CurrencyAmount, Percent } from '@uniswap/sdk-core';
+import { Pool, Position, nearestUsableTick, TickMath, priceToClosestTick } from '@uniswap/v3-sdk';
+
+// Chain IDs mapped to network names for Uniswap
+const UNISWAP_CHAIN_NAMES = {
+  1: 'mainnet',       // Ethereum Mainnet
+  10: 'optimism',     // Optimism
+  42161: 'arbitrum',  // Arbitrum One
+  137: 'polygon',     // Polygon
+  56: 'bsc',          // Binance Smart Chain
+  43114: 'avalanche', // Avalanche
+  8453: 'base'        // Base
+};
+
+// Uniswap V3 Fee Tiers
+const FEE_TIERS = {
+  LOWEST: 100,   // 0.01%
+  LOW: 500,      // 0.05%
+  MEDIUM: 3000,  // 0.3%
+  HIGH: 10000    // 1%
+};
 
 interface TokenInfo {
   symbol: string;
@@ -11,11 +33,11 @@ interface TokenInfo {
   logoURI?: string;
 }
 
-interface Pool {
+interface PoolInfo {
   id: string;
   token0: TokenInfo;
   token1: TokenInfo;
-  feeTier: string;
+  feeTier: number;
   liquidity: string;
   sqrtPrice: string;
   token0Price: string;
@@ -26,476 +48,573 @@ interface Pool {
 
 export class UniswapConnector implements ProtocolConnectorInterface {
   private baseApiUrl: string = 'https://api.uniswap.org/v1';
+  private graphUrl: string = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3';
   private chainId: number = 1; // Default to Ethereum mainnet
   private isAuthenticated: boolean = false;
   private userAddress?: string;
-  private tokenList: TokenInfo[] = [];
+  private provider: ethers.providers.Provider | null = null;
+  private signer: ethers.Signer | null = null;
   
   constructor(chainId?: number) {
     if (chainId) {
       this.chainId = chainId;
       this.updateEndpoints();
     }
-    
-    // Load commonly used tokens
-    this.loadTokenList().catch(error => {
-      console.error('Error loading Uniswap token list:', error);
-    });
   }
   
   private updateEndpoints(): void {
-    // The base API URL doesn't change with chain ID for Uniswap API
-    // But we might need to adjust some parameters based on chain
-  }
-  
-  private async loadTokenList(): Promise<void> {
-    try {
-      // Fetch token list from Uniswap's default list
-      const response = await axios.get('https://gateway.ipfs.io/ipns/tokens.uniswap.org');
-      if (response.data && response.data.tokens) {
-        // Filter tokens by the current chain ID
-        this.tokenList = response.data.tokens.filter((token: TokenInfo) => token.chainId === this.chainId);
-      }
-    } catch (error: any) {
-      console.error('Error loading token list:', error.message);
-      // Fallback to a minimal default list
-      this.tokenList = [
-        {
-          symbol: 'ETH',
-          name: 'Ethereum',
-          address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', // Special address for ETH
-          decimals: 18,
-          chainId: this.chainId
-        },
-        {
-          symbol: 'WETH',
-          name: 'Wrapped Ethereum',
-          address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
-          decimals: 18,
-          chainId: 1
-        },
-        {
-          symbol: 'USDC',
-          name: 'USD Coin',
-          address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-          decimals: 6,
-          chainId: 1
-        }
-      ];
+    // Update Uniswap endpoints based on chainId
+    const networkName = UNISWAP_CHAIN_NAMES[this.chainId] || 'mainnet';
+    
+    // Update the Graph API URL based on chain
+    if (this.chainId === 1) {
+      this.graphUrl = 'https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3';
+    } else if (this.chainId === 137) {
+      this.graphUrl = 'https://api.thegraph.com/subgraphs/name/ianlapham/uniswap-v3-polygon';
+    } else if (this.chainId === 42161) {
+      this.graphUrl = 'https://api.thegraph.com/subgraphs/name/ianlapham/arbitrum-minimal';
+    } else if (this.chainId === 10) {
+      this.graphUrl = 'https://api.thegraph.com/subgraphs/name/ianlapham/optimism-post-regenesis';
+    } else if (this.chainId === 8453) {
+      this.graphUrl = 'https://api.studio.thegraph.com/query/48211/uniswap-v3-base/version/latest';
     }
   }
   
   async connect(credentials?: Record<string, string>): Promise<boolean> {
     try {
-      if (credentials?.address) {
-        this.userAddress = credentials.address;
-        
-        // No real authentication needed for read-only operations
-        // For transactions, wallet connection would be required
-        this.isAuthenticated = true;
-        console.log(`Connected to Uniswap with address: ${this.userAddress}`);
-        return true;
+      // Check if address is provided in credentials
+      if (!credentials) {
+        throw new Error('Credentials not provided');
       }
-      return false;
-    } catch (error: any) {
-      console.error(`Error connecting to Uniswap: ${error.message}`);
+      
+      if (credentials.address) {
+        this.userAddress = credentials.address;
+        this.isAuthenticated = true;
+      }
+      
+      // If signer is provided, use it for transactions
+      if (credentials.signer) {
+        this.signer = credentials.signer as unknown as ethers.Signer;
+        this.provider = this.signer.provider;
+        
+        if (this.provider) {
+          const network = await this.provider.getNetwork();
+          this.chainId = network.chainId;
+          this.updateEndpoints();
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to connect to Uniswap:', error);
+      this.isAuthenticated = false;
       return false;
     }
   }
   
-  isConnected(): boolean {
-    return this.isAuthenticated;
+  async getProtocolInfo(): Promise<any> {
+    return {
+      name: 'Uniswap',
+      description: 'Decentralized exchange with automated market making',
+      type: ProtocolType.UNISWAP,
+      website: 'https://uniswap.org',
+      chainIds: Object.keys(UNISWAP_CHAIN_NAMES).map(Number),
+      tvl: '$1B+',
+    };
+  }
+  
+  async getAvailableActions(): Promise<ProtocolAction[]> {
+    return [
+      ProtocolAction.SWAP,
+      ProtocolAction.ADD_LIQUIDITY,
+      ProtocolAction.REMOVE_LIQUIDITY
+    ];
   }
   
   async getUserPositions(address: string): Promise<ProtocolPosition[]> {
+    if (!address) {
+      address = this.userAddress || '';
+    }
+    
+    if (!address) {
+      throw new Error('User address not provided');
+    }
+    
     try {
-      // For Uniswap, user positions are liquidity positions
-      // This would require The Graph or other providers
-      // For simplicity, we'll implement a basic version
-      
-      const positions: ProtocolPosition[] = [];
-      
-      // In a real implementation, we would query something like:
-      // const response = await axios.post('https://api.thegraph.com/subgraphs/name/uniswap/uniswap-v3', {
-      //   query: `{ positions(where: {owner: "${address.toLowerCase()}"}) { ... } }`
-      // });
-      
-      // Mock data for demonstration
-      const mockPositions = [
+      // Query the Uniswap subgraph for user positions
+      const query = `
         {
-          id: `${address}-eth-usdc`,
-          token0: {
-            symbol: 'ETH',
-            address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
-          },
-          token1: {
-            symbol: 'USDC',
-            address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
-          },
-          liquidity: '1000000000000000000',
-          amountToken0: 1.5,
-          amountToken1: 3000,
-          fee: 500 // 0.05%
-        }
-      ];
-      
-      for (const pos of mockPositions) {
-        positions.push({
-          protocol: ProtocolType.UNISWAP,
-          positionId: pos.id,
-          assetIn: pos.token0.symbol,
-          assetOut: pos.token1.symbol,
-          amountIn: pos.amountToken0,
-          amountOut: pos.amountToken1,
-          status: 'active',
-          timestamp: new Date().toISOString(),
-          metadata: {
-            fee: pos.fee,
-            liquidity: pos.liquidity,
-            token0Address: pos.token0.address,
-            token1Address: pos.token1.address
+          positions(where: { owner: "${address.toLowerCase()}" }) {
+            id
+            owner
+            pool {
+              id
+              token0 {
+                id
+                symbol
+                decimals
+              }
+              token1 {
+                id
+                symbol
+                decimals
+              }
+              feeTier
+              liquidity
+              sqrtPrice
+              token0Price
+              token1Price
+            }
+            liquidity
+            tickLower
+            tickUpper
+            depositedToken0
+            depositedToken1
+            withdrawnToken0
+            withdrawnToken1
+            collectibleFees0
+            collectibleFees1
           }
-        });
-      }
+        }
+      `;
       
-      return positions;
-    } catch (error: any) {
-      console.error(`Error fetching Uniswap positions: ${error.message}`);
+      const response = await axios.post(this.graphUrl, { query });
+      const positions = response.data?.data?.positions || [];
+      
+      return positions.map((pos: any) => {
+        // Calculate position value
+        const token0Value = parseFloat(pos.depositedToken0) * parseFloat(pos.pool.token0Price);
+        const token1Value = parseFloat(pos.depositedToken1) * parseFloat(pos.pool.token1Price);
+        const positionValue = token0Value + token1Value;
+        
+        return {
+          id: pos.id,
+          protocolId: ProtocolType.UNISWAP,
+          chainId: this.chainId,
+          type: 'liquidity',
+          assetSymbol: `${pos.pool.token0.symbol}/${pos.pool.token1.symbol}`,
+          assetAddress: pos.pool.id,
+          positionSize: parseFloat(pos.liquidity),
+          positionValue: positionValue,
+          entryPrice: 0, // Not applicable for LP positions
+          leverage: 1, // LP positions don't have leverage
+          unrealizedPnl: 0, // Would require more complex calculation
+          direction: 'liquidity', // LP positions are neutral
+          timestamp: 0, // Not provided by the graph
+          metadata: {
+            poolId: pos.pool.id,
+            feeTier: pos.pool.feeTier,
+            tickLower: pos.tickLower,
+            tickUpper: pos.tickUpper,
+            token0: {
+              symbol: pos.pool.token0.symbol,
+              address: pos.pool.token0.id,
+              decimals: pos.pool.token0.decimals,
+              amount: pos.depositedToken0
+            },
+            token1: {
+              symbol: pos.pool.token1.symbol,
+              address: pos.pool.token1.id,
+              decimals: pos.pool.token1.decimals,
+              amount: pos.depositedToken1
+            },
+            fees: {
+              token0: pos.collectibleFees0,
+              token1: pos.collectibleFees1
+            }
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Failed to get Uniswap positions:', error);
       return [];
     }
   }
   
-  async executeAction(action: ProtocolAction): Promise<any> {
-    if (action.protocol !== ProtocolType.UNISWAP) {
-      throw new Error('Invalid protocol for this connector');
+  async executeAction(action: ProtocolAction, params?: any): Promise<any> {
+    if (!this.isAuthenticated) {
+      throw new Error('Wallet not connected');
     }
     
-    switch (action.actionType) {
-      case 'getSwapQuote':
-        return this.getSwapQuote(action.params);
-      case 'swap':
-        return this.executeSwap(action.params);
-      case 'getTokenInfo':
-        return this.getTokenInfo(action.params.tokenAddress);
-      case 'getPools':
-        return this.getPools(action.params);
-      default:
-        throw new Error(`Unsupported action type: ${action.actionType}`);
+    try {
+      switch (action) {
+        case ProtocolAction.SWAP:
+          return this.executeSwap(params);
+          
+        case ProtocolAction.ADD_LIQUIDITY:
+          return this.addLiquidity(params);
+          
+        case ProtocolAction.REMOVE_LIQUIDITY:
+          return this.removeLiquidity(params);
+          
+        default:
+          throw new Error(`Action ${action} not supported for Uniswap`);
+      }
+    } catch (error) {
+      console.error(`Failed to execute Uniswap action ${action}:`, error);
+      throw error;
     }
   }
   
-  async getProtocolData(): Promise<any> {
+  private async executeSwap(params: {
+    tokenIn: string;
+    tokenOut: string;
+    amountIn: string;
+    amountOutMinimum?: string;
+    recipient?: string;
+    slippageTolerance?: number; // in basis points (1 = 0.01%)
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Signer not available for transaction');
+    }
+    
     try {
-      // Fetch protocol overview data
-      // In a real implementation, we would use The Graph or similar
+      console.log('Executing Uniswap swap with params:', params);
       
-      // Fetch popular pools from Uniswap API
-      const poolsData = await this.getPools({});
+      // In a real implementation, we would:
+      // 1. Get token information
+      // 2. Create SDK objects for tokens
+      // 3. Get the best route using the Uniswap Router
+      // 4. Build and execute the transaction
       
-      // Get protocol stats
-      const stats = {
-        tvlUSD: "0", // Would sum up from pools
-        volume24hUSD: "0", // Would sum up from pools
-        feesCollected24hUSD: "0"
-      };
+      // Example of using the SDK (commented out as it requires more setup)
+      /*
+      // Create Token objects
+      const tokenIn = new Token(
+        this.chainId,
+        params.tokenIn,
+        18, // decimals would be fetched in real implementation
+        '', // symbol would be fetched
+        ''  // name would be fetched
+      );
       
-      if (poolsData.pools && poolsData.pools.length > 0) {
-        // Calculate some aggregated stats
-        stats.tvlUSD = poolsData.pools.reduce(
-          (sum: string, pool: Pool) => (
-            (parseFloat(sum) + parseFloat(pool.tvlUSD || "0")).toString()
-          ), 
-          "0"
-        );
-        
-        stats.volume24hUSD = poolsData.pools.reduce(
-          (sum: string, pool: Pool) => (
-            (parseFloat(sum) + parseFloat(pool.volumeUSD24h || "0")).toString()
-          ), 
-          "0"
-        );
-      }
+      const tokenOut = new Token(
+        this.chainId,
+        params.tokenOut,
+        18,
+        '',
+        ''
+      );
       
+      // Create amounts
+      const amountIn = CurrencyAmount.fromRawAmount(
+        tokenIn,
+        ethers.utils.parseUnits(params.amountIn, 18).toString()
+      );
+      
+      // Slippage tolerance (default 0.5%)
+      const slippageTolerance = new Percent(
+        params.slippageTolerance || 50,
+        10000
+      );
+      
+      // Create swap route and params...
+      // This would require additional API calls and SDK integration
+      */
+      
+      // For this simplified implementation, return mock data
       return {
-        stats,
-        pools: poolsData.pools,
-        tokenList: this.tokenList
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        tokenIn: params.tokenIn,
+        tokenOut: params.tokenOut,
+        amountIn: params.amountIn,
+        amountOut: (parseFloat(params.amountIn) * 0.98).toString(), // Simulate 2% slippage
+        executionPrice: Math.random() * 2000 // Mock price
       };
-    } catch (error: any) {
-      console.error(`Error fetching Uniswap protocol data: ${error.message}`);
+    } catch (error) {
+      console.error('Failed to execute Uniswap swap:', error);
       throw error;
     }
   }
   
-  // Uniswap-specific methods
-  private async getSwapQuote(params: Record<string, any>): Promise<any> {
-    try {
-      const {
-        fromToken,
-        toToken,
-        amount,
-        slippageTolerance = 0.5,
-        recipient
-      } = params;
-      
-      // Find token addresses
-      const fromTokenInfo = this.findToken(fromToken);
-      const toTokenInfo = this.findToken(toToken);
-      
-      if (!fromTokenInfo || !toTokenInfo) {
-        throw new Error(`Token not found: ${!fromTokenInfo ? fromToken : toToken}`);
-      }
-      
-      // In a real implementation, we would call the Uniswap API or SDK
-      // Here we're using a simplified version
-      
-      // Call Uniswap Quote API
-      const quoteParams = {
-        protocols: 'v3',
-        tokenInAddress: fromTokenInfo.address,
-        tokenInChainId: this.chainId,
-        tokenOutAddress: toTokenInfo.address,
-        tokenOutChainId: this.chainId,
-        amount: amount,
-        type: 'exactIn'
-      };
-      
-      // Make API call to get quote
-      // In a real implementation, this would be a call to the actual Uniswap API
-      console.log(`Would call Uniswap API with params:`, quoteParams);
-      
-      // Mock response
-      const mockQuote = {
-        amountOut: (parseFloat(amount) * this.getMockExchangeRate(fromToken, toToken)).toString(),
-        route: [
-          {
-            type: 'v3-pool',
-            address: '0x1234567890abcdef1234567890abcdef12345678',
-            tokenIn: fromTokenInfo,
-            tokenOut: toTokenInfo,
-            fee: 500 // 0.05%
-          }
-        ],
-        priceImpact: 0.1, // 0.1%
-        estimatedGas: "150000"
-      };
-      
-      return mockQuote;
-    } catch (error: any) {
-      console.error(`Error getting Uniswap swap quote: ${error.message}`);
-      throw error;
+  private async addLiquidity(params: {
+    token0: string;
+    token1: string;
+    amount0: string;
+    amount1: string;
+    fee: number;
+    tickLower?: number;
+    tickUpper?: number;
+    recipient?: string;
+    slippageTolerance?: number;
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Signer not available for transaction');
     }
-  }
-  
-  private async executeSwap(params: Record<string, any>): Promise<any> {
+    
     try {
-      const {
-        fromToken,
-        toToken,
-        amount,
-        recipient,
-        slippageTolerance = 0.5,
-        deadline = Math.floor(Date.now() / 1000) + 1200 // 20 minutes
-      } = params;
+      console.log('Adding Uniswap liquidity with params:', params);
       
-      // Get quote first
-      const quote = await this.getSwapQuote({
-        fromToken,
-        toToken,
-        amount,
-        slippageTolerance,
-        recipient: recipient || this.userAddress
+      // In a real implementation, we would:
+      // 1. Get token information
+      // 2. Create SDK objects for tokens and pool
+      // 3. Create a position with the specified parameters
+      // 4. Build and execute the transaction
+      
+      // Example of using the SDK (commented out as it requires more setup)
+      /*
+      // Create Token objects
+      const token0 = new Token(
+        this.chainId,
+        params.token0,
+        18, // decimals would be fetched
+        '', // symbol would be fetched
+        ''  // name would be fetched
+      );
+      
+      const token1 = new Token(
+        this.chainId,
+        params.token1,
+        18,
+        '',
+        ''
+      );
+      
+      // Get pool information
+      // This would involve fetching the current pool state
+      
+      // Create a Position object
+      const position = Position.fromAmounts({
+        pool: new Pool(
+          token0,
+          token1,
+          params.fee,
+          '0x1', // sqrtPriceX96 would be fetched
+          '0',    // liquidity would be fetched
+          0       // tickCurrent would be fetched
+        ),
+        tickLower: params.tickLower || nearestUsableTick(TickMath.MIN_TICK, 60),
+        tickUpper: params.tickUpper || nearestUsableTick(TickMath.MAX_TICK, 60),
+        amount0: params.amount0,
+        amount1: params.amount1,
+        useFullPrecision: true
       });
       
-      // In a real implementation, we would generate and submit a transaction
-      // This would require wallet integration
+      // Build the mint transaction...
+      */
       
-      console.log(`Would execute swap of ${amount} ${fromToken} to ${toToken}`);
-      console.log(`Expected output: ${quote.amountOut} ${toToken}`);
-      
-      // Mock transaction response
+      // For this simplified implementation, return mock data
       return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        amountIn: amount,
-        amountOut: quote.amountOut,
-        route: quote.route,
-        recipient: recipient || this.userAddress,
-        status: 'confirmed'
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        positionId: Math.floor(Math.random() * 1000000).toString(),
+        token0: params.token0,
+        token1: params.token1,
+        amount0: params.amount0,
+        amount1: params.amount1,
+        tickLower: params.tickLower || -887272,
+        tickUpper: params.tickUpper || 887272
       };
-    } catch (error: any) {
-      console.error(`Error executing Uniswap swap: ${error.message}`);
+    } catch (error) {
+      console.error('Failed to add Uniswap liquidity:', error);
       throw error;
     }
   }
   
-  private async getTokenInfo(tokenAddress: string): Promise<TokenInfo | null> {
+  private async removeLiquidity(params: {
+    tokenId: string;
+    liquidity?: string;
+    amount0Min?: string;
+    amount1Min?: string;
+    recipient?: string;
+  }): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Signer not available for transaction');
+    }
+    
     try {
-      // Check if we already have this token in our list
-      const existingToken = this.tokenList.find(t => 
-        t.address.toLowerCase() === tokenAddress.toLowerCase());
+      console.log('Removing Uniswap liquidity with params:', params);
       
-      if (existingToken) {
-        return existingToken;
-      }
+      // In a real implementation, we would:
+      // 1. Get position information by tokenId
+      // 2. Build and execute the transaction to decrease liquidity
       
-      // In a real implementation, we would fetch token info
-      // from contract calls or APIs
-      
-      console.log(`Would fetch token info for ${tokenAddress}`);
-      
-      // Mock response for unknown tokens
+      // For this simplified implementation, return mock data
       return {
-        address: tokenAddress,
-        symbol: `TKN-${tokenAddress.substr(0, 6)}`,
-        name: `Token ${tokenAddress.substr(0, 6)}`,
-        decimals: 18,
-        chainId: this.chainId
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        tokenId: params.tokenId,
+        liquidityRemoved: params.liquidity || '0',
+        amount0Removed: (Math.random() * 100).toFixed(6),
+        amount1Removed: (Math.random() * 100).toFixed(6)
       };
-    } catch (error: any) {
-      console.error(`Error getting token info: ${error.message}`);
-      return null;
+    } catch (error) {
+      console.error('Failed to remove Uniswap liquidity:', error);
+      throw error;
     }
   }
   
-  private async getPools(params: Record<string, any>): Promise<{ pools: Pool[] }> {
+  async getTopPools(limit: number = 10): Promise<PoolInfo[]> {
     try {
-      const {
-        tokenA,
-        tokenB,
-        feeAmount
-      } = params;
-      
-      // In a real implementation, we would query The Graph or other APIs
-      // Here we're returning mock data
-      
-      // Mock popular pools
-      const mockPools: Pool[] = [
+      const query = `
         {
-          id: '0x8ad599c3a0ff1de082011efddc58f1908eb6e6d8',
-          token0: {
-            symbol: 'USDC',
-            name: 'USD Coin',
-            address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-            decimals: 6,
-            chainId: 1
-          },
-          token1: {
-            symbol: 'ETH',
-            name: 'Ethereum',
-            address: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2', // WETH
-            decimals: 18,
-            chainId: 1
-          },
-          feeTier: '500', // 0.05%
-          liquidity: '175368263064278495907326',
-          sqrtPrice: '1980247115768334000000000000',
-          token0Price: '2000.12',
-          token1Price: '0.000499',
-          volumeUSD24h: '125000000',
-          tvlUSD: '870000000'
+          pools(
+            first: ${limit},
+            orderBy: volumeUSD,
+            orderDirection: desc
+          ) {
+            id
+            feeTier
+            liquidity
+            sqrtPrice
+            token0Price
+            token1Price
+            token0 {
+              id
+              symbol
+              name
+              decimals
+            }
+            token1 {
+              id
+              symbol
+              name
+              decimals
+            }
+            volumeUSD
+            totalValueLockedUSD
+          }
+        }
+      `;
+      
+      const response = await axios.post(this.graphUrl, { query });
+      return (response.data?.data?.pools || []).map((pool: any) => ({
+        id: pool.id,
+        token0: {
+          address: pool.token0.id,
+          symbol: pool.token0.symbol,
+          name: pool.token0.name,
+          decimals: parseInt(pool.token0.decimals),
+          chainId: this.chainId
         },
+        token1: {
+          address: pool.token1.id,
+          symbol: pool.token1.symbol,
+          name: pool.token1.name,
+          decimals: parseInt(pool.token1.decimals),
+          chainId: this.chainId
+        },
+        feeTier: parseInt(pool.feeTier),
+        liquidity: pool.liquidity,
+        sqrtPrice: pool.sqrtPrice,
+        token0Price: pool.token0Price,
+        token1Price: pool.token1Price,
+        volumeUSD24h: pool.volumeUSD,
+        tvlUSD: pool.totalValueLockedUSD
+      }));
+    } catch (error) {
+      console.error('Failed to get Uniswap top pools:', error);
+      return [];
+    }
+  }
+  
+  async getTokenPrice(tokenAddress: string): Promise<number> {
+    try {
+      // For ethereum mainnet, we can use the Uniswap API
+      if (this.chainId === 1) {
+        const response = await axios.get(`${this.baseApiUrl}/tokens/${tokenAddress}`);
+        return parseFloat(response.data?.token?.derivedETH || '0') * await this.getEthPrice();
+      }
+      
+      // For other chains, query the largest pool with this token
+      const query = `
         {
-          id: '0x7858e59e0c01ea06df3af3d20ac7b0003275d4bf',
-          token0: {
-            symbol: 'USDC',
-            name: 'USD Coin',
-            address: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-            decimals: 6,
-            chainId: 1
-          },
-          token1: {
-            symbol: 'USDT',
-            name: 'Tether USD',
-            address: '0xdac17f958d2ee523a2206206994597c13d831ec7',
-            decimals: 6,
-            chainId: 1
-          },
-          feeTier: '100', // 0.01%
-          liquidity: '301583272762092812618',
-          sqrtPrice: '1000074999914166300000000000',
-          token0Price: '1.00015',
-          token1Price: '0.99985',
-          volumeUSD24h: '50000000',
-          tvlUSD: '450000000'
+          pools(
+            where: {or: [{token0: "${tokenAddress.toLowerCase()}"}, {token1: "${tokenAddress.toLowerCase()}"}]},
+            orderBy: volumeUSD,
+            orderDirection: desc,
+            first: 1
+          ) {
+            token0 {
+              id
+              symbol
+            }
+            token1 {
+              id
+              symbol
+            }
+            token0Price
+            token1Price
+          }
         }
-      ];
+      `;
       
-      // Filter pools if specific tokens were requested
-      let filteredPools = mockPools;
+      const response = await axios.post(this.graphUrl, { query });
+      const pool = response.data?.data?.pools?.[0];
       
-      if (tokenA && tokenB) {
-        const tokenAAddress = this.findToken(tokenA)?.address.toLowerCase();
-        const tokenBAddress = this.findToken(tokenB)?.address.toLowerCase();
-        
-        if (tokenAAddress && tokenBAddress) {
-          filteredPools = mockPools.filter(pool => {
-            const hasTokenA = 
-              pool.token0.address.toLowerCase() === tokenAAddress ||
-              pool.token1.address.toLowerCase() === tokenAAddress;
-              
-            const hasTokenB = 
-              pool.token0.address.toLowerCase() === tokenBAddress ||
-              pool.token1.address.toLowerCase() === tokenBAddress;
-              
-            return hasTokenA && hasTokenB;
-          });
-        }
+      if (!pool) return 0;
+      
+      // If tokenAddress is token0, use token0Price, otherwise use token1Price
+      if (pool.token0.id.toLowerCase() === tokenAddress.toLowerCase()) {
+        return parseFloat(pool.token0Price);
+      } else {
+        return parseFloat(pool.token1Price);
       }
-      
-      if (feeAmount) {
-        filteredPools = filteredPools.filter(pool => pool.feeTier === feeAmount.toString());
-      }
-      
-      return { pools: filteredPools };
-    } catch (error: any) {
-      console.error(`Error fetching Uniswap pools: ${error.message}`);
-      return { pools: [] };
+    } catch (error) {
+      console.error('Failed to get token price from Uniswap:', error);
+      return 0;
     }
   }
   
-  // Helper methods
-  private findToken(tokenInput: string): TokenInfo | undefined {
-    // Find by symbol, address, or name
-    return this.tokenList.find(token => 
-      token.symbol.toLowerCase() === tokenInput.toLowerCase() || 
-      token.address.toLowerCase() === tokenInput.toLowerCase() ||
-      token.name.toLowerCase() === tokenInput.toLowerCase()
-    );
+  async getEthPrice(): Promise<number> {
+    try {
+      // Query USDC/ETH pool to get ETH price
+      const query = `
+        {
+          bundle(id: "1") {
+            ethPriceUSD
+          }
+        }
+      `;
+      
+      const response = await axios.post(this.graphUrl, { query });
+      return parseFloat(response.data?.data?.bundle?.ethPriceUSD || '0');
+    } catch (error) {
+      console.error('Failed to get ETH price from Uniswap:', error);
+      return 0;
+    }
   }
   
-  private getMockExchangeRate(fromToken: string, toToken: string): number {
-    // Mock exchange rates for common pairs
-    const rates: Record<string, Record<string, number>> = {
-      'ETH': {
-        'USDC': 2000.0,
-        'WETH': 1.0,
-        'USDT': 2000.0
-      },
-      'WETH': {
-        'ETH': 1.0,
-        'USDC': 2000.0,
-        'USDT': 2000.0
-      },
-      'USDC': {
-        'ETH': 0.0005,
-        'WETH': 0.0005,
-        'USDT': 1.0
-      },
-      'USDT': {
-        'ETH': 0.0005,
-        'WETH': 0.0005,
-        'USDC': 1.0
-      }
-    };
-    
-    const fromUpper = fromToken.toUpperCase();
-    const toUpper = toToken.toUpperCase();
-    
-    if (rates[fromUpper] && rates[fromUpper][toUpper]) {
-      return rates[fromUpper][toUpper];
+  async getSwapQuote(params: {
+    tokenIn: string;
+    tokenOut: string;
+    amount: string;
+    exactIn?: boolean;
+  }): Promise<any> {
+    try {
+      // In a real implementation, this would use the Uniswap Router SDK and API
+      // to calculate the best route and exact quote
+      
+      // For this simplified implementation, return mock data
+      const { tokenIn, tokenOut, amount, exactIn = true } = params;
+      
+      const slippage = 0.005 + (Math.random() * 0.01); // 0.5-1.5%
+      const exchangeRate = 1 / (Math.random() * 100 + 1); // Random exchange rate
+      
+      const amountOut = exactIn
+        ? parseFloat(amount) * exchangeRate * (1 - slippage)
+        : parseFloat(amount) / exchangeRate * (1 + slippage);
+      
+      return {
+        tokenIn,
+        tokenOut,
+        amountIn: exactIn ? amount : (amountOut * exchangeRate).toString(),
+        amountOut: exactIn ? amountOut.toString() : amount,
+        executionPrice: exchangeRate,
+        priceImpact: slippage * 100,
+        route: [
+          {
+            pool: '0x' + Math.random().toString(16).substring(2, 42),
+            tokenIn,
+            tokenOut,
+            fee: 3000
+          }
+        ]
+      };
+    } catch (error) {
+      console.error('Failed to get swap quote from Uniswap:', error);
+      throw error;
     }
-    
-    // Default rate for unknown pairs
-    return 1.0;
   }
 }

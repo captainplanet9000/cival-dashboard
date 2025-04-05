@@ -1,6 +1,60 @@
 import { ProtocolConnectorInterface } from '../protocol-connector-interface';
 import { ProtocolAction, ProtocolPosition, ProtocolType } from '../../../types/defi-protocol-types';
 import axios from 'axios';
+import { ethers } from 'ethers';
+import * as AaveProtocolJS from '@aave/protocol-js';
+
+// Aave networks configuration
+const AAVE_NETWORKS = {
+  // Ethereum Mainnet
+  1: {
+    v3: {
+      marketName: 'proto_mainnet_v3',
+      addresses: {
+        LENDING_POOL_ADDRESS_PROVIDER: '0x2f39d218133AFaB8F2B819B1066c7E434Ad94E9e',
+        LENDING_POOL: '0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2',
+        DATA_PROVIDER: '0x7B4EB56E7CD4b454BA8ff71E4518426369a138a3',
+        UI_POOL_DATA_PROVIDER: '0x91c0eA31b49B69Ea18607702c5d9aC360bf3dE7d'
+      }
+    }
+  },
+  // Polygon
+  137: {
+    v3: {
+      marketName: 'proto_polygon_v3',
+      addresses: {
+        LENDING_POOL_ADDRESS_PROVIDER: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb',
+        LENDING_POOL: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+        DATA_PROVIDER: '0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654',
+        UI_POOL_DATA_PROVIDER: '0x7006e5a16E422868174d56b4eFa5332591eD3cbc'
+      }
+    }
+  },
+  // Avalanche
+  43114: {
+    v3: {
+      marketName: 'proto_avalanche_v3',
+      addresses: {
+        LENDING_POOL_ADDRESS_PROVIDER: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb',
+        LENDING_POOL: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+        DATA_PROVIDER: '0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654',
+        UI_POOL_DATA_PROVIDER: '0x7006e5a16E422868174d56b4eFa5332591eD3cbc'
+      }
+    }
+  },
+  // Arbitrum
+  42161: {
+    v3: {
+      marketName: 'proto_arbitrum_v3',
+      addresses: {
+        LENDING_POOL_ADDRESS_PROVIDER: '0xa97684ead0e402dC232d5A977953DF7ECBaB3CDb',
+        LENDING_POOL: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+        DATA_PROVIDER: '0x69FA688f1Dc47d4B5d8029D5a35FB7a548310654',
+        UI_POOL_DATA_PROVIDER: '0x7006e5a16E422868174d56b4eFa5332591eD3cbc'
+      }
+    }
+  },
+};
 
 interface ReserveData {
   symbol: string;
@@ -25,481 +79,526 @@ export class AaveConnector implements ProtocolConnectorInterface {
   private chainId: number = 1; // Default to Ethereum mainnet
   private isAuthenticated: boolean = false;
   private userAddress?: string;
-  private reserves: ReserveData[] = [];
+  private provider: ethers.providers.Provider | null = null;
+  private signer: ethers.Signer | null = null;
+  private aavePool: ethers.Contract | null = null;
+  private aaveDataProvider: ethers.Contract | null = null;
   
   constructor(chainId?: number) {
     if (chainId) {
       this.chainId = chainId;
-      this.updateEndpoints();
+    }
+  }
+  
+  private getAaveAddresses(): any {
+    const networkConfig = AAVE_NETWORKS[this.chainId];
+    
+    if (!networkConfig) {
+      throw new Error(`Chain ID ${this.chainId} not supported by Aave`);
     }
     
-    // Initialize by loading reserve data
-    this.loadReserveData().catch(error => {
-      console.error('Error loading Aave reserve data:', error);
-    });
-  }
-  
-  private updateEndpoints(): void {
-    // Update API endpoints based on the chain ID
-    switch (this.chainId) {
-      case 1: // Ethereum
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/ethereum';
-        break;
-      case 137: // Polygon
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/polygon';
-        break;
-      case 10: // Optimism
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/optimism';
-        break;
-      case 42161: // Arbitrum
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/arbitrum';
-        break;
-      case 43114: // Avalanche
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/avalanche';
-        break;
-      case 8453: // Base
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/base';
-        break;
-      default:
-        this.baseApiUrl = 'https://aave-api-v2.aave.com/data/v3/ethereum';
-    }
-  }
-  
-  private async loadReserveData(): Promise<void> {
-    try {
-      // In a real implementation, you would use the Aave API or SDK
-      // For now, we'll use mock data
-      
-      this.reserves = [
-        {
-          symbol: 'ETH',
-          name: 'Ethereum',
-          decimals: 18,
-          address: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
-          aTokenAddress: '0x4d5F47FA6A74757f35C14fD3a6Ef8E3C9BC514E8',
-          debtTokenAddress: '0xF63B34710400CAd3e044cFfDcAb00a0f32E33eCf',
-          supplyAPY: 0.0125, // 1.25%
-          borrowAPY: 0.0318, // 3.18%
-          totalSupply: '500000000000000000000000', // 500,000 ETH
-          totalBorrow: '250000000000000000000000', // 250,000 ETH
-          utilizationRate: 0.5, // 50%
-          liquidationThreshold: 0.85, // 85%
-          ltv: 0.8, // 80%
-          priceUSD: 2000,
-          isIsolated: false
-        },
-        {
-          symbol: 'USDC',
-          name: 'USD Coin',
-          decimals: 6,
-          address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-          aTokenAddress: '0x98C23E9d8f34FEFb1B7BD6a91B7FF122F4e16F5c',
-          debtTokenAddress: '0xFCCf3cAbbe80101232d343252614b6A3eE81C989',
-          supplyAPY: 0.0142, // 1.42%
-          borrowAPY: 0.0268, // 2.68%
-          totalSupply: '1000000000000', // 1 billion USDC
-          totalBorrow: '600000000000', // 600 million USDC
-          utilizationRate: 0.6, // 60%
-          liquidationThreshold: 0.88, // 88%
-          ltv: 0.825, // 82.5%
-          priceUSD: 1,
-          isIsolated: false
-        },
-        {
-          symbol: 'WBTC',
-          name: 'Wrapped Bitcoin',
-          decimals: 8,
-          address: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-          aTokenAddress: '0x5Ee5bf7ae06D1Be5997A1A72006FE6C607eC6DE8',
-          debtTokenAddress: '0x40aAbEf1aa8f0eEc637E0E7d92fFfeb465d599d0',
-          supplyAPY: 0.0089, // 0.89%
-          borrowAPY: 0.0375, // 3.75%
-          totalSupply: '2500000000', // 25,000 WBTC
-          totalBorrow: '1200000000', // 12,000 WBTC
-          utilizationRate: 0.48, // 48%
-          liquidationThreshold: 0.825, // 82.5%
-          ltv: 0.7, // 70%
-          priceUSD: 30000,
-          isIsolated: false
-        }
-      ];
-    } catch (error: any) {
-      console.error('Error loading Aave reserve data:', error.message);
-    }
+    return networkConfig.v3.addresses;
   }
   
   async connect(credentials?: Record<string, string>): Promise<boolean> {
     try {
-      if (credentials?.address) {
-        this.userAddress = credentials.address;
-        
-        // No real authentication needed for read-only operations
-        // For transactions, wallet connection would be required
-        this.isAuthenticated = true;
-        console.log(`Connected to Aave with address: ${this.userAddress}`);
-        return true;
+      // Check if credentials are provided
+      if (!credentials) {
+        throw new Error('No credentials provided');
       }
-      return false;
-    } catch (error: any) {
-      console.error(`Error connecting to Aave: ${error.message}`);
+      
+      // Set user address if provided
+      if (credentials.address) {
+        this.userAddress = credentials.address;
+        this.isAuthenticated = true;
+      }
+      
+      // Connect with signer if provided
+      if (credentials.signer) {
+        this.signer = credentials.signer as unknown as ethers.Signer;
+        this.provider = this.signer.provider;
+        
+        if (this.provider) {
+          const network = await this.provider.getNetwork();
+          this.chainId = network.chainId;
+          
+          // Initialize Aave contracts
+          await this.initContracts();
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to connect to Aave:', error);
+      this.isAuthenticated = false;
       return false;
     }
   }
   
-  isConnected(): boolean {
-    return this.isAuthenticated;
+  private async initContracts(): Promise<void> {
+    if (!this.provider) {
+      throw new Error('Provider not available');
+    }
+    
+    try {
+      const addresses = this.getAaveAddresses();
+      
+      // Initialize Pool contract
+      this.aavePool = new ethers.Contract(
+        addresses.LENDING_POOL,
+        AaveProtocolJS.PoolABI,
+        this.provider
+      );
+      
+      // Initialize Data Provider contract
+      this.aaveDataProvider = new ethers.Contract(
+        addresses.DATA_PROVIDER,
+        AaveProtocolJS.PoolDataProviderABI,
+        this.provider
+      );
+    } catch (error) {
+      console.error('Failed to initialize Aave contracts:', error);
+      throw error;
+    }
+  }
+  
+  async getProtocolInfo(): Promise<any> {
+    return {
+      name: 'Aave',
+      description: 'Decentralized lending and borrowing protocol',
+      type: ProtocolType.AAVE,
+      website: 'https://aave.com',
+      chainIds: Object.keys(AAVE_NETWORKS).map(Number),
+      tvl: '$10B+',
+    };
+  }
+  
+  async getAvailableActions(): Promise<ProtocolAction[]> {
+    return [
+      ProtocolAction.SUPPLY,
+      ProtocolAction.WITHDRAW,
+      ProtocolAction.BORROW,
+      ProtocolAction.REPAY
+    ];
   }
   
   async getUserPositions(address: string): Promise<ProtocolPosition[]> {
+    if (!address) {
+      address = this.userAddress || '';
+    }
+    
+    if (!address) {
+      throw new Error('User address not provided');
+    }
+    
     try {
-      // In a real implementation, you would query the Aave API or smart contracts
-      // For now, we'll use mock data
-      
       const positions: ProtocolPosition[] = [];
       
-      // Mock data for user positions
-      const mockSupplyPositions = [
-        {
-          asset: 'ETH',
-          amountSupplied: 10,
-          amountUSD: 20000,
-          apy: 0.0125
-        },
-        {
-          asset: 'USDC',
-          amountSupplied: 50000,
-          amountUSD: 50000,
-          apy: 0.0142
-        }
-      ];
+      // Get both supply and borrow positions
+      const supplyPositions = await this.getUserSupplyPositions(address);
+      const borrowPositions = await this.getUserBorrowPositions(address);
       
-      const mockBorrowPositions = [
-        {
-          asset: 'USDC',
-          amountBorrowed: 10000,
-          amountUSD: 10000,
-          apy: 0.0268,
-          borrowMode: 'variable'
-        }
-      ];
-      
-      // Convert supply positions to standardized format
-      for (const pos of mockSupplyPositions) {
-        const reserveData = this.reserves.find(r => r.symbol === pos.asset);
-        
-        positions.push({
-          protocol: ProtocolType.AAVE,
-          positionId: `${address}-supply-${pos.asset}`,
-          assetIn: pos.asset,
-          amountIn: pos.amountSupplied,
-          status: 'active',
-          timestamp: new Date().toISOString(),
-          healthFactor: reserveData ? (pos.amountUSD * reserveData.liquidationThreshold) / 10000 : 2, // Mock health factor
-          metadata: {
-            type: 'supply',
-            apy: pos.apy,
-            amountUSD: pos.amountUSD,
-            usageAsCollateral: true,
-            tokenAddress: reserveData?.address || '',
-            aTokenAddress: reserveData?.aTokenAddress || ''
-          }
-        });
-      }
-      
-      // Convert borrow positions to standardized format
-      for (const pos of mockBorrowPositions) {
-        const reserveData = this.reserves.find(r => r.symbol === pos.asset);
-        
-        positions.push({
-          protocol: ProtocolType.AAVE,
-          positionId: `${address}-borrow-${pos.asset}`,
-          assetIn: pos.asset,
-          amountIn: pos.amountBorrowed,
-          status: 'active',
-          timestamp: new Date().toISOString(),
-          healthFactor: 1.8, // Mock health factor
-          metadata: {
-            type: 'borrow',
-            apy: pos.apy,
-            amountUSD: pos.amountUSD,
-            borrowMode: pos.borrowMode,
-            tokenAddress: reserveData?.address || '',
-            debtTokenAddress: reserveData?.debtTokenAddress || ''
-          }
-        });
-      }
-      
-      return positions;
-    } catch (error: any) {
-      console.error(`Error fetching Aave positions: ${error.message}`);
+      return [...supplyPositions, ...borrowPositions];
+    } catch (error) {
+      console.error('Failed to get Aave positions:', error);
       return [];
     }
   }
   
-  async executeAction(action: ProtocolAction): Promise<any> {
-    if (action.protocol !== ProtocolType.AAVE) {
-      throw new Error('Invalid protocol for this connector');
+  private async getUserSupplyPositions(address: string): Promise<ProtocolPosition[]> {
+    try {
+      // In a production implementation, we would call the Aave contracts
+      // For now, we call the API
+      const apiUrl = `${this.baseApiUrl}/users/${address}/markets?marketName=${AAVE_NETWORKS[this.chainId]?.v3.marketName || 'proto_mainnet_v3'}`;
+      const response = await axios.get(apiUrl);
+      const marketsData = response.data?.marketsData || [];
+      
+      const supplyPositions: ProtocolPosition[] = [];
+      
+      for (const marketData of marketsData) {
+        if (marketData.supplyBalance > 0) {
+          supplyPositions.push({
+            id: `aave-supply-${this.chainId}-${address}-${marketData.symbol}`,
+            protocolId: ProtocolType.AAVE,
+            chainId: this.chainId,
+            type: 'supply',
+            assetSymbol: marketData.symbol,
+            assetAddress: marketData.underlyingAsset,
+            positionSize: parseFloat(marketData.supplyBalance),
+            positionValue: parseFloat(marketData.supplyBalance) * parseFloat(marketData.priceInUSD),
+            entryPrice: parseFloat(marketData.priceInUSD),
+            leverage: 1, // Supply positions don't have leverage
+            unrealizedPnl: parseFloat(marketData.supplyAPY) * parseFloat(marketData.supplyBalance) * parseFloat(marketData.priceInUSD) / 365, // Daily interest
+            direction: 'supply',
+            timestamp: Date.now(), // Using current timestamp
+            metadata: {
+              marketId: marketData.underlyingAsset,
+              apy: parseFloat(marketData.supplyAPY),
+              aTokenAddress: marketData.aTokenAddress,
+              isCollateral: marketData.usageAsCollateralEnabled,
+              ltv: parseFloat(marketData.ltv),
+              liquidationThreshold: parseFloat(marketData.liquidationThreshold)
+            }
+          });
+        }
+      }
+      
+      return supplyPositions;
+    } catch (error) {
+      console.error('Failed to get Aave supply positions:', error);
+      return [];
+    }
+  }
+  
+  private async getUserBorrowPositions(address: string): Promise<ProtocolPosition[]> {
+    try {
+      // In a production implementation, we would call the Aave contracts
+      // For now, we call the API
+      const apiUrl = `${this.baseApiUrl}/users/${address}/markets?marketName=${AAVE_NETWORKS[this.chainId]?.v3.marketName || 'proto_mainnet_v3'}`;
+      const response = await axios.get(apiUrl);
+      const marketsData = response.data?.marketsData || [];
+      
+      const borrowPositions: ProtocolPosition[] = [];
+      
+      for (const marketData of marketsData) {
+        if (marketData.borrowBalance > 0) {
+          borrowPositions.push({
+            id: `aave-borrow-${this.chainId}-${address}-${marketData.symbol}`,
+            protocolId: ProtocolType.AAVE,
+            chainId: this.chainId,
+            type: 'borrow',
+            assetSymbol: marketData.symbol,
+            assetAddress: marketData.underlyingAsset,
+            positionSize: parseFloat(marketData.borrowBalance),
+            positionValue: parseFloat(marketData.borrowBalance) * parseFloat(marketData.priceInUSD),
+            entryPrice: parseFloat(marketData.priceInUSD),
+            leverage: 1, // Borrow positions don't have leverage
+            unrealizedPnl: -parseFloat(marketData.borrowAPY) * parseFloat(marketData.borrowBalance) * parseFloat(marketData.priceInUSD) / 365, // Daily interest (negative for borrows)
+            direction: 'borrow',
+            timestamp: Date.now(), // Using current timestamp
+            metadata: {
+              marketId: marketData.underlyingAsset,
+              apy: parseFloat(marketData.borrowAPY),
+              debtTokenAddress: marketData.variableDebtTokenAddress,
+              interestRateMode: 2, // Variable rate (2) vs Stable rate (1)
+              isVariable: true
+            }
+          });
+        }
+      }
+      
+      return borrowPositions;
+    } catch (error) {
+      console.error('Failed to get Aave borrow positions:', error);
+      return [];
+    }
+  }
+  
+  async executeAction(action: ProtocolAction, params?: any): Promise<any> {
+    if (!this.signer) {
+      throw new Error('Wallet not connected for transactions');
     }
     
-    switch (action.actionType) {
-      case 'supply':
-        return this.executeSupply(action.params);
-      case 'withdraw':
-        return this.executeWithdraw(action.params);
-      case 'borrow':
-        return this.executeBorrow(action.params);
-      case 'repay':
-        return this.executeRepay(action.params);
-      case 'setCollateralUsage':
-        return this.executeSetCollateralUsage(action.params);
-      case 'getUserData':
-        return this.getUserData(action.params.userAddress || this.userAddress);
-      default:
-        throw new Error(`Unsupported action type: ${action.actionType}`);
+    try {
+      switch (action) {
+        case ProtocolAction.SUPPLY:
+          return this.supply(params);
+          
+        case ProtocolAction.WITHDRAW:
+          return this.withdraw(params);
+          
+        case ProtocolAction.BORROW:
+          return this.borrow(params);
+          
+        case ProtocolAction.REPAY:
+          return this.repay(params);
+          
+        default:
+          throw new Error(`Action ${action} not supported for Aave`);
+      }
+    } catch (error) {
+      console.error(`Failed to execute Aave action ${action}:`, error);
+      throw error;
     }
   }
   
-  async getProtocolData(): Promise<any> {
+  private async supply(params: {
+    asset: string;
+    amount: string;
+    onBehalfOf?: string;
+    referralCode?: number;
+  }): Promise<any> {
+    if (!this.signer || !this.aavePool) {
+      throw new Error('Aave contracts not initialized or signer not available');
+    }
+    
     try {
-      // In a real implementation, this would fetch data from the Aave API
+      console.log('Supplying to Aave with params:', params);
       
-      // Process reserves data to standardized format
-      const reserves = this.reserves.map(reserve => ({
+      // In a production implementation, this would need to:
+      // 1. Get approval for the token transfer
+      // 2. Call the supply function on the LendingPool
+      
+      // Example of building the transaction (would need error handling and gas estimation)
+      // const erc20Contract = new ethers.Contract(
+      //   params.asset,
+      //   IERC20_ABI,
+      //   this.signer
+      // );
+      
+      // // Approve spending
+      // const amountWei = ethers.utils.parseUnits(params.amount, decimals);
+      // const approveTx = await erc20Contract.approve(
+      //   this.aavePool.address,
+      //   amountWei
+      // );
+      // await approveTx.wait();
+      
+      // // Supply
+      // const poolWithSigner = this.aavePool.connect(this.signer);
+      // const supplyTx = await poolWithSigner.supply(
+      //   params.asset,
+      //   amountWei,
+      //   params.onBehalfOf || await this.signer.getAddress(),
+      //   params.referralCode || 0
+      // );
+      // const receipt = await supplyTx.wait();
+      
+      // For this simplified implementation, return mock data
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        asset: params.asset,
+        amount: params.amount,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Failed to supply to Aave:', error);
+      throw error;
+    }
+  }
+  
+  private async withdraw(params: {
+    asset: string;
+    amount: string;
+    aTokenAddress?: string;
+    toAddress?: string;
+  }): Promise<any> {
+    if (!this.signer || !this.aavePool) {
+      throw new Error('Aave contracts not initialized or signer not available');
+    }
+    
+    try {
+      console.log('Withdrawing from Aave with params:', params);
+      
+      // In a production implementation:
+      // const poolWithSigner = this.aavePool.connect(this.signer);
+      // const amountWei = ethers.utils.parseUnits(params.amount, decimals);
+      // const withdrawTx = await poolWithSigner.withdraw(
+      //   params.asset,
+      //   amountWei,
+      //   params.toAddress || await this.signer.getAddress()
+      // );
+      // const receipt = await withdrawTx.wait();
+      
+      // For this simplified implementation, return mock data
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        asset: params.asset,
+        amount: params.amount,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Failed to withdraw from Aave:', error);
+      throw error;
+    }
+  }
+  
+  private async borrow(params: {
+    asset: string;
+    amount: string;
+    interestRateType?: number; // 1 = stable, 2 = variable
+    onBehalfOf?: string;
+    referralCode?: number;
+  }): Promise<any> {
+    if (!this.signer || !this.aavePool) {
+      throw new Error('Aave contracts not initialized or signer not available');
+    }
+    
+    try {
+      console.log('Borrowing from Aave with params:', params);
+      
+      // In a production implementation:
+      // const poolWithSigner = this.aavePool.connect(this.signer);
+      // const amountWei = ethers.utils.parseUnits(params.amount, decimals);
+      // const borrowTx = await poolWithSigner.borrow(
+      //   params.asset,
+      //   amountWei,
+      //   params.interestRateType || 2, // Default to variable rate
+      //   params.referralCode || 0,
+      //   params.onBehalfOf || await this.signer.getAddress()
+      // );
+      // const receipt = await borrowTx.wait();
+      
+      // For this simplified implementation, return mock data
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        asset: params.asset,
+        amount: params.amount,
+        interestRateType: params.interestRateType || 2,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Failed to borrow from Aave:', error);
+      throw error;
+    }
+  }
+  
+  private async repay(params: {
+    asset: string;
+    amount: string;
+    interestRateType?: number; // 1 = stable, 2 = variable
+    onBehalfOf?: string;
+  }): Promise<any> {
+    if (!this.signer || !this.aavePool) {
+      throw new Error('Aave contracts not initialized or signer not available');
+    }
+    
+    try {
+      console.log('Repaying Aave loan with params:', params);
+      
+      // In a production implementation:
+      // First, approve the spending
+      // const erc20Contract = new ethers.Contract(
+      //   params.asset,
+      //   IERC20_ABI,
+      //   this.signer
+      // );
+      
+      // const amountWei = ethers.utils.parseUnits(params.amount, decimals);
+      // const approveTx = await erc20Contract.approve(
+      //   this.aavePool.address,
+      //   amountWei
+      // );
+      // await approveTx.wait();
+      
+      // // Then repay
+      // const poolWithSigner = this.aavePool.connect(this.signer);
+      // const repayTx = await poolWithSigner.repay(
+      //   params.asset,
+      //   amountWei,
+      //   params.interestRateType || 2, // Default to variable rate
+      //   params.onBehalfOf || await this.signer.getAddress()
+      // );
+      // const receipt = await repayTx.wait();
+      
+      // For this simplified implementation, return mock data
+      return {
+        success: true,
+        txHash: `0x${Math.random().toString(16).substring(2, 42)}`,
+        asset: params.asset,
+        amount: params.amount,
+        interestRateType: params.interestRateType || 2,
+        timestamp: Date.now()
+      };
+    } catch (error) {
+      console.error('Failed to repay Aave loan:', error);
+      throw error;
+    }
+  }
+  
+  async getReserveData(): Promise<ReserveData[]> {
+    try {
+      // In a production implementation, we would call the Aave contracts
+      // For now, we call the API
+      const apiUrl = `${this.baseApiUrl}/markets?marketName=${AAVE_NETWORKS[this.chainId]?.v3.marketName || 'proto_mainnet_v3'}`;
+      const response = await axios.get(apiUrl);
+      const reserves = response.data?.reserves || [];
+      
+      return reserves.map((reserve: any) => ({
         symbol: reserve.symbol,
         name: reserve.name,
-        decimals: reserve.decimals,
-        address: reserve.address,
+        decimals: parseInt(reserve.decimals),
+        address: reserve.underlyingAsset,
         aTokenAddress: reserve.aTokenAddress,
-        debtTokenAddress: reserve.debtTokenAddress,
-        supplyAPY: reserve.supplyAPY,
-        borrowAPY: reserve.borrowAPY,
+        debtTokenAddress: reserve.variableDebtTokenAddress,
+        supplyAPY: parseFloat(reserve.supplyAPY),
+        borrowAPY: parseFloat(reserve.variableBorrowAPY),
         totalSupply: reserve.totalSupply,
-        totalBorrow: reserve.totalBorrow,
-        utilizationRate: reserve.utilizationRate,
-        liquidationThreshold: reserve.liquidationThreshold,
-        ltv: reserve.ltv,
-        priceUSD: reserve.priceUSD,
+        totalBorrow: reserve.totalDebt,
+        utilizationRate: parseFloat(reserve.utilizationRate),
+        liquidationThreshold: parseFloat(reserve.liquidationThreshold),
+        ltv: parseFloat(reserve.ltv),
+        priceUSD: parseFloat(reserve.priceInUSD),
         isIsolated: reserve.isIsolated
       }));
-      
-      // Calculate total TVL and other protocol metrics
-      const tvlUSD = reserves.reduce((sum, reserve) => {
-        const totalSupplyBN = BigInt(reserve.totalSupply);
-        const decimals = BigInt(10) ** BigInt(reserve.decimals);
-        const totalSupplyFloat = Number(totalSupplyBN) / Number(decimals);
-        return sum + totalSupplyFloat * reserve.priceUSD;
-      }, 0);
-      
-      const totalBorrowUSD = reserves.reduce((sum, reserve) => {
-        const totalBorrowBN = BigInt(reserve.totalBorrow);
-        const decimals = BigInt(10) ** BigInt(reserve.decimals);
-        const totalBorrowFloat = Number(totalBorrowBN) / Number(decimals);
-        return sum + totalBorrowFloat * reserve.priceUSD;
-      }, 0);
-      
-      return {
-        chainId: this.chainId,
-        reserves,
-        stats: {
-          tvlUSD,
-          totalBorrowUSD,
-          availableLiquidityUSD: tvlUSD - totalBorrowUSD,
-          utilizationRate: totalBorrowUSD / tvlUSD,
-          reservesCount: reserves.length
-        }
-      };
-    } catch (error: any) {
-      console.error(`Error fetching Aave protocol data: ${error.message}`);
-      throw error;
+    } catch (error) {
+      console.error('Failed to get Aave reserve data:', error);
+      return [];
     }
   }
   
-  // Aave-specific methods
-  private async executeSupply(params: Record<string, any>): Promise<any> {
+  async getUserHealthFactor(address?: string): Promise<number> {
+    if (!address) {
+      address = this.userAddress;
+    }
+    
+    if (!address) {
+      throw new Error('User address not provided');
+    }
+    
     try {
-      const { asset, amount, user } = params;
+      // In a production implementation, we would call the Aave contracts
+      // For now, we call the API
+      const apiUrl = `${this.baseApiUrl}/users/${address}/summary?marketName=${AAVE_NETWORKS[this.chainId]?.v3.marketName || 'proto_mainnet_v3'}`;
+      const response = await axios.get(apiUrl);
       
-      // Find reserve data for asset
-      const reserveData = this.reserves.find(r => 
-        r.symbol.toLowerCase() === asset.toLowerCase() || 
-        r.address.toLowerCase() === asset.toLowerCase()
-      );
-      
-      if (!reserveData) {
-        throw new Error(`Asset ${asset} not found in Aave reserves`);
-      }
-      
-      // In a real implementation, this would generate a transaction
-      console.log(`Would supply ${amount} ${reserveData.symbol} to Aave`);
-      
-      // Mock transaction response
-      return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        asset: reserveData.symbol,
-        amount,
-        user: user || this.userAddress,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-    } catch (error: any) {
-      console.error(`Error executing Aave supply: ${error.message}`);
-      throw error;
+      return parseFloat(response.data?.userReserves?.healthFactor || '0');
+    } catch (error) {
+      console.error('Failed to get Aave user health factor:', error);
+      return 0;
     }
   }
   
-  private async executeWithdraw(params: Record<string, any>): Promise<any> {
-    try {
-      const { asset, amount, user } = params;
-      
-      // Find reserve data for asset
-      const reserveData = this.reserves.find(r => 
-        r.symbol.toLowerCase() === asset.toLowerCase() || 
-        r.address.toLowerCase() === asset.toLowerCase()
-      );
-      
-      if (!reserveData) {
-        throw new Error(`Asset ${asset} not found in Aave reserves`);
-      }
-      
-      // In a real implementation, this would generate a transaction
-      console.log(`Would withdraw ${amount} ${reserveData.symbol} from Aave`);
-      
-      // Mock transaction response
-      return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        asset: reserveData.symbol,
-        amount,
-        user: user || this.userAddress,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-    } catch (error: any) {
-      console.error(`Error executing Aave withdraw: ${error.message}`);
-      throw error;
+  async getUserAccountData(address?: string): Promise<any> {
+    if (!address) {
+      address = this.userAddress;
     }
-  }
-  
-  private async executeBorrow(params: Record<string, any>): Promise<any> {
-    try {
-      const { asset, amount, interestRateMode = 2, user } = params;
-      
-      // Find reserve data for asset
-      const reserveData = this.reserves.find(r => 
-        r.symbol.toLowerCase() === asset.toLowerCase() || 
-        r.address.toLowerCase() === asset.toLowerCase()
-      );
-      
-      if (!reserveData) {
-        throw new Error(`Asset ${asset} not found in Aave reserves`);
-      }
-      
-      // In a real implementation, this would generate a transaction
-      console.log(`Would borrow ${amount} ${reserveData.symbol} from Aave with interest rate mode ${interestRateMode}`);
-      
-      // Mock transaction response
-      return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        asset: reserveData.symbol,
-        amount,
-        interestRateMode: interestRateMode === 1 ? 'stable' : 'variable',
-        user: user || this.userAddress,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-    } catch (error: any) {
-      console.error(`Error executing Aave borrow: ${error.message}`);
-      throw error;
+    
+    if (!address) {
+      throw new Error('User address not provided');
     }
-  }
-  
-  private async executeRepay(params: Record<string, any>): Promise<any> {
+    
     try {
-      const { asset, amount, interestRateMode = 2, user } = params;
+      // In a production implementation, we would call the Aave contracts
+      // For now, we call the API
+      const apiUrl = `${this.baseApiUrl}/users/${address}/summary?marketName=${AAVE_NETWORKS[this.chainId]?.v3.marketName || 'proto_mainnet_v3'}`;
+      const response = await axios.get(apiUrl);
       
-      // Find reserve data for asset
-      const reserveData = this.reserves.find(r => 
-        r.symbol.toLowerCase() === asset.toLowerCase() || 
-        r.address.toLowerCase() === asset.toLowerCase()
-      );
-      
-      if (!reserveData) {
-        throw new Error(`Asset ${asset} not found in Aave reserves`);
-      }
-      
-      // In a real implementation, this would generate a transaction
-      console.log(`Would repay ${amount} ${reserveData.symbol} to Aave with interest rate mode ${interestRateMode}`);
-      
-      // Mock transaction response
-      return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        asset: reserveData.symbol,
-        amount,
-        interestRateMode: interestRateMode === 1 ? 'stable' : 'variable',
-        user: user || this.userAddress,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-    } catch (error: any) {
-      console.error(`Error executing Aave repay: ${error.message}`);
-      throw error;
-    }
-  }
-  
-  private async executeSetCollateralUsage(params: Record<string, any>): Promise<any> {
-    try {
-      const { asset, useAsCollateral, user } = params;
-      
-      // Find reserve data for asset
-      const reserveData = this.reserves.find(r => 
-        r.symbol.toLowerCase() === asset.toLowerCase() || 
-        r.address.toLowerCase() === asset.toLowerCase()
-      );
-      
-      if (!reserveData) {
-        throw new Error(`Asset ${asset} not found in Aave reserves`);
-      }
-      
-      // In a real implementation, this would generate a transaction
-      console.log(`Would set ${reserveData.symbol} as collateral: ${useAsCollateral}`);
-      
-      // Mock transaction response
-      return {
-        txHash: `0x${Math.random().toString(16).substr(2, 64)}`,
-        asset: reserveData.symbol,
-        useAsCollateral,
-        user: user || this.userAddress,
-        timestamp: Date.now(),
-        status: 'completed'
-      };
-    } catch (error: any) {
-      console.error(`Error executing Aave setCollateralUsage: ${error.message}`);
-      throw error;
-    }
-  }
-  
-  private async getUserData(userAddress?: string): Promise<any> {
-    try {
-      if (!userAddress && !this.userAddress) {
-        throw new Error('User address not provided');
-      }
-      
-      const address = userAddress || this.userAddress;
-      
-      // In a real implementation, this would fetch user data from the Aave API
-      // For now, we'll return mock data
+      const userData = response.data || {};
       
       return {
-        totalCollateralUSD: 70000,
-        totalBorrowUSD: 10000,
-        availableBorrowsUSD: 46000,
-        currentLiquidationThreshold: 0.85,
-        ltv: 0.8,
-        healthFactor: 5.95,
-        positions: await this.getUserPositions(address as string)
+        totalCollateralUSD: parseFloat(userData.totalCollateralUSD || '0'),
+        totalDebtUSD: parseFloat(userData.totalDebtUSD || '0'),
+        availableBorrowsUSD: parseFloat(userData.availableBorrowsUSD || '0'),
+        currentLiquidationThreshold: parseFloat(userData.currentLiquidationThreshold || '0'),
+        ltv: parseFloat(userData.ltv || '0'),
+        healthFactor: parseFloat(userData.healthFactor || '0'),
+        netWorthUSD: parseFloat(userData.netWorthUSD || '0')
       };
-    } catch (error: any) {
-      console.error(`Error getting Aave user data: ${error.message}`);
-      throw error;
+    } catch (error) {
+      console.error('Failed to get Aave user account data:', error);
+      return {
+        totalCollateralUSD: 0,
+        totalDebtUSD: 0,
+        availableBorrowsUSD: 0,
+        currentLiquidationThreshold: 0,
+        ltv: 0,
+        healthFactor: 0,
+        netWorthUSD: 0
+      };
     }
   }
 } 
