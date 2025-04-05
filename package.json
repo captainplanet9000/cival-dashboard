@@ -13,7 +13,9 @@
     "test:coverage": "jest --coverage",
     "migrate-vault": "ts-node src/scripts/migrate-to-unified-vault.ts",
     "process-payments": "ts-node src/scripts/process-storage-payments.ts",
-    "test:storage-integration": "ts-node src/scripts/test-storage-integration.ts"
+    "test:storage-integration": "ts-node src/scripts/test-storage-integration.ts",
+    "init:mocks": "ts-node src/scripts/init-mock-data.ts",
+    "dev:with-mocks": "npm run init:mocks && npm run dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -54,6 +56,7 @@
     "tailwindcss": "^3.3.5",
     "technicalindicators": "^3.1.0",
     "typescript": "^5.3.2",
+    "uuid": "^9.0.1",
     "winston": "^3.11.0",
     "ws": "^8.14.2",
     "zustand": "^5.0.3",
@@ -74,6 +77,7 @@
     "@types/react": "^18.2.39",
     "@types/react-dom": "^18.2.17",
     "@types/technicalindicators": "^3.1.0",
+    "@types/uuid": "^9.0.8",
     "@types/winston": "^3.11.0",
     "@typescript-eslint/eslint-plugin": "^6.13.1",
     "@typescript-eslint/parser": "^6.13.1",

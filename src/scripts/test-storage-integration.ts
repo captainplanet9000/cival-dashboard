@@ -18,33 +18,24 @@
  */
 
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
-import { Database } from '../types/database.types';
 import chalk from 'chalk';
 import { v4 as uuidv4 } from 'uuid';
-import { StorageService } from '../services/storageService';
-import { VaultService } from '../services/vaultService';
-import { IntegrationService } from '../services/integrationService';
 import { StorageType, StorageStatus } from '../types/storage';
+import { 
+  getStorageService, 
+  getVaultService, 
+  getIntegrationService,
+  resetAllMockData
+} from '../services/serviceFactory';
+import { CONFIG } from '../config/mockConfig';
 
 // Load environment variables
 dotenv.config();
 
-// Create Supabase client
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error(chalk.red('Error: Missing Supabase credentials'));
-  process.exit(1);
-}
-
-const supabase = createClient<Database>(supabaseUrl, supabaseKey);
-
 // Initialize services
-const storageService = new StorageService(supabase);
-const vaultService = new VaultService(supabase);
-const integrationService = new IntegrationService(supabase, storageService, vaultService);
+const storageService = getStorageService(true); // Server-side mode
+const vaultService = getVaultService(true); // Server-side mode
+const integrationService = getIntegrationService(true); // Server-side mode
 
 // Test configuration
 const TEST_USER_ID = process.env.TEST_USER_ID || uuidv4();
@@ -77,9 +68,8 @@ function formatBytes(bytes: number): string {
 /**
  * Print a step header
  */
-function printStep(step: number, title: string): void {
-  console.log('\n' + chalk.bgBlue.white(` STEP ${step} `) + ' ' + chalk.blue(title));
-  console.log(chalk.blue('-'.repeat(50)));
+function printStep(num: number, description: string): void {
+  console.log('\n' + chalk.bgBlue.white(` STEP ${num} `) + ' ' + chalk.blue(description));
 }
 
 /**
@@ -110,51 +100,39 @@ async function runStorageIntegrationTest() {
   console.log(chalk.bgGreen.white(' STORAGE INTEGRATION TEST '));
   console.log(chalk.green('Testing integration between storage, vault, and database services\n'));
   
+  printInfo(`Using mock services: ${CONFIG.storage.useMock ? 'YES' : 'NO'}`);
+  
   try {
+    // Reset mock data if we're using mocks
+    if (CONFIG.storage.useMock) {
+      resetAllMockData();
+      printInfo("Mock data has been reset to initial state");
+    }
+    
     // Step 1: Create test agent and farm
     printStep(1, 'Creating test agent and farm');
     
-    const { data: agent, error: agentError } = await supabase
-      .from('agents')
-      .insert({
-        name: `Test Agent ${new Date().toISOString()}`,
-        description: 'Test agent for storage integration tests',
-        owner_id: TEST_USER_ID
-      })
-      .select()
-      .single();
-      
-    if (agentError) throw new Error(`Failed to create test agent: ${agentError.message}`);
+    // Create a test agent
+    const agent = await createAgent();
     agentId = agent.id;
     printSuccess(`Created test agent with ID: ${agentId}`);
     
-    const { data: farm, error: farmError } = await supabase
-      .from('farms')
-      .insert({
-        name: `Test Farm ${new Date().toISOString()}`,
-        description: 'Test farm for storage integration tests',
-        owner_id: TEST_USER_ID
-      })
-      .select()
-      .single();
-      
-    if (farmError) throw new Error(`Failed to create test farm: ${farmError.message}`);
+    // Create a test farm
+    const farm = await createFarm();
     farmId = farm.id;
     printSuccess(`Created test farm with ID: ${farmId}`);
     
     // Step 2: Create a vault master account
     printStep(2, 'Creating vault master account');
     
-    const vaultMaster = await vaultService.createVaultMaster({
-      name: `Test Master ${new Date().toISOString()}`,
-      currency: 'USD',
-      ownerId: TEST_USER_ID,
-      initialBalance: 100,
-      description: 'Test vault master for storage integration tests'
-    });
+    const vaultMaster = await vaultService.createMasterVault(
+      `Test Master ${new Date().toISOString()}`,
+      'Test vault master for storage integration tests',
+      TEST_USER_ID
+    );
     
     vaultMasterId = vaultMaster.id;
-    printSuccess(`Created vault master with ID: ${vaultMasterId} and balance: $${vaultMaster.balance}`);
+    printSuccess(`Created vault master with ID: ${vaultMasterId}`);
     
     // Step 3: Create agent storage with vault integration
     printStep(3, 'Creating agent storage with vault integration');
@@ -202,30 +180,32 @@ async function runStorageIntegrationTest() {
     printStep(5, 'Creating storage allocations');
     
     // Create agent allocation
-    const agentAllocation = await storageService.createStorageAllocation({
-      storageId: agentStorageId,
-      storageType: StorageType.AGENT,
-      allocatedToId: uuidv4(), // Simulating allocation to model
-      allocatedToType: 'model',
-      amount: ALLOCATION_SIZE,
-      purpose: 'Test model storage',
-      isActive: true
-    });
+    const agentAllocation = await storageService.createStorageAllocation(
+      agentStorageId,
+      StorageType.AGENT,
+      uuidv4(), // Simulating allocation to model
+      'model',
+      ALLOCATION_SIZE,
+      {
+        purpose: 'Test model storage'
+      }
+    );
     
     agentAllocationId = agentAllocation.id;
     printSuccess(`Created agent allocation with ID: ${agentAllocationId}`);
     printInfo(`Allocated ${formatBytes(ALLOCATION_SIZE)} to model`);
     
     // Create farm allocation
-    const farmAllocation = await storageService.createStorageAllocation({
-      storageId: farmStorageId,
-      storageType: StorageType.FARM,
-      allocatedToId: uuidv4(), // Simulating allocation to strategy
-      allocatedToType: 'strategy',
-      amount: ALLOCATION_SIZE,
-      purpose: 'Test strategy storage',
-      isActive: true
-    });
+    const farmAllocation = await storageService.createStorageAllocation(
+      farmStorageId,
+      StorageType.FARM,
+      uuidv4(), // Simulating allocation to strategy
+      'strategy',
+      ALLOCATION_SIZE,
+      {
+        purpose: 'Test strategy storage'
+      }
+    );
     
     farmAllocationId = farmAllocation.id;
     printSuccess(`Created farm allocation with ID: ${farmAllocationId}`);
@@ -293,6 +273,80 @@ async function runStorageIntegrationTest() {
     console.error('\n' + chalk.bgRed.white(' TEST FAILED '));
     console.error(chalk.red((error as Error).message));
     process.exit(1);
+  }
+}
+
+// Helper to create test agent
+async function createAgent() {
+  if (CONFIG.storage.useMock) {
+    // When using mocks, we can directly create an agent in mock data
+    const { createMockAgent } = await import('../__mocks__/data/agentData');
+    return createMockAgent(
+      `Test Agent ${new Date().toISOString()}`,
+      'Test agent for storage integration tests',
+      TEST_USER_ID
+    );
+  } else {
+    // When not using mocks, we need to create via Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase credentials');
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data, error } = await supabase
+      .from('agents')
+      .insert({
+        name: `Test Agent ${new Date().toISOString()}`,
+        description: 'Test agent for storage integration tests',
+        owner_id: TEST_USER_ID
+      })
+      .select()
+      .single();
+      
+    if (error) throw new Error(`Failed to create test agent: ${error.message}`);
+    return data;
+  }
+}
+
+// Helper to create test farm
+async function createFarm() {
+  if (CONFIG.storage.useMock) {
+    // When using mocks, we can directly create a farm in mock data
+    const { createMockFarm } = await import('../__mocks__/data/farmData');
+    return createMockFarm(
+      `Test Farm ${new Date().toISOString()}`,
+      'Test farm for storage integration tests',
+      TEST_USER_ID
+    );
+  } else {
+    // When not using mocks, we need to create via Supabase
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Missing Supabase credentials');
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data, error } = await supabase
+      .from('farms')
+      .insert({
+        name: `Test Farm ${new Date().toISOString()}`,
+        description: 'Test farm for storage integration tests',
+        owner_id: TEST_USER_ID
+      })
+      .select()
+      .single();
+      
+    if (error) throw new Error(`Failed to create test farm: ${error.message}`);
+    return data;
   }
 }
 

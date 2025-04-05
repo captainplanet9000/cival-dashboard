@@ -203,7 +203,7 @@ export const mockElizaAgents = [
       {
         id: 'msg-1',
         role: 'user',
-        content: 'What's your current assessment of BTC?',
+        content: 'What\'s your current assessment of BTC?',
         timestamp: '2025-04-01T10:30:00Z'
       },
       {
@@ -269,7 +269,7 @@ export const mockElizaAgents = [
       {
         id: 'msg-2',
         role: 'assistant',
-        content: 'I'll analyze the current DeFi market conditions and prepare a comprehensive report. Would you like me to focus on any specific metrics or protocols?',
+        content: 'I\'ll analyze the current DeFi market conditions and prepare a comprehensive report. Would you like me to focus on any specific metrics or protocols?',
         timestamp: '2025-03-28T14:00:20Z'
       },
       {
@@ -281,7 +281,7 @@ export const mockElizaAgents = [
       {
         id: 'msg-4',
         role: 'assistant',
-        content: 'I'll focus on Total Value Locked trends across major protocols and identify the most attractive yield opportunities with appropriate risk assessments. The report will be ready in approximately 2 hours.',
+        content: 'I\'ll focus on Total Value Locked trends across major protocols and identify the most attractive yield opportunities with appropriate risk assessments. The report will be ready in approximately 2 hours.',
         timestamp: '2025-03-28T14:01:30Z'
       }
     ]
