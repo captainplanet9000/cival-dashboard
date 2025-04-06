@@ -3,6 +3,7 @@ import { SupabaseService, ApiResponse } from '../database/supabase-service';
 import { Farm as FarmType } from '@/types/farm'; // Import the updated Farm type
 import { UnifiedBankingService } from '../unifiedBankingService'; // For goal completion actions
 import { TransactionStatus } from '@/types/vault'; // Correct import path for TransactionStatus
+import { createServerClient } from '@/utils/supabase/server';
 
 // Farm type from database (might be slightly different from our updated FarmType)
 // Use placeholder or existing types if Database type is unavailable
@@ -288,6 +289,54 @@ export class FarmService {
     });
   }
 
+  /**
+   * Get agent by ID
+   * @param agentId The ID of the agent to fetch
+   * @returns Promise resolving with the agent data or error
+   */
+  async getAgentById(agentId: number | string): Promise<ApiResponse<FarmAgent>> {
+    try {
+      // If we're running on the client, use the browser client
+      if (typeof window !== 'undefined') {
+        const response = await fetch(`/api/agents/${agentId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch agent: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (!data.success) {
+          return { success: false, error: data.error || 'Failed to fetch agent' };
+        }
+        
+        return { success: true, data: data.data };
+      } 
+      
+      // Otherwise, use the server client
+      const supabase = await createServerClient();
+      
+      const { data, error } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('id', agentId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching agent:', error);
+        return { success: false, error: error.message };
+      }
+      
+      if (!data) {
+        return { success: false, error: 'Agent not found' };
+      }
+      
+      return { success: true, data };
+    } catch (error: any) {
+      console.error('Error in getAgentById:', error);
+      return { success: false, error: error.message || 'An unexpected error occurred' };
+    }
+  }
 
   // --- Wallet Management ---
   /**

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { PlusIcon, ReloadIcon } from '@radix-ui/react-icons';
+import { BarChart3, Lightbulb } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -49,8 +50,8 @@ import { Goal } from '@/types/goal-types';
 // Status badge mapping
 const statusBadge = {
   PENDING: <Badge variant="outline">Pending</Badge>,
-  ACTIVE: <Badge variant="success">Active</Badge>,
-  PAUSED: <Badge variant="warning">Paused</Badge>,
+  ACTIVE: <Badge variant="default" className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">Active</Badge>,
+  PAUSED: <Badge variant="outline" className="bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">Paused</Badge>,
   COMPLETED: <Badge variant="default">Completed</Badge>,
   FAILED: <Badge variant="destructive">Failed</Badge>,
 };
@@ -368,6 +369,19 @@ export default function AcquisitionGoalsPage() {
                         Resume
                       </Button>
                     )}
+                    
+                    <Button asChild variant="outline" size="sm">
+                      <Link href={`/dashboard/goals/acquisition/analytics?goalId=${goal.id}`}>
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Analytics
+                      </Link>
+                    </Button>
+                    <Button asChild variant="outline" size="sm" className="ml-2">
+                      <Link href={`/dashboard/goals/acquisition/optimizations?goalId=${goal.id}`}>
+                        <Lightbulb className="h-4 w-4 mr-2" />
+                        Optimize
+                      </Link>
+                    </Button>
                     
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

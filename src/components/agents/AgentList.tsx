@@ -13,27 +13,39 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, Edit, Trash2, Play, Pause } from 'lucide-react'; // Import icons
+import { MoreHorizontal, Edit, Trash2, Play, Pause, ExternalLink } from 'lucide-react'; // Import icons
 
 interface AgentListProps {
   farmId: number | string;
+  // Optional agents array, if provided from parent we won't need to fetch
+  agents?: FarmAgent[];
   // Add prop to trigger agent creation modal
   onTriggerCreateAgent: () => void; 
   // Add prop to trigger agent config edit modal
   onTriggerEditAgentConfig: (agent: FarmAgent) => void; 
+  // Add prop to view agent details
+  onViewAgentDetails: (agent: FarmAgent) => void;
 }
 
 export const AgentList: React.FC<AgentListProps> = ({ 
     farmId, 
+    agents: providedAgents,
     onTriggerCreateAgent, 
-    onTriggerEditAgentConfig 
+    onTriggerEditAgentConfig,
+    onViewAgentDetails
 }) => {
-  const [agents, setAgents] = useState<FarmAgent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [agents, setAgents] = useState<FarmAgent[]>(providedAgents || []);
+  const [loading, setLoading] = useState(!providedAgents);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAgents = async () => {
-    // ... (fetch logic remains the same) ...
+    // Skip fetching if agents were provided via props
+    if (providedAgents) {
+      setAgents(providedAgents);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
@@ -56,11 +68,16 @@ export const AgentList: React.FC<AgentListProps> = ({
   };
 
   useEffect(() => {
-    if (farmId) {
+    // If agents are provided via props, update our local state when they change
+    if (providedAgents) {
+      setAgents(providedAgents);
+      setLoading(false);
+    } else if (farmId) {
+      // Otherwise fetch them from the API
       fetchAgents();
     }
      // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [farmId]); // Only refetch when farmId changes
+  }, [farmId, providedAgents]); // Only refetch when farmId or providedAgents changes
 
   const handleUpdateStatus = async (agentId: number | string, newStatus: string) => {
      // ... (update status logic remains the same) ...
@@ -96,6 +113,11 @@ export const AgentList: React.FC<AgentListProps> = ({
   // Trigger the edit modal passed down via props
   const handleEditConfig = (agent: FarmAgent) => {
       onTriggerEditAgentConfig(agent);
+  };
+
+  // Trigger the view details view passed down via props
+  const handleViewDetails = (agent: FarmAgent) => {
+      onViewAgentDetails(agent);
   };
 
   return (
@@ -137,40 +159,50 @@ export const AgentList: React.FC<AgentListProps> = ({
                          <Badge variant={agent.status === 'active' ? 'default' : 'outline'}>{agent.status}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                           <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="h-8 w-8 p-0">
-                                 <span className="sr-only">Open menu</span>
-                                 <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                           </DropdownMenuTrigger>
-                           <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleEditConfig(agent)}>
-                                 <Edit className="mr-2 h-4 w-4" />
-                                 <span>Edit Config</span>
-                              </DropdownMenuItem>
-                              {agent.status === 'active' ? (
-                                <DropdownMenuItem onClick={() => handleUpdateStatus(agent.id, 'inactive')}>
-                                    <Pause className="mr-2 h-4 w-4" />
-                                    <span>Pause Agent</span>
-                                 </DropdownMenuItem>
-                              ) : (
-                                 <DropdownMenuItem onClick={() => handleUpdateStatus(agent.id, 'active')}>
-                                    <Play className="mr-2 h-4 w-4" />
-                                    <span>Activate Agent</span>
-                                 </DropdownMenuItem>
-                              )}
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                 className="text-red-600 focus:text-red-600 focus:bg-red-50"
-                                 onClick={() => handleDeleteAgent(agent.id)}
-                                >
-                                 <Trash2 className="mr-2 h-4 w-4" />
-                                 <span>Delete Agent</span>
-                              </DropdownMenuItem>
-                           </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center justify-end space-x-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => handleViewDetails(agent)}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" className="h-8 w-8 p-0">
+                                  <span className="sr-only">Open menu</span>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => handleEditConfig(agent)}>
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  <span>Edit Config</span>
+                                </DropdownMenuItem>
+                                {agent.status === 'active' ? (
+                                  <DropdownMenuItem onClick={() => handleUpdateStatus(agent.id, 'inactive')}>
+                                      <Pause className="mr-2 h-4 w-4" />
+                                      <span>Pause Agent</span>
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem onClick={() => handleUpdateStatus(agent.id, 'active')}>
+                                      <Play className="mr-2 h-4 w-4" />
+                                      <span>Activate Agent</span>
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                  onClick={() => handleDeleteAgent(agent.id)}
+                                  >
+                                  <Trash2 className="mr-2 h-4 w-4" />
+                                  <span>Delete Agent</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

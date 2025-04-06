@@ -278,3 +278,63 @@ await gmxConnector.executeAction(ProtocolAction.OPEN_POSITION, {
 ## License
 
 MIT
+
+## Advanced Agent Workflow System
+
+The Trading Farm Dashboard includes a powerful agent workflow system that leverages Large Language Models (LLMs) and Model Context Protocol (MCP) tools to automate and enhance trading operations.
+
+### Key Features
+
+- **LLM-powered Workflows**: Agents use large language models for planning, analysis, and reasoning in workflow execution.
+- **MCP Tool Integration**: Connect to external services, exchange APIs, and DeFi protocols through a unified interface.
+- **Workflow Templates**: Pre-configured templates for common operations like market analysis, portfolio rebalancing, and trade execution.
+- **Scheduled Workflows**: Schedule workflows to run automatically at specified intervals or custom cron schedules.
+- **Multi-agent Collaboration**: Different agent types (Analysts, Traders, Monitors) work together seamlessly within a farm.
+
+### Components
+
+- **Agent Workflow Service**: Core service for executing workflows with LLM planning and MCP tool integration.
+- **LLM Service**: Handles natural language processing tasks like workflow planning, analysis, and summarization.
+- **MCP Tools Service**: Provides a unified interface for external tool execution like fetching exchange data, price analysis, and trade execution.
+- **Workflow Templates**: Pre-defined templates for common workflows with customizable parameters.
+- **Workflow Scheduler**: Automates workflow execution on custom schedules.
+
+### Workflow Types
+
+- **Market Analysis**: Analyze market conditions, price trends, and sentiment for specified assets.
+- **Risk Assessment**: Evaluate portfolio risk exposure, volatility metrics, and correlation factors.
+- **Trade Execution**: Execute trades with customizable parameters like entry price, stop loss, and take profit.
+- **Portfolio Rebalance**: Rebalance portfolio to target allocations with slippage control.
+
+### Usage
+
+1. Select an agent in the Farm Dashboard
+2. Navigate to the "Workflows" tab
+3. Choose a workflow type or select from available templates
+4. Configure workflow parameters
+5. Execute workflow or schedule for future execution
+
+### Technical Implementation
+
+The system follows a modular design with separation of concerns:
+- UI components for user interaction 
+- Service layer for business logic
+- API endpoints for data access
+- Integration with external systems via MCP tools
+
+### Example Workflow
+
+A typical Market Analysis workflow might:
+1. Fetch current market data for specified assets
+2. Analyze price trends and patterns
+3. Generate sentiment analysis from news and social media
+4. Compile a final market report with recommendations
+
+### Further Development
+
+The agent workflow system can be extended with:
+- Additional workflow types for specific trading strategies
+- More sophisticated LLM prompting techniques
+- Integration with advanced MCP tools and data sources
+- Real-time collaboration between multiple agents
+- Integration with backtesting systems for strategy validation

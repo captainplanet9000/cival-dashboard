@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { PlusIcon } from '@radix-ui/react-icons';
+import { Lightbulb } from 'lucide-react';
 import { GoalMonitoringDashboard } from '@/components/goal-monitoring/goal-monitoring-dashboard';
 import { RealTimeMonitoringFeed } from '@/components/goal-monitoring/real-time-monitoring-feed';
 import { toast } from 'sonner';
@@ -14,12 +15,12 @@ import { GoalMonitoringEvent } from '@/types/goal-types';
 
 export function GoalMonitoringSection() {
   const router = useRouter();
-  const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState('summary');
-  const [selectedGoalId, setSelectedGoalId] = useState<string | undefined>(undefined);
+  const [expanded, setExpanded] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState('summary');
+  const [selectedGoalId, setSelectedGoalId] = React.useState<string | undefined>(undefined);
   
   // Get the most recently active goal on component mount
-  useEffect(() => {
+  React.useEffect(() => {
     const fetchActiveGoals = async () => {
       try {
         const response = await fetch('/api/goals/acquisition?status=ACTIVE&limit=1');
@@ -114,6 +115,18 @@ export function GoalMonitoringSection() {
             View All Goals
           </Link>
         </Button>
+        {selectedGoalId && (
+          <Button 
+            variant="link" 
+            asChild
+            className="ml-4"
+          >
+            <Link href={`/dashboard/goals/acquisition/optimizations?goalId=${selectedGoalId}`}>
+              <Lightbulb className="mr-2 h-4 w-4" />
+              View Optimizations
+            </Link>
+          </Button>
+        )}
       </div>
     </div>
   );

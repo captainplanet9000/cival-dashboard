@@ -1,12 +1,12 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { farmService } from '@/services/farm/farm-service'; // Adjust path as needed
 
-// Basic error handler (consider moving to a shared utility)
-function handleError(res: NextApiResponse, error: any, statusCode = 500) {
-  console.error("API Error:", error);
-  const message = error instanceof Error ? error.message : 'Internal Server Error';
-  res.status(statusCode).json({ success: false, error: message });
-}
+// Helper function to handle errors consistently
+const handleError = (res: NextApiResponse, error: any, statusCode = 500) => {
+  console.error('API error:', error);
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  res.status(statusCode).json({ success: false, error: errorMessage });
+};
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { agentId } = req.query;
