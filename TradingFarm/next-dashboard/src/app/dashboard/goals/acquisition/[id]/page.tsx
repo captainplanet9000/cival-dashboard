@@ -50,6 +50,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 import { Goal, GoalStrategy, GoalTransaction, GoalMonitoringEvent } from '@/types/goal-types';
+import { AgentMemoryViewer } from '@/components/goal-monitoring/agent-memory-viewer';
 
 // Status badge mapping
 const statusBadge = {
@@ -404,6 +405,7 @@ export default function AcquisitionGoalDetailPage() {
           <TabsTrigger value="strategies">Strategies</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="monitoring">Monitoring</TabsTrigger>
+          <TabsTrigger value="memories">Agent Memories</TabsTrigger>
         </TabsList>
         
         {/* Overview Tab */}
@@ -456,7 +458,6 @@ export default function AcquisitionGoalDetailPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold">Type:</span>
                         {strategyBadge[activeStrategy.strategy_type as keyof typeof strategyBadge] || 
                           strategyBadge.DEX_SWAP}
                       </div>
@@ -747,6 +748,11 @@ export default function AcquisitionGoalDetailPage() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+        
+        {/* Agent Memories Tab */}
+        <TabsContent value="memories" className="space-y-6">
+          <AgentMemoryViewer goalId={goalId} maxMemories={20} />
         </TabsContent>
       </Tabs>
     </div>

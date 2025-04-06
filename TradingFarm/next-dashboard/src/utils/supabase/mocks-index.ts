@@ -114,6 +114,15 @@ import {
   getOpenRouterModels
 } from './mocks-api';
 
+import { mockUserHandlers } from './mocks-users';
+import { mockFarmHandlers } from './mocks-farms';
+import { mockAgentHandlers } from './mocks-agents';
+import { mockOrderHandlers } from './mocks-orders';
+import { mockAuthHandlers } from './mocks-auth';
+import { mockAIHandlers } from './mocks-ai';
+import { mockApiHandlers } from './mocks-api';
+import { mockElizaOSHandlers } from './mocks-elizaos';
+
 // Get farms from the persistent manager
 const mockFarms = mockFarmManager.getAllFarms();
 
@@ -597,3 +606,56 @@ export { importedGetApiServiceProviders as getApiServiceProviders };
 
 // Export mock data service as default
 export default mockDataService;
+
+/**
+ * Map of route handlers for mock Supabase
+ */
+export const mockHandlers: Record<string, (req: Request) => Promise<Response>> = {
+  // Auth handlers
+  '/auth/v1/token': mockAuthHandlers.createToken,
+  '/auth/v1/user': mockAuthHandlers.getUser,
+  
+  // Resource handlers
+  '/rest/v1/users': mockUserHandlers.handleUsers,
+  '/rest/v1/farms': mockFarmHandlers.handleFarms,
+  '/rest/v1/agents': mockAgentHandlers.handleAgents,
+  '/rest/v1/orders': mockOrderHandlers.handleOrders,
+  '/rest/v1/trades': mockOrderHandlers.handleTrades,
+  '/rest/v1/goals': mockAgentHandlers.handleGoals,
+  '/rest/v1/goal_strategies': mockAgentHandlers.handleGoalStrategies,
+  '/rest/v1/goal_transactions': mockAgentHandlers.handleGoalTransactions,
+  '/rest/v1/goal_monitoring': mockAgentHandlers.handleGoalMonitoring,
+  '/rest/v1/eliza_memories': mockElizaOSHandlers.getGoalMemories,
+  '/rest/v1/eliza_commands': mockElizaOSHandlers.sendCommand,
+  '/rest/v1/eliza_command_responses': mockElizaOSHandlers.getCommandResponse,
+  
+  // API service handlers
+  '/rest/v1/api_services': mockApiHandlers.handleApiServices,
+  '/rest/v1/api_service_configs': mockApiHandlers.handleApiServiceConfigs,
+  
+  // AI handlers
+  '/storage/v1/object/ai-models': mockAIHandlers.getModelsList,
+  
+  // Add any additional mock handlers here
+  '/goals/acquisition/coordination': mockElizaOSHandlers.getCoordinationState,
+};
+
+/**
+ * Get mock response for a given URL
+ */
+export const getMockResponse = async (url: string, req: Request): Promise<Response> => {
+  // Find the closest route handler
+  const matchingRoute = Object.keys(mockHandlers).find(route => {
+    return url.includes(route);
+  });
+  
+  if (matchingRoute) {
+    return mockHandlers[matchingRoute](req);
+  }
+  
+  // Return a 404 if no handler found
+  return new Response(JSON.stringify({ error: 'Not found' }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json' }
+  });
+};

@@ -1,401 +1,359 @@
 import { createClient } from '@supabase/supabase-js';
-import mockDataService from './mocks-index';
-import { mockFarmManager, mockFarmResponse } from './mocks-farm';
-import { getCurrentUser, getCurrentSession, isAuthenticated } from './mocks-auth';
-import { getApiServiceProviders } from './mocks-api';
+import { PostgrestClient } from '@supabase/postgrest-js';
+import mockDataService, { getMockResponse } from './mocks-index';
 
-// Define the mock agent store interface
-interface MockAgentStore {
-  agents: any[];
-  elizaAgents: any[];
-}
-
-// Extend Window interface
-declare global {
-  interface Window {
-    mockAgentStore: MockAgentStore;
-  }
-}
-
-// Create a mock implementation of the Supabase client
-export function createMockClient() {
-  // Mock for realtime subscriptions
-  const mockRealtimeSubscription = {
-    on: (event: string, callback: Function) => {
-      // Simulate successful subscription
-      console.log(`[MOCK] Subscribed to ${event}`);
-      return mockRealtimeSubscription;
-    },
-    subscribe: (callback?: Function) => {
-      if (callback) {
-        callback();
+/**
+ * Creates a mock Supabase client for testing/development
+ */
+export function createMockClient(options = {}) {
+  /**
+   * Mock implementation of the auth methods
+   */
+  const auth = {
+    getUser: async () => {
+      try {
+        const req = new Request('https://supabase.mock/auth/v1/user', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+        
+        const response = await getMockResponse('/auth/v1/user', req);
+        const data = await response.json();
+        
+        return { data: data, error: null };
+      } catch (error) {
+        console.error('Error in mock getUser:', error);
+        return { data: { user: null }, error };
       }
+    },
+    signOut: async () => {
+      return { error: null };
+    },
+    // Add other auth methods as needed
+  };
+  
+  /**
+   * Mock implementation of the storage methods
+   */
+  const storage = {
+    from: (bucket: string) => {
       return {
-        unsubscribe: () => console.log('[MOCK] Unsubscribed')
+        getPublicUrl: (path: string) => {
+          return {
+            data: { publicUrl: `https://supabase.mock/storage/v1/object/${bucket}/${path}` }
+          };
+        },
+        list: async (path: string) => {
+          try {
+            const req = new Request(`https://supabase.mock/storage/v1/object/${bucket}?path=${path}`, {
+              method: 'GET',
+              headers: {
+                'Content-Type': 'application/json',
+              }
+            });
+            
+            const response = await getMockResponse(`/storage/v1/object/${bucket}`, req);
+            const data = await response.json();
+            
+            return { data, error: null };
+          } catch (error) {
+            console.error(`Error in mock storage.from(${bucket}).list:`, error);
+            return { data: null, error };
+          }
+        },
+        // Add other storage methods as needed
       };
     }
   };
-
-  // Initiate mock farm manager
-  mockFarmManager.initialize();
-
-  // Create persistent store for agents if it doesn't exist
-  if (typeof window !== 'undefined') {
-    if (!window.mockAgentStore) {
-      window.mockAgentStore = {
-        agents: mockDataService.getStandardAgents() || [],
-        elizaAgents: mockDataService.getElizaAgents() || []
-      };
-    }
-  }
-
-  return {
-    // Auth methods
-    auth: {
-      getUser: async () => {
-        return { data: { user: getCurrentUser() }, error: null };
-      },
-      getSession: async () => {
-        return { data: { session: getCurrentSession() }, error: null };
-      },
-      signInWithPassword: async () => {
-        return { data: { user: getCurrentUser(), session: getCurrentSession() }, error: null };
-      },
-      signOut: async () => {
-        return { error: null };
-      },
-      onAuthStateChange: (callback: Function) => {
-        // Immediately call with authenticated state
-        callback('SIGNED_IN', { user: getCurrentUser() });
-        return { data: { subscription: { unsubscribe: () => {} } } };
-      }
-    },
-    
-    // Database methods
-    from: (table: string) => {
-      return {
-        select: (columns = '*') => {
-          return {
-            eq: (column: string, value: any) => {
-              let result: any[] = [];
-              
-              // Map table names to mock data
-              switch (table) {
-                case 'farms':
-                  // Use the persistent farm manager
-                  if (column === 'id') {
-                    const farm = mockFarmManager.getFarmById(value);
-                    result = farm ? [farm] : [];
-                  } else if (column === 'owner_id') {
-                    result = mockFarmManager.getFarmsByOwnerId(value);
-                  } else {
-                    result = mockFarmManager.getAllFarms();
-                  }
-                  break;
-                case 'agents':
-                  if (typeof window !== 'undefined' && window.mockAgentStore) {
-                    if (column === 'id' && value) {
-                      const agent = window.mockAgentStore.agents.find((a: any) => a.id === value);
-                      result = agent ? [agent] : [];
-                    } else {
-                      result = window.mockAgentStore.agents;
-                    }
-                  } else {
-                    result = mockDataService.getStandardAgents();
-                  }
-                  break;
-                case 'eliza_agents':
-                  if (typeof window !== 'undefined' && window.mockAgentStore) {
-                    if (column === 'id' && value) {
-                      const agent = window.mockAgentStore.elizaAgents.find((a: any) => a.id === value);
-                      result = agent ? [agent] : [];
-                    } else {
-                      result = window.mockAgentStore.elizaAgents;
-                    }
-                  } else {
-                    result = mockDataService.getElizaAgents();
-                  }
-                  break;
-                case 'api_service_providers': 
-                  result = getApiServiceProviders() || [];
-                  break;
-                case 'user_api_configurations':
-                  if (column === 'user_id') {
-                    result = mockDataService.getUserApiConfigurations(value);
-                  } else {
-                    result = [];
-                  }
-                  break;
-                case 'agent_api_services':
-                  if (column === 'agent_id') {
-                    result = mockDataService.getAgentApiServices(value);
-                  } else {
-                    result = [];
-                  }
-                  break;
-                case 'goals':
-                  result = value ? [mockDataService.getGoal(value)] : [];
-                  break;
-                case 'orders':
-                  result = value ? [mockDataService.getOrder(value)] : [];
-                  break;
-                case 'vaults':
-                  result = value ? mockDataService.getVaultsByFarm(value) : [];
-                  break;
-                case 'exchange_connections':
-                  result = value ? mockDataService.getExchangeConnections(value) : [];
-                  break;
-                case 'markets':
-                  result = mockDataService.getMarkets();
-                  break;
-                default:
-                  result = [];
-              }
-              
-              return {
-                order: () => ({
-                  limit: () => ({
-                    then: (callback: Function) => {
-                      callback({ data: result, error: null });
-                    }
-                  }),
-                  then: (callback: Function) => {
-                    callback({ data: result, error: null });
-                  }
-                }),
-                limit: () => ({
-                  then: (callback: Function) => {
-                    callback({ data: result, error: null });
-                  }
-                }),
-                then: (callback: Function) => {
-                  callback({ data: result, error: null });
-                }
-              };
-            },
-            in: (column: string, values: any[]) => ({
-              then: (callback: Function) => {
-                let result: any[] = [];
-                // Handle 'in' queries for farms
-                if (table === 'farms' && column === 'id') {
-                  result = values
-                    .map(id => mockFarmManager.getFarmById(id))
-                    .filter(Boolean);
-                }
-                callback({ data: result, error: null });
-              }
-            }),
-            order: () => ({
-              limit: () => ({
-                then: (callback: Function) => {
-                  // Return appropriate mock data based on table
-                  let result: any[] = [];
-                  switch(table) {
-                    case 'farms':
-                      result = mockFarmManager.getAllFarms();
-                      break;
-                    case 'agents':
-                      if (typeof window !== 'undefined' && window.mockAgentStore) {
-                        result = window.mockAgentStore.agents;
-                      } else {
-                        result = mockDataService.getStandardAgents();
-                      }
-                      break;
-                    case 'eliza_agents':
-                      if (typeof window !== 'undefined' && window.mockAgentStore) {
-                        result = window.mockAgentStore.elizaAgents;
-                      } else {
-                        result = mockDataService.getElizaAgents();
-                      }
-                      break;
-                    case 'api_service_providers':
-                      result = getApiServiceProviders() || [];
-                      break;
-                    case 'markets':
-                      result = mockDataService.getMarkets();
-                      break;
-                    default:
-                      result = [];
-                  }
-                  callback({ data: result, error: null });
-                }
-              }),
-              then: (callback: Function) => {
-                // Use persistent farm manager for farms
-                const result = table === 'farms' 
-                  ? mockFarmManager.getAllFarms() 
-                  : [];
-                callback({ data: result, error: null });
-              }
-            }),
-            limit: () => ({
-              then: (callback: Function) => {
-                // Use persistent farm manager for farms
-                const result = table === 'farms' 
-                  ? mockFarmManager.getAllFarms() 
-                  : [];
-                callback({ data: result, error: null });
-              }
-            }),
-            then: (callback: Function) => {
-              // Return appropriate mock data based on table
-              let result: any[] = [];
-              switch(table) {
-                case 'farms':
-                  // Use the persistent farm manager
-                  result = mockFarmManager.getAllFarms();
-                  break;
-                case 'agents':
-                  if (typeof window !== 'undefined' && window.mockAgentStore) {
-                    result = window.mockAgentStore.agents;
-                  } else {
-                    result = mockDataService.getStandardAgents();
-                  }
-                  break;
-                case 'eliza_agents':
-                  if (typeof window !== 'undefined' && window.mockAgentStore) {
-                    result = window.mockAgentStore.elizaAgents;
-                  } else {
-                    result = mockDataService.getElizaAgents();
-                  }
-                  break;
-                case 'api_service_providers':
-                  result = getApiServiceProviders() || [];
-                  break;
-                case 'markets':
-                  result = mockDataService.getMarkets();
-                  break;
-                default:
-                  result = [];
-              }
-              callback({ data: result, error: null });
-            }
-          };
-        },
-        insert: (data: any) => ({
-          then: (callback: Function) => {
-            // Mock object with new ID and timestamp
-            const newItem = {
-              id: `${table}-${Date.now()}`,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-              ...data
-            };
-
-            // Handle specific tables with data persistence
-            if (table === 'farms') {
-              // Use the persistent farm manager for farm creation
-              const farm = mockFarmManager.createFarm(newItem);
-              callback({ data: farm, error: null });
-            } else if (table === 'agents' && typeof window !== 'undefined' && window.mockAgentStore) {
-              // Add to persistent store and log for debugging
-              console.log('[MOCK] Creating new agent:', newItem);
-              window.mockAgentStore.agents.push(newItem);
-              callback({ data: newItem, error: null });
-            } else if (table === 'eliza_agents' && typeof window !== 'undefined' && window.mockAgentStore) {
-              // Add to persistent store and log for debugging
-              console.log('[MOCK] Creating new Eliza agent:', newItem);
-              window.mockAgentStore.elizaAgents.push(newItem);
-              callback({ data: newItem, error: null });
-            } else {
-              // Default mock response for other tables
-              callback({ data: newItem, error: null });
-            }
-          }
-        }),
-        update: (data: any) => ({
-          eq: (column: string, value: any) => ({
-            then: (callback: Function) => {
-              if (table === 'farms' && column === 'id') {
-                // Use the persistent farm manager for farm updates
-                const updatedFarm = mockFarmManager.updateFarm(value, data);
-                callback({ data: updatedFarm, error: null });
-              } else if (table === 'agents' && column === 'id' && typeof window !== 'undefined' && window.mockAgentStore) {
-                // Update agent in the persistent store
-                const index = window.mockAgentStore.agents.findIndex((a: any) => a.id === value);
-                if (index >= 0) {
-                  window.mockAgentStore.agents[index] = { ...window.mockAgentStore.agents[index], ...data };
-                  callback({ data: window.mockAgentStore.agents[index], error: null });
-                } else {
-                  callback({ data: null, error: { message: 'Agent not found' } });
-                }
-              } else if (table === 'eliza_agents' && column === 'id' && typeof window !== 'undefined' && window.mockAgentStore) {
-                // Update Eliza agent in the persistent store
-                const index = window.mockAgentStore.elizaAgents.findIndex((a: any) => a.id === value);
-                if (index >= 0) {
-                  window.mockAgentStore.elizaAgents[index] = { ...window.mockAgentStore.elizaAgents[index], ...data };
-                  callback({ data: window.mockAgentStore.elizaAgents[index], error: null });
-                } else {
-                  callback({ data: null, error: { message: 'Eliza agent not found' } });
-                }
-              } else {
-                // Default mock response for other tables
-                callback({ data: { id: value, ...data }, error: null });
-              }
-            }
-          })
-        }),
-        delete: () => ({
-          eq: (column: string, value: any) => ({
-            then: (callback: Function) => {
-              if (table === 'farms' && column === 'id') {
-                // Use the persistent farm manager for farm deletion
-                const success = mockFarmManager.deleteFarm(value);
-                callback({ data: { success }, error: null });
-              } else if (table === 'agents' && column === 'id' && typeof window !== 'undefined' && window.mockAgentStore) {
-                // Remove agent from the persistent store
-                const index = window.mockAgentStore.agents.findIndex((a: any) => a.id === value);
-                if (index >= 0) {
-                  window.mockAgentStore.agents.splice(index, 1);
-                  callback({ data: { success: true }, error: null });
-                } else {
-                  callback({ data: { success: false }, error: { message: 'Agent not found' } });
-                }
-              } else if (table === 'eliza_agents' && column === 'id' && typeof window !== 'undefined' && window.mockAgentStore) {
-                // Remove Eliza agent from the persistent store
-                const index = window.mockAgentStore.elizaAgents.findIndex((a: any) => a.id === value);
-                if (index >= 0) {
-                  window.mockAgentStore.elizaAgents.splice(index, 1);
-                  callback({ data: { success: true }, error: null });
-                } else {
-                  callback({ data: { success: false }, error: { message: 'Eliza agent not found' } });
-                }
-              } else {
-                // Default mock response for other tables
-                callback({ data: { success: true }, error: null });
-              }
-            }
-          })
-        }),
-        // Mock realtime subscriptions
-        on: () => mockRealtimeSubscription
-      };
-    },
-    
-    // Storage methods
-    storage: {
-      from: (bucket: string) => ({
-        upload: () => ({ data: { path: 'mock-file-path' }, error: null }),
-        download: () => ({ data: new Blob(), error: null }),
-        list: () => ({ data: [], error: null }),
-        remove: () => ({ data: {}, error: null })
-      })
-    },
-    
-    // Mock realtime subscriptions
-    channel: (name: string) => ({
-      on: (event: string, callback: Function) => {
-        console.log(`[MOCK] Created channel: ${name}, event: ${event}`);
+  
+  /**
+   * Creates a function that generates a PostgrestClient-like object
+   * that returns mock data for a given table
+   */
+  const mockFrom = (table: string) => {
+    /**
+     * Mock implementation of the PostgrestClient
+     */
+    const mockClient = {
+      select: (columns = '*', options = {}) => {
         return {
-          subscribe: (cb?: Function) => {
-            if (cb) cb();
-            return {
-              unsubscribe: () => {}
-            };
+          ...mockClient,
+          _action: 'select',
+          _columns: columns,
+          _options: options
+        };
+      },
+      insert: (values: any, options = {}) => {
+        return {
+          ...mockClient,
+          _action: 'insert',
+          _values: values,
+          _options: options
+        };
+      },
+      update: (values: any, options = {}) => {
+        return {
+          ...mockClient,
+          _action: 'update',
+          _values: values,
+          _options: options
+        };
+      },
+      delete: (options = {}) => {
+        return {
+          ...mockClient,
+          _action: 'delete',
+          _options: options
+        };
+      },
+      upsert: (values: any, options = {}) => {
+        return {
+          ...mockClient,
+          _action: 'upsert',
+          _values: values,
+          _options: options
+        };
+      },
+      eq: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [column]: value },
+        };
+      },
+      neq: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__neq`]: value },
+        };
+      },
+      gt: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__gt`]: value },
+        };
+      },
+      gte: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__gte`]: value },
+        };
+      },
+      lt: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__lt`]: value },
+        };
+      },
+      lte: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__lte`]: value },
+        };
+      },
+      in: (column: string, values: any[]) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__in`]: values },
+        };
+      },
+      filter: (column: string, operator: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { 
+            ...mockClient._filters, 
+            [`${column}__filter`]: { operator, value } 
+          },
+        };
+      },
+      like: (column: string, pattern: string) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__like`]: pattern },
+        };
+      },
+      ilike: (column: string, pattern: string) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__ilike`]: pattern },
+        };
+      },
+      is: (column: string, value: any) => {
+        return {
+          ...mockClient,
+          _filters: { ...mockClient._filters, [`${column}__is`]: value },
+        };
+      },
+      order: (column: string, options = {}) => {
+        return {
+          ...mockClient,
+          _order: { column, options },
+        };
+      },
+      limit: (count: number) => {
+        return {
+          ...mockClient,
+          _limit: count,
+        };
+      },
+      single: () => {
+        return {
+          ...mockClient,
+          _single: true,
+        };
+      },
+      range: (from: number, to: number) => {
+        return {
+          ...mockClient,
+          _range: { from, to },
+        };
+      },
+      then: async (onFulfilled?: any, onRejected?: any) => {
+        try {
+          // Generate mock request based on the operation
+          const method = mockClient._action === 'select' ? 'GET' : 
+                        mockClient._action === 'insert' ? 'POST' :
+                        mockClient._action === 'update' ? 'PATCH' :
+                        mockClient._action === 'delete' ? 'DELETE' : 'POST';
+          
+          let url = `https://supabase.mock/rest/v1/${table}`;
+          let body = null;
+          
+          // Add query parameters based on the operation
+          const queryParams = new URLSearchParams();
+          
+          if (mockClient._action === 'select') {
+            queryParams.append('select', mockClient._columns);
+          }
+          
+          // Add filters
+          if (mockClient._filters) {
+            Object.entries(mockClient._filters).forEach(([key, value]) => {
+              queryParams.append(key, JSON.stringify(value));
+            });
+          }
+          
+          // Add limit
+          if (mockClient._limit) {
+            queryParams.append('limit', mockClient._limit.toString());
+          }
+          
+          // Add ordering
+          if (mockClient._order) {
+            queryParams.append('order', `${mockClient._order.column}.${mockClient._order.options.ascending ? 'asc' : 'desc'}`);
+          }
+          
+          // Add range
+          if (mockClient._range) {
+            queryParams.append('offset', mockClient._range.from.toString());
+            queryParams.append('limit', (mockClient._range.to - mockClient._range.from + 1).toString());
+          }
+          
+          // For insert, update, upsert operations, add values as body
+          if (['insert', 'update', 'upsert'].includes(mockClient._action)) {
+            body = mockClient._values;
+          }
+          
+          // Add query string to URL
+          const queryString = queryParams.toString();
+          if (queryString) {
+            url += `?${queryString}`;
+          }
+          
+          const req = new Request(url, {
+            method,
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            ...(body && { body: JSON.stringify(body) })
+          });
+          
+          // For special case handling of ElizaOS routes
+          if (table === 'eliza_memories') {
+            const response = await getMockResponse('/rest/v1/eliza_memories', req);
+            const data = await response.json();
+            return { data: data.data, error: null, count: data.data?.length || 0 };
+          } else if (table === 'eliza_commands') {
+            const response = await getMockResponse('/rest/v1/eliza_commands', req);
+            const data = await response.json();
+            return { data: data.data, error: null };
+          } else if (table === 'eliza_command_responses') {
+            const response = await getMockResponse('/rest/v1/eliza_command_responses', req);
+            const data = await response.json();
+            return { data: data.data, error: null };
+          }
+          
+          // Get mock response from mock data service
+          const mockData = await mockDataService.getMockData(table, {
+            action: mockClient._action,
+            filters: mockClient._filters || {},
+            single: mockClient._single || false,
+            values: mockClient._values,
+            limit: mockClient._limit,
+            order: mockClient._order,
+            range: mockClient._range,
+          });
+          
+          return mockData;
+        } catch (error) {
+          console.error(`Error in mock ${mockClient._action} operation:`, error);
+          return onRejected ? onRejected(error) : { data: null, error };
+        }
+      },
+      // Initial state
+      _filters: {},
+      _action: '',
+      _columns: '',
+      _values: null,
+      _options: {},
+      _limit: undefined,
+      _single: false,
+      _order: undefined,
+      _range: undefined,
+    };
+    
+    return mockClient;
+  };
+  
+  // Return the mock client with all required methods
+  return {
+    auth,
+    storage,
+    from: mockFrom,
+    // Special function for goal coordination 
+    rpc: (fn: string, params: any) => {
+      if (fn === 'get_goal_coordination') {
+        // Mock RPC call for goal coordination
+        return {
+          then: async (onFulfilled?: any, onRejected?: any) => {
+            try {
+              const req = new Request(`https://supabase.mock/goals/acquisition/coordination?goalId=${params?.goalId || ''}`, {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                }
+              });
+              
+              const response = await getMockResponse('/goals/acquisition/coordination', req);
+              const data = await response.json();
+              
+              return onFulfilled ? onFulfilled(data) : data;
+            } catch (error) {
+              console.error(`Error in mock RPC call to ${fn}:`, error);
+              return onRejected ? onRejected(error) : { data: null, error };
+            }
           }
         };
       }
-    })
+      
+      // Default RPC response for unknown functions
+      return {
+        then: async (onFulfilled?: any, onRejected?: any) => {
+          return onFulfilled ? onFulfilled({ data: null }) : { data: null };
+        }
+      };
+    }
   };
 }
 

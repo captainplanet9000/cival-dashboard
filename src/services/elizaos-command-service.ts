@@ -1,24 +1,14 @@
 import { ElizaCommand, ElizaCommandRepository } from '../repositories/eliza-command-repository';
 import { MemoryItem, MemoryItemRepository } from '../repositories/memory-item-repository';
 import { Farm } from '@/types/farm'; // Import Farm type
-// Placeholder: Import your DeFi service that handles protocol interactions
-// import { DefiService } from './defi/defi-service'; 
+import { ProtocolConnectorFactory } from '../services/defi/protocol-connector-factory'; // Import the factory
+import { ProtocolType, ProtocolAction } from '@/types/defi-protocol-types'; // Correct import path & import ProtocolAction
+import { ProtocolConnectorInterface } from '../services/defi/protocol-connector-interface'; // Import the interface
+// Remove ethers import for now
+// import { ethers } from 'ethers';
 
-// Simple placeholder for DefiService if not implemented yet
-class DefiService {
-  async executeSwap(params: { fromAsset: string; toAsset: string; amount: number; dex: string; walletInfo: any }): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
-    console.log(`[DefiService Placeholder] Executing swap:`, params);
-    // Simulate async operation and potential failure
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000)); 
-    const success = Math.random() > 0.1; // 90% success rate
-    if (success) {
-        return { success: true, transactionHash: `0x${[...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}` };
-    } else {
-        return { success: false, error: 'Simulated DEX error: Slippage too high' };
-    }
-  }
-}
-// --- End Placeholder
+// Remove placeholder DefiService
+// class DefiService { ... }
 
 /**
  * Service for handling ElizaOS command processing and memory management
@@ -26,12 +16,12 @@ class DefiService {
 export class ElizaCommandService {
   private commandRepository: ElizaCommandRepository;
   private memoryRepository: MemoryItemRepository;
-  private defiService: DefiService; // Add instance of DefiService
+  // No need for defiService instance anymore, use factory directly
   
   constructor() {
     this.commandRepository = new ElizaCommandRepository();
     this.memoryRepository = new MemoryItemRepository();
-    this.defiService = new DefiService(); // Instantiate DefiService
+    // No need to instantiate placeholder DefiService
   }
   
   /**
@@ -186,17 +176,16 @@ export class ElizaCommandService {
   
   /**
    * Process a command (placeholder implementation)
-   * In real implementation, this would call a language model or other service
    */
   private async processCommand(
     command: string,
     context: Record<string, any>
   ): Promise<Record<string, any>> {
     // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000)); // Slightly longer delay for analysis
+    await new Promise(resolve => setTimeout(resolve, 500)); // Restore normal delay
     
     const lowerCommand = command.toLowerCase();
-    const farmGoal = context?.goal as Farm | undefined; // Use imported Farm type
+    const farmGoal = context?.goal as Farm | undefined;
 
     // --- Analysis & Strategy Proposal Command Handling ---
     if (lowerCommand.startsWith('analyze and propose') && farmGoal) {
@@ -210,21 +199,19 @@ export class ElizaCommandService {
         let proposedAction = '';
         let details: any = {};
 
-        // Very basic mock analysis: choose the first asset, assume swap from USDC
+        // Mock analysis: choose first asset, assume swap from USDC on Uniswap (available connector)
         if (targetAssets.length > 0) {
-            chosenAsset = targetAssets[0]; // Simplistic choice
-            // Mock cost calculation (e.g., assume price is between 0.5 and 1.5 USDC)
+            chosenAsset = targetAssets[0]; 
             const mockPrice = 0.5 + Math.random(); 
             estimatedCost = targetAmount * mockPrice;
             proposedAction = 'SWAP';
             details = {
                 action: 'SWAP',
-                fromAsset: 'USDC', // Assume we start with USDC
+                fromAsset: 'USDC', 
                 toAsset: chosenAsset,
-                // Propose swapping in chunks, e.g., 20% of total cost at a time
                 amount: estimatedCost * 0.2, 
                 estimatedTotalCost: estimatedCost,
-                dex: 'Cetus' // Assume Cetus for SUI, need logic for SONIC if different
+                dex: 'Uniswap' // Use Uniswap as it has a connector
             };
         } else {
              console.error('No target assets defined in goal for analysis.');
@@ -253,55 +240,78 @@ export class ElizaCommandService {
         const [, amountStr, , fromAsset, toAsset, dex] = swapMatch;
         const amount = parseFloat(amountStr);
 
-        // TODO: Get necessary wallet info (e.g., private key, address) for the agent/farm
-        // This is a critical security consideration and needs proper handling (e.g., VaultService)
-        const walletInfo = { privateKey: '0x...placeholder...', address: '0x...placeholder...', farmId: context?.goal?.farmId };
-
+        // TODO: Wallet Security - Securely get wallet/signer for the farm/agent
+        // const signer = getSignerForFarm(farmGoal?.id); // Replace placeholder below
+        const signer = null; // Placeholder - No signer for now
+        
         try {
-            const swapResult = await this.defiService.executeSwap({
-                amount,
-                fromAsset,
-                toAsset,
-                dex,
-                walletInfo, // Pass necessary credentials/context
-            });
+            // Map DEX name string to ProtocolType enum
+            let protocolType: ProtocolType;
+            switch (dex.toUpperCase()) {
+                case 'UNISWAP': protocolType = ProtocolType.UNISWAP; break;
+                case 'GMX': protocolType = ProtocolType.GMX; break;
+                case 'SUSHISWAP': protocolType = ProtocolType.SUSHISWAP; break;
+                // Add other supported DEX/Protocols here
+                default:
+                    throw new Error(`Unsupported DEX/Protocol specified in command: ${dex}`);
+            }
+            
+            // TODO: Determine correct chainId for the swap
+            const chainId = 1; // Placeholder (e.g., Ethereum mainnet)
 
+            // Get the connector instance
+            const connector: ProtocolConnectorInterface = await ProtocolConnectorFactory.getConnector(protocolType, chainId);
+            
+            // TODO: Connect wallet/signer properly if needed by the connector
+            // await ProtocolConnectorFactory.connectWallet(protocolType, chainId); 
+
+            console.log(`Attempting swap via ${protocolType} connector using executeAction...`);
+
+            // Define the action parameters for the swap
+            const actionParams = {
+                fromToken: fromAsset, 
+                toToken: toAsset,
+                amount: amount.toString(), 
+                signer: signer, // Pass null for now, needs real implementation
+                slippageTolerance: 0.005 // Example: 0.5%
+                // Add other necessary params based on specific connector needs
+            };
+
+            // Execute the swap using the generic executeAction method
+            // Assume ProtocolAction has a relevant action type like 'SWAP'
+            const swapResult = await connector.executeAction(ProtocolAction.SWAP, actionParams);
+
+            // Process swapResult (assuming it has { success: boolean, transactionHash?: string, error?: string })
             if (swapResult.success) {
-                return {
+                 return {
                     type: 'EXECUTION_CONFIRMATION',
-                    data: {
+                    data: { 
                         action: 'SWAP',
                         amount: amount,
-                        asset: toAsset, // Asset received
+                        asset: toAsset, 
                         fromAsset: fromAsset,
                         dex: dex,
                         transactionHash: swapResult.transactionHash,
                         message: `Successfully executed swap of ${amount} ${fromAsset} to ${toAsset} on ${dex}.`
                     },
                     success: true
-                };
+                 };
             } else {
-                 console.error(`Swap execution failed: ${swapResult.error}`);
+                 console.error(`Swap execution failed via ${protocolType}: ${swapResult.error}`);
                  return {
                     type: 'EXECUTION_FAILURE',
-                    data: { 
-                        action: 'SWAP', 
-                        reason: swapResult.error || 'Unknown DEX error' 
-                    },
+                    data: { action: 'SWAP', reason: swapResult.error || `Unknown ${protocolType} error` },
                     success: false,
-                    error: swapResult.error || 'Unknown DEX error'
+                    error: swapResult.error || `Unknown ${protocolType} error`
                  };
             }
         } catch (error: any) {
-             console.error(`Error during swap execution: ${error.message}`);
+             console.error(`Error during swap execution via connector: ${error.message}`);
              return {
                 type: 'EXECUTION_FAILURE',
-                data: { 
-                    action: 'SWAP', 
-                    reason: error.message || 'Error executing swap'
-                },
+                data: { action: 'SWAP', reason: error.message || 'Error executing swap via connector' },
                 success: false,
-                error: error.message || 'Error executing swap'
+                error: error.message || 'Error executing swap via connector'
              };
         }
     }

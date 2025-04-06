@@ -65,9 +65,9 @@ export interface SetFarmGoalParams {
 export interface CreateAgentParams {
   name: string;
   farm_id: number; // Assuming farm_id is numeric in 'agents' table based on context
-  type: string;
-  status?: string;
-  configuration?: Record<string, any>;
+  type: string; // e.g., 'ANALYST', 'TRADER', 'MONITOR'
+  status?: string; // Default handled in service
+  configuration?: Record<string, any>; // Initial configuration based on type
 }
 
 // Parameters for creating a wallet
@@ -223,12 +223,28 @@ export class FarmService {
      if (isNaN(params.farm_id)) {
         return { success: false, error: 'Invalid Farm ID for agent creation' };
       }
-    const agentData = {
+    
+     // Define default configuration based on type (optional)
+     let defaultConfig = {};
+     switch (params.type.toUpperCase()) {
+        case 'TRADER':
+            defaultConfig = { allowedStrategies: [], riskPerTrade: 0.01, maxConcurrentTrades: 1 };
+            break;
+        case 'ANALYST':
+            defaultConfig = { dataSources: [], analysisIntervalMinutes: 60 };
+            break;
+        case 'MONITOR':
+            defaultConfig = { alertThresholds: {}, notificationChannels: [] };
+            break;
+     }
+     
+     const agentData = {
       name: params.name,
       farm_id: params.farm_id,
       type: params.type,
-      status: params.status || 'inactive',
-      configuration: params.configuration || {}
+      status: params.status || 'inactive', // Default status
+      // Merge provided config with defaults, allowing override
+      configuration: { ...defaultConfig, ...(params.configuration || {}) } 
     };
 
     return this.dbService.create<FarmAgent>('agents', agentData, { single: true });
