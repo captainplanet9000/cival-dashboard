@@ -1,5 +1,24 @@
 import { ElizaCommand, ElizaCommandRepository } from '../repositories/eliza-command-repository';
 import { MemoryItem, MemoryItemRepository } from '../repositories/memory-item-repository';
+import { Farm } from '@/types/farm'; // Import Farm type
+// Placeholder: Import your DeFi service that handles protocol interactions
+// import { DefiService } from './defi/defi-service'; 
+
+// Simple placeholder for DefiService if not implemented yet
+class DefiService {
+  async executeSwap(params: { fromAsset: string; toAsset: string; amount: number; dex: string; walletInfo: any }): Promise<{ success: boolean; transactionHash?: string; error?: string }> {
+    console.log(`[DefiService Placeholder] Executing swap:`, params);
+    // Simulate async operation and potential failure
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000)); 
+    const success = Math.random() > 0.1; // 90% success rate
+    if (success) {
+        return { success: true, transactionHash: `0x${[...Array(64)].map(() => Math.floor(Math.random() * 16).toString(16)).join('')}` };
+    } else {
+        return { success: false, error: 'Simulated DEX error: Slippage too high' };
+    }
+  }
+}
+// --- End Placeholder
 
 /**
  * Service for handling ElizaOS command processing and memory management
@@ -7,10 +26,12 @@ import { MemoryItem, MemoryItemRepository } from '../repositories/memory-item-re
 export class ElizaCommandService {
   private commandRepository: ElizaCommandRepository;
   private memoryRepository: MemoryItemRepository;
+  private defiService: DefiService; // Add instance of DefiService
   
   constructor() {
     this.commandRepository = new ElizaCommandRepository();
     this.memoryRepository = new MemoryItemRepository();
+    this.defiService = new DefiService(); // Instantiate DefiService
   }
   
   /**
@@ -77,6 +98,21 @@ export class ElizaCommandService {
         errorResponse,
         processingTime
       );
+    }
+  }
+  
+  /**
+   * Get a specific command by its ID.
+   * @param commandId - The ID of the command to retrieve.
+   */
+  async getCommandById(commandId: string): Promise<ElizaCommand | null> {
+    // Assuming ElizaCommandRepository has a getById method
+    try {
+      const command = await this.commandRepository.getById(commandId);
+      return command || null;
+    } catch (error) {
+      console.error(`Failed to get command ${commandId}:`, error);
+      return null;
     }
   }
   
@@ -157,11 +193,120 @@ export class ElizaCommandService {
     context: Record<string, any>
   ): Promise<Record<string, any>> {
     // Simulate processing delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000)); // Slightly longer delay for analysis
     
-    // Simple command parser for demonstration
     const lowerCommand = command.toLowerCase();
-    
+    const farmGoal = context?.goal as Farm | undefined; // Use imported Farm type
+
+    // --- Analysis & Strategy Proposal Command Handling ---
+    if (lowerCommand.startsWith('analyze and propose') && farmGoal) {
+        console.log("Processing ANALYSIS/PROPOSAL command:", command);
+        
+        // Simulate analysis
+        const targetAssets = farmGoal.goal_target_assets || [];
+        const targetAmount = farmGoal.goal_target_amount || 0;
+        let chosenAsset: string | null = null;
+        let estimatedCost = 0;
+        let proposedAction = '';
+        let details: any = {};
+
+        // Very basic mock analysis: choose the first asset, assume swap from USDC
+        if (targetAssets.length > 0) {
+            chosenAsset = targetAssets[0]; // Simplistic choice
+            // Mock cost calculation (e.g., assume price is between 0.5 and 1.5 USDC)
+            const mockPrice = 0.5 + Math.random(); 
+            estimatedCost = targetAmount * mockPrice;
+            proposedAction = 'SWAP';
+            details = {
+                action: 'SWAP',
+                fromAsset: 'USDC', // Assume we start with USDC
+                toAsset: chosenAsset,
+                // Propose swapping in chunks, e.g., 20% of total cost at a time
+                amount: estimatedCost * 0.2, 
+                estimatedTotalCost: estimatedCost,
+                dex: 'Cetus' // Assume Cetus for SUI, need logic for SONIC if different
+            };
+        } else {
+             console.error('No target assets defined in goal for analysis.');
+              return {
+                 type: 'ANALYSIS_FAILURE',
+                 data: { reason: 'No target assets specified in the goal context.' },
+                 success: false,
+                 error: 'Missing target assets in goal'
+              };
+        }
+
+        return {
+             type: 'STRATEGY_PROPOSAL',
+             data: {
+                 summary: `Proposal: Target ${chosenAsset}. Recommend ${proposedAction} via ${details.dex}. Estimated total cost: ${estimatedCost.toFixed(2)} ${details.fromAsset}. Initial step: ${details.action} ${details.amount.toFixed(2)} ${details.fromAsset} for ${chosenAsset}.`,
+                 strategy: details // The actionable strategy part for the coordinator
+             },
+             success: true
+        };
+    }
+
+    // --- Swap Command Handling --- 
+    const swapMatch = command.match(/execute swap: (\d+(\.\d+)?) (\w+) to (\w+) on (\w+)/i);
+    if (swapMatch) {
+        console.log("Processing SWAP command:", command);
+        const [, amountStr, , fromAsset, toAsset, dex] = swapMatch;
+        const amount = parseFloat(amountStr);
+
+        // TODO: Get necessary wallet info (e.g., private key, address) for the agent/farm
+        // This is a critical security consideration and needs proper handling (e.g., VaultService)
+        const walletInfo = { privateKey: '0x...placeholder...', address: '0x...placeholder...', farmId: context?.goal?.farmId };
+
+        try {
+            const swapResult = await this.defiService.executeSwap({
+                amount,
+                fromAsset,
+                toAsset,
+                dex,
+                walletInfo, // Pass necessary credentials/context
+            });
+
+            if (swapResult.success) {
+                return {
+                    type: 'EXECUTION_CONFIRMATION',
+                    data: {
+                        action: 'SWAP',
+                        amount: amount,
+                        asset: toAsset, // Asset received
+                        fromAsset: fromAsset,
+                        dex: dex,
+                        transactionHash: swapResult.transactionHash,
+                        message: `Successfully executed swap of ${amount} ${fromAsset} to ${toAsset} on ${dex}.`
+                    },
+                    success: true
+                };
+            } else {
+                 console.error(`Swap execution failed: ${swapResult.error}`);
+                 return {
+                    type: 'EXECUTION_FAILURE',
+                    data: { 
+                        action: 'SWAP', 
+                        reason: swapResult.error || 'Unknown DEX error' 
+                    },
+                    success: false,
+                    error: swapResult.error || 'Unknown DEX error'
+                 };
+            }
+        } catch (error: any) {
+             console.error(`Error during swap execution: ${error.message}`);
+             return {
+                type: 'EXECUTION_FAILURE',
+                data: { 
+                    action: 'SWAP', 
+                    reason: error.message || 'Error executing swap'
+                },
+                success: false,
+                error: error.message || 'Error executing swap'
+             };
+        }
+    }
+
+    // --- Existing Mock Handlers --- 
     if (lowerCommand.includes('market') && lowerCommand.includes('data')) {
       return {
         type: 'market_data',
@@ -225,12 +370,22 @@ export class ElizaCommandService {
         success: true
       };
     }
+
+    // Fallback if no other handler matched (should ideally be covered by default general response)
+     return {
+        type: 'general',
+        data: {
+          message: `Command processed: "${command}", but no specific action taken.`,
+        },
+        success: true
+      };
   }
   
   /**
-   * Store a command and its response in agent memory
+   * Store a command and its response in agent memory.
+   * Made public to allow AgentCoordinationService to store arbitrary relevant info.
    */
-  private async storeCommandInMemory(command: ElizaCommand, agentId: string): Promise<void> {
+  public async storeCommandInMemory(command: ElizaCommand, agentId: string): Promise<void> {
     const { response } = command;
     
     if (!response || typeof response !== 'object') {

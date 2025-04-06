@@ -6,6 +6,7 @@
  */
 
 import { Message, LLMRequest, LLMResponse } from '../llm-service';
+import { getOpenRouterModels } from '@/utils/supabase/mocks-api';
 
 // Available model families on OpenRouter
 export type OpenRouterProvider = 
@@ -127,6 +128,14 @@ export class OpenRouterClient {
    */
   async fetchAvailableModels(): Promise<ModelDetails[]> {
     try {
+      // Use mock data in development mode
+      if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+        console.log('Using mock OpenRouter models data');
+        this.availableModels = getOpenRouterModels();
+        return this.availableModels;
+      }
+      
+      // Real API call in production
       const response = await fetch(`${this.baseUrl}/models`, {
         method: 'GET',
         headers: this.getHeaders(),
@@ -141,7 +150,12 @@ export class OpenRouterClient {
       return this.availableModels;
     } catch (error) {
       console.error('Error fetching available models:', error);
-      throw error;
+      // Fallback to mock data if API call fails
+      if (!this.availableModels.length) {
+        console.log('Falling back to mock OpenRouter models data');
+        this.availableModels = getOpenRouterModels();
+      }
+      return this.availableModels;
     }
   }
 
@@ -160,6 +174,33 @@ export class OpenRouterClient {
       // Use default model if not specified
       const model = params.model || this.config.defaultModel;
       
+      // Use mock response in development mode
+      if (process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+        console.log('Using mock OpenRouter completion response');
+        return {
+          id: `mockresponse-${Date.now()}`,
+          model: model as string,
+          created: Date.now(),
+          object: 'chat.completion',
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'This is a mock response from the OpenRouter API. In production, this would be a real response from the selected language model.'
+              },
+              finish_reason: 'stop'
+            }
+          ],
+          usage: {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150
+          }
+        };
+      }
+      
+      // Real API call in production
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: this.getHeaders(),

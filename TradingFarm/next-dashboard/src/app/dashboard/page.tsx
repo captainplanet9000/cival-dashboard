@@ -34,6 +34,7 @@ import { useTheme } from "next-themes"; // Added missing import
 import { ExtendedAgent, agentService } from "@/services/agent-service"; // Added missing import
 import Link from "next/link"; // Added missing import
 import { DollarSign, LayoutDashboard, Layers, Percent, ShieldAlert, Bot, Plus } from "lucide-react"; // Added missing imports
+import { GoalMonitoringSection } from "@/app/dashboard/components/goal-monitoring-section"; // Import Goal Monitoring Section
 
 // Define mock dashboard data interface
 interface DashboardData {
@@ -571,6 +572,11 @@ export default function DashboardPage() {
             </WidgetContainer>
           </CardContent>
         </Card>
+        
+        {/* Goal Acquisition Monitoring */}
+        <div className="mt-4">
+          <GoalMonitoringSection />
+        </div>
       </div>
     </div>
   );

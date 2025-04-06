@@ -417,3 +417,7 @@ export function getTradeHistoryByFarmId(farmId: string) {
 export function getPendingOrdersByFarmId(farmId: string) {
   return mockPendingOrders.filter(order => order.farm_id === farmId);
 }
+
+export function getOrderById(orderId: string) {
+  return mockOrders.find(order => order.id === orderId);
+}

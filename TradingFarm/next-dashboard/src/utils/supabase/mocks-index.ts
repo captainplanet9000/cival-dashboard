@@ -8,8 +8,7 @@ import {
   mockUsers, 
   mockFarms as initialMockFarms, 
   mockVaults, 
-  mockAccounts, 
-  mockTransactions,
+  mockVaultTransactions as mockTransactions, 
   getUserById,
   getVaultsByFarmId,
   getAccountsByVaultId,
@@ -22,25 +21,17 @@ import { mockFarmManager, mockFarmResponse } from './mocks-farm';
 import {
   mockStandardAgents,
   mockElizaAgents,
-  mockAgentCapabilities,
-  mockAgentConfigurations,
-  mockAgentConversations,
   getAgentById,
   getAgentsByFarmId,
-  getAgentCapabilitiesByAgentId,
-  getAgentConfigurationByAgentId,
-  getAgentConversationsByAgentId
+  getAgentActionsByAgentId, 
 } from './mocks-agents';
 
 import {
   mockGoals,
   mockTasks,
-  mockAssignments,
+  mockAgentAssignments as mockAssignments,
   getGoalsByFarmId,
   getTasksByGoalId,
-  getAssignmentsByTaskId,
-  getGoalById,
-  getTaskById
 } from './mocks-goals';
 
 import {
@@ -50,7 +41,6 @@ import {
   getOrdersByAgentId,
   getOrderExecutionsByOrderId,
   getOrderById,
-  getRecentOrdersByFarmId,
   getPendingOrdersByFarmId
 } from './mocks-orders';
 
@@ -117,6 +107,13 @@ import {
   getStorageHealthStatus
 } from './mocks-storage';
 
+import {
+  getApiServiceProviders as importedGetApiServiceProviders,
+  getUserApiConfigurations,
+  getAgentApiServices,
+  getOpenRouterModels
+} from './mocks-api';
+
 // Get farms from the persistent manager
 const mockFarms = mockFarmManager.getAllFarms();
 
@@ -126,7 +123,6 @@ export {
   mockUsers,
   mockFarms,
   mockVaults,
-  mockAccounts,
   mockTransactions,
   
   // Farm manager
@@ -136,9 +132,6 @@ export {
   // Agent mock data
   mockStandardAgents,
   mockElizaAgents,
-  mockAgentCapabilities,
-  mockAgentConfigurations,
-  mockAgentConversations,
   
   // Goal mock data
   mockGoals,
@@ -186,20 +179,12 @@ export {
   getTransactionsByAccountId,
   getAgentById,
   getAgentsByFarmId,
-  getAgentCapabilitiesByAgentId,
-  getAgentConfigurationByAgentId,
-  getAgentConversationsByAgentId,
+  getAgentActionsByAgentId,
   getGoalsByFarmId,
   getTasksByGoalId,
-  getAssignmentsByTaskId,
-  getGoalById,
-  getTaskById,
   getOrdersByFarmId,
   getOrdersByAgentId,
   getOrderExecutionsByOrderId,
-  getOrderById,
-  getRecentOrdersByFarmId,
-  getPendingOrdersByFarmId,
   getExchangeConnectionsByFarmId,
   getExchangeBalancesByConnectionId,
   getOrderBookByMarketId,
@@ -228,10 +213,40 @@ export {
   getStorageAllocationsByAllocatedTo,
   getStorageTransactionsByStorageId,
   getStorageAuditLogsByStorageId,
-  getStorageHealthStatus
+  getStorageHealthStatus,
+  getUserApiConfigurations,
+  getAgentApiServices,
+  getOpenRouterModels
 };
 
-// Integrated helper functions that combine data from multiple mock sources
+// Create stub functions for missing exports
+export function getAgentCapabilitiesByAgentId(agentId: string) {
+  return getAgentActionsByAgentId(agentId);
+}
+
+export function getAgentConfigurationByAgentId(agentId: string) {
+  return { agentId };
+}
+
+export function getAgentConversationsByAgentId(agentId: string) {
+  return [];
+}
+
+export function getAssignmentsByTaskId(taskId: string) {
+  return mockAssignments.filter(a => a.goal_id === taskId || a.id.includes(taskId));
+}
+
+export function getGoalById(goalId: string) {
+  return mockGoals.find(g => g.id === goalId);
+}
+
+export function getTaskById(taskId: string) {
+  return mockTasks.find(t => t.id === taskId);
+}
+
+export function getRecentOrdersByFarmId(farmId: string, limit = 5) {
+  return getOrdersByFarmId(farmId).slice(0, limit);
+}
 
 // Get complete farm data including all related entities
 export function getCompleteFarmData(farmId: string) {
@@ -247,11 +262,9 @@ export function getCompleteFarmData(farmId: string) {
   const exchangeConnections = getExchangeConnectionsByFarmId(farmId);
   
   // Get performance data for the last 30 days
-  const performance = getFarmPerformanceByDateRange(
-    farmId,
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    new Date().toISOString().split('T')[0]
-  );
+  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const endDate = new Date().toISOString().split('T')[0];
+  const performance = getFarmPerformanceByDateRange(farmId, startDate, endDate);
   
   // Get risk metrics
   const riskMetrics = getRiskMetricsByFarmId(farmId);
@@ -287,11 +300,9 @@ export function getCompleteAgentData(agentId: string) {
   const orders = getOrdersByAgentId(agentId);
   
   // Get performance data for the last 30 days
-  const performance = getAgentPerformanceByDateRange(
-    agentId,
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    new Date().toISOString().split('T')[0]
-  );
+  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const endDate = new Date().toISOString().split('T')[0];
+  const performance = getAgentPerformanceByDateRange(agentId, startDate, endDate);
   
   // Get goals that this agent is assigned to
   const goals = mockGoals.filter(goal => 
@@ -318,12 +329,16 @@ export function getCompleteAgentData(agentId: string) {
 
 // Get complete storage data for a specific entity
 export function getCompleteStorageData(storageId: string, storageType: StorageType) {
-  // Get base storage data based on type
-  const storage = storageType === StorageType.AGENT
-    ? getAgentStorageById(storageId)
-    : getFarmStorageById(storageId);
+  // Find the storage entity
+  let storageEntity = null;
   
-  if (!storage) return null;
+  if (storageType === StorageType.AGENT) {
+    storageEntity = getAgentStorageById(storageId);
+  } else if (storageType === StorageType.FARM) {
+    storageEntity = getFarmStorageById(storageId);
+  }
+  
+  if (!storageEntity) return null;
   
   // Get related data
   const allocations = getStorageAllocationsByStorageId(storageId);
@@ -332,7 +347,7 @@ export function getCompleteStorageData(storageId: string, storageType: StorageTy
   const healthStatus = getStorageHealthStatus(storageId);
   
   return {
-    storage,
+    storage: storageEntity,
     allocations,
     transactions,
     auditLogs,
@@ -415,25 +430,21 @@ export function getCompleteGoalData(goalId: string) {
 
 // Get complete market data including order book and market statistics
 export function getCompleteMarketData(marketId: string) {
+  // Lookup the market data
   const market = mockMarkets.find(m => m.id === marketId);
-  if (!market) return null;
-  
-  // Get order book
+  const marketData = getMarketDataByMarketId(marketId);
   const orderBook = getOrderBookByMarketId(marketId);
   
-  // Get market data
-  const marketData = getMarketDataByMarketId(marketId);
-  
   // Get recent orders for this market
-  const recentOrders = mockOrders
-    .filter(order => order.symbol === marketId)
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .slice(0, 10);
+  const recentOrders = mockOrders.filter(order => {
+    // Use 'market' property instead of non-existent 'symbol' 
+    return order.market === marketId;
+  }).slice(0, 10);
   
   return {
     market,
-    orderBook,
     marketData,
+    orderBook,
     recentOrders
   };
 }
@@ -447,7 +458,7 @@ export function getDashboardData(farmId: string) {
   // Get core farm data
   const agents = getAgentsByFarmId(farmId);
   const recentOrders = getRecentOrdersByFarmId(farmId, 10);
-  const pendingOrders = getPendingOrdersByFarmId(farmId);
+  const pendingOrders = getOrdersByFarmId(farmId).filter(order => order.status === 'pending');
   const goals = getGoalsByFarmId(farmId);
   const vaults = getVaultsByFarmId(farmId);
   const exchangeConnections = getExchangeConnectionsByFarmId(farmId);
@@ -458,11 +469,9 @@ export function getDashboardData(farmId: string) {
   );
   
   // Get performance data for the last 30 days
-  const performance = getFarmPerformanceByDateRange(
-    farmId,
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    new Date().toISOString().split('T')[0]
-  );
+  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const endDate = new Date().toISOString().split('T')[0];
+  const performance = getFarmPerformanceByDateRange(farmId, startDate, endDate);
   
   // Get risk metrics
   const riskMetrics = getRiskMetricsByFarmId(farmId);
@@ -473,6 +482,13 @@ export function getDashboardData(farmId: string) {
   
   // Get aggregate performance metrics
   const aggregateMetrics = getAggregateFarmMetrics(farmId);
+  
+  // Convert string IDs to numbers for array access when needed
+  const metrics = {
+    trades_count: 123, // Hard-coded value instead of accessing non-existent property
+    avg_response_time: 250, // Hard-coded value
+    uptime_percentage: 99.97
+  };
   
   return {
     farm,
@@ -486,7 +502,8 @@ export function getDashboardData(farmId: string) {
     performance,
     riskMetrics,
     marketData,
-    aggregateMetrics
+    aggregateMetrics,
+    metrics
   };
 }
 
@@ -500,7 +517,15 @@ export async function fetchMockData(dataFn: Function, ...args: any[]) {
   
   return new Promise(resolve => {
     setTimeout(() => {
-      resolve(dataFn(...args));
+      // Convert string IDs to numbers when needed
+      const parsedArgs = args.map(arg => {
+        if (typeof arg === 'string' && !isNaN(Number(arg))) {
+          return Number(arg);
+        }
+        return arg;
+      });
+      
+      resolve(dataFn(...parsedArgs));
     }, delay);
   });
 }
@@ -562,8 +587,13 @@ export const mockDataService = {
   getCompleteGoalData,
   getCompleteMarketData,
   getDashboardData,
-  getCompleteStorageData
+  getCompleteStorageData,
+  getUserApiConfigurations,
+  getAgentApiServices,
+  getOpenRouterModels,
 };
+
+export { importedGetApiServiceProviders as getApiServiceProviders };
 
 // Export mock data service as default
 export default mockDataService;

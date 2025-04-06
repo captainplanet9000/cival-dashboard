@@ -12,7 +12,11 @@ import {
   History,
   BookOpenCheck,
   Briefcase,
-  Blocks
+  Blocks,
+  Activity,
+  Bot,
+  MessageSquare,
+  Brain
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,6 +33,11 @@ export function Sidebar({ farmId }: SidebarProps) {
       icon: LayoutDashboard
     },
     {
+      name: 'Overview',
+      href: `/dashboard/overview`,
+      icon: Activity
+    },
+    {
       name: 'Trading',
       href: `/dashboard/${farmId}/trading`,
       icon: LineChart
@@ -42,6 +51,21 @@ export function Sidebar({ farmId }: SidebarProps) {
       name: 'Strategies',
       href: `/dashboard/${farmId}/strategies`,
       icon: Briefcase
+    },
+    {
+      name: 'LLM Settings',
+      href: `/dashboard/agents/llm-configuration`,
+      icon: MessageSquare
+    },
+    {
+      name: 'Agents',
+      href: `/dashboard/agents`,
+      icon: Bot
+    },
+    {
+      name: 'ElizaOS',
+      href: `/dashboard/eliza`,
+      icon: Brain
     },
     {
       name: 'Transactions',

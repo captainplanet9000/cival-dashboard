@@ -67,7 +67,7 @@ export const mockMarketSentiments = [
     market_id: 'DOGE-USD',
     sentiment: 'neutral',
     score: 50.3,
-    analysis: 'Dogecoin displays neutral market sentiment with social media activity fluctuating based on celebrity endorsements. While payment adoption has increased, the market remains highly sensitive to public figures' comments rather than fundamental factors.',
+    analysis: 'Dogecoin displays neutral market sentiment with social media activity fluctuating based on celebrity endorsements. While payment adoption has increased, the market remains highly sensitive to public figures\' comments rather than fundamental factors.',
     sources: ['social media trends', 'merchant adoption', 'wallet activity', 'exchange flows'],
     timestamp: '2025-04-01T12:30:00Z'
   },

@@ -977,6 +977,51 @@ export class UnifiedBankingService {
   }
   
   // #endregion
+
+  /**
+   * Checks the available balance for a specific asset across all accounts associated with a farm.
+   * Available balance considers total balance minus locked amounts and pending outgoing transactions.
+   * @param farmId - The ID of the farm.
+   * @param assetSymbol - The currency/asset symbol (e.g., 'SUI', 'USDC').
+   * @param requiredAmount - The amount required.
+   * @returns Object indicating if the balance is sufficient and the total available amount.
+   */
+  async checkFarmBalance(
+      farmId: number | string,
+      assetSymbol: string,
+      requiredAmount: number
+  ): Promise<{ sufficient: boolean; availableAmount: number }> {
+      let totalAvailableAmount = 0;
+
+      try {
+          // 1. Get all vault accounts associated with the farm
+          const farmAccounts = await this.getAccountsByFarm(farmId.toString());
+          if (!farmAccounts || farmAccounts.length === 0) {
+              console.warn(`No vault accounts found for farm ${farmId}.`);
+              return { sufficient: false, availableAmount: 0 };
+          }
+
+          // 2. Filter accounts by the required asset/currency
+          const relevantAccounts = farmAccounts.filter(acc => acc.currency === assetSymbol && acc.isActive);
+
+          // 3. Calculate total available balance across relevant accounts
+          for (const account of relevantAccounts) {
+              // Fetch detailed balance including pending transactions for accuracy
+              const balanceDetails = await this.getAccountBalance(account.id);
+              totalAvailableAmount += balanceDetails.available;
+          }
+
+          return {
+              sufficient: totalAvailableAmount >= requiredAmount,
+              availableAmount: totalAvailableAmount,
+          };
+
+      } catch (error: any) {
+          console.error(`Error checking balance for farm ${farmId}, asset ${assetSymbol}:`, error);
+          // Default to insufficient on error to be safe
+          return { sufficient: false, availableAmount: 0 };
+      }
+  }
 }
 
 // Export singleton instance
