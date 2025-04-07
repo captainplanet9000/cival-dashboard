@@ -29,7 +29,6 @@ wheels/
 
 # Environment variables
 .env
-# .env.local - removed to allow checking in API keys for Trading Farm LLMs
 .env.development.local
 .env.test.local
 .env.production.local
@@ -61,3 +60,25 @@ TradingFarm/data/
 tasks.json
 tasks/
 dev-debug.log
+
+# Documentation and implementation plans
+**/SOP's/
+**/*_Implementation_Plan.md
+**/*_Development_plan.md
+**/*_Development.md
+**/*.sop.md
+**/*.secret.md
+**/*_design_doc.md
+**/*_internal.md
+
+# API Keys and Secrets
+**/*.key
+**/*.pem
+**/*.env.secret
+**/*.env.local
+**/*.credentials.json
+**/secrets/
+**/credentials/
+**/.creds/
+**/*_api_key*
+**/*_secret*

@@ -1,4 +1,7 @@
 # Project ID for the Supabase project
-[api]
-project_ref_id = "bgvlzvswzpfoywfxehis"
-url = "https://bgvlzvswzpfoywfxehis.supabase.co"
+project_id = "bgvlzvswzpfoywfxehis"
+
+# You might need other sections like [auth], [db], [storage] depending on your setup
+# Example for local development API port:
+# [api]
+# port = 54321

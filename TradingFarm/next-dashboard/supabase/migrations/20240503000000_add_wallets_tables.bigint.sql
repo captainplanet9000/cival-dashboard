@@ -1,2 +1,2 @@
-cd "z:\___HomeSync\Github\GWDS\TradingFarm\next-dashboard"
-npx supabase migration up
+-- Add SQL for modifying wallet tables (e.g., changing column type to bigint)
+-- The original content of this file was invalid shell commands.
