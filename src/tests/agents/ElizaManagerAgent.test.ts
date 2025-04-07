@@ -21,6 +21,9 @@ import { AgentTools } from '../../tools/AgentTools';
 import { MockElizaOSClient } from '../mocks/MockElizaOSClient'; // Import the mock
 import { SupabaseClient } from '@supabase/supabase-js'; 
 import { Database } from '@/types/database.types';
+import { ElizaWorkerAgent } from '@/agents/ElizaWorkerAgent';
+import { InMemoryMemory } from '@/memory/InMemoryMemory';
+import { ToolRegistry } from '@/tools/AgentTools';
 
 // --- Mocks for Manager/Workers (similar to ManagerAgent tests) ---
 const mockManagerMemory: AgentMemory = {
@@ -59,6 +62,37 @@ const mockSupabaseClient = {
         delete: jest.fn(() => ({ eq: jest.fn().mockResolvedValue({ error: null }) }))
     }))
 } as unknown as SupabaseClient<Database>; 
+
+// Mock Supabase Client for tests
+const mockSupabase = {
+    from: jest.fn().mockReturnThis(),
+    select: jest.fn().mockReturnThis(),
+    insert: jest.fn().mockResolvedValue({ error: null, data: [{}] }),
+    update: jest.fn().mockResolvedValue({ error: null, data: [{}] }),
+    delete: jest.fn().mockResolvedValue({ error: null, data: [{}] }),
+    eq: jest.fn().mockReturnThis(),
+    // Add other methods mocked as needed
+} as unknown as SupabaseClient<Database>;
+
+// Mock Worker Agent
+class MockWorker extends AutonomousAgent {
+    constructor(id: string, memory: AgentMemory, tools: AgentTools, supabaseClient: SupabaseClient<Database>) {
+        super(id, memory, tools, supabaseClient);
+    }
+    async _performTask(task: AgentTask): Promise<any> {
+        console.log(`MockWorker ${this.id} performing task ${task.id}`);
+        if (task.payload?.shouldFail) {
+            console.log(`MockWorker ${this.id} simulating failure for task ${task.id}`);
+            throw new Error('Mock worker task failure');
+        }
+        return { result: `Task ${task.id} completed by ${this.id}`, payload: task.payload };
+    }
+    // Correct return type for selfDiagnose
+    async selfDiagnose(): Promise<HealthStatus> { 
+        return { status: 'healthy', details: 'Mock worker OK' }; 
+    }
+    async recover() { await this.setStatus('idle'); }
+}
 
 describe('ElizaManagerAgent', () => {
     let elizaManager: ElizaManagerAgent;
@@ -278,49 +312,79 @@ describe('ElizaManagerAgent', () => {
     });
 
     describe('processNaturalLanguageCommand', () => {
-        it('should interpret command via Eliza and execute the resulting task', async () => {
-            const command = 'Process the latest dataset';
-            const generatedTask: AgentTask = { 
-                id: 'task-from-eliza-1', 
-                type: 'data_processing_command', 
-                payload: { originalCommand: command } 
-            };
-            mockElizaClient.interpretNaturalLanguageCommand.mockResolvedValue(generatedTask);
-            // Mock worker recommendation and execution for the generated task
-            mockElizaClient.getWorkerRecommendations.mockResolvedValue([workerId1]);
-            const workerExecuteSpy = jest.spyOn(worker1, 'execute');
+        it('should interpret command, create task, execute via _performTask, and update DB', async () => {
+            const command = "Analyze the data";
+            const expectedTaskId = expect.any(String);
+
+            // Mock _performTask directly for this test focusing on the command flow
+            const performTaskSpy = jest.spyOn(elizaManager as any, '_performTask').mockResolvedValue({ analysis: 'done' });
 
             const result = await elizaManager.processNaturalLanguageCommand(command);
 
-            expect(mockElizaClient.interpretNaturalLanguageCommand).toHaveBeenCalledWith(command);
-            // Verify that execute was called, which in turn called _performTask
-            expect(mockElizaClient.getWorkerRecommendations).toHaveBeenCalledWith({
-                taskType: generatedTask.type,
-                payload: generatedTask.payload
-            });
-            expect(workerExecuteSpy).toHaveBeenCalledWith(generatedTask);
-            expect(result.success).toBe(true);
-            expect(result.output).toEqual({ message: 'Task completed by BasicWorkerAgent' });
-            expect(elizaManager.getStatus()).toBe('idle');
+            expect(mockElizaClient.query).toHaveBeenCalledWith('command_interpretation', command, {});
+            expect(mockSupabase.from).toHaveBeenCalledWith('agent_tasks');
+            // Check insert payload
+            expect(mockSupabase.insert).toHaveBeenCalledWith(expect.objectContaining({
+                id: expect.any(String),
+                task_type: 'test_command', // from mock interpretation
+                status: 'pending',
+                payload: { originalCommand: command },
+                metadata: expect.objectContaining({ source: 'natural_language_command' })
+            }));
+            // Check _performTask call
+            expect(performTaskSpy).toHaveBeenCalledWith(expect.objectContaining({
+                id: expect.any(String),
+                type: 'test_command',
+                command: command,
+            }));
+            // Check final update payload
+             expect(mockSupabase.update).toHaveBeenCalledWith(expect.objectContaining({
+                status: 'completed',
+                result: { analysis: 'done' }, // Output from _performTask
+                error_message: null
+             }));
+             expect(mockSupabase.eq).toHaveBeenCalledWith('id', expect.any(String));
 
-            workerExecuteSpy.mockRestore();
+            expect(result.success).toBe(true);
+            expect(result.output).toEqual({ analysis: 'done' });
+            expect(result.taskId).toBeDefined();
+
+            performTaskSpy.mockRestore(); // Clean up spy
         });
 
-        it('should return failure if command interpretation fails', async () => {
-            const command = 'Do something impossible';
-            const interpretationError = new Error('Unknown command');
-            mockElizaClient.interpretNaturalLanguageCommand.mockRejectedValue(interpretationError);
-            const executeSpy = jest.spyOn(elizaManager, 'execute');
+        // Add tests for error handling during interpretation, DB insert, execution, DB update
+        it('should handle interpretation failure', async () => {
+            jest.spyOn(mockElizaClient, 'query').mockRejectedValue(new Error('Interpretation failed'));
+            const result = await elizaManager.processNaturalLanguageCommand("do something");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Interpretation failed');
+            expect(mockSupabase.insert).not.toHaveBeenCalled();
+            expect(elizaManager.getStatus()).toBe('error');
+        });
 
+         it('should handle database insert failure', async () => {
+            (mockSupabase.insert as jest.Mock).mockResolvedValueOnce({ error: new Error('DB insert error'), data: null });
+            const result = await elizaManager.processNaturalLanguageCommand("do something");
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('Database error during task insertion: DB insert error');
+            expect((elizaManager as any)._performTask).not.toHaveBeenCalled(); // Should not execute task
+            expect(elizaManager.getStatus()).toBe('error');
+        });
+
+        it('should handle task execution (_performTask) failure', async () => {
+            const performTaskSpy = jest.spyOn(elizaManager as any, '_performTask').mockRejectedValue(new Error('Task execution error'));
+            const command = "Analyze the data";
             const result = await elizaManager.processNaturalLanguageCommand(command);
 
-            expect(mockElizaClient.interpretNaturalLanguageCommand).toHaveBeenCalledWith(command);
-            expect(executeSpy).not.toHaveBeenCalled(); // Should fail before execution
-            expect(result.success).toBe(false);
-            expect(result.error).toBe(`Command processing failed: ${interpretationError.message}`);
-            expect(elizaManager.getStatus()).toBe('idle'); // Should remain idle if interpretation fails pre-execution
-
-            executeSpy.mockRestore();
+             expect(performTaskSpy).toHaveBeenCalled();
+             expect(mockSupabase.update).toHaveBeenCalledWith(expect.objectContaining({
+                 status: 'failed',
+                 error_message: expect.stringContaining('Task execution error')
+             }));
+             expect(result.success).toBe(false);
+             expect(result.error).toContain('Task execution error');
+             expect(elizaManager.getStatus()).toBe('error');
+             performTaskSpy.mockRestore();
         });
     });
 }); 

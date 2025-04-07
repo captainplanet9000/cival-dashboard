@@ -23,6 +23,7 @@ export interface Farm {
     // Add other potential actions here
   } | null;
   goal_deadline?: string | null;
+  goal_progress?: number | null;
 
   balance: {
     total: number;

@@ -12,11 +12,11 @@ import {
 } from './AutonomousAgent';
 import { AgentMemory } from '../memory/AgentMemory';
 import { AgentTools } from '../tools/AgentTools';
-import { SupabaseClient } from '@supabase/supabase-js'; 
+import { SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/types/database.types';
 import { v4 as uuidv4 } from 'uuid'; // For generating task IDs
 // import { ElizaOSClient } from '../lib/elizaos/ElizaOSClient'; // Placeholder path
-// import { ElizaWorkerAgent } from './ElizaWorkerAgent'; // Placeholder path
+import { ElizaWorkerAgent } from './ElizaWorkerAgent'; // Placeholder path
 
 // Placeholder interface for ElizaOS integration
 // TODO: Define this interface based on actual ElizaOS client capabilities
@@ -215,7 +215,7 @@ export class ElizaManagerAgent extends ManagerAgent {
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 assignedAgentId: null,
-                // metadata: { source: 'user_command' } // Optional
+                metadata: { source: 'user_command' } // Optional
             };
             this.log('info', `Created task ${task.id} for command "${command}"`);
 

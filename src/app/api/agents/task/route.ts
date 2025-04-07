@@ -1,107 +1,101 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import { createServerClient } from '@/utils/supabase/server';
 import { ElizaManagerAgent } from '@/agents/ElizaManagerAgent';
-import { BasicWorkerAgent } from '@/agents/BasicWorkerAgent';
-import { MockElizaOSClient } from '../../agents/mocks/MockElizaOSClient';
-import { SupabaseAgentMemory } from '../../memory/SupabaseAgentMemory';
-import { AgentTools } from '../../tools/AgentTools';
-import { AgentTask, AgentTool } from '../../types/agentTypes';
+import { ElizaWorkerAgent } from '@/agents/ElizaWorkerAgent';
+import { AgentMemory } from '@/memory/AgentMemory';
+import { InMemoryAgentMemory } from '@/memory/InMemoryAgentMemory';
+import { AgentTools, ToolRegistry } from '@/tools/AgentTools';
+import { AgentTask } from '@/types/agentTypes';
 import { Database } from '@/types/database.types';
-import { CalculatorTool } from '../../tools/CalculatorTool';
+import { ElizaOSClient } from '@/agents/ElizaManagerAgent';
+import { MockElizaOSClient } from '@/lib/elizaos/MockElizaOSClient';
+import { RealElizaOSClient } from '@/lib/elizaos/RealElizaOSClient';
 
 let managerAgentSingleton: ElizaManagerAgent | null = null;
-const MANAGER_AGENT_ID = 'api-eliza-manager-001';
 
-async function getManagerAgentInstance(): Promise<ElizaManagerAgent> {
-    if (!managerAgentSingleton) {
-        console.log('Initializing Eliza Manager Agent singleton...');
-        const cookieStore = cookies();
-        const supabase = createServerClient(cookieStore);
+async function getManagerAgent(): Promise<ElizaManagerAgent> {
+    if (managerAgentSingleton) {
+        return managerAgentSingleton;
+    }
 
-        const { data: agentData, error: agentError } = await supabase
-            .from('agents')
-            .upsert({
-                id: MANAGER_AGENT_ID,
-                agent_type: 'eliza_manager',
-                status: 'initializing',
-                created_at: new Date().toISOString(),
-                last_heartbeat_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
+    console.log("Initializing ElizaManagerAgent singleton...");
 
-        if (agentError) {
-            console.error('Error upserting manager agent:', agentError);
-            throw new Error(`Failed to ensure manager agent record: ${agentError.message}`);
+    const supabase = createServerClient();
+
+    const elizaApiUrl = process.env.ELIZA_OS_API_URL;
+    const elizaApiKey = process.env.ELIZA_OS_API_KEY;
+    const useMockEliza = process.env.USE_MOCK_ELIZA_OS === 'true';
+
+    const agentMemory: AgentMemory = new InMemoryAgentMemory();
+    const agentTools: AgentTools = new ToolRegistry();
+
+    let elizaClient: ElizaOSClient;
+    if (useMockEliza) {
+        console.log("API Route: Using MockElizaOSClient.");
+        elizaClient = new MockElizaOSClient();
+    } else {
+        if (!elizaApiUrl || !elizaApiKey) {
+            console.error("API Route Error: Real ElizaOS Client requires ELIZA_OS_API_URL and ELIZA_OS_API_KEY.");
+            throw new Error("ElizaOS API configuration missing in environment variables.");
         }
-        if (!agentData) {
-            throw new Error('Failed to retrieve manager agent data after upsert.');
-        }
+        console.log("API Route: Using RealElizaOSClient.");
+        elizaClient = new RealElizaOSClient({ apiUrl: elizaApiUrl, apiKey: elizaApiKey });
+    }
 
-        console.log('Manager agent record ensured/created:', agentData.id);
+    managerAgentSingleton = new ElizaManagerAgent(
+        process.env.MANAGER_AGENT_ID || 'eliza-manager-prod-001',
+        agentMemory,
+        agentTools,
+        elizaClient,
+        supabase
+    );
 
-        const memory = new SupabaseAgentMemory(supabase, MANAGER_AGENT_ID);
-        
-        const tools = new AgentTools();
-        tools.registerTool(new CalculatorTool());
-        console.log('Available tools:', tools.listTools().map((t: AgentTool) => t.definition.name));
-
-        const elizaClient = new MockElizaOSClient();
-
-        managerAgentSingleton = new ElizaManagerAgent(
-            MANAGER_AGENT_ID,
-            memory,
-            tools,
-            elizaClient,
+    const workerCount = parseInt(process.env.WORKER_AGENT_COUNT || '2', 10);
+    console.log(`Initializing ${workerCount} worker agents...`);
+    for (let i = 1; i <= workerCount; i++) {
+        const workerId = process.env[`WORKER_AGENT_${i}_ID`] || `eliza-worker-prod-00${i}`;
+        const workerMemory = new InMemoryAgentMemory();
+        const worker = new ElizaWorkerAgent(
+            workerId,
+            workerMemory,
+            agentTools,
             supabase
         );
-
-        console.log('Eliza Manager Agent singleton initialized successfully.');
-        
-        // TODO: Add basic worker agents for testing/initial setup if needed
-        // const worker1 = new BasicWorkerAgent('worker-001', new InMemoryAgentMemory(), new AgentTools());
-        // managerAgentSingleton.addWorker(worker1);
+        managerAgentSingleton.addWorker(worker);
+        console.log(`Added worker: ${workerId}`);
     }
+
+    console.log(`ElizaManagerAgent singleton ${managerAgentSingleton.id} initialized with ${workerCount} workers.`);
     return managerAgentSingleton;
 }
 
 export async function POST(request: Request) {
     try {
-        const { command, context } = await request.json();
+        const body = await request.json();
+        const command = body.command;
+        const context = body.context || {};
 
-        if (!command) {
-            return NextResponse.json({ error: 'Missing command in request body' }, { status: 400 });
+        if (!command || typeof command !== 'string') {
+            return NextResponse.json({ success: false, error: 'Missing or invalid "command" field in request body.' }, { status: 400 });
         }
 
-        const manager = await getManagerAgentInstance();
-        
-        // Process the command using the manager agent
-        // The manager might interpret the command, create a task, and assign it
-        // For now, let's assume a simple direct execution or interpretation
-        console.log(`Received command for manager ${manager.id}:`, command);
+        const manager = await getManagerAgent();
 
+        console.log(`API Route: Processing command: "${command}"`);
         const result = await manager.processNaturalLanguageCommand(command, context);
-        console.log('Command processing result:', result);
+        console.log(`API Route: Command processing result:`, result);
 
-        return NextResponse.json({ 
-            message: result.success ? 'Command processed' : 'Command failed',
-            taskId: result.taskId, 
-            result: result.output,
-            error: result.error
-        });
+        if (result.success) {
+            return NextResponse.json({ success: true, output: result.output, taskId: result.taskId });
+        } else {
+            return NextResponse.json({ success: false, error: result.error || 'Agent failed to process command.', taskId: result.taskId }, { status: 500 });
+        }
 
     } catch (error: any) {
-        console.error('Error processing agent task request:', error);
-        // Ensure manager status is updated on error if possible
-        if (managerAgentSingleton) {
-            try {
-                 await managerAgentSingleton.setStatus('error');
-                 // Optionally log the error to agent memory or database
-            } catch (statusError) {
-                console.error('Failed to update manager status on error:', statusError);
-            }
+        console.error("API Route Error:", error);
+        if (error.message.includes("ElizaOS API configuration missing")) {
+             return NextResponse.json({ success: false, error: error.message }, { status: 503 }); 
         }
-        return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
+        return NextResponse.json({ success: false, error: `Internal Server Error: ${error.message}` }, { status: 500 });
     }
 } 

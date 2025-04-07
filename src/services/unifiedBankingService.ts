@@ -1,21 +1,53 @@
 import { createClient } from '@supabase/supabase-js';
 import { 
-  VaultMaster,
-  VaultAccount, 
-  VaultTransaction, 
-  VaultBalance,
-  TransactionStatus, 
-  TransactionType,
-  VaultAccountType,
-  TransactionFilter,
-  SecurityPolicy,
-  AuditLogEntry
+  // VaultMaster, // Uses 'vaults' table now
+  // VaultAccount, // No separate 'vault_accounts' table found
+  // VaultTransaction, // Uses 'transaction_logs' table now
+  // VaultBalance, // Use DB type for balances
+  TransactionStatus, // Keep Enums
+  TransactionType,   // Keep Enums
+  VaultAccountType,  // Keep Enums (May need re-evaluation)
+  TransactionFilter, // May need refactoring based on transaction_logs
+  // SecurityPolicy, // Table not found
+  // AuditLogEntry    // Table not found
 } from '@/types/vault';
-import { Database } from '@/types/database.types';
+import { Database, Json } from '@/types/database.types'; // Import Json too
 import { createServerClient } from '@/utils/supabase/server';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import { CONFIG } from '@/config/mockConfig';
+
+// --- Define Aliases for DB Types --- 
+type VaultRow = Database['public']['Tables']['vaults']['Row'];
+type VaultInsert = Database['public']['Tables']['vaults']['Insert'];
+type VaultUpdate = Database['public']['Tables']['vaults']['Update'];
+
+type TransactionLogRow = Database['public']['Tables']['transaction_logs']['Row'];
+type TransactionLogInsert = Database['public']['Tables']['transaction_logs']['Insert'];
+type TransactionLogUpdate = Database['public']['Tables']['transaction_logs']['Update'];
+
+type VaultBalanceRow = Database['public']['Tables']['vault_balances']['Row'];
+type VaultBalanceInsert = Database['public']['Tables']['vault_balances']['Insert'];
+type VaultBalanceUpdate = Database['public']['Tables']['vault_balances']['Update'];
+
+// --- Define Parameter Interfaces (Moved Outside Class) --- 
+
+/**
+ * Parameters for creating a transaction log.
+ */
+interface CreateTransactionParams {
+    farm_id: string;
+    vault_id?: string | null; // Vault receiving/sending funds
+    transaction_type: string; // Use enum TransactionType values
+    asset_symbol: string;
+    amount: number; // Note: DB amount is number
+    status?: TransactionStatus | string; // Use enum TransactionStatus values
+    description?: string | null;
+    metadata?: Json | null;
+    linked_account_id?: string | null; // For external source/dest
+    external_id?: string | null;
+    transaction_hash?: string | null;
+}
 
 // Legacy wallet types (for migration support)
 export interface LegacyWallet {
@@ -35,12 +67,11 @@ export interface LegacyWallet {
 /**
  * Unified Banking Service
  * 
- * This service consolidates all banking operations for the Trading Farm,
- * combining the functionality of VaultService and BankingService into
- * a single, consistent API.
+ * Refactored to align with database types (vaults, transaction_logs, vault_balances).
+ * Handles vault and transaction operations for the Trading Farm.
  */
 export class UnifiedBankingService {
-  private supabase;
+  private supabase: ReturnType<typeof createServerClient>; // Add type
   private isServerSide: boolean;
   
   /**
@@ -60,922 +91,328 @@ export class UnifiedBankingService {
    * @returns UnifiedBankingService instance
    */
   static getInstance(isServerSide = false): UnifiedBankingService {
+    // Consider true singleton implementation if needed
     return new UnifiedBankingService(isServerSide);
   }
   
-  // #region Master Vault Operations
+  // #region Vault Operations (Using 'vaults' table) 
   
   /**
-   * Create a new master vault
-   * @param name The name of the vault
-   * @param description Optional description
-   * @param ownerId Optional owner ID (defaults to current user)
-   * @returns The created vault
+   * Create a new vault for a farm.
    */
-  async createMasterVault(name: string, description?: string, ownerId?: string): Promise<VaultMaster> {
-    const userId = ownerId || (await this.supabase.auth.getUser()).data.user?.id;
-    
-    if (!userId) throw new Error('User ID is required to create a vault');
-    
-    const { data, error } = await this.supabase
-      .from('vault_master')
-      .insert({
-        name,
-        description,
-        owner_id: userId
-      })
-      .select()
-      .single();
-      
-    if (error) throw new Error(`Failed to create master vault: ${error.message}`);
-    
-    return this.mapMasterVaultFromDb(data);
-  }
-  
-  /**
-   * Get a master vault by ID
-   * @param id The vault ID
-   * @returns The vault
-   */
-  async getMasterVault(id: string): Promise<VaultMaster> {
-    const { data, error } = await this.supabase
-      .from('vault_master')
-      .select()
-      .eq('id', id)
-      .single();
-      
-    if (error) throw new Error(`Failed to fetch master vault: ${error.message}`);
-    
-    return this.mapMasterVaultFromDb(data);
-  }
-  
-  /**
-   * Get all master vaults for a user
-   * @param ownerId The owner's user ID (defaults to current user)
-   * @returns List of vaults
-   */
-  async getMasterVaultsByOwner(ownerId?: string): Promise<VaultMaster[]> {
-    const userId = ownerId || (await this.supabase.auth.getUser()).data.user?.id;
-    
-    if (!userId) throw new Error('User ID is required to fetch vaults');
-    
-    const { data, error } = await this.supabase
-      .from('vault_master')
-      .select()
-      .eq('owner_id', userId);
-      
-    if (error) throw new Error(`Failed to fetch master vaults: ${error.message}`);
-    
-    return data.map(this.mapMasterVaultFromDb);
-  }
-  
-  /**
-   * Get system-wide balance summary
-   * @returns Balance summary across all accounts
-   */
-  async getBalanceSummary(): Promise<{
-    totalBalance: number;
-    allocatedToFarms: number;
-    allocatedToAgents: number;
-    reserveBalance: number;
-    pendingTransactions: number;
-  }> {
-    // Get all master vaults
-    const { data: vaultData, error: vaultError } = await this.supabase
-      .from('vault_master')
-      .select('id, total_balance, allocated_balance, reserve_balance');
-      
-    if (vaultError) throw new Error(`Failed to fetch vault data: ${vaultError.message}`);
-    
-    // Get account balances for farms and agents
-    const { data: accountData, error: accountError } = await this.supabase
-      .from('vault_accounts')
-      .select('balance, type');
-      
-    if (accountError) throw new Error(`Failed to fetch account data: ${accountError.message}`);
-    
-    // Get pending transaction totals
-    const { data: txData, error: txError } = await this.supabase
-      .from('vault_transactions')
-      .select('amount')
-      .eq('status', TransactionStatus.PENDING);
-      
-    if (txError) throw new Error(`Failed to fetch transaction data: ${txError.message}`);
-    
-    // Calculate totals
-    const totalBalance = vaultData.reduce((sum, vault) => sum + (vault.total_balance || 0), 0);
-    const allocatedToFarms = accountData
-      .filter(acc => acc.type === VaultAccountType.TRADING)
-      .reduce((sum, acc) => sum + (acc.balance || 0), 0);
-    const allocatedToAgents = accountData
-      .filter(acc => acc.type === VaultAccountType.STAKING)
-      .reduce((sum, acc) => sum + (acc.balance || 0), 0);
-    const reserveBalance = vaultData.reduce((sum, vault) => sum + (vault.reserve_balance || 0), 0);
-    const pendingTransactions = txData.reduce((sum, tx) => sum + (tx.amount || 0), 0);
-    
-    return {
-      totalBalance,
-      allocatedToFarms,
-      allocatedToAgents,
-      reserveBalance,
-      pendingTransactions,
-    };
-  }
-  
-  // #endregion
-  
-  // #region Account Operations
-  
-  /**
-   * Create a new account
-   * @param masterId Master vault ID
-   * @param name Account name
-   * @param type Account type
-   * @param options Additional options
-   * @returns The created account
-   */
-  async createAccount(
-    masterId: string,
-    name: string,
-    type: VaultAccountType | string,
-    options?: {
-      currency?: string;
-      initialBalance?: number;
-      farmId?: string;
-      agentId?: string;
-      riskLevel?: 'low' | 'medium' | 'high';
-      securityLevel?: 'standard' | 'enhanced' | 'maximum';
-      address?: string;
-      settings?: Record<string, any>;
-    }
-  ): Promise<VaultAccount> {
-    const { data, error } = await this.supabase
-      .from('vault_accounts')
-      .insert({
-        master_id: masterId,
-        name,
-        type,
-        balance: options?.initialBalance || 0,
-        locked_amount: 0,
-        currency: options?.currency || 'USD',
-        risk_level: options?.riskLevel || 'medium',
-        address: options?.address,
-        farm_id: options?.farmId,
-        agent_id: options?.agentId,
-        security_level: options?.securityLevel || 'standard',
+  async createVault(farmId: string, name: string, description?: string, settings?: Json, metadata?: Json): Promise<VaultRow> {
+    const insertData: VaultInsert = {
+        farm_id: farmId,
+        name: name,
+        description: description,
         is_active: true,
-        settings: options?.settings || {
-          twoFactorRequired: false,
-          withdrawalLimit: 1000,
-          withdrawalTimelock: 0,
-          approvalRequired: false,
-          allowExternalTransfers: true
-        }
-      })
+        settings: settings || {},
+        metadata: metadata || {}
+    };
+    const { data, error } = await this.supabase
+      .from('vaults')
+      .insert(insertData)
       .select()
       .single();
       
-    if (error) throw new Error(`Failed to create account: ${error.message}`);
-    
-    // If initial balance > 0, create a deposit transaction
-    if (options?.initialBalance && options.initialBalance > 0) {
-      await this.createTransaction({
-        sourceId: masterId,
-        sourceType: 'vault_master',
-        destinationId: data.id,
-        destinationType: 'vault_account',
-        amount: options.initialBalance,
-        currency: data.currency,
-        type: TransactionType.ALLOCATION,
-        description: `Initial allocation to ${name}`,
-        status: TransactionStatus.COMPLETED
-      });
-      
-      // Update the master vault balance
-      await this.supabase
-        .from('vault_master')
-        .update({
-          allocated_balance: this.supabase.rpc('increment', { 
-            row_id: masterId,
-            table_name: 'vault_master',
-            column_name: 'allocated_balance',
-            increment_amount: options.initialBalance
-          }),
-          reserve_balance: this.supabase.rpc('decrement', { 
-            row_id: masterId,
-            table_name: 'vault_master',
-            column_name: 'reserve_balance',
-            increment_amount: options.initialBalance
-          })
-        })
-        .eq('id', masterId);
-    }
-    
-    return this.mapVaultAccountFromDb(data);
+    if (error) throw new Error(`Failed to create vault: ${error.message}`);
+    // TODO: Create initial balance entry in vault_balances?
+    return data;
   }
   
   /**
-   * Get an account by ID
-   * @param id Account ID
-   * @returns The account
+   * Get a vault by its ID.
    */
-  async getAccount(id: string): Promise<VaultAccount> {
+  async getVault(id: string): Promise<VaultRow | null> {
     const { data, error } = await this.supabase
-      .from('vault_accounts')
+      .from('vaults')
       .select()
       .eq('id', id)
-      .single();
+      .maybeSingle(); // Use maybeSingle if vault might not exist
       
-    if (error) throw new Error(`Failed to fetch account: ${error.message}`);
-    
-    return this.mapVaultAccountFromDb(data);
+    if (error) throw new Error(`Failed to fetch vault: ${error.message}`);
+    return data;
   }
   
   /**
-   * Get accounts by master vault ID
-   * @param masterId Master vault ID
-   * @returns List of accounts
+   * Get vaults associated with a specific farm.
    */
-  async getAccountsByMaster(masterId: string): Promise<VaultAccount[]> {
+  async getVaultsByFarm(farmId: string): Promise<VaultRow[]> {
     const { data, error } = await this.supabase
-      .from('vault_accounts')
-      .select()
-      .eq('master_id', masterId);
-      
-    if (error) throw new Error(`Failed to fetch accounts: ${error.message}`);
-    
-    return data.map(this.mapVaultAccountFromDb);
-  }
-  
-  /**
-   * Get accounts by farm ID
-   * @param farmId Farm ID
-   * @returns List of accounts
-   */
-  async getAccountsByFarm(farmId: string): Promise<VaultAccount[]> {
-    const { data, error } = await this.supabase
-      .from('vault_accounts')
+      .from('vaults')
       .select()
       .eq('farm_id', farmId);
       
-    if (error) throw new Error(`Failed to fetch farm accounts: ${error.message}`);
-    
-    return data.map(this.mapVaultAccountFromDb);
+    if (error) throw new Error(`Failed to fetch vaults for farm ${farmId}: ${error.message}`);
+    return data || [];
   }
-  
+
   /**
-   * Get accounts by agent ID
-   * @param agentId Agent ID
-   * @returns List of accounts
+   * Update a vault.
    */
-  async getAccountsByAgent(agentId: string): Promise<VaultAccount[]> {
+  async updateVault(id: string, updates: VaultUpdate): Promise<VaultRow> {
+    // Ensure non-updatable fields like id, created_at, farm_id are not in updates
+    delete updates.id;
+    delete updates.created_at;
+    delete updates.farm_id;
+
     const { data, error } = await this.supabase
-      .from('vault_accounts')
+      .from('vaults')
+      .update(updates)
+      .eq('id', id)
       .select()
-      .eq('agent_id', agentId);
+      .single();
       
-    if (error) throw new Error(`Failed to fetch agent accounts: ${error.message}`);
-    
-    return data.map(this.mapVaultAccountFromDb);
-  }
-  
-  /**
-   * Get account balance details
-   * @param accountId Account ID
-   * @returns Balance details
-   */
-  async getAccountBalance(accountId: string): Promise<VaultBalance> {
-    // Get account details
-    const account = await this.getAccount(accountId);
-    
-    // Get pending transactions
-    const { data: pendingTxns, error } = await this.supabase
-      .from('vault_transactions')
-      .select('amount, source_id, destination_id')
-      .or(`source_id.eq.${accountId},destination_id.eq.${accountId}`)
-      .eq('status', TransactionStatus.PENDING);
-      
-    if (error) throw new Error(`Failed to fetch pending transactions: ${error.message}`);
-    
-    // Calculate pending amounts
-    const pendingOut = pendingTxns
-      .filter(tx => tx.source_id === accountId)
-      .reduce((sum, tx) => sum + tx.amount, 0);
-      
-    const pendingIn = pendingTxns
-      .filter(tx => tx.destination_id === accountId)
-      .reduce((sum, tx) => sum + tx.amount, 0);
-    
-    return {
-      accountId,
-      total: account.balance,
-      available: account.balance - account.lockedAmount - pendingOut,
-      locked: account.lockedAmount,
-      pending: pendingIn - pendingOut,
-      currency: account.currency,
-      lastUpdated: new Date().toISOString(),
-      historicalData: await this.getAccountBalanceHistory(accountId)
-    };
-  }
-  
-  /**
-   * Get historical balance data for an account
-   * @param accountId Account ID
-   * @returns Array of historical balance points
-   */
-  private async getAccountBalanceHistory(accountId: string): Promise<{ timestamp: string, balance: number }[]> {
-    // In a real implementation, this would fetch from a time-series table or calculate from transactions
-    // For this example, we'll generate some mock data
-    const now = new Date();
-    const history = [];
-    
-    // Generate 30 days of data
-    for (let i = 30; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
-      
-      history.push({
-        timestamp: date.toISOString(),
-        // Random variation around the current balance for demo purposes
-        balance: 10000 + Math.random() * 5000
-      });
-    }
-    
-    return history;
+    if (error) throw new Error(`Failed to update vault ${id}: ${error.message}`);
+    return data;
   }
   
   // #endregion
   
-  // #region Transaction Operations
-  
+  // #region Account Operations (REMOVED/ADAPTED)
+  // Methods related to 'vault_accounts' are removed as the table isn't in generated types.
+  // Logic might be integrated into 'vaults' operations or farm/agent services.
+  // Methods like getAccountsByFarm now map to getVaultsByFarm.
+
   /**
-   * Create a transaction
-   * @param details Transaction details
-   * @returns The created transaction
+   * Alias for getVaultsByFarm for compatibility if needed.
    */
-  async createTransaction(details: {
-    sourceId: string;
-    sourceType: string;
-    destinationId: string;
-    destinationType: string;
-    amount: number;
-    currency: string;
-    type: TransactionType | string;
-    description?: string;
-    reference?: string;
-    network?: string;
-    fee?: number;
-    feeCurrency?: string;
-    metadata?: Record<string, any>;
-    approvalsRequired?: number;
-    status?: TransactionStatus;
-  }): Promise<VaultTransaction> {
-    const user = await this.supabase.auth.getUser();
-    const userId = user.data.user?.id;
-    
-    if (!userId) throw new Error('User ID is required to create a transaction');
-    
-    const { data, error } = await this.supabase
-      .from('vault_transactions')
-      .insert({
-        source_id: details.sourceId,
-        source_type: details.sourceType,
-        destination_id: details.destinationId,
-        destination_type: details.destinationType,
-        amount: details.amount,
-        currency: details.currency,
-        type: details.type,
-        description: details.description,
-        reference: details.reference,
-        network: details.network,
-        fee: details.fee,
-        fee_currency: details.feeCurrency,
-        metadata: details.metadata,
-        approvals_required: details.approvalsRequired || 1,
-        initiated_by: userId,
-        status: details.status || TransactionStatus.PENDING
-      })
-      .select()
-      .single();
-      
-    if (error) throw new Error(`Failed to create transaction: ${error.message}`);
-    
-    // Create audit log
-    await this.createAuditLog({
-      action: 'transaction.create',
-      userId,
-      transactionId: data.id,
-      details: { transactionType: details.type, amount: details.amount, currency: details.currency },
-      severity: 'info'
-    });
-    
-    // If the transaction is already completed, process the balance changes
-    if (details.status === TransactionStatus.COMPLETED) {
-      await this.processCompletedTransaction(data);
-    }
-    
-    return this.mapTransactionFromDb(data);
+  async getAccountsByFarm(farmId: string): Promise<VaultRow[]> {
+    return this.getVaultsByFarm(farmId);
   }
   
+  // #endregion
+  
+  // #region Transaction Operations (Using 'transaction_logs' table)
+
   /**
-   * Get a transaction by ID
-   * @param id Transaction ID
-   * @returns The transaction
+   * Create a new transaction log.
+   * NOTE: This only logs the transaction. Balance updates must be handled separately.
    */
-  async getTransaction(id: string): Promise<VaultTransaction> {
+  async createTransaction(params: CreateTransactionParams): Promise<TransactionLogRow> {
+    const insertData: TransactionLogInsert = {
+      farm_id: params.farm_id,
+      vault_id: params.vault_id,
+      transaction_type: params.transaction_type,
+      asset_symbol: params.asset_symbol,
+      amount: params.amount,
+      status: params.status || TransactionStatus.PENDING,
+      description: params.description,
+      metadata: params.metadata,
+      linked_account_id: params.linked_account_id,
+      external_id: params.external_id,
+      transaction_hash: params.transaction_hash,
+    };
+
+    // Validate required fields
+    if (!insertData.farm_id || !insertData.transaction_type || !insertData.asset_symbol || insertData.amount === undefined) {
+        throw new Error("Missing required fields for transaction log: farm_id, transaction_type, asset_symbol, amount");
+    }
+
     const { data, error } = await this.supabase
-      .from('vault_transactions')
+      .from('transaction_logs')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (error) throw new Error(`Failed to create transaction log: ${error.message}`);
+    
+    // IMPORTANT: Balance update logic is NOT included here. 
+    // Needs separate call to update vault_balances, potentially using DB functions.
+    // Consider calling _updateBalances or similar method after this.
+    return data;
+  }
+
+  /**
+   * Get a specific transaction log by ID.
+   */
+  async getTransaction(id: string): Promise<TransactionLogRow | null> {
+    const { data, error } = await this.supabase
+      .from('transaction_logs')
       .select()
       .eq('id', id)
-      .single();
+      .maybeSingle();
       
-    if (error) throw new Error(`Failed to fetch transaction: ${error.message}`);
-    
-    return this.mapTransactionFromDb(data);
+    if (error) throw new Error(`Failed to fetch transaction log ${id}: ${error.message}`);
+    return data;
   }
-  
+
   /**
-   * Get transactions with filtering
-   * @param filter Filter criteria
-   * @returns List of transactions
+   * Get transaction logs based on filters.
    */
-  async getTransactions(filter: TransactionFilter = {}): Promise<VaultTransaction[]> {
-    let query = this.supabase
-      .from('vault_transactions')
-      .select();
-      
-    if (filter.accountId) {
-      query = query.or(`source_id.eq.${filter.accountId},destination_id.eq.${filter.accountId}`);
-    }
-    
-    if (filter.types && filter.types.length > 0) {
-      query = query.in('type', filter.types);
-    }
-    
-    if (filter.statuses && filter.statuses.length > 0) {
-      query = query.in('status', filter.statuses);
-    }
-    
-    if (filter.fromDate) {
-      query = query.gte('created_at', filter.fromDate);
-    }
-    
-    if (filter.toDate) {
-      query = query.lte('created_at', filter.toDate);
-    }
-    
-    if (filter.minAmount) {
-      query = query.gte('amount', filter.minAmount);
-    }
-    
-    if (filter.maxAmount) {
-      query = query.lte('amount', filter.maxAmount);
-    }
-    
-    if (filter.search) {
-      query = query.or(`description.ilike.%${filter.search}%,reference.ilike.%${filter.search}%`);
-    }
+  async getTransactions(filter: { 
+    farmId?: string; 
+    vaultId?: string;
+    type?: string; 
+    status?: string;
+    asset?: string;
+    limit?: number; 
+    offset?: number;
+    // Add date range etc. if needed 
+  }): Promise<TransactionLogRow[]> {
+    let query = this.supabase.from('transaction_logs').select();
 
-    if (filter.limit) {
-      query = query.limit(filter.limit);
-    }
-
-    if (filter.offset) {
-      query = query.range(filter.offset, filter.offset + (filter.limit || 50) - 1);
-    }
-
-    // Default ordering
+    if (filter.farmId) query = query.eq('farm_id', filter.farmId);
+    if (filter.vaultId) query = query.eq('vault_id', filter.vaultId);
+    if (filter.type) query = query.eq('transaction_type', filter.type);
+    if (filter.status) query = query.eq('status', filter.status);
+    if (filter.asset) query = query.eq('asset_symbol', filter.asset);
+    
     query = query.order('created_at', { ascending: false });
-    
+
+    const limit = filter.limit ?? 50; // Default limit to 50
+    query = query.limit(limit);
+    if (filter.offset !== undefined) { // Check offset explicitly
+      query = query.range(filter.offset, filter.offset + limit - 1);
+    }
+
     const { data, error } = await query;
+
+    if (error) throw new Error(`Failed to fetch transaction logs: ${error.message}`);
+    return data || [];
+  }
+
+  /**
+   * Update the status of a transaction log.
+   */
+  async updateTransactionStatus(id: string, status: TransactionStatus | string, errorDetails?: Json): Promise<TransactionLogRow> {
+     const updates: TransactionLogUpdate = { 
+         status: status, 
+         metadata: errorDetails ? { error: errorDetails } : undefined 
+     };
+     const { data, error } = await this.supabase
+      .from('transaction_logs')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single();
       
-    if (error) throw new Error(`Failed to fetch transactions: ${error.message}`);
-    
-    return data.map(this.mapTransactionFromDb);
+     if (error) throw new Error(`Failed to update transaction log ${id} status: ${error.message}`);
+     return data;
   }
-  
-  /**
-   * Process a completed transaction, updating account balances
-   * @param transaction The transaction to process
-   */
-  private async processCompletedTransaction(transaction: any): Promise<void> {
-    // Update source account balance if it's a vault account
-    if (transaction.source_type === 'vault_account') {
-      await this.supabase
-        .from('vault_accounts')
-        .update({
-          balance: this.supabase.rpc('decrement', { 
-            row_id: transaction.source_id,
-            table_name: 'vault_accounts',
-            column_name: 'balance',
-            increment_amount: transaction.amount
-          })
-        })
-        .eq('id', transaction.source_id);
-    }
-    
-    // Update destination account balance if it's a vault account
-    if (transaction.destination_type === 'vault_account') {
-      await this.supabase
-        .from('vault_accounts')
-        .update({
-          balance: this.supabase.rpc('increment', { 
-            row_id: transaction.destination_id,
-            table_name: 'vault_accounts',
-            column_name: 'balance',
-            increment_amount: transaction.amount
-          })
-        })
-        .eq('id', transaction.destination_id);
-    }
-    
-    // Update master vault balance if needed
-    if (transaction.source_type === 'vault_master' || transaction.destination_type === 'vault_master') {
-      // For brevity, we're simplifying this logic. In a real implementation,
-      // you would need to handle various scenarios like transfers between vaults.
-      // This would also update allocated_balance, reserve_balance, etc.
-    }
-  }
-  
+
   // #endregion
-  
-  // #region Wallet Migration Support
+
+  // #region Balance Operations (Using 'vault_balances' table)
+
+  /**
+   * Get the balance for a specific asset in a vault.
+   */
+  async getBalance(vaultId: string, assetSymbol: string): Promise<VaultBalanceRow | null> {
+    const { data, error } = await this.supabase
+      .from('vault_balances')
+      .select()
+      .eq('vault_id', vaultId)
+      .eq('asset_symbol', assetSymbol)
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to fetch balance for vault ${vaultId}, asset ${assetSymbol}: ${error.message}`);
+    return data;
+  }
+
+  /**
+   * Get all balances for a vault.
+   */
+  async getBalances(vaultId: string): Promise<VaultBalanceRow[]> {
+    const { data, error } = await this.supabase
+      .from('vault_balances')
+      .select()
+      .eq('vault_id', vaultId);
+
+    if (error) throw new Error(`Failed to fetch balances for vault ${vaultId}: ${error.message}`);
+    return data || [];
+  }
+
+  /**
+   * Update balance - Use with caution, prefer atomic DB functions.
+   * This is a simple update, NOT atomic. Use DB functions for ledger operations.
+   */
+  private async _updateBalanceDirect(vaultId: string, assetSymbol: string, newAmount: number): Promise<VaultBalanceRow> {
+     console.warn('_updateBalanceDirect is not atomic. Use database functions for balance updates.');
+     // Check if balance exists, insert if not, update if it does
+     const existing = await this.getBalance(vaultId, assetSymbol);
+     
+     let resultData: VaultBalanceRow | null = null;
+     let resultError: Error | null = null;
+
+     if (existing) {
+         const { data, error } = await this.supabase
+             .from('vault_balances')
+             .update({ amount: newAmount, last_updated: new Date().toISOString() })
+             .eq('id', existing.id)
+             .select()
+             .single();
+         resultData = data;
+         resultError = error ? new Error(error.message) : null;
+     } else {
+         const { data, error } = await this.supabase
+             .from('vault_balances')
+             .insert({ vault_id: vaultId, asset_symbol: assetSymbol, amount: newAmount, last_updated: new Date().toISOString() })
+             .select()
+             .single();
+         resultData = data;
+         resultError = error ? new Error(error.message) : null;
+     }
+
+     if (resultError) throw resultError;
+     if (!resultData) throw new Error('Failed to update or insert balance entry.');
+     return resultData;
+  }
   
   /**
-   * Migrate a legacy wallet to a vault account
-   * @param legacyWallet The legacy wallet to migrate
-   * @param masterId The master vault ID to assign the new account to
-   * @returns The newly created vault account
+   * Atomically updates balances using DB functions (PLACEHOLDER - requires DB function names)
+   * Example assumes functions like 'adjust_vault_balance' exist.
    */
-  async migrateLegacyWallet(
-    legacyWallet: LegacyWallet, 
-    masterId: string
-  ): Promise<VaultAccount> {
-    // Determine the account type based on wallet type or other properties
-    let accountType: VaultAccountType;
-    
-    if (legacyWallet.wallet_type === 'trading') {
-      accountType = VaultAccountType.TRADING;
-    } else if (legacyWallet.wallet_type === 'staking') {
-      accountType = VaultAccountType.STAKING;
-    } else if (legacyWallet.wallet_type === 'reserve') {
-      accountType = VaultAccountType.RESERVE;
-    } else {
-      accountType = VaultAccountType.TRADING; // Default type
-    }
-    
-    // Create a new vault account
-    const account = await this.createAccount(
-      masterId,
-      legacyWallet.name,
-      accountType,
-      {
-        initialBalance: legacyWallet.balance,
-        currency: legacyWallet.currency || 'USD',
-        farmId: legacyWallet.farm_id?.toString(),
-        address: legacyWallet.address,
-        settings: {
-          migratedFromLegacy: true,
-          legacyWalletId: legacyWallet.id.toString(),
-          migrationDate: new Date().toISOString()
-        }
+  async adjustBalanceAtomic(vaultId: string, assetSymbol: string, amountChange: number): Promise<void> {
+      // IMPORTANT: Replace 'adjust_vault_balance' with your actual DB function name
+      // --- COMMENTING OUT UNTIL CORRECT FUNCTION NAME IS KNOWN --- 
+      /*
+      const { error } = await this.supabase.rpc('adjust_vault_balance', { 
+          p_vault_id: vaultId, 
+          p_asset_symbol: assetSymbol, 
+          p_amount_change: amountChange 
+      });
+
+      if (error) {
+          console.error("Database function error:", error);
+          throw new Error(`Atomic balance update failed: ${error.message}`);
       }
-    );
-    
-    // Create an audit log entry for the migration
-    await this.createAuditLog({
-      action: 'wallet.migration',
-      accountId: account.id,
-      details: { 
-        legacyWalletId: legacyWallet.id,
-        originalBalance: legacyWallet.balance,
-        migratedBalance: account.balance
-      },
-      severity: 'info'
-    });
-    
-    return account;
+      */
+     console.warn('adjustBalanceAtomic is disabled until the correct database function name is provided.');
+     // Simulate success for now, or throw an error if preferred
+     await Promise.resolve(); 
   }
-  
+
   // #endregion
-  
-  // #region Security Operations
-  
-  /**
-   * Get security policy for an account
-   * @param accountId Account ID
-   * @returns Security policy
-   */
-  async getSecurityPolicy(accountId: string): Promise<SecurityPolicy> {
-    const { data, error } = await this.supabase
-      .from('security_policies')
-      .select()
-      .eq('account_id', accountId)
-      .single();
-      
-    if (error) {
-      // If no policy exists, create a default one
-      if (error.code === 'PGRST116') {
-        return this.createDefaultSecurityPolicy(accountId);
-      }
-      throw new Error(`Failed to fetch security policy: ${error.message}`);
-    }
-    
-    return this.mapSecurityPolicyFromDb(data);
-  }
-  
-  /**
-   * Create a default security policy for an account
-   * @param accountId Account ID
-   * @returns Default security policy
-   */
-  private async createDefaultSecurityPolicy(accountId: string): Promise<SecurityPolicy> {
-    const defaultPolicy = {
-      account_id: accountId,
-      withdrawal_rules: {
-        requireApprovalThreshold: 1000,
-        dailyLimit: 10000,
-        monthlyLimit: 50000,
-        allowedAddresses: [],
-        blockedAddresses: [],
-        timelock: 0
-      },
-      access_rules: {
-        allowedIpAddresses: [],
-        allowedCountries: [],
-        twoFactorRequired: false,
-        allowedDevices: [],
-        deviceVerification: false,
-        passwordRequiredForHighValueTx: true
-      },
-      alert_rules: {
-        alertOnLogin: true,
-        alertOnHighValueTx: true,
-        alertOnSuspiciousTx: true,
-        alertThreshold: 5000,
-        alertEmail: null,
-        alertPhone: null
-      }
-    };
-    
-    const { data, error } = await this.supabase
-      .from('security_policies')
-      .insert(defaultPolicy)
-      .select()
-      .single();
-      
-    if (error) throw new Error(`Failed to create default security policy: ${error.message}`);
-    
-    return this.mapSecurityPolicyFromDb(data);
-  }
-  
-  /**
-   * Update security policy
-   * @param accountId Account ID
-   * @param updates Updates to apply
-   * @returns Updated security policy
-   */
-  async updateSecurityPolicy(
-    accountId: string, 
-    updates: Partial<SecurityPolicy>
-  ): Promise<SecurityPolicy> {
-    // Get existing policy first
-    const existingPolicy = await this.getSecurityPolicy(accountId);
-    
-    // Build update data
-    const updateData: Record<string, any> = {
-      updated_at: new Date().toISOString()
-    };
-    
-    // Handle withdrawal rules updates
-    if (updates.withdrawalRules) {
-      updateData.withdrawal_rules = {
-        ...existingPolicy.withdrawalRules,
-        ...updates.withdrawalRules
-      };
-    }
-    
-    // Handle access rules updates
-    if (updates.accessRules) {
-      updateData.access_rules = {
-        ...existingPolicy.accessRules,
-        ...updates.accessRules
-      };
-    }
-    
-    // Handle alert rules updates
-    if (updates.alertRules) {
-      updateData.alert_rules = {
-        ...existingPolicy.alertRules,
-        ...updates.alertRules
-      };
-    }
-    
-    // Update the policy
-    const { data, error } = await this.supabase
-      .from('security_policies')
-      .update(updateData)
-      .eq('account_id', accountId)
-      .select()
-      .single();
-      
-    if (error) throw new Error(`Failed to update security policy: ${error.message}`);
-    
-    return this.mapSecurityPolicyFromDb(data);
-  }
-  
+
+  // #region Security Policy Management (REMOVED)
+  // Methods related to 'vault_security_policies' are removed.
   // #endregion
-  
-  // #region Audit Logs
-  
-  /**
-   * Create an audit log entry
-   * @param entry Audit log details
-   * @returns Log entry ID
-   */
-  async createAuditLog(entry: {
-    action: string;
-    userId?: string;
-    accountId?: string;
-    transactionId?: string;
-    details?: Record<string, any>;
-    severity?: 'info' | 'warning' | 'critical';
-    ipAddress?: string;
-    userAgent?: string;
-  }): Promise<string> {
-    const user = entry.userId 
-      ? { data: { user: { id: entry.userId } } }
-      : await this.supabase.auth.getUser();
-    
-    const { data, error } = await this.supabase
-      .from('audit_logs')
-      .insert({
-        timestamp: new Date().toISOString(),
-        action: entry.action,
-        user_id: user.data.user?.id,
-        account_id: entry.accountId,
-        transaction_id: entry.transactionId,
-        details: entry.details,
-        severity: entry.severity || 'info',
-        ip_address: entry.ipAddress,
-        user_agent: entry.userAgent
-      })
-      .select('id')
-      .single();
-      
-    if (error) throw new Error(`Failed to create audit log: ${error.message}`);
-    
-    return data.id;
-  }
-  
-  /**
-   * Get audit logs for an account
-   * @param accountId Account ID
-   * @param limit Maximum number of logs
-   * @param offset Offset for pagination
-   * @returns List of audit logs
-   */
-  async getAccountAuditLogs(
-    accountId: string,
-    limit = 50,
-    offset = 0
-  ): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.supabase
-      .from('audit_logs')
-      .select()
-      .eq('account_id', accountId)
-      .order('timestamp', { ascending: false })
-      .range(offset, offset + limit - 1);
-      
-    if (error) throw new Error(`Failed to fetch audit logs: ${error.message}`);
-    
-    return data.map(this.mapAuditLogFromDb);
-  }
-  
+
+  // #region Audit Log Management (REMOVED)
+  // Methods related to 'vault_audit_logs' are removed.
   // #endregion
-  
-  // #region Helper Methods
-  
-  /**
-   * Map database record to VaultMaster type
-   * @param data Database record
-   * @returns VaultMaster object
-   */
-  private mapMasterVaultFromDb(data: any): VaultMaster {
-    return {
-      id: data.id,
-      name: data.name,
-      description: data.description,
-      totalBalance: data.total_balance,
-      allocatedBalance: data.allocated_balance,
-      reserveBalance: data.reserve_balance,
-      highRiskExposure: data.high_risk_exposure,
-      securityScore: data.security_score,
-      status: data.status,
-      ownerId: data.owner_id,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at
-    };
+
+  // #region Legacy Wallet Migration (Keep for now)
+  async getLegacyWallets(farmId: string | number): Promise<LegacyWallet[]> {
+      // Implementation... assumes a 'legacy_wallets' table or similar
+      return [];
   }
-  
-  /**
-   * Map database record to VaultAccount type
-   * @param data Database record
-   * @returns VaultAccount object
-   */
-  private mapVaultAccountFromDb(data: any): VaultAccount {
-    return {
-      id: data.id,
-      masterId: data.master_id,
-      name: data.name,
-      type: data.type,
-      balance: data.balance,
-      lockedAmount: data.locked_amount,
-      currency: data.currency,
-      riskLevel: data.risk_level,
-      address: data.address,
-      farmId: data.farm_id,
-      agentId: data.agent_id,
-      securityLevel: data.security_level,
-      isActive: data.is_active,
-      settings: data.settings,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at
-    };
+  async migrateLegacyWallet(legacyWalletId: string | number): Promise<VaultRow> {
+     // Implementation...
+     // 1. Get legacy wallet data
+     // 2. Create a new vault in 'vaults' table for the farm
+     // 3. Create balance entry in 'vault_balances'
+     // 4. Log transaction in 'transaction_logs'
+     // 5. Mark legacy wallet as migrated
+     throw new Error('Legacy migration not fully implemented.');
   }
-  
-  /**
-   * Map database record to VaultTransaction type
-   * @param data Database record
-   * @returns VaultTransaction object
-   */
-  private mapTransactionFromDb(data: any): VaultTransaction {
-    return {
-      id: data.id,
-      type: data.type,
-      amount: data.amount,
-      currency: data.currency,
-      sourceId: data.source_id,
-      sourceType: data.source_type,
-      destinationId: data.destination_id,
-      destinationType: data.destination_type,
-      status: data.status,
-      fee: data.fee,
-      feeCurrency: data.fee_currency,
-      hash: data.hash,
-      reference: data.reference,
-      description: data.description,
-      network: data.network,
-      confirmations: data.confirmations,
-      approvalsRequired: data.approvals_required,
-      approvalsCurrent: data.approvals_current,
-      approverIds: data.approver_ids || [],
-      metadata: data.metadata,
-      initiatedBy: data.initiated_by,
-      approvedBy: data.approved_by,
-      createdAt: data.created_at,
-      completedAt: data.completed_at,
-      updatedAt: data.updated_at
-    };
-  }
-  
-  /**
-   * Map database record to SecurityPolicy type
-   * @param data Database record
-   * @returns SecurityPolicy object
-   */
-  private mapSecurityPolicyFromDb(data: any): SecurityPolicy {
-    return {
-      id: data.id,
-      accountId: data.account_id,
-      withdrawalRules: data.withdrawal_rules,
-      accessRules: data.access_rules,
-      alertRules: data.alert_rules,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at
-    };
-  }
-  
-  /**
-   * Map database record to AuditLogEntry type
-   * @param data Database record
-   * @returns AuditLogEntry object
-   */
-  private mapAuditLogFromDb(data: any): AuditLogEntry {
-    return {
-      id: data.id,
-      timestamp: data.timestamp,
-      action: data.action,
-      userId: data.user_id,
-      ipAddress: data.ip_address,
-      userAgent: data.user_agent,
-      accountId: data.account_id,
-      transactionId: data.transaction_id,
-      details: data.details,
-      severity: data.severity
-    };
-  }
-  
+  // #endregion
+
+  // #region Helper Mapping Functions (REMOVED/ADAPTED)
+  // Remove mappers for VaultMaster, VaultAccount, VaultTransaction, SecurityPolicy, AuditLogEntry
+  // Add mappers if needed for VaultRow, TransactionLogRow, VaultBalanceRow to simplified app types
+  // For now, service methods will return DB Row types directly.
   // #endregion
 
   /**
@@ -987,28 +424,30 @@ export class UnifiedBankingService {
    * @returns Object indicating if the balance is sufficient and the total available amount.
    */
   async checkFarmBalance(
-      farmId: number | string,
+      farmId: string,
       assetSymbol: string,
       requiredAmount: number
   ): Promise<{ sufficient: boolean; availableAmount: number }> {
       let totalAvailableAmount = 0;
 
       try {
-          // 1. Get all vault accounts associated with the farm
-          const farmAccounts = await this.getAccountsByFarm(farmId.toString());
-          if (!farmAccounts || farmAccounts.length === 0) {
-              console.warn(`No vault accounts found for farm ${farmId}.`);
+          // 1. Get all vaults associated with the farm
+          const farmVaults = await this.getAccountsByFarm(farmId);
+          if (!farmVaults || farmVaults.length === 0) {
+              console.warn(`No vaults found for farm ${farmId}.`);
               return { sufficient: false, availableAmount: 0 };
           }
 
-          // 2. Filter accounts by the required asset/currency
-          const relevantAccounts = farmAccounts.filter(acc => acc.currency === assetSymbol && acc.isActive);
+          // 2. Iterate through each vault and sum the balance for the specific asset
+          for (const vault of farmVaults) {
+              // Ensure the vault itself is active before checking its balance
+              if (!vault.is_active) continue;
 
-          // 3. Calculate total available balance across relevant accounts
-          for (const account of relevantAccounts) {
-              // Fetch detailed balance including pending transactions for accuracy
-              const balanceDetails = await this.getAccountBalance(account.id);
-              totalAvailableAmount += balanceDetails.available;
+              // Fetch the balance for the specific asset in this vault
+              const balanceDetails = await this.getBalance(vault.id, assetSymbol);
+              totalAvailableAmount += balanceDetails?.amount || 0;
+              // Note: This uses the direct 'amount'. A true 'available' calculation 
+              // would need to factor in pending outgoing transactions from transaction_logs.
           }
 
           return {
@@ -1022,6 +461,38 @@ export class UnifiedBankingService {
           return { sufficient: false, availableAmount: 0 };
       }
   }
+
+  // #region Farm Balance Calculation
+
+  /**
+   * Calculate the total available balance for a specific asset across all vaults in a farm.
+   * @param farmId The farm ID.
+   * @param assetSymbol The asset symbol (e.g., 'USD', 'BTC').
+   * @returns Total available amount.
+   */
+  async calculateFarmTotalAvailable(farmId: string, assetSymbol: string): Promise<number> {
+      let totalAvailableAmount = 0;
+
+      // 1. Get all vaults associated with the farm
+      const farmVaults = await this.getVaultsByFarm(farmId);
+
+      // 2. For each vault, find the balance for the specific asset
+      for (const vault of farmVaults) {
+          // Get all balances for this vault
+          const vaultBalances = await this.getBalances(vault.id);
+          // Find the balance matching the requested asset symbol
+          const targetBalance = vaultBalances.find(b => b.asset_symbol === assetSymbol);
+          // Add the amount if found
+          totalAvailableAmount += targetBalance?.amount || 0;
+      }
+
+      // NOTE: This uses the simple 'amount' from vault_balances.
+      // A more complex calculation might involve checking related pending transactions 
+      // from transaction_logs if 'available' vs 'total' is needed.
+      return totalAvailableAmount;
+  }
+
+  // #endregion
 }
 
 // Export singleton instance
