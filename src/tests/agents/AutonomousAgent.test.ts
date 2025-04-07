@@ -5,160 +5,235 @@ import {
     ExecutionResult, 
     HealthStatus, 
     AgentError, 
-    AgentMemory, 
-    AgentTools 
-} from '../agents/AutonomousAgent';
+    AgentStatus
+} from '../../agents/AutonomousAgent';
+import { AgentMemory } from '../../memory/AgentMemory';
+import { AgentTools } from '../../tools/AgentTools';
 
 // Mock concrete implementation for testing
 class MockAgent extends AutonomousAgent {
     public id: string; // Explicitly define id here as a workaround
     shouldSucceed: boolean = true;
+    taskOutput: any = {}; // To control output of _performTask
     shouldRecover: boolean = true;
+    recoverCalledWith: AgentError | null = null;
     health: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
 
     constructor(id: string, memory: AgentMemory, tools: AgentTools) {
         super(id, memory, tools);
         this.id = id; // Assign id explicitly
+        this.status = 'idle'; // Ensure starts idle
+        this.recoverCalledWith = null;
     }
 
-    async execute(task: AgentTask): Promise<ExecutionResult> {
-        console.log(`MockAgent ${this.id} executing task:`, task);
+    // Implement the new abstract method
+    protected async _performTask(task: AgentTask): Promise<any> {
+        this.log('info', `MockAgent ${this.id} performing task:`, task);
         await new Promise(res => setTimeout(res, 10)); // Simulate async work
         if (this.shouldSucceed) {
-            return { success: true, output: { message: `Task ${task.id} completed` } };
+            return this.taskOutput || { message: `Task ${task.id} performed` };
         } else {
-            return { success: false, error: `Task ${task.id} failed` };
+            throw new Error(`Task ${task.id} failed intentionally`);
         }
     }
 
+    // Keep selfDiagnose as is for now
     async selfDiagnose(): Promise<HealthStatus> {
-        console.log(`MockAgent ${this.id} diagnosing... Result: ${this.health}`);
+        this.log('info', `MockAgent ${this.id} diagnosing... Result: ${this.health}`);
         await new Promise(res => setTimeout(res, 5));
         return { status: this.health };
     }
 
+    // Keep recover but track if it was called
     async recover(error: AgentError): Promise<void> {
-        console.log(`MockAgent ${this.id} attempting recovery from error:`, error);
+        this.log('warn', `MockAgent ${this.id} attempting recovery from error:`, error);
+        this.recoverCalledWith = error; // Track the error it was called with
+        this.setStatus('recovering');
         await new Promise(res => setTimeout(res, 10));
         if (!this.shouldRecover) {
+            // Explicitly set status to error if recovery fails *before* throwing
+            this.setStatus('error');
             throw new Error("Recovery failed intentionally");
         }
-        console.log(`MockAgent ${this.id} recovery attempt complete.`);
-        // Simulate successful recovery (e.g., reset state)
+        this.log('info', `MockAgent ${this.id} recovery attempt complete.`);
+        // Simulate successful recovery
         this.health = 'healthy'; 
+        this.setStatus('idle'); // Important: set back to idle after successful recovery
     }
 }
 
 // Mock Memory and Tools for testing
+// Corrected mockMemory definition
 const mockMemory: AgentMemory = {
-    store: async () => {}, // jest.fn().mockResolvedValue(undefined),
-    retrieve: async () => 'mock data', // jest.fn().mockResolvedValue('mock data'),
+    store: jest.fn().mockResolvedValue(undefined),
+    retrieve: jest.fn().mockResolvedValue('mock data'),
+    remove: jest.fn().mockResolvedValue(undefined),
+    clear: jest.fn().mockResolvedValue(undefined),
 };
+
+// Corrected mockTools definition
 const mockTools: AgentTools = {
-    getTool: () => ({ run: () => 'tool result' }), // jest.fn().mockReturnValue({ run: () => 'tool result' }),
+    getTool: jest.fn().mockReturnValue(async () => 'tool result'),
+    registerTool: jest.fn(),
+    unregisterTool: jest.fn(),
+    listTools: jest.fn().mockReturnValue(['mockTool']),
 };
 
-// --- Test Functions (Jest wrappers commented out) ---
+// --- Jest Test Suite ---
 
-// Placeholder agent for tests
-let agent: MockAgent;
+describe('AutonomousAgent Base Class', () => {
+    let agent: MockAgent;
 
-function setupTestAgent() {
-    // Reset mocks and create new agent instance before each test
-    // jest.clearAllMocks(); // Cannot use jest yet
-    agent = new MockAgent('agent-test-123', mockMemory, mockTools);
-    agent.shouldSucceed = true;
-    agent.shouldRecover = true;
-    agent.health = 'healthy';
-    console.log("\n--- Setting up Test Agent ---");
-}
+    // Use beforeEach for setup
+    beforeEach(() => {
+        // Reset mocks before each test
+        (mockMemory.store as jest.Mock).mockClear();
+        (mockMemory.retrieve as jest.Mock).mockClear();
+        (mockMemory.remove as jest.Mock).mockClear();
+        (mockMemory.clear as jest.Mock).mockClear();
+        (mockTools.getTool as jest.Mock).mockClear();
+        (mockTools.registerTool as jest.Mock).mockClear();
+        (mockTools.unregisterTool as jest.Mock).mockClear();
+        (mockTools.listTools as jest.Mock).mockClear();
 
-function testInitialization() {
-    console.log("Running test: testInitialization");
-    setupTestAgent();
-    console.assert(agent.id === 'agent-test-123', "Initialization ID mismatch");
-    console.log("Assertion passed: ID match");
-}
+        // Create a new agent instance
+        agent = new MockAgent('agent-test-123', mockMemory, mockTools);
+    });
 
-async function testExecuteSuccess() {
-    console.log("Running test: testExecuteSuccess");
-    setupTestAgent();
-    const task: AgentTask = { id: 'task-001', type: 'test', payload: {} };
-    agent.shouldSucceed = true;
-    const result = await agent.execute(task);
-    console.assert(result.success === true, "Execute success failed: success flag");
-    // console.assert(result.output === { message: `Task ${task.id} completed` }, "Execute success failed: output mismatch"); // Deep equality check needed
-    console.assert(result.error === undefined, "Execute success failed: error present");
-    console.log("Assertions passed: Execute Success");
-}
+    it('should initialize with correct ID and idle status', () => {
+        expect(agent.id).toBe('agent-test-123');
+        expect(agent.getStatus()).toBe('idle');
+    });
 
-async function testExecuteFailure() {
-    console.log("Running test: testExecuteFailure");
-    setupTestAgent();
-    const task: AgentTask = { id: 'task-002', type: 'test', payload: {} };
-    agent.shouldSucceed = false;
-    const result = await agent.execute(task);
-    console.assert(result.success === false, "Execute failure failed: success flag");
-    console.assert(result.error === `Task ${task.id} failed`, "Execute failure failed: error message");
-    console.assert(result.output === undefined, "Execute failure failed: output present");
-    console.log("Assertions passed: Execute Failure");
-}
+    it('should execute a task successfully when idle', async () => {
+        const task: AgentTask = { id: 'task-001', type: 'test', payload: { data: 'sample' } };
+        agent.shouldSucceed = true;
+        agent.taskOutput = { result: 'success output' };
 
-async function testSelfDiagnose() {
-    console.log("Running test: testSelfDiagnose");
-    setupTestAgent();
-    agent.health = 'degraded';
-    const status = await agent.selfDiagnose();
-    console.assert(status.status === 'degraded', "Self-diagnose failed: status mismatch");
-    console.log("Assertion passed: Self Diagnose");
-}
+        const result = await agent.execute(task);
 
-async function testRecoverySuccess() {
-    console.log("Running test: testRecoverySuccess");
-    setupTestAgent();
-    const error: AgentError = { code: 'TestError', message: 'Something went wrong' };
-    agent.health = 'unhealthy';
-    agent.shouldRecover = true;
-    try {
-        await agent.recover(error);
-        const currentHealth = await agent.selfDiagnose();
-        console.assert(currentHealth.status === 'healthy', "Recovery success failed: health not reset");
-        console.log("Assertions passed: Recovery Success");
-    } catch (e) {
-        console.error("Recovery success test failed unexpectedly:", e);
-    }
-}
+        expect(result.success).toBe(true);
+        expect(result.output).toEqual({ result: 'success output' });
+        expect(result.error).toBeUndefined();
+        expect(agent.getStatus()).toBe('idle');
+        expect(agent.recoverCalledWith).toBeNull();
+        // Optionally check if _performTask was called if needed, using spyOn
+    });
 
-async function testRecoveryFailure() {
-    console.log("Running test: testRecoveryFailure");
-    setupTestAgent();
-    const error: AgentError = { code: 'FatalError', message: 'Cannot recover' };
-    agent.shouldRecover = false;
-    let didThrow = false;
-    try {
-        await agent.recover(error);
-    } catch (e) {
-        if (e instanceof Error && e.message === "Recovery failed intentionally") {
-            didThrow = true;
-        }
-    }
-    console.assert(didThrow, "Recovery failure failed: did not throw expected error");
-    console.log("Assertion passed: Recovery Failure");
-}
+    it('should handle task execution failure followed by successful recovery', async () => {
+        const task: AgentTask = { id: 'task-002', type: 'test', payload: {} };
+        agent.shouldSucceed = false; // _performTask will throw
+        agent.shouldRecover = true;  // recover will succeed
+        const expectedErrorMessage = `Task ${task.id} failed intentionally`;
 
-// Manually run tests (replace with Jest runner later)
-async function runAllTests() {
-    console.log("===== Running AutonomousAgent Tests =====");
-    testInitialization();
-    await testExecuteSuccess();
-    await testExecuteFailure();
-    await testSelfDiagnose();
-    await testRecoverySuccess();
-    await testRecoveryFailure();
-    console.log("===== AutonomousAgent Tests Complete =====");
-}
+        const result = await agent.execute(task);
 
-// runAllTests(); // Uncomment to run manually
+        expect(result.success).toBe(false);
+        expect(result.error).toBe(`Task ${task.id} failed: ${expectedErrorMessage}`);
+        expect(result.output).toBeUndefined();
+        expect(agent.getStatus()).toBe('idle'); // Should be idle after successful recovery
+        expect(agent.recoverCalledWith).not.toBeNull();
+        expect(agent.recoverCalledWith?.code).toBe('EXECUTION_FAILED');
+    });
+
+    it('should handle task execution failure followed by recovery failure', async () => {
+        const task: AgentTask = { id: 'task-003', type: 'test', payload: {} };
+        agent.shouldSucceed = false; // _performTask will throw
+        agent.shouldRecover = false; // recover will also throw
+        const expectedErrorMessage = `Task ${task.id} failed intentionally`;
+
+        const result = await agent.execute(task);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe(`Task ${task.id} failed: ${expectedErrorMessage}`);
+        expect(agent.getStatus()).toBe('error'); // Should remain in error state
+        expect(agent.recoverCalledWith).not.toBeNull();
+        expect(agent.recoverCalledWith?.code).toBe('EXECUTION_FAILED');
+    });
+
+    it('should prevent task execution if agent is not idle', async () => {
+        const task1: AgentTask = { id: 'task-004a', type: 'test', payload: {} };
+        const task2: AgentTask = { id: 'task-004b', type: 'test', payload: {} };
+
+        // Manually set status to busy to simulate ongoing task
+        (agent as any).setStatus('busy'); // Use type assertion or make setStatus public for testing if preferred
+
+        // Now try executing the second task
+        const result = await agent.execute(task2);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Agent is not idle (current status: busy).');
+        expect(agent.getStatus()).toBe('busy'); // Status should remain busy
+        expect(agent.recoverCalledWith).toBeNull();
+    });
+
+    it('should return the correct health status from selfDiagnose', async () => {
+        agent.health = 'degraded';
+        const status = await agent.selfDiagnose();
+        expect(status.status).toBe('degraded');
+
+        agent.health = 'unhealthy';
+        const status2 = await agent.selfDiagnose();
+        expect(status2.status).toBe('unhealthy');
+
+        agent.health = 'healthy';
+        const status3 = await agent.selfDiagnose();
+        expect(status3.status).toBe('healthy');
+    });
+
+    describe('Recovery Method', () => {
+        it('should transition to idle after successful recovery', async () => {
+            const error: AgentError = { code: 'TestError', message: 'Something went wrong' };
+            agent.health = 'unhealthy';
+            agent.shouldRecover = true;
+
+            await agent.recover(error);
+
+            expect(agent.getStatus()).toBe('idle');
+            expect(agent.health).toBe('healthy'); // Verify health is reset
+        });
+
+        it('should throw an error and remain in error status if recovery fails', async () => {
+            const error: AgentError = { code: 'FatalError', message: 'Cannot recover' };
+            agent.shouldRecover = false;
+
+            await expect(agent.recover(error)).rejects.toThrow("Recovery failed intentionally");
+
+            // Status should be set to 'error' within the recover method *before* throwing
+            expect(agent.getStatus()).toBe('error');
+        });
+    });
+
+    // Example of testing protected methods like log (if needed)
+    // You might need to make `log` public or use spies/mocks depending on testing strategy
+    it('should log messages correctly (example)', () => {
+        // Use jest.spyOn to watch console.log (or a dedicated logger mock)
+        const consoleSpy = jest.spyOn(console, 'log').mockImplementation(); // Suppress actual console output during test
+
+        agent['log']('info', 'Test log message'); // Access protected method for testing
+
+        expect(consoleSpy).toHaveBeenCalled();
+        // Add more specific checks on the logged message if necessary
+        // e.g., expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[INFO] Test log message'));
+
+        consoleSpy.mockRestore(); // Clean up spy
+    });
+
+    it('should allow getting the current status', () => {
+        expect(agent.getStatus()).toBe('idle');
+        (agent as any).setStatus('busy');
+        expect(agent.getStatus()).toBe('busy');
+    });
+
+    it('should send a heartbeat (placeholder test)', async () => {
+        // Spy on log to see if heartbeat logs
+        const logSpy = jest.spyOn(agent as any, 'log'); // Spy on the protected log method
+        await agent.sendHeartbeat();
+        expect(logSpy).toHaveBeenCalledWith('info', 'Sending heartbeat...');
+        logSpy.mockRestore();
+    });
+
+});
 
 // TODO: Add tests for ManagerAgent
 // TODO: Add tests for ElizaManagerAgent (requires mocking ElizaOSClient)

@@ -13,11 +13,11 @@ CREATE TABLE public.elizaos_agent_sessions (
 
 -- Add comments
 COMMENT ON TABLE public.elizaos_agent_sessions IS 'Tracks active sessions between agents and the ElizaOS system.';
-COMMENT ON COLUMN public.elizaos_agent_sessions.agent_id IS 'The ID of the agent associated with this session.';
+COMMENT ON COLUMN public.elizaos_agent_sessions.agent_id IS 'Foreign key referencing the specific agent this session belongs to.';
 COMMENT ON COLUMN public.elizaos_agent_sessions.manager_id IS 'The manager overseeing the agent during this session.';
 COMMENT ON COLUMN public.elizaos_agent_sessions.started_at IS 'Timestamp when the session began.';
 COMMENT ON COLUMN public.elizaos_agent_sessions.last_active IS 'Timestamp of the last known activity in this session.';
-COMMENT ON COLUMN public.elizaos_agent_sessions.memory_snapshot IS 'Snapshot of the agent's relevant memory at a point in time or end of session.';
+COMMENT ON COLUMN public.elizaos_agent_sessions.memory_snapshot IS 'Snapshot of the agent''s relevant memory at a point in time or end of session.';
 COMMENT ON COLUMN public.elizaos_agent_sessions.created_at IS 'Timestamp when the session record was created.';
 COMMENT ON COLUMN public.elizaos_agent_sessions.updated_at IS 'Timestamp when the session record was last updated.';
 

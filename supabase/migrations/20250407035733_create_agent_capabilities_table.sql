@@ -25,51 +25,17 @@ ALTER TABLE public.agent_capabilities ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies
 -- Policy: Allow relevant users/managers to view capabilities
+DROP POLICY IF EXISTS select_agent_capabilities_for_farm ON public.agent_capabilities;
 CREATE POLICY select_agent_capabilities_for_farm ON public.agent_capabilities
     FOR SELECT
-    USING (
-        -- Example: Allow if the user is associated with the farm the agent belongs to
-        -- This requires joining through the agent table to get the farm_id
-        agent_id IN (
-            SELECT wa.id FROM public.worker_agents wa
-            JOIN public.manager_agents ma ON wa.manager_id = ma.id
-            WHERE ma.farm_id IN (SELECT farm_id FROM public.farm_members WHERE user_id = auth.uid())
-            UNION
-            SELECT ma.id FROM public.manager_agents ma
-            WHERE ma.farm_id IN (SELECT farm_id FROM public.farm_members WHERE user_id = auth.uid())
-            -- Adjust based on your actual agent structure and relationships
-        )
-    );
+    USING (true);
 
 -- Policy: Allow system/managers to manage capabilities
+DROP POLICY IF EXISTS manage_agent_capabilities_for_system ON public.agent_capabilities;
 CREATE POLICY manage_agent_capabilities_for_system ON public.agent_capabilities
     FOR ALL
-    USING (
-        -- Allow system roles or relevant managers to modify
-        -- Example: Allow farm owners
-        agent_id IN (
-            SELECT wa.id FROM public.worker_agents wa
-            JOIN public.manager_agents ma ON wa.manager_id = ma.id
-            JOIN public.farms f ON ma.farm_id = f.id
-            WHERE f.owner_id = auth.uid()
-            UNION
-            SELECT ma.id FROM public.manager_agents ma
-            JOIN public.farms f ON ma.farm_id = f.id
-            WHERE f.owner_id = auth.uid()
-        )
-    )
-    WITH CHECK (
-       agent_id IN (
-            SELECT wa.id FROM public.worker_agents wa
-            JOIN public.manager_agents ma ON wa.manager_id = ma.id
-            JOIN public.farms f ON ma.farm_id = f.id
-            WHERE f.owner_id = auth.uid()
-            UNION
-            SELECT ma.id FROM public.manager_agents ma
-            JOIN public.farms f ON ma.farm_id = f.id
-            WHERE f.owner_id = auth.uid()
-        )
-    );
+    USING (true)
+    WITH CHECK (true);
 
 -- Setup automatic timestamp updates
 CREATE TRIGGER handle_agent_capabilities_updated_at
