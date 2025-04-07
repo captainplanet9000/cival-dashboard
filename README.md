@@ -1,340 +1,226 @@
 # Trading Farm Platform
 
-A comprehensive trading platform with strategy development, backtesting, and deployment capabilities.
-
-## Features and Implementation Checklist
-
-### Core Components
-- [x] PineScript code editor for trading strategies
-- [x] Memory system with vector embeddings for semantic search
-- [x] Memory visualization (timeline, graph, table views)
-- [x] Supabase integration with pgvector for embeddings storage
-
-### Strategy Management
-- [x] Strategy import and storage
-- [x] Strategy editing and versioning
-- [x] Strategy organization and categorization
-
-### Backtesting System
-- [x] Complete backtesting page with configuration options
-- [x] Mock trade data generation for testing
-- [x] Performance metrics calculation (win rate, P/L, Sharpe ratio)
-- [x] D3.js visualization of equity curves with interactive tooltips
-
-### Strategy Deployment System
-- [x] Strategy deployment service
-- [x] Deployment configuration dialog
-- [x] API route for fetching available trading farms
-- [x] Deployment management UI (pause, resume, stop, restart)
-- [x] Farm filtering and status controls
-
-### Performance Monitoring
-- [x] Real-time performance dashboard
-- [x] Daily profit/loss visualization
-- [x] Strategy performance comparison
-- [x] Performance metrics cards with KPIs
-- [x] Risk assessment tools
-- [x] Performance alerts and notifications
-
-### Risk Management
-- [x] Position sizing controls
-- [x] Stop-loss and take-profit mechanisms
-- [x] Max drawdown settings
-- [x] Risk metrics visualization
-- [x] Volatility-based position sizing
-
-### Portfolio Management
-- [ ] Multi-strategy portfolio construction
-- [ ] Portfolio optimization tools
-- [ ] Capital allocation modeling
-- [ ] Correlation analysis for diversification
-- [ ] Rebalancing tools
-
-### User Management
-- [ ] User authentication and authorization
-- [ ] Team collaboration features
-- [ ] Role-based access controls
-- [ ] Activity logging and audit trails
-
-### User Interface
-- [x] Responsive dashboard layout
-- [x] Dark/light mode support
-- [x] Interactive charts and visualizations
-- [ ] Customizable dashboard widgets
-- [ ] Mobile companion app
-
-## Services Integrated
-
-### Exchange APIs
-- **Bybit**: Spot and futures trading
-- **Coinbase Pro**: Spot trading
-- **Hyperliquid**: Perpetual trading
-
-### Market Data
-- **MarketStack**: Stock and ETF data
-
-### AI & Strategy
-- **OpenAI**: Market analysis and strategy generation
-
-### Memory & Data Management
-- **Neon PostgreSQL with pgvector**: Vector database for strategy storage and similarity search
-
-### Blockchain Infrastructure
-- **Alchemy**: Ethereum transaction simulation and optimization
-
-## Getting Started
-
-```bash
-# Install dependencies
-npm install
-
-# Run development server
-npm run dev
-```
-
-## Technology Stack
-
-- Next.js for the frontend framework
-- React for UI components
-- TypeScript for type-safe code
-- Tailwind CSS for styling
-- Supabase for database and authentication
-- Chart.js for data visualization
-- D3.js for advanced visualizations
-- Node.js for backend
-- Express for API server
-- WebSockets for real-time updates
-- OAuth2 and JWT for authentication
-
-## Strategy System
-
-The Trading Farm Dashboard includes a comprehensive strategy management system:
-
-### Strategy Creation and Management
-
-- Natural language strategy creation - describe your strategy in plain English
-- Rule-based strategy definition with clear entry/exit conditions
-- Strategy versioning for tracking changes and improvements
-- Backtest capabilities for evaluating strategy performance
-- Risk management parameters for controlling trade exposure
-
-### Strategy Types Supported
-
-- Momentum strategies
-- Mean reversion strategies
-- Breakout strategies
-- Trend following strategies
-- Arbitrage strategies
-- Grid trading strategies
-- Martingale strategies
-- Custom strategies
-
-### Strategy Deployment
-
-- Deploy strategies to specific trading agents
-- Configure strategy parameters for each agent
-- Monitor strategy performance in real-time
-- Analyze historical performance and optimize
-
-### Integration with Agents
-
-- Agents can execute strategies automatically
-- Real-time order execution based on strategy signals
-- Performance tracking and metrics collection
-- Agent cooperation for enhanced strategy execution
-
-## Setup and Installation
-
-1. Clone the repository
-2. Install dependencies with `npm install`
-3. Create a `.env` file based on `.env.example`
-4. Run the development server with `npm run dev`
-
-## Database Schema
-
-The strategy system uses the following database tables:
-
-- `strategies` - Core strategy definitions
-- `strategy_versions` - Version history for strategies
-- `strategy_backtests` - Backtest results for strategies
-- `agent_strategies` - Linking strategies to agents
-- `farm_strategies` - Linking strategies to farms
-
-## API Endpoints
-
-### Strategy Management
-
-- `GET /api/strategies` - Get all strategies or a specific strategy
-- `POST /api/strategies` - Create a new strategy
-- `PUT /api/strategies` - Update an existing strategy
-- `DELETE /api/strategies` - Delete a strategy
-
-### Strategy Execution
-
-- `POST /api/strategies/execute` - Execute a strategy with a given context
-- `POST /api/strategies/deploy` - Deploy a strategy to an agent
-
-## License
-
-MIT
-
-# Trading Farm DeFi Protocol Integration Framework
-
-A comprehensive framework for integrating multiple DeFi protocols into the Trading Farm platform, enabling unified access to 12+ DeFi protocols for trading, lending, borrowing, and more.
+A comprehensive platform for managing digital asset trading operations, integrating with AI agents, managing vaults, and leveraging knowledge management.
 
 ## Overview
 
-The DeFi Protocol Integration Framework provides a standardized way to interact with various DeFi protocols through a unified interface. It abstracts away the complexities of individual protocol APIs and provides a consistent interaction pattern for consumers.
+The Trading Farm Platform is a complete solution for institutional and individual traders who want to streamline their digital asset operations. It combines portfolio management, automated trading, vault management for secure asset custody, and AI-powered assistants to help optimize trading strategies.
 
-Key features include:
+## Key Features
 
-- **Protocol Connectors**: Standard interfaces for each supported protocol
-- **Cross-Protocol Aggregation**: Find best rates, compare fees, and analyze opportunities across protocols
-- **Multi-Chain Support**: Most protocols support multiple chains (Ethereum, Arbitrum, Base, etc.)
-- **AI Agent Integration**: MCP support for AI-driven trading and decision making
+- **Farm Management**: Create and manage multiple trading farms with isolated settings and resources
+- **Agent Integration**: Leverage AI-powered agents for market analysis, trading, and portfolio management
+- **Vault System**: Secure custody system for monitoring and managing assets across exchanges and blockchains
+- **Brain & Knowledge Management**: Collaborative knowledge storage and retrieval for trading insights
+- **Goal Management**: Set, track, and achieve financial goals with progress monitoring
+- **Analytics Dashboard**: Comprehensive analytics and reporting on portfolio performance
 
-## Implementation Status
+## Project Structure
 
-- ✅ Core Protocol Connector Interface
-- ✅ Protocol Service Factory
-- ✅ Cross-Protocol Aggregator
-- ✅ API Endpoints for protocol data and actions
-- ✅ UI Components for protocol display and interaction
-- ✅ Wallet Provider with multi-wallet support
-- ✅ Protocol Connectors:
-  - ✅ GMX (Perpetuals)
-  - ✅ Uniswap (DEX)
-  - ✅ Aave (Lending/Borrowing)
-  - ✅ SushiSwap (DEX)
-  - ✅ Vertex (Perpetuals)
-  - ✅ Morpho (Lending)
-- ✅ Protocol SDKs Integrated:
-  - ✅ Uniswap SDK (v3-sdk & sdk-core)
-  - ✅ Aave Protocol JS
-- ✅ Type Safety Fixes:
-  - ✅ Standardized interface implementation across all connectors
-  - ✅ Proper credential type handling in connect() methods
-- ✅ Test Harness:
-  - ✅ Unit tests for protocol connectors
-  - ✅ Integration tests for wallet connections
+```
+/
+├── backend/               # FastAPI backend
+│   ├── app.py             # Main application entry point
+│   ├── requirements.txt   # Python dependencies
+│   └── integrations/      # External API integrations
+├── src/                   # Frontend React components
+│   ├── components/        # UI components
+│   ├── lib/               # Utility functions and API client
+│   ├── pages/             # Next.js pages
+│   ├── styles/            # CSS styling
+│   └── types/             # TypeScript type definitions
+├── supabase/              # Supabase migrations and schemas
+│   └── migrations/        # Database migrations
+├── windmill/              # Windmill automation workflows
+│   ├── flows/             # Flow definitions (YAML)
+│   └── scripts/           # Python scripts for flows
+└── docs/                  # Documentation
+```
 
-## Installation
+## Tech Stack
 
-To install the dependencies for the DeFi Protocol Integration Framework:
+- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, shadcn/ui
+- **Backend**: FastAPI, Python 3.9+, asyncpg, pandas, numpy
+- **Database**: PostgreSQL via Supabase
+- **AI/ML**: OpenAI APIs, Vector embeddings, LangChain
+- **Integration**: Blockchain nodes, Exchange APIs, Web3 libraries
+- **Automation**: Windmill workflows, Python scripts
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- Python 3.9+
+- Supabase account
+- Windmill account (optional for automation)
+- OpenAI API key
+
+### Backend Setup
+
+1. **Navigate to the backend directory**
 
 ```bash
-node src/utils/install-dependencies.js
+cd backend
 ```
 
-## Usage Example
+2. **Install Python dependencies**
 
-```typescript
-import { ProtocolConnectorFactory } from '@/services/defi/protocol-connector-factory';
-import { ProtocolType, ProtocolAction } from '@/types/defi-protocol-types';
-import { WalletProvider, WalletType } from '@/services/wallet/wallet-provider';
-
-// Connect wallet
-const walletProvider = WalletProvider.getInstance();
-await walletProvider.connect(WalletType.METAMASK);
-
-// Get protocol connector
-const gmxConnector = await ProtocolConnectorFactory.getConnector(ProtocolType.GMX);
-
-// Connect to protocol with wallet
-await ProtocolConnectorFactory.connectWallet(ProtocolType.GMX);
-
-// Get user positions
-const positions = await gmxConnector.getUserPositions(walletProvider.getWalletInfo()?.address || '');
-
-// Execute action (e.g. open position)
-await gmxConnector.executeAction(ProtocolAction.OPEN_POSITION, {
-  market: '0x...',
-  collateralToken: '0x...',
-  isLong: true,
-  size: '1000000000000000000', // 1 ETH
-  leverage: 10
-});
+```bash
+pip install -r requirements.txt
 ```
 
-## Architecture Diagram
+3. **Configure environment variables**
+
+Create a `.env` file in the backend directory:
 
 ```
-┌─────────────────────────────────────────┐
-│          Cross-Protocol Aggregator      │
-└───────────────────┬─────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────┐
-│        Protocol Connector Factory       │
-└───┬───────────┬───────────┬─────────────┘
-    │           │           │
-    ▼           ▼           ▼
-┌─────────┐ ┌─────────┐ ┌─────────┐
-│   GMX   │ │ Uniswap │ │  Aave   │
-│Connector│ │Connector│ │Connector│ ...
-└─────────┘ └─────────┘ └─────────┘
+DB_USER=postgres
+DB_PASSWORD=your_db_password
+DB_HOST=db.bgvlzvswzpfoywfxehis.supabase.co
+DB_PORT=5432
+DB_NAME=postgres
+OPENAI_API_KEY=your_openai_api_key
 ```
+
+4. **Start the FastAPI server**
+
+```bash
+uvicorn app:app --reload
+```
+
+The API server will be running at http://localhost:8000 with interactive docs at http://localhost:8000/docs
+
+### Frontend Setup
+
+1. **Install npm dependencies**
+
+```bash
+npm install
+```
+
+2. **Configure environment variables**
+
+Create a `.env.local` file in the project root:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+3. **Start the development server**
+
+```bash
+npm run dev
+```
+
+The frontend will be running at http://localhost:3000
+
+### Database Setup
+
+1. **Install Supabase CLI**
+
+```bash
+npm install -g supabase
+```
+
+2. **Initialize Supabase project**
+
+```bash
+supabase init
+```
+
+3. **Run database migrations**
+
+```bash
+supabase migration up
+```
+
+4. **Generate TypeScript types**
+
+```bash
+supabase gen types typescript --local > src/types/database.types.ts
+```
+
+## Development Workflow
+
+### Creating a New Farm
+
+1. Navigate to the dashboard
+2. Click "New Farm" button
+3. Fill in the farm details and click "Create"
+
+### Adding Agents to a Farm
+
+1. Navigate to a farm
+2. Go to the "Agents" tab
+3. Click "New Agent"
+4. Configure the agent capabilities and settings
+
+### Setting Up Goals
+
+1. Navigate to a farm
+2. Go to the "Goals" tab
+3. Click "Create New Goal"
+4. Select a template or create a custom goal
+5. Define targets and timeframes
+
+### Monitoring Performance
+
+1. Navigate to a farm
+2. View the Analytics dashboard
+3. Analyze asset allocation, performance, and goal progress
+
+## API Endpoints
+
+### Farm Management
+- `GET /farms` - List all farms
+- `POST /farms` - Create a new farm
+- `GET /farms/{farm_id}` - Get a specific farm
+- `PUT /farms/{farm_id}` - Update a farm
+
+### Agent Management
+- `GET /farms/{farm_id}/agents` - List all agents for a farm
+- `POST /agents` - Create a new agent
+- `GET /agents/{agent_id}` - Get a specific agent
+- `POST /agents/{agent_id}/start` - Start an agent
+- `POST /agents/{agent_id}/stop` - Stop an agent
+
+### Goal Management
+- `GET /farms/{farm_id}/goals` - List all goals for a farm
+- `POST /farms/{farm_id}/goals` - Create a new goal
+- `GET /goals/{goal_id}` - Get a specific goal
+- `PUT /goals/{goal_id}` - Update a goal
+- `POST /goals/{goal_id}/progress` - Update goal progress
+
+### Analytics
+- `GET /farms/{farm_id}/analytics` - Get comprehensive analytics
+- `GET /farms/{farm_id}/analytics/assets` - Get asset performance data
+- `GET /farms/{farm_id}/analytics/balances` - Get historical balance data
+- `GET /farms/{farm_id}/analytics/profit-loss` - Get profit/loss data
+
+## Implementation Plan
+
+The project has been implemented in phases:
+
+1. **Phase 1**: Farm & Agent Integration ✓
+2. **Phase 2**: Vault System ✓
+3. **Phase 3**: Brain & Knowledge Management ✓
+4. **Phase 4**: Goal Management & Analytics ✓
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Advanced Agent Workflow System
+## Contact
 
-The Trading Farm Dashboard includes a powerful agent workflow system that leverages Large Language Models (LLMs) and Model Context Protocol (MCP) tools to automate and enhance trading operations.
-
-### Key Features
-
-- **LLM-powered Workflows**: Agents use large language models for planning, analysis, and reasoning in workflow execution.
-- **MCP Tool Integration**: Connect to external services, exchange APIs, and DeFi protocols through a unified interface.
-- **Workflow Templates**: Pre-configured templates for common operations like market analysis, portfolio rebalancing, and trade execution.
-- **Scheduled Workflows**: Schedule workflows to run automatically at specified intervals or custom cron schedules.
-- **Multi-agent Collaboration**: Different agent types (Analysts, Traders, Monitors) work together seamlessly within a farm.
-
-### Components
-
-- **Agent Workflow Service**: Core service for executing workflows with LLM planning and MCP tool integration.
-- **LLM Service**: Handles natural language processing tasks like workflow planning, analysis, and summarization.
-- **MCP Tools Service**: Provides a unified interface for external tool execution like fetching exchange data, price analysis, and trade execution.
-- **Workflow Templates**: Pre-defined templates for common workflows with customizable parameters.
-- **Workflow Scheduler**: Automates workflow execution on custom schedules.
-
-### Workflow Types
-
-- **Market Analysis**: Analyze market conditions, price trends, and sentiment for specified assets.
-- **Risk Assessment**: Evaluate portfolio risk exposure, volatility metrics, and correlation factors.
-- **Trade Execution**: Execute trades with customizable parameters like entry price, stop loss, and take profit.
-- **Portfolio Rebalance**: Rebalance portfolio to target allocations with slippage control.
-
-### Usage
-
-1. Select an agent in the Farm Dashboard
-2. Navigate to the "Workflows" tab
-3. Choose a workflow type or select from available templates
-4. Configure workflow parameters
-5. Execute workflow or schedule for future execution
-
-### Technical Implementation
-
-The system follows a modular design with separation of concerns:
-- UI components for user interaction 
-- Service layer for business logic
-- API endpoints for data access
-- Integration with external systems via MCP tools
-
-### Example Workflow
-
-A typical Market Analysis workflow might:
-1. Fetch current market data for specified assets
-2. Analyze price trends and patterns
-3. Generate sentiment analysis from news and social media
-4. Compile a final market report with recommendations
-
-### Further Development
-
-The agent workflow system can be extended with:
-- Additional workflow types for specific trading strategies
-- More sophisticated LLM prompting techniques
-- Integration with advanced MCP tools and data sources
-- Real-time collaboration between multiple agents
-- Integration with backtesting systems for strategy validation
+Project Link: [https://github.com/yourusername/trading-farm-platform](https://github.com/yourusername/trading-farm-platform)
