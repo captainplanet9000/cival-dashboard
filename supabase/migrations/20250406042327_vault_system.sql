@@ -131,104 +131,87 @@ ALTER TABLE public.transaction_logs ENABLE ROW LEVEL SECURITY;
 -- RLS policies for vaults
 CREATE POLICY "Users can view vaults in their farms" 
 ON public.vaults FOR SELECT 
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = vaults.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = vaults.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can insert vaults in their farms" 
 ON public.vaults FOR INSERT 
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = NEW.farm_id AND farms.owner_id = auth.uid()
-));
+WITH CHECK (
+  (SELECT owner_id FROM public.farms WHERE id = NEW.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can update vaults in their farms" 
 ON public.vaults FOR UPDATE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = vaults.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = vaults.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can delete vaults in their farms" 
 ON public.vaults FOR DELETE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = vaults.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = vaults.farm_id) = auth.uid()
+);
 
 -- RLS policies for vault_balances
 CREATE POLICY "Users can view vault_balances in their farms" 
 ON public.vault_balances FOR SELECT 
-USING (EXISTS (
-  SELECT 1 FROM public.vaults
-  JOIN public.farms ON vaults.farm_id = farms.id
-  WHERE vault_balances.vault_id = vaults.id AND farms.owner_id = auth.uid()
-));
+USING (
+    vault_id IN (SELECT v.id FROM public.vaults v WHERE (SELECT owner_id FROM public.farms WHERE id = v.farm_id) = auth.uid())
+);
 
 CREATE POLICY "Users can insert vault_balances in their farms" 
 ON public.vault_balances FOR INSERT 
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.vaults
-  JOIN public.farms ON vaults.farm_id = farms.id
-  WHERE NEW.vault_id = vaults.id AND farms.owner_id = auth.uid()
-));
+WITH CHECK (
+    NEW.vault_id IN (SELECT v.id FROM public.vaults v WHERE (SELECT owner_id FROM public.farms WHERE id = v.farm_id) = auth.uid())
+);
 
 CREATE POLICY "Users can update vault_balances in their farms" 
 ON public.vault_balances FOR UPDATE
-USING (EXISTS (
-  SELECT 1 FROM public.vaults
-  JOIN public.farms ON vaults.farm_id = farms.id
-  WHERE vault_balances.vault_id = vaults.id AND farms.owner_id = auth.uid()
-));
+USING (
+    vault_id IN (SELECT v.id FROM public.vaults v WHERE (SELECT owner_id FROM public.farms WHERE id = v.farm_id) = auth.uid())
+);
 
 -- RLS policies for linked_accounts
 CREATE POLICY "Users can view linked_accounts in their farms" 
 ON public.linked_accounts FOR SELECT 
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = linked_accounts.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = linked_accounts.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can insert linked_accounts in their farms" 
 ON public.linked_accounts FOR INSERT 
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = NEW.farm_id AND farms.owner_id = auth.uid()
-));
+WITH CHECK (
+  (SELECT owner_id FROM public.farms WHERE id = NEW.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can update linked_accounts in their farms" 
 ON public.linked_accounts FOR UPDATE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = linked_accounts.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = linked_accounts.farm_id) = auth.uid()
+);
 
-CREATE POLICY "Users can delete linked_accounts in their farms" 
+CREATE POLICY "Users can delete linked_accounts in their farms"
 ON public.linked_accounts FOR DELETE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = linked_accounts.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = linked_accounts.farm_id) = auth.uid()
+);
 
 -- RLS policies for transaction_logs
 CREATE POLICY "Users can view transaction_logs in their farms" 
 ON public.transaction_logs FOR SELECT 
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = transaction_logs.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = transaction_logs.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can insert transaction_logs in their farms" 
 ON public.transaction_logs FOR INSERT 
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = NEW.farm_id AND farms.owner_id = auth.uid()
-));
+WITH CHECK (
+  (SELECT owner_id FROM public.farms WHERE id = NEW.farm_id) = auth.uid()
+);
 
-CREATE POLICY "Users can update transaction_logs in their farms" 
-ON public.transaction_logs FOR UPDATE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = transaction_logs.farm_id AND farms.owner_id = auth.uid()
-)); 
+-- Typically logs might not be updatable/deletable by users, only system roles
+CREATE POLICY "Allow system to manage transaction_logs" 
+ON public.transaction_logs FOR ALL
+USING (auth.role() = 'service_role') -- Example: Restrict modification to service role
+WITH CHECK (auth.role() = 'service_role'); 
