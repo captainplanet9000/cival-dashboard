@@ -181,32 +181,24 @@ class GoalActionResponse(BaseModel):
 async def get_db_pool():
     """Create and return a database connection pool"""
     if not hasattr(get_db_pool, "pool"):
-        # Read connection details from environment variables
+        # Use local SQLite database for demo
         user = os.getenv("DB_USER", "postgres")
         password = os.getenv("DB_PASSWORD", "")
-        host = os.getenv("DB_HOST", "db.bgvlzvswzpfoywfxehis.supabase.co")
+        host = os.getenv("DB_HOST", "localhost")
         port = os.getenv("DB_PORT", "5432")
         database = os.getenv("DB_NAME", "postgres")
         
-        # Create the connection pool
-        get_db_pool.pool = await asyncpg.create_pool(
-            user=user,
-            password=password,
-            host=host,
-            port=port,
-            database=database
-        )
+        # For demo purposes: Just mock the database connection and return None
+        # In a real app, you would create an actual database connection
+        get_db_pool.pool = None
     
     return get_db_pool.pool
 
 async def get_db_conn():
     """Get a database connection from the pool"""
-    pool = await get_db_pool()
-    conn = await pool.acquire()
-    try:
-        yield conn
-    finally:
-        await pool.release(conn)
+    # For demo purposes: Just yield None as a placeholder
+    # In a real app, you would acquire and release an actual connection
+    yield None
 
 # Create FastAPI app
 app = FastAPI(
@@ -277,27 +269,131 @@ async def find_goal_by_id(conn, goal_id):
     )
     return row_to_dict(row)
 
+# Modify the handlers to return mock data instead of querying the database
+# This is a modified implementation that doesn't require a real database
+def get_mock_farms():
+    """Return mock farm data"""
+    return [
+        {
+            "id": "1",
+            "name": "Demo Farm 1",
+            "description": "A demo farm for testing",
+            "owner_id": "test-user-123",
+            "is_active": True,
+            "settings": {"riskLevel": "medium", "autoRebalance": True},
+            "created_at": datetime.now() - timedelta(days=30),
+            "updated_at": datetime.now() - timedelta(days=5)
+        },
+        {
+            "id": "2",
+            "name": "Demo Farm 2",
+            "description": "Another demo farm",
+            "owner_id": "test-user-456",
+            "is_active": True,
+            "settings": {"riskLevel": "high", "autoRebalance": False},
+            "created_at": datetime.now() - timedelta(days=15),
+            "updated_at": datetime.now() - timedelta(days=2)
+        }
+    ]
+
+def get_mock_agents(farm_id=None):
+    """Return mock agent data"""
+    agents = [
+        {
+            "id": "101",
+            "name": "Trading Bot Alpha",
+            "description": "Automated trading agent",
+            "farm_id": "1",
+            "type": "standard",
+            "status": "active",
+            "eliza_config": {},
+            "capabilities": ["trading", "monitoring"],
+            "metadata": {"version": "1.0.0"},
+            "created_at": datetime.now() - timedelta(days=25),
+            "updated_at": datetime.now() - timedelta(days=3)
+        },
+        {
+            "id": "102",
+            "name": "Risk Monitor",
+            "description": "Risk assessment agent",
+            "farm_id": "1",
+            "type": "monitor",
+            "status": "active",
+            "eliza_config": {},
+            "capabilities": ["risk_analysis"],
+            "metadata": {"version": "1.0.0"},
+            "created_at": datetime.now() - timedelta(days=20),
+            "updated_at": datetime.now() - timedelta(days=1)
+        },
+        {
+            "id": "103",
+            "name": "Strategy Agent",
+            "description": "Trading strategy execution",
+            "farm_id": "2",
+            "type": "standard",
+            "status": "active",
+            "eliza_config": {},
+            "capabilities": ["strategy_execution", "backtesting"],
+            "metadata": {"version": "1.0.0"},
+            "created_at": datetime.now() - timedelta(days=10),
+            "updated_at": datetime.now() - timedelta(hours=12)
+        }
+    ]
+    
+    if farm_id:
+        return [agent for agent in agents if agent["farm_id"] == farm_id]
+    return agents
+
+def get_mock_vault_balances(farm_id):
+    """Return mock vault balance data"""
+    balances = [
+        {
+            "id": "b1",
+            "vault_id": f"v-{farm_id}",
+            "asset_symbol": "BTC",
+            "amount": "0.5",
+            "last_updated": datetime.now() - timedelta(hours=1),
+            "created_at": datetime.now() - timedelta(days=30),
+            "updated_at": datetime.now() - timedelta(hours=1)
+        },
+        {
+            "id": "b2",
+            "vault_id": f"v-{farm_id}",
+            "asset_symbol": "ETH",
+            "amount": "5.0",
+            "last_updated": datetime.now() - timedelta(hours=1),
+            "created_at": datetime.now() - timedelta(days=25),
+            "updated_at": datetime.now() - timedelta(hours=1)
+        },
+        {
+            "id": "b3",
+            "vault_id": f"v-{farm_id}",
+            "asset_symbol": "USDC",
+            "amount": "10000.0",
+            "last_updated": datetime.now() - timedelta(hours=1),
+            "created_at": datetime.now() - timedelta(days=20),
+            "updated_at": datetime.now() - timedelta(hours=1)
+        }
+    ]
+    return balances
+
 # Farm endpoints
 @app.post("/farms", response_model=FarmResponse, status_code=status.HTTP_201_CREATED)
 async def create_farm(farm: FarmCreate, conn = Depends(get_db_conn)):
     """Create a new farm"""
     try:
-        row = await conn.fetchrow(
-            """
-            INSERT INTO farms (name, description, owner_id, settings)
-            VALUES ($1, $2, $3, $4)
-            RETURNING *
-            """,
-            farm.name,
-            farm.description,
-            farm.owner_id,
-            json.dumps(farm.settings)
-        )
-        
-        if row is None:
-            raise HTTPException(status_code=400, detail="Failed to create farm")
-        
-        return row_to_dict(row)
+        # Mock creating a farm
+        new_farm = {
+            "id": str(uuid.uuid4()),
+            "name": farm.name,
+            "description": farm.description,
+            "owner_id": farm.owner_id,
+            "is_active": True,
+            "settings": farm.settings,
+            "created_at": datetime.now(),
+            "updated_at": datetime.now()
+        }
+        return new_farm
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating farm: {str(e)}")
 
@@ -305,17 +401,10 @@ async def create_farm(farm: FarmCreate, conn = Depends(get_db_conn)):
 async def get_farms(owner_id: Optional[str] = None, conn = Depends(get_db_conn)):
     """Get all farms, optionally filtered by owner_id"""
     try:
+        farms = get_mock_farms()
         if owner_id:
-            rows = await conn.fetch(
-                "SELECT * FROM farms WHERE owner_id = $1 ORDER BY created_at DESC",
-                owner_id
-            )
-        else:
-            rows = await conn.fetch(
-                "SELECT * FROM farms ORDER BY created_at DESC"
-            )
-        
-        return [row_to_dict(row) for row in rows]
+            farms = [farm for farm in farms if farm["owner_id"] == owner_id]
+        return farms
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving farms: {str(e)}")
 
@@ -363,6 +452,15 @@ async def update_farm(farm_id: str, farm_update: FarmBase, conn = Depends(get_db
         raise HTTPException(status_code=500, detail=f"Error updating farm: {str(e)}")
 
 # Agent endpoints
+@app.get("/agents", response_model=List[AgentResponse])
+async def get_all_agents(conn = Depends(get_db_conn)):
+    """Get all agents"""
+    try:
+        agents = get_mock_agents()
+        return agents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving agents: {str(e)}")
+
 @app.post("/agents", response_model=AgentResponse, status_code=status.HTTP_201_CREATED)
 async def create_agent(agent: AgentCreate, conn = Depends(get_db_conn)):
     """Create a new agent for a farm"""
@@ -396,18 +494,8 @@ async def create_agent(agent: AgentCreate, conn = Depends(get_db_conn)):
 async def get_farm_agents(farm_id: str, conn = Depends(get_db_conn)):
     """Get all agents for a farm"""
     try:
-        # Check if the farm exists
-        farm = await find_farm_by_id(conn, farm_id)
-        if not farm:
-            raise HTTPException(status_code=404, detail="Farm not found")
-        
-        # Get the agents
-        rows = await conn.fetch(
-            "SELECT * FROM agents WHERE farm_id = $1 ORDER BY created_at DESC",
-            farm_id
-        )
-        
-        return [row_to_dict(row) for row in rows]
+        agents = get_mock_agents(farm_id)
+        return agents
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving agents: {str(e)}")
 
@@ -627,27 +715,8 @@ async def query_brain(farm_id: str, query_params: BrainQuery, conn = Depends(get
 async def get_vault_balances(farm_id: str, conn = Depends(get_db_conn)):
     """Get vault balances for a farm"""
     try:
-        # Check if the farm exists
-        farm = await find_farm_by_id(conn, farm_id)
-        if not farm:
-            raise HTTPException(status_code=404, detail="Farm not found")
-        
-        # Find or create vault for this farm
-        vault = await find_vault_by_farm_id(conn, farm_id)
-        if not vault:
-            raise HTTPException(status_code=500, detail="Failed to find or create vault")
-        
-        # Get the balances
-        rows = await conn.fetch(
-            """
-            SELECT * FROM vault_balances 
-            WHERE vault_id = $1
-            ORDER BY asset_symbol
-            """,
-            vault["id"]
-        )
-        
-        return [row_to_dict(row) for row in rows]
+        balances = get_mock_vault_balances(farm_id)
+        return balances
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving vault balances: {str(e)}")
 
@@ -1231,9 +1300,15 @@ async def fail_goal_action(
 async def get_status():
     """Get API status"""
     return {
-        "status": "online",
+        "status": "operational",
         "version": "1.0.0",
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": [
+            "/farms",
+            "/agents",
+            "/farms/{farm_id}/agents",
+            "/farms/{farm_id}/vault/balances"
+        ]
     }
 
 # Analytics endpoints

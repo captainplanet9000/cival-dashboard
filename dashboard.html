@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Farm Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+        
+        .sidebar {
+            width: 250px;
+            background-color: #222;
+            color: white;
+            padding: 20px 0;
+        }
+        
+        .sidebar-header {
+            padding: 0 20px 20px 20px;
+            border-bottom: 1px solid #444;
+            margin-bottom: 20px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: bold;
+            font-size: 20px;
+        }
+        
+        .nav-links {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .nav-links li {
+            margin-bottom: 5px;
+        }
+        
+        .nav-links a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 20px;
+            color: #aaa;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        
+        .nav-links a:hover, .nav-links a.active {
+            background-color: #333;
+            color: white;
+        }
+        
+        .main-content {
+            flex: 1;
+            padding: 30px;
+        }
+        
+        .dashboard-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        
+        .page-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .dashboard-grid .card {
+            margin-bottom: 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        table th, table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        
+        table th {
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .status-active {
+            background-color: #e3f7ea;
+            color: #0d904f;
+        }
+        
+        .status-inactive {
+            background-color: #f8eae9;
+            color: #d73a49;
+        }
+        
+        .button {
+            background-color: #0070f3;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 14px;
+        }
+        
+        .button:hover {
+            background-color: #0060df;
+        }
+        
+        .skeleton {
+            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+            border-radius: 4px;
+            height: 20px;
+            margin-bottom: 8px;
+        }
+        
+        @keyframes loading {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <span>🚜</span>
+                    <span>Trading Farm</span>
+                </div>
+            </div>
+            <ul class="nav-links">
+                <li><a href="#" class="active">📊 Dashboard</a></li>
+                <li><a href="#">🚜 Farms</a></li>
+                <li><a href="#">🤖 Agents</a></li>
+                <li><a href="#">🏦 Vaults</a></li>
+                <li><a href="#">🎯 Goals</a></li>
+                <li><a href="#">📚 Knowledge</a></li>
+                <li><a href="#">⚙️ Settings</a></li>
+            </ul>
+        </div>
+        
+        <!-- Main content -->
+        <div class="main-content">
+            <div class="dashboard-header">
+                <h1 class="page-title">Dashboard</h1>
+                <button class="button" onclick="refreshData()">Refresh Data</button>
+            </div>
+            
+            <div class="dashboard-grid">
+                <!-- Farms Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Farms</h2>
+                    </div>
+                    <div id="farms-content">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                
+                <!-- Agents Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Agents</h2>
+                    </div>
+                    <div id="agents-content">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+                
+                <!-- Vault Balance Card -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Vault Balances</h2>
+                    </div>
+                    <div id="vault-content">
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                        <div class="skeleton"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Farm Details Table -->
+            <div class="card" style="margin-top: 30px;">
+                <div class="card-header">
+                    <h2 class="card-title">Farm Details</h2>
+                </div>
+                <div id="farm-details-content">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Owner</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="farm-details-table-body">
+                            <tr>
+                                <td colspan="5">Loading data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+        
+        // Helper to format dates
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            });
+        }
+        
+        // Load farm data
+        async function loadFarms() {
+            try {
+                const response = await fetch(`${API_URL}/farms`);
+                const farms = await response.json();
+                
+                // Update farms card
+                const farmsContent = document.getElementById('farms-content');
+                farmsContent.innerHTML = `
+                    <p>Total farms: ${farms.length}</p>
+                    <p>Active farms: ${farms.filter(farm => farm.is_active).length}</p>
+                `;
+                
+                // Update farm details table
+                const tableBody = document.getElementById('farm-details-table-body');
+                if (farms.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="5">No farms found</td></tr>`;
+                    return;
+                }
+                
+                tableBody.innerHTML = farms.map(farm => `
+                    <tr>
+                        <td>${farm.name}</td>
+                        <td>${farm.owner_id}</td>
+                        <td>
+                            <span class="status-badge ${farm.is_active ? 'status-active' : 'status-inactive'}">
+                                ${farm.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </td>
+                        <td>${formatDate(farm.created_at)}</td>
+                        <td>
+                            <button class="button" onclick="loadFarmDetails('${farm.id}')">View</button>
+                        </td>
+                    </tr>
+                `).join('');
+                
+                return farms;
+            } catch (error) {
+                console.error('Error loading farms:', error);
+                document.getElementById('farms-content').innerHTML = `
+                    <p>Error loading farms: ${error.message}</p>
+                `;
+                document.getElementById('farm-details-table-body').innerHTML = `
+                    <tr><td colspan="5">Error loading farms: ${error.message}</td></tr>
+                `;
+                return [];
+            }
+        }
+        
+        // Load agents
+        async function loadAgents() {
+            try {
+                const response = await fetch(`${API_URL}/agents`);
+                const agents = await response.json();
+                
+                const agentsContent = document.getElementById('agents-content');
+                agentsContent.innerHTML = `
+                    <p>Total agents: ${agents.length}</p>
+                    <p>Active agents: ${agents.filter(agent => agent.status === 'active').length}</p>
+                    <p>Types: ${[...new Set(agents.map(agent => agent.type))].join(', ')}</p>
+                `;
+            } catch (error) {
+                console.error('Error loading agents:', error);
+                document.getElementById('agents-content').innerHTML = `
+                    <p>Error loading agents: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Load vault balances
+        async function loadVaultBalances() {
+            try {
+                const farms = await loadFarms();
+                if (farms.length === 0) {
+                    document.getElementById('vault-content').innerHTML = `
+                        <p>No farms available to display vault balances</p>
+                    `;
+                    return;
+                }
+                
+                // Use the first farm to get vault balances
+                const farmId = farms[0].id;
+                const response = await fetch(`${API_URL}/farms/${farmId}/vault/balances`);
+                const balances = await response.json();
+                
+                const vaultContent = document.getElementById('vault-content');
+                if (balances.length === 0) {
+                    vaultContent.innerHTML = `<p>No balances found</p>`;
+                    return;
+                }
+                
+                vaultContent.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Asset</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${balances.map(balance => `
+                                <tr>
+                                    <td>${balance.asset_symbol}</td>
+                                    <td>${balance.amount}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (error) {
+                console.error('Error loading vault balances:', error);
+                document.getElementById('vault-content').innerHTML = `
+                    <p>Error loading vault balances: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Load all data
+        async function loadAllData() {
+            await loadFarms();
+            await loadAgents();
+            await loadVaultBalances();
+        }
+        
+        // Refresh all data
+        function refreshData() {
+            // Reset UI to loading state
+            document.getElementById('farms-content').innerHTML = `
+                <div class="skeleton"></div>
+                <div class="skeleton"></div>
+            `;
+            document.getElementById('agents-content').innerHTML = `
+                <div class="skeleton"></div>
+                <div class="skeleton"></div>
+            `;
+            document.getElementById('vault-content').innerHTML = `
+                <div class="skeleton"></div>
+                <div class="skeleton"></div>
+            `;
+            document.getElementById('farm-details-table-body').innerHTML = `
+                <tr><td colspan="5">Loading data...</td></tr>
+            `;
+            
+            // Load data
+            loadAllData();
+        }
+        
+        // Load farm details
+        async function loadFarmDetails(farmId) {
+            try {
+                // Fetch farm data, agents, and vault balances
+                const farmResponse = await fetch(`${API_URL}/farms/${farmId}`);
+                const farm = await farmResponse.json();
+                
+                const agentsResponse = await fetch(`${API_URL}/farms/${farmId}/agents`);
+                const agents = await agentsResponse.json();
+                
+                const balancesResponse = await fetch(`${API_URL}/farms/${farmId}/vault/balances`);
+                const balances = await balancesResponse.json();
+                
+                // Show alert with farm details
+                alert(`
+Farm: ${farm.name}
+Description: ${farm.description || 'No description'}
+Owner: ${farm.owner_id}
+Status: ${farm.is_active ? 'Active' : 'Inactive'}
+Created: ${formatDate(farm.created_at)}
+
+Agents: ${agents.length}
+Vault Balances: ${balances.map(b => `${b.amount} ${b.asset_symbol}`).join(', ')}
+                `);
+            } catch (error) {
+                console.error('Error loading farm details:', error);
+                alert(`Error loading farm details: ${error.message}`);
+            }
+        }
+        
+        // Load data when page loads
+        document.addEventListener('DOMContentLoaded', loadAllData);
+    </script>
+</body>
+</html> 

@@ -30,8 +30,15 @@
     <div>
         <h2>API Endpoints</h2>
         <button onclick="testFarms()">Get Farms</button>
-        <button onclick="testAgents()">Get Agents</button>
-        <button onclick="testVaults()">Get Vaults</button>
+        <button onclick="testStatus()">Get API Status</button>
+        <button onclick="testFarmAgents('1')">Get Farm Agents</button>
+        <button onclick="testFarmVaultBalances('1')">Get Vault Balances</button>
+    </div>
+
+    <div>
+        <h2>Create Test Data</h2>
+        <button onclick="createTestFarm()">Create Farm</button>
+        <button onclick="createTestAgent()">Create Agent</button>
     </div>
     
     <div>
@@ -62,9 +69,9 @@
             }
         }
         
-        async function testAgents() {
+        async function testStatus() {
             try {
-                const response = await fetch(`${API_URL}/agents`);
+                const response = await fetch(`${API_URL}/status`);
                 const data = await response.json();
                 displayResponse(data);
             } catch (error) {
@@ -72,9 +79,78 @@
             }
         }
         
-        async function testVaults() {
+        async function testFarmAgents(farmId) {
             try {
-                const response = await fetch(`${API_URL}/vaults`);
+                const response = await fetch(`${API_URL}/farms/${farmId}/agents`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+        
+        async function testFarmVaultBalances(farmId) {
+            try {
+                const response = await fetch(`${API_URL}/farms/${farmId}/vault/balances`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+
+        async function createTestFarm() {
+            try {
+                const response = await fetch(`${API_URL}/farms`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: "Test Farm " + new Date().toISOString(),
+                        description: "A test farm created from the API test page",
+                        owner_id: "test-user-123",
+                        settings: {
+                            riskLevel: "medium",
+                            autoRebalance: true
+                        }
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+
+        async function createTestAgent() {
+            try {
+                // First get a farm ID from existing farms
+                const farmsResponse = await fetch(`${API_URL}/farms`);
+                const farms = await farmsResponse.json();
+                
+                if (farms.length === 0) {
+                    displayResponse({ error: "No farms found. Create a farm first!" });
+                    return;
+                }
+                
+                const farmId = farms[0].id;
+                
+                const response = await fetch(`${API_URL}/agents`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: "Test Agent " + new Date().toISOString(),
+                        description: "A test agent created from the API test page",
+                        farm_id: farmId,
+                        type: "standard",
+                        capabilities: ["trading", "monitoring"],
+                        eliza_config: {},
+                        metadata: {}
+                    })
+                });
                 const data = await response.json();
                 displayResponse(data);
             } catch (error) {
