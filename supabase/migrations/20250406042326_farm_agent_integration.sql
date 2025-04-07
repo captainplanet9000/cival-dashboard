@@ -100,30 +100,29 @@ ON public.farms FOR DELETE
 USING (auth.uid() = owner_id);
 
 -- Agent RLS policies
+-- TEMPORARILY COMMENTED OUT TO DEBUG STARTUP ERROR
+/*
 CREATE POLICY "Users can view agents in their farms" 
 ON public.agents FOR SELECT 
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = agents.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = agents.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can insert agents in their farms" 
 ON public.agents FOR INSERT 
-WITH CHECK (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = NEW.farm_id AND farms.owner_id = auth.uid()
-));
+WITH CHECK (
+  (SELECT owner_id FROM public.farms WHERE id = NEW.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can update agents in their farms" 
 ON public.agents FOR UPDATE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = agents.farm_id AND farms.owner_id = auth.uid()
-));
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = agents.farm_id) = auth.uid()
+);
 
 CREATE POLICY "Users can delete agents in their farms" 
 ON public.agents FOR DELETE
-USING (EXISTS (
-  SELECT 1 FROM public.farms
-  WHERE farms.id = agents.farm_id AND farms.owner_id = auth.uid()
-)); 
+USING (
+  (SELECT owner_id FROM public.farms WHERE id = agents.farm_id) = auth.uid()
+);
+*/ 

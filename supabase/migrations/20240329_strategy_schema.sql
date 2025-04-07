@@ -136,14 +136,14 @@ SELECT
   s.version,
   s.performance_metrics,
   COUNT(fs.id) AS farm_count,
-  COUNT(as.id) AS agent_count,
+  COUNT(ags.id) AS agent_count,
   COUNT(sb.id) AS backtest_count
 FROM 
   public.strategies s
 LEFT JOIN 
   public.farm_strategies fs ON s.id = fs.strategy_id
 LEFT JOIN 
-  public.agent_strategies as ON s.id = as.strategy_id
+  public.agent_strategies ags ON s.id = ags.strategy_id
 LEFT JOIN 
   public.strategy_backtests sb ON s.id = sb.strategy_id
 GROUP BY 
