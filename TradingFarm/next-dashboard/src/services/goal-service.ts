@@ -4,14 +4,13 @@
  */
 import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
-import { Database } from '@/types/database.types';
 
 // Define the Goal interface (matching the Supabase schema)
 export interface Goal {
   id: string;
   title: string;
   description?: string;
-  farm_id: string;
+  farm_id: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'waiting';
   target_value: number;
   current_value: number;
@@ -52,13 +51,13 @@ export const goalService = {
   /**
    * Get all goals or goals for a specific farm
    */
-  async getGoals(farmId?: string, limit = 50, offset = 0): Promise<ApiResponse<Goal[]>> {
+  async getGoals(farmId?: number, limit = 50, offset = 0): Promise<ApiResponse<Goal[]>> {
     try {
       // Build query params
       let url = getApiUrl('goals');
       const params = new URLSearchParams();
       
-      if (farmId) {
+      if (farmId !== undefined) {
         params.append('farmId', farmId.toString());
       }
       
@@ -106,7 +105,7 @@ export const goalService = {
    */
   subscribeToGoals(
     callback: (goals: Goal[]) => void,
-    farmId?: string
+    farmId?: number
   ): () => void {
     const supabase = createBrowserClient();
     
@@ -114,7 +113,7 @@ export const goalService = {
     let channel = supabase.channel('goals-changes');
     
     // Set up the subscription with optional farm_id filter
-    if (farmId) {
+    if (farmId !== undefined) {
       channel = channel.on(
         'postgres_changes',
         {
@@ -217,23 +216,42 @@ export const goalService = {
   /**
    * Create a new goal
    */
-  async createGoal(goalData: Partial<Goal>): Promise<ApiResponse<Goal>> {
+  async createGoal(goalData: Partial<Omit<Goal, 'id' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<Goal>> {
     try {
       const url = getApiUrl('goals');
       
+      // Ensure farm_id is passed as number if present and handle potential null/undefined properly
+      const dataToSend: Record<string, any> = {};
+      for (const [key, value] of Object.entries(goalData)) {
+        if (value !== null && value !== undefined) { // Exclude null and undefined
+          dataToSend[key] = value;
+        }
+      }
+      // Convert farm_id specifically
+      if (goalData.farm_id !== null && goalData.farm_id !== undefined) {
+        dataToSend.farm_id = Number(goalData.farm_id);
+      } else {
+        // Explicitly handle if farm_id should be excluded or sent as null/undefined
+        // delete dataToSend.farm_id; // Or handle as needed by the API
+      }
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(goalData),
+        body: JSON.stringify(dataToSend),
       });
       
       if (!response.ok) {
-        return { error: `HTTP error! status: ${response.status}` };
+        return { error: `HTTP error! status: ${response.status} ${await response.text()}` }; // Include error body
       }
       
       const result = await response.json();
+      // Ensure returned farm_id is number
+      if (result.data && typeof result.data.farm_id === 'string') {
+        result.data.farm_id = Number(result.data.farm_id);
+      }
       return { data: result.data };
     } catch (error) {
       console.error('Error creating goal:', error);
@@ -243,75 +261,48 @@ export const goalService = {
 
   /**
    * Update a goal
-   * @param id Goal ID to update
-   * @param goalData Data to update with
-   * @returns Updated goal data or error
    */
-  async updateGoal(id: string, goalData: Partial<Goal>): Promise<ApiResponse<Goal>> {
+  async updateGoal(id: string, goalData: Partial<Omit<Goal, 'id' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<Goal>> {
     try {
-      // Convert null values to undefined for the Supabase update operation
-      // This addresses TypeScript compatibility issues
-      const sanitizedData: Record<string, any> = {};
-      
-      Object.entries(goalData).forEach(([key, value]) => {
-        if (value !== null) {
-          sanitizedData[key] = value;
+      const url = `${getApiUrl('goals')}/${id}`;
+
+      // Prepare data, ensuring farm_id is number and handling nulls/undefined
+      const dataToSend: Record<string, any> = {};
+      for (const [key, value] of Object.entries(goalData)) {
+        if (value !== null && value !== undefined) { // Exclude null and undefined
+          dataToSend[key] = value;
         }
-      });
+         // Optionally handle null specifically if API expects it for clearing fields
+         // else if (value === null) { dataToSend[key] = null; }
+      }
+      // Convert farm_id specifically
+       if (goalData.farm_id !== null && goalData.farm_id !== undefined) {
+        dataToSend.farm_id = Number(goalData.farm_id);
+      } else {
+         // delete dataToSend.farm_id; // Or handle as needed by the API
+      }
       
-      const url = getApiUrl(`goals/${id}`);
       const response = await fetch(url, {
-        method: 'PATCH',
+        method: 'PUT', // Or PATCH depending on API
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(sanitizedData),
-        cache: 'no-store',
+        body: JSON.stringify(dataToSend),
       });
-      
+
       if (!response.ok) {
-        // Use Supabase as fallback
-        const supabase = createBrowserClient();
-        const { data, error } = await supabase
-          .from('goals')
-          .update(sanitizedData)
-          .eq('id', id)
-          .select()
-          .single();
-        
-        if (error) {
-          return { error: error.message };
-        }
-        
-        return { data };
+         return { error: `HTTP error! status: ${response.status} ${await response.text()}` }; // Include error body
       }
-      
+
       const result = await response.json();
+       // Ensure returned farm_id is number
+      if (result.data && typeof result.data.farm_id === 'string') {
+        result.data.farm_id = Number(result.data.farm_id);
+      }
       return { data: result.data };
     } catch (error) {
       console.error('Error updating goal:', error);
-      
-      // Try using Supabase as fallback
-      try {
-        const supabase = createBrowserClient();
-        const { data, error } = await supabase
-          .from('goals')
-          .update(Object.entries(goalData).reduce((acc, [key, value]) => {
-            if (value !== null) acc[key] = value;
-            return acc;
-          }, {} as Record<string, any>))
-          .eq('id', id)
-          .select()
-          .single();
-        
-        if (error) {
-          return { error: error.message };
-        }
-        
-        return { data };
-      } catch (fallbackError) {
-        return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
-      }
+      return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
     }
   },
 
@@ -368,53 +359,22 @@ export const goalService = {
   /**
    * Get goal statistics for a farm
    */
-  async getGoalStats(farmId: string): Promise<ApiResponse<{
-    total: number;
-    completed: number;
-    in_progress: number;
-    not_started: number;
-    cancelled: number;
-    completion_rate: number;
-  }>> {
+  async getGoalStats(farmId: number): Promise<ApiResponse<any>> {
     try {
-      // Get all goals for the farm
-      const { data: goals } = await this.getGoals(farmId);
-      
-      if (!goals) {
-        return { 
-          data: {
-            total: 0,
-            completed: 0,
-            in_progress: 0,
-            not_started: 0,
-            cancelled: 0,
-            completion_rate: 0
-          }
-        };
+      // Assuming an API endpoint or RPC call exists that takes numeric farmId
+      const url = getApiUrl(`farms/${farmId}/goal-stats`);
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        return { error: `HTTP error! status: ${response.status}` };
       }
-      
-      // Count goals by status
-      const total = goals.length;
-      const completed = goals.filter(goal => goal.status === 'completed').length;
-      const inProgress = goals.filter(goal => goal.status === 'in_progress').length;
-      const notStarted = goals.filter(goal => goal.status === 'not_started').length;
-      const cancelled = goals.filter(goal => goal.status === 'cancelled').length;
-      
-      // Calculate completion rate
-      const completionRate = total > 0 ? completed / total : 0;
-      
-      return {
-        data: {
-          total,
-          completed,
-          in_progress: inProgress,
-          not_started: notStarted,
-          cancelled,
-          completion_rate: completionRate
-        }
-      };
+      const result = await response.json();
+      return { data: result.data };
     } catch (error) {
-      console.error('Error calculating goal stats:', error);
+      console.error('Error fetching goal stats:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
     }
   },
@@ -519,61 +479,19 @@ export const goalService = {
   /**
    * Assign an agent to a goal
    */
-  async assignAgentToGoal(goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+  async assignAgentToGoal(goalId: string, agentId: string, farmId: number): Promise<ApiResponse<null>> {
     try {
-      const { data: goal, error: goalError } = await this.getGoalById(goalId);
-      
-      if (goalError || !goal) {
-        return { error: goalError || 'Goal not found' };
-      }
-      
-      const farmId = goal.farm_id;
-      if (!farmId) {
-        return { error: 'Goal has no associated farm' };
-      }
-      
-      const url = `${getApiUrl('farms')}/${farmId}/assign-goal`;
+      // Assuming an API endpoint or RPC call exists
+      const url = getApiUrl(`goals/${goalId}/assign-agent`); 
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          goal_id: goalId,
-          agent_id: agentId,
-          is_eliza_agent: isElizaAgent
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, farmId }) // Pass numeric farmId
       });
-      
+
       if (!response.ok) {
-        // Try using Supabase as fallback
-        const supabase = createBrowserClient();
-        
-        // Determine which table to update
-        const table = isElizaAgent ? 'elizaos_agents' : 'agents';
-        
-        // Verify agent exists and belongs to this farm
-        const { data: agent, error: agentError } = await supabase
-          .from(table)
-          .select('id, farm_id')
-          .eq('id', agentId)
-          .single();
-        
-        if (agentError || !agent || agent.farm_id !== farmId) {
-          return { error: 'Agent not found or does not belong to the same farm as the goal' };
-        }
-        
-        // Update agent
-        const { error } = await supabase
-          .from(table)
-          .update({ goal_id: goalId })
-          .eq('id', agentId);
-        
-        if (error) {
-          return { error: error.message };
-        }
+        return { error: `HTTP error! status: ${response.status}` };
       }
-      
       return { data: null };
     } catch (error) {
       console.error('Error assigning agent to goal:', error);
@@ -584,65 +502,19 @@ export const goalService = {
   /**
    * Unassign an agent from a goal
    */
-  async unassignAgentFromGoal(goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+  async unassignAgentFromGoal(goalId: string, agentId: string, farmId: number): Promise<ApiResponse<null>> {
     try {
-      const { data: goal, error: goalError } = await this.getGoalById(goalId);
-      
-      if (goalError || !goal) {
-        return { error: goalError || 'Goal not found' };
-      }
-      
-      const farmId = goal.farm_id;
-      if (!farmId) {
-        return { error: 'Goal has no associated farm' };
-      }
-      
-      const url = `${getApiUrl('farms')}/${farmId}/unassign-goal`;
+      // Assuming an API endpoint or RPC call exists
+      const url = getApiUrl(`goals/${goalId}/unassign-agent`);
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          agent_id: agentId,
-          is_eliza_agent: isElizaAgent
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agentId, farmId }) // Pass numeric farmId
       });
-      
+
       if (!response.ok) {
-        // Try using Supabase as fallback
-        const supabase = createBrowserClient();
-        
-        // Determine which table to update
-        const table = isElizaAgent ? 'elizaos_agents' : 'agents';
-        
-        // Verify agent exists and belongs to this farm
-        const { data: agent, error: agentError } = await supabase
-          .from(table)
-          .select('id, farm_id, goal_id')
-          .eq('id', agentId)
-          .single();
-        
-        if (agentError || !agent || agent.farm_id !== farmId) {
-          return { error: 'Agent not found or does not belong to the same farm as the goal' };
-        }
-        
-        // Verify agent is assigned to this goal
-        if (agent.goal_id !== goalId) {
-          return { error: 'Agent is not assigned to this goal' };
-        }
-        
-        // Update agent
-        const { error } = await supabase
-          .from(table)
-          .update({ goal_id: null })
-          .eq('id', agentId);
-        
-        if (error) {
-          return { error: error.message };
-        }
+         return { error: `HTTP error! status: ${response.status}` };
       }
-      
       return { data: null };
     } catch (error) {
       console.error('Error unassigning agent from goal:', error);

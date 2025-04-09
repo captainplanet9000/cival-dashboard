@@ -1,7 +1,7 @@
 // API Types for Trading Farm Dashboard
 
 export interface Farm {
-  id: string;
+  id: number;
   name: string;
   description: string;
   createdAt: string;
@@ -16,9 +16,9 @@ export interface Farm {
 }
 
 export interface Agent {
-  id: string;
+  id: number;
   name: string;
-  farmId: string;
+  farmId: number;
   status: 'active' | 'inactive' | 'error';
   strategy: string;
   metrics: {
@@ -72,7 +72,7 @@ export interface CommandMessage {
   timestamp: string;
   category: 'command' | 'query' | 'analysis' | 'alert';
   source: 'user' | 'system' | 'knowledge-base' | 'market-data' | 'strategy';
-  farmId: string;
+  farmId: number;
 }
 
 export interface OrderUpdate {
@@ -84,7 +84,7 @@ export interface OrderUpdate {
   price: number;
   amount: number;
   timestamp: string;
-  farmId: string;
+  farmId: number;
 }
 
 export interface PriceAlert {
@@ -96,7 +96,7 @@ export interface PriceAlert {
   threshold: number;
   message: string;
   timestamp: string;
-  farmId: string;
+  farmId: number;
 }
 
 export interface ExecutionNotification {
@@ -108,7 +108,7 @@ export interface ExecutionNotification {
   amount: number;
   fee: number;
   timestamp: string;
-  farmId: string;
+  farmId: number;
 }
 
 export type SocketMessage = CommandMessage | OrderUpdate | PriceAlert | ExecutionNotification;

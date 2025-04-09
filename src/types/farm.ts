@@ -1,5 +1,5 @@
 export interface Farm {
-  id: string;
+  id: number;
   name: string;
   description: string;
   status: 'ACTIVE' | 'PAUSED' | 'STOPPED' | 'ERROR';
@@ -17,8 +17,12 @@ export interface Farm {
   goal_current_progress?: Record<string, number> | null; // e.g., {'SUI': 500, 'SONIC': 100}
   goal_status?: 'inactive' | 'active' | 'paused' | 'completed' | 'failed' | null;
   goal_completion_action?: {
-    transferToBank?: boolean;
-    percentage?: number;
+    transferToBank?: {
+      enabled: boolean; // Indicates if transfer should happen
+      percentage: number; // Percentage of goal asset(s) balance to transfer (0-100)
+      targetVaultId: string; // ID of the destination vault account
+      assetSymbol?: string; // Optional: Specific asset symbol to transfer. If null, may use goal_target_assets.
+    };
     startNextGoal?: boolean;
     // Add other potential actions here
   } | null;

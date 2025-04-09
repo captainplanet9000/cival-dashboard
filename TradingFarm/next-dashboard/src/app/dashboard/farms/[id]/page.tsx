@@ -1,12 +1,10 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { farmService } from "@/services/farm-service";
+import { farmService, Farm } from "@/services/farm-service";
 import { agentService } from "@/services/agent-service";
 import { elizaAgentService } from "@/services/eliza-agent-service"; 
-import { goalService } from "@/services/goal-service";
-import { Farm } from "@/services/farm-service";
-import { Goal } from "@/services/goal-service";
+import { goalService, Goal } from "@/services/goal-service";
 import Link from "next/link";
 import { FarmDashboard } from '@/components/farms/farm-dashboard';
 import { Button } from "@/components/ui/button";
@@ -32,18 +30,20 @@ export default function FarmDetailPage({ params }: FarmDetailPageProps) {
   useEffect(() => {
     async function fetchFarmData() {
       setLoading(true);
+      setError(null); // Clear previous errors
       
       try {
-        const farmId = params.id;
+        // Convert param id string to number
+        const farmIdString = params.id;
+        const numericFarmId = Number(farmIdString);
         
-        if (!farmId) {
-          setError("Invalid farm ID");
-          setLoading(false);
-          return;
+        // Validate the conversion
+        if (isNaN(numericFarmId)) {
+          throw new Error("Invalid Farm ID format.");
         }
         
-        // Fetch the farm details
-        const farmResponse = await farmService.getFarmById(farmId);
+        // Fetch the farm details using numeric ID
+        const farmResponse = await farmService.getFarmById(numericFarmId);
         
         if (farmResponse.error || !farmResponse.data) {
           throw new Error(farmResponse.error || "Failed to load farm");
@@ -51,26 +51,26 @@ export default function FarmDetailPage({ params }: FarmDetailPageProps) {
         
         setFarm(farmResponse.data);
         
-        // Fetch status summary
-        const summaryResponse = await farmService.getFarmStatusSummary(farmId);
+        // Fetch status summary using numeric ID (assuming getFarmStatusSummary is updated)
+        const summaryResponse = await farmService.getFarmStatusSummary(numericFarmId);
         if (!summaryResponse.error && summaryResponse.data) {
           setStatusSummary(summaryResponse.data);
         }
         
-        // Fetch standard agents for this farm
-        const agentsResponse = await farmService.getAgents(farmId);
+        // Fetch standard agents using numeric ID
+        const agentsResponse = await farmService.getAgents(numericFarmId);
         if (!agentsResponse.error && agentsResponse.data) {
           setAgents(agentsResponse.data);
         }
         
-        // Fetch ElizaOS agents for this farm
-        const elizaResponse = await farmService.getElizaAgents(farmId);
+        // Fetch ElizaOS agents using numeric ID
+        const elizaResponse = await farmService.getElizaAgents(numericFarmId);
         if (!elizaResponse.error && elizaResponse.data) {
           setElizaAgents(elizaResponse.data);
         }
         
-        // Fetch goals for this farm
-        const goalsResponse = await goalService.getGoals(farmId);
+        // Fetch goals using numeric ID (assuming getGoals is updated)
+        const goalsResponse = await goalService.getGoals(numericFarmId);
         if (!goalsResponse.error && goalsResponse.data) {
           setGoals(goalsResponse.data);
         }
@@ -82,6 +82,7 @@ export default function FarmDetailPage({ params }: FarmDetailPageProps) {
     }
     
     fetchFarmData();
+    // Depend on the string ID from params, effect runs when it changes
   }, [params.id]);
 
   if (loading) {

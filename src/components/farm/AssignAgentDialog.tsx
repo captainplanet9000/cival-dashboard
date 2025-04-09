@@ -8,8 +8,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+} from 'TradingFarm/next-dashboard/src/components/ui/dialog';
+import { Button } from 'TradingFarm/next-dashboard/src/components/ui/button';
 import {
   Table,
   TableBody,
@@ -17,14 +17,14 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
+} from 'TradingFarm/next-dashboard/src/components/ui/table';
+import { Checkbox } from 'TradingFarm/next-dashboard/src/components/ui/checkbox';
+import { Badge } from 'TradingFarm/next-dashboard/src/components/ui/badge';
+import { Input } from 'TradingFarm/next-dashboard/src/components/ui/input';
 import { Search } from 'lucide-react';
 
 interface Agent {
-  id: string;
+  id: number;
   name: string;
   status: 'available' | 'assigned' | 'offline';
   type: string;
@@ -32,7 +32,7 @@ interface Agent {
 }
 
 interface Farm {
-  id: string;
+  id: number;
   name: string;
   status: 'active' | 'paused' | 'stopped';
   agentCount: number;
@@ -48,28 +48,28 @@ interface AssignAgentDialogProps {
 
 const mockAgents: Agent[] = [
   {
-    id: '1',
+    id: 1,
     name: 'Agent Alpha',
     status: 'available',
     type: 'Momentum',
     performance: 15.2
   },
   {
-    id: '2',
+    id: 2,
     name: 'Agent Beta',
     status: 'assigned',
     type: 'Mean Reversion',
     performance: 8.7
   },
   {
-    id: '3',
+    id: 3,
     name: 'Agent Gamma',
     status: 'available',
     type: 'Trend Following',
     performance: 12.1
   },
   {
-    id: '4',
+    id: 4,
     name: 'Agent Delta',
     status: 'offline',
     type: 'Arbitrage',
@@ -78,7 +78,7 @@ const mockAgents: Agent[] = [
 ];
 
 export function AssignAgentDialog({ open, onOpenChange, farm }: AssignAgentDialogProps) {
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<number[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -87,7 +87,7 @@ export function AssignAgentDialog({ open, onOpenChange, farm }: AssignAgentDialo
     agent.type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSelectAgent = (agentId: string) => {
+  const handleSelectAgent = (agentId: number) => {
     setSelectedAgents(prev => {
       if (prev.includes(agentId)) {
         return prev.filter(id => id !== agentId);
@@ -169,7 +169,7 @@ export function AssignAgentDialog({ open, onOpenChange, farm }: AssignAgentDialo
                   </TableCell>
                   <TableCell className="font-medium">{agent.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className={getStatusColor(agent.status)}>
+                    <Badge className={getStatusColor(agent.status)}>
                       {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
                     </Badge>
                   </TableCell>
@@ -187,7 +187,6 @@ export function AssignAgentDialog({ open, onOpenChange, farm }: AssignAgentDialo
 
         <DialogFooter>
           <Button 
-            type="button" 
             variant="outline" 
             onClick={() => onOpenChange(false)}
           >

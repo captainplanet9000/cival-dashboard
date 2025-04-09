@@ -1,18 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   farmService, 
-  Farm, 
-  FarmAgent, 
-  Wallet, 
+  // Farm, // Import from types/index instead
+  // FarmAgent, // Import from types/index instead
+  // Wallet, // Import from types/index instead
   EnrichedFarm,
   CreateFarmParams, 
   CreateAgentParams, 
-  CreateWalletParams 
+  // CreateWalletParams // Assuming this is also defined elsewhere or needs fixing in farmService
 } from '@/services/farm/farm-service';
+// Attempt to import core types directly
+import { Farm, Agent as FarmAgent, Wallet, CreateWalletParams } from '@/types/index'; // Assuming index.ts exports these
 import { useRealtime } from './useRealtime';
 
 interface UseFarmOptions {
-  farmId?: string | number;
+  farmId?: number;
   userId?: string;
 }
 
@@ -27,11 +29,11 @@ interface UseFarmReturn {
   updateFarm: (params: Partial<CreateFarmParams>) => Promise<{ success: boolean; error?: string }>;
   deleteFarm: () => Promise<{ success: boolean; error?: string }>;
   createAgent: (params: CreateAgentParams) => Promise<{ success: boolean; error?: string }>;
-  updateAgent: (agentId: string | number, params: Partial<CreateAgentParams>) => Promise<{ success: boolean; error?: string }>;
-  deleteAgent: (agentId: string | number) => Promise<{ success: boolean; error?: string }>;
+  updateAgent: (agentId: number, params: Partial<CreateAgentParams>) => Promise<{ success: boolean; error?: string }>;
+  deleteAgent: (agentId: number) => Promise<{ success: boolean; error?: string }>;
   createWallet: (params: CreateWalletParams) => Promise<{ success: boolean; error?: string }>;
-  updateWallet: (walletId: string | number, params: Partial<CreateWalletParams>) => Promise<{ success: boolean; error?: string }>;
-  deleteWallet: (walletId: string | number) => Promise<{ success: boolean; error?: string }>;
+  updateWallet: (walletId: number, params: Partial<CreateWalletParams>) => Promise<{ success: boolean; error?: string }>;
+  deleteWallet: (walletId: number) => Promise<{ success: boolean; error?: string }>;
 }
 
 export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn {
@@ -53,7 +55,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
     data: agents, 
     loading: agentsLoading 
   } = useRealtime<FarmAgent>('agents', {
-    filter: farmId ? { farm_id: farmId } : undefined
+    filter: farmId !== undefined ? { farm_id: farmId } : undefined,
   });
   
   // Use real-time subscriptions for wallets if farmId is provided
@@ -61,7 +63,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
     data: wallets, 
     loading: walletsLoading 
   } = useRealtime<Wallet>('wallets', {
-    filter: farmId ? { farm_id: farmId } : undefined
+    filter: farmId !== undefined ? { farm_id: farmId } : undefined,
   });
 
   // Load farm details when farmId changes
@@ -76,6 +78,9 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
     setError(null);
 
     try {
+      if (typeof farmId !== 'number') {
+        throw new Error('Invalid Farm ID provided.');
+      }
       const result = await farmService.getFarmById(farmId);
       if (result.success && result.data) {
         setFarm(result.data);
@@ -107,7 +112,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
 
   // Update farm details
   const updateFarm = async (params: Partial<CreateFarmParams>) => {
-    if (!farmId) return { success: false, error: 'No farm selected' };
+    if (farmId === undefined) return { success: false, error: 'No farm selected' };
     
     try {
       const result = await farmService.updateFarm(farmId, params);
@@ -125,7 +130,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
 
   // Delete farm
   const deleteFarm = async () => {
-    if (!farmId) return { success: false, error: 'No farm selected' };
+    if (farmId === undefined) return { success: false, error: 'No farm selected' };
     
     try {
       const result = await farmService.deleteFarm(farmId);
@@ -158,7 +163,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
   };
 
   // Update agent
-  const updateAgent = async (agentId: string | number, params: Partial<CreateAgentParams>) => {
+  const updateAgent = async (agentId: number, params: Partial<CreateAgentParams>) => {
     try {
       const result = await farmService.updateAgent(agentId, params);
       return { 
@@ -174,7 +179,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
   };
 
   // Delete agent
-  const deleteAgent = async (agentId: string | number) => {
+  const deleteAgent = async (agentId: number) => {
     try {
       const result = await farmService.deleteAgent(agentId);
       return { 
@@ -206,7 +211,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
   };
 
   // Update wallet
-  const updateWallet = async (walletId: string | number, params: Partial<CreateWalletParams>) => {
+  const updateWallet = async (walletId: number, params: Partial<CreateWalletParams>) => {
     try {
       const result = await farmService.updateWallet(walletId, params);
       return { 
@@ -222,7 +227,7 @@ export function useFarm({ farmId, userId }: UseFarmOptions = {}): UseFarmReturn 
   };
 
   // Delete wallet
-  const deleteWallet = async (walletId: string | number) => {
+  const deleteWallet = async (walletId: number) => {
     try {
       const result = await farmService.deleteWallet(walletId);
       return { 

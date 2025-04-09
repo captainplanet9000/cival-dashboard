@@ -42,8 +42,8 @@ const accountFormSchema = z.object({
   description: z.string().optional(),
   account_type: z.enum(['master', 'farm', 'agent']),
   parent_id: z.string().optional(),
-  farm_id: z.string().optional(),
-  agent_id: z.string().optional(),
+  farm_id: z.coerce.number().optional(),
+  agent_id: z.coerce.number().optional(),
   security_level: z.enum(['standard', 'multisig', 'high']),
   initial_balance: z.coerce.number().min(0).optional(),
   require_approvals: z.boolean().default(false),
@@ -55,8 +55,8 @@ type AccountFormValues = z.infer<typeof accountFormSchema>;
 interface AccountFormProps {
   initialData?: VaultAccount;
   parentAccounts?: VaultAccount[];
-  farmId?: string;
-  agentId?: string;
+  farmId?: number;
+  agentId?: number;
   onSubmit: (data: VaultAccount) => void;
   onCancel?: () => void;
 }
@@ -80,8 +80,8 @@ export function AccountForm({
     description: initialData?.description || '',
     account_type: initialData?.account_type || 'farm',
     parent_id: initialData?.parent_id || undefined,
-    farm_id: initialData?.farm_id || farmId,
-    agent_id: initialData?.agent_id || agentId,
+    farm_id: initialData?.farm_id ?? farmId,
+    agent_id: initialData?.agent_id ?? agentId,
     security_level: initialData?.security_level || 'standard',
     initial_balance: initialData?.balance || 0,
     require_approvals: initialData?.security_level === 'multisig',
@@ -164,8 +164,8 @@ export function AccountForm({
         description: data.description,
         account_type: data.account_type,
         parent_id: data.parent_id,
-        farm_id: data.farm_id || farmId,
-        agent_id: data.agent_id || agentId,
+        farm_id: data.farm_id ?? farmId,
+        agent_id: data.agent_id ?? agentId,
         security_level: data.security_level,
       };
       

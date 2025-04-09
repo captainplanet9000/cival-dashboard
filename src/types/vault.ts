@@ -49,8 +49,8 @@ export interface VaultAccount {
   currency: string;
   riskLevel: 'low' | 'medium' | 'high';
   address?: string;
-  farmId?: string;
-  agentId?: string;
+  farmId?: number | null;
+  agentId?: number | null;
   securityLevel: 'standard' | 'enhanced' | 'maximum';
   isActive: boolean;
   settings: {

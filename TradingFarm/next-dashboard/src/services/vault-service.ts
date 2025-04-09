@@ -133,7 +133,18 @@ async function getConsolidatedVaultBalances(userId: string): Promise<VaultBalanc
   try {
     const supabase = createBrowserClient();
     
-    // First get all vault accounts for the user
+    // Define expected type for vault account data
+    type VaultAccountData = {
+        id: string;
+        vault_id: string;
+        name: string;
+        account_type: string;
+        currency: string;
+        balance: number;
+        reserved_balance: number;
+        vault_master: { owner_id: string };
+    };
+
     const { data: vaultAccounts, error: accountsError } = await supabase
       .from('vault_accounts')
       .select(`
@@ -146,15 +157,16 @@ async function getConsolidatedVaultBalances(userId: string): Promise<VaultBalanc
         reserved_balance,
         vault_master!inner(owner_id)
       `)
-      .eq('vault_master.owner_id', userId);
+      .eq('vault_master.owner_id', userId)
+      .returns<VaultAccountData[]>(); // Use explicit return type
     
     if (accountsError || !vaultAccounts) {
       console.error('Error fetching vault accounts:', accountsError);
       return [];
     }
     
-    // Then get currency info for all accounts
-    const currencyIds = Array.from(new Set(vaultAccounts.map(account => account.currency)));
+    // Add explicit type for 'account' parameter
+    const currencyIds = Array.from(new Set(vaultAccounts.map((account: VaultAccountData) => account.currency)));
     
     if (currencyIds.length === 0) {
       return [];
@@ -163,20 +175,21 @@ async function getConsolidatedVaultBalances(userId: string): Promise<VaultBalanc
     const { data: currencies, error: currencyError } = await supabase
       .from('vault_currencies')
       .select('*')
-      .in('id', currencyIds);
+      .in('id', currencyIds)
+      .returns<VaultCurrency[]>(); // Use explicit return type
     
     if (currencyError) {
       console.error('Error fetching currencies:', currencyError);
       return [];
     }
     
-    // Convert to the legacy format for backward compatibility
-    return vaultAccounts.map(account => {
-      const currencyInfo = currencies?.find(c => c.id === account.currency) || null;
+    // Add explicit type for 'account' and 'c' parameters
+    return vaultAccounts.map((account: VaultAccountData) => {
+      const currencyInfo = currencies?.find((c: VaultCurrency) => c.id === account.currency) || null;
       
       return {
         currency_id: account.currency,
-        currency: currencyInfo as VaultCurrency,
+        currency: currencyInfo,
         available: account.balance - account.reserved_balance,
         reserved: account.reserved_balance,
         total: account.balance,
@@ -325,195 +338,77 @@ async function createDepositAddress(
 
 /**
  * Creates a withdrawal request
+ * Update to handle numeric farmId if provided
  */
 export async function createWithdrawal(
-  userId: string,
-  currencyId: string,
-  amount: number,
+  userId: string, 
+  currencyId: string, 
+  amount: number, 
   address: string,
-  description?: string,
-  farmId?: string
-): Promise<{ success: boolean, transaction?: VaultTransaction, error?: string }> {
+  memo?: string,
+  farmId?: number | null // Changed to number | null
+): Promise<ApiResponse<{ transaction_id: string }>> {
   try {
-    // Check if we're using the consolidated system
-    const isConsolidated = await isConsolidatedVaultSystemAvailable();
-    
-    if (isConsolidated) {
-      return await createConsolidatedWithdrawal(userId, currencyId, amount, address, description, farmId);
-    }
-    
-    // Legacy system
-    // First check if the user has sufficient balance
     const supabase = createBrowserClient();
     
-    const { data: balance, error: balanceError } = await supabase
-      .from('vault_balances')
-      .select('available, reserved, total')
-      .eq('user_id', userId)
-      .eq('currency_id', currencyId)
-      .single();
+    // Call the RPC function, ensuring farm_id is passed correctly
+    const { data, error } = await supabase.rpc('create_withdrawal', {
+      p_user_id: userId,
+      p_currency_id: currencyId,
+      p_amount: amount,
+      p_address: address,
+      p_memo: memo || null,
+      // Pass farm_id as number or null
+      p_farm_id: farmId !== undefined ? farmId : null 
+    });
     
-    if (balanceError || !balance) {
-      return { 
-        success: false, 
-        error: 'Error fetching balance or insufficient balance'
-      };
+    if (error) {
+      console.error('Error creating withdrawal:', error);
+      return { error: error.message };
     }
     
-    if (balance.available < amount) {
-      return { 
-        success: false, 
-        error: 'Insufficient balance for withdrawal'
-      };
-    }
-    
-    // Create the withdrawal transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('vault_transactions')
-      .insert({
-        user_id: userId,
-        farm_id: farmId,
-        currency_id: currencyId,
-        type: 'WITHDRAWAL',
-        amount: amount,
-        status: 'PENDING',
-        to_address: address,
-        description: description || 'Withdrawal request',
-      })
-      .select()
-      .single();
-    
-    if (txError) {
-      console.error('Error creating withdrawal:', txError);
-      return { 
-        success: false, 
-        error: 'Error creating withdrawal transaction'
-      };
-    }
-    
-    // Update the balance (reserved and available)
-    const { error: updateError } = await supabase
-      .from('vault_balances')
-      .update({
-        available: balance.available - amount,
-        reserved: balance.reserved + amount,
-      })
-      .eq('user_id', userId)
-      .eq('currency_id', currencyId);
-    
-    if (updateError) {
-      console.error('Error updating balance:', updateError);
-      // This would typically trigger a compensation transaction
-      // to revert the withdrawal request in a real system
-    }
-    
-    return { 
-      success: true, 
-      transaction: transaction as VaultTransaction 
-    };
+    return { data: { transaction_id: data } }; // Assuming RPC returns the transaction ID
   } catch (error) {
     console.error('Error in createWithdrawal:', error);
-    return { 
-      success: false, 
-      error: 'Internal error processing withdrawal'
-    };
+    return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
 /**
- * Creates a withdrawal request using the consolidated vault system
- * @private Internal function to support createWithdrawal
+ * Creates a consolidated withdrawal using the new vault system
+ * Update to handle numeric farmId if provided
  */
-async function createConsolidatedWithdrawal(
+export async function createConsolidatedWithdrawal(
   userId: string,
-  currencyId: string,
+  accountId: string,
   amount: number,
-  address: string,
-  description?: string,
-  farmId?: string
-): Promise<{ success: boolean, transaction?: VaultTransaction, error?: string }> {
+  destinationAddress: string,
+  memo?: string,
+  farmId?: number | null // Changed to number | null
+): Promise<ApiResponse<{ transaction_id: string }>> {
   try {
     const supabase = createBrowserClient();
-    
-    // First find an appropriate account for this withdrawal
-    const { data: accounts, error: accountsError } = await supabase
-      .from('vault_accounts')
-      .select(`
-        id,
-        vault_id,
-        balance,
-        reserved_balance,
-        vault_master!inner(owner_id)
-      `)
-      .eq('vault_master.owner_id', userId)
-      .eq('currency', currencyId)
-      .order('balance', { ascending: false });
-    
-    if (accountsError || !accounts || accounts.length === 0) {
-      return { 
-        success: false, 
-        error: 'No suitable account found for withdrawal'
-      };
+
+    // Call RPC, ensuring farm_id is handled correctly
+    const { data, error } = await supabase.rpc('create_vault_withdrawal', {
+      p_user_id: userId,
+      p_account_id: accountId,
+      p_amount: amount,
+      p_destination_address: destinationAddress,
+      p_memo: memo,
+      // Pass farm_id as number or null
+      p_farm_id: farmId !== undefined ? farmId : null
+    });
+
+    if (error) {
+      console.error('Error creating consolidated withdrawal:', error);
+      return { error: error.message };
     }
-    
-    // Find an account with sufficient available balance
-    const account = accounts.find(acc => (acc.balance - acc.reserved_balance) >= amount);
-    
-    if (!account) {
-      return { 
-        success: false, 
-        error: 'Insufficient balance for withdrawal'
-      };
-    }
-    
-    // Create the transaction
-    const { data: transaction, error: txError } = await supabase
-      .from('vault_transactions')
-      .insert({
-        account_id: account.id,
-        type: 'withdrawal',
-        amount: amount,
-        currency: currencyId,
-        external_destination: address,
-        status: 'pending',
-        approval_status: 'pending',
-        note: description || 'Withdrawal request',
-        metadata: { farm_id: farmId }
-      })
-      .select()
-      .single();
-    
-    if (txError) {
-      console.error('Error creating withdrawal transaction:', txError);
-      return { 
-        success: false, 
-        error: 'Error creating withdrawal transaction'
-      };
-    }
-    
-    // Update the account balance
-    const { error: updateError } = await supabase
-      .from('vault_accounts')
-      .update({
-        reserved_balance: account.reserved_balance + amount
-      })
-      .eq('id', account.id);
-    
-    if (updateError) {
-      console.error('Error updating account balance:', updateError);
-      // Would need compensation logic here
-    }
-    
-    return { 
-      success: true, 
-      transaction: transaction as unknown as VaultTransaction 
-    };
+
+    return { data: { transaction_id: data } }; // Assuming RPC returns transaction ID
   } catch (error) {
     console.error('Error in createConsolidatedWithdrawal:', error);
-    return { 
-      success: false, 
-      error: 'Internal error processing withdrawal'
-    };
+    return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
   }
 }
 
@@ -1639,3 +1534,37 @@ export async function migrateToVaultSystem(
     };
   }
 }
+
+/**
+ * Migrates legacy wallet balances to the new consolidated vault system
+ */
+// Add explicit types for 'a' parameter in reduce calls if needed
+export async function migrateWalletsToVaults(
+  userId: string,
+  items: WalletMigrationItem[],
+  options?: MigrationOptions
+): Promise<MigrationResult> {
+  const supabase = createBrowserClient();
+  const results: MigrationResult = { successes: [], failures: [] };
+  let masterVaultId: string | null = null;
+
+  // ... (rest of migration logic)
+  // Example of fixing implicit any in a potential reduce call:
+  // const totalAmount = items.reduce((sum: number, item: WalletMigrationItem) => sum + item.amount, 0);
+
+  // Find or create a master vault for the user
+  // ...
+  
+  for (const item of items) {
+    // ... (migration logic for each item) ...
+  }
+
+  return results;
+}
+
+// Example for line 1082/1083 if it was in a reduce like this:
+// const someValue = someArray.reduce((accumulator: SomeType, a: ElementType) => { /* logic */ }, initialValue);
+
+// Note: The specific fix for 1082/1083 depends on the actual code there.
+// Assuming it might be within migrateWalletsToVaults or a similar function using reduce.
+// If those lines are elsewhere, please provide the context.

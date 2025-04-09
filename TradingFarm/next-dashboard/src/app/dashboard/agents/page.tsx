@@ -36,10 +36,10 @@ interface AgentConfiguration {
 }
 
 interface Agent {
-  id: string;
+  id: number;
   name: string;
   description?: string | null;
-  farm_id: string | null;
+  farm_id: number | null;
   type: string;
   strategy_type?: string;
   status: string;
@@ -65,7 +65,7 @@ interface Agent {
 interface ExtendedAgent extends Agent {
   farm_name?: string;
   farms?: {
-    id: string;
+    id: number;
     name: string;
   }
 }
@@ -138,7 +138,7 @@ const AgentStatusBadge = ({ status }: { status: string }) => {
 
 export default function AgentsPage() {
   const [agents, setAgents] = React.useState<ExtendedAgent[]>([]);
-  const [farms, setFarms] = React.useState<{ id: string; name: string }[]>([]);
+  const [farms, setFarms] = React.useState<{ id: number; name: string }[]>([]);
   const [filteredAgents, setFilteredAgents] = React.useState<ExtendedAgent[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -208,8 +208,17 @@ export default function AgentsPage() {
         const configObj = agent.config || {};
         const performanceObj = agent.performance || {};
         
+        // Ensure farm_id is parsed to number or null
+        const farmIdNumber = agent.farm_id ? parseInt(agent.farm_id, 10) : null;
+        if (farmIdNumber !== null && isNaN(farmIdNumber)) {
+           console.warn(`Invalid farm_id found for agent ${agent.id}: ${agent.farm_id}`);
+           // Handle potential NaN from parseInt if farm_id is not a valid number string
+        }
+        
         return {
           ...agent,
+          id: parseInt(agent.id, 10), // Parse agent id to number
+          farm_id: farmIdNumber, // Use parsed number or null
           // Map config to configuration for UI consistency
           configuration: configObj,
           description: agent.description || configObj.description,
@@ -242,23 +251,24 @@ export default function AgentsPage() {
         if (farmsResponse.ok) {
           const farmsData = await farmsResponse.json();
           const farmsList = farmsData.farms || [];
-          setFarms(farmsList);
+          // Parse farm IDs to numbers
+          setFarms(farmsList.map((f: any) => ({ ...f, id: parseInt(f.id, 10) }))); 
         } else {
           console.error('Error fetching farms:', await farmsResponse.text());
-          // Use fallback mock farms
+          // Use fallback mock farms with numeric IDs
           setFarms([
-            { id: '1', name: 'Bitcoin Momentum Farm' },
-            { id: '2', name: 'Altcoin Swing Trader' },
-            { id: '3', name: 'DeFi Yield Farm' }
+            { id: 1, name: 'Bitcoin Momentum Farm' },
+            { id: 2, name: 'Ethereum DeFi Yield Farm' },
+            { id: 3, name: 'Cross-Asset Arbitrage Farm' }
           ]);
         }
       } catch (error) {
         console.error('Error fetching farms:', error);
         // Use fallback mock farms
         setFarms([
-          { id: '1', name: 'Bitcoin Momentum Farm' },
-          { id: '2', name: 'Altcoin Swing Trader' },
-          { id: '3', name: 'DeFi Yield Farm' }
+          { id: 1, name: 'Bitcoin Momentum Farm' },
+          { id: 2, name: 'Ethereum DeFi Yield Farm' },
+          { id: 3, name: 'Cross-Asset Arbitrage Farm' }
         ]);
       }
     } catch (error) {
@@ -284,7 +294,9 @@ export default function AgentsPage() {
     
     // Apply farm filter
     if (farmFilter !== "all") {
-      result = result.filter((agent: ExtendedAgent) => agent.farm_id === farmFilter);
+      // Parse farmFilter string to number for comparison
+      const numericFarmFilter = parseInt(farmFilter, 10);
+      result = result.filter((agent: ExtendedAgent) => agent.farm_id === numericFarmFilter);
     }
     
     // Apply type filter
@@ -308,18 +320,17 @@ export default function AgentsPage() {
   }, [agents, statusFilter, farmFilter, typeFilter, searchQuery]);
 
   // Handle agent actions
-  const handleAgentStatusChange = async (agentId: string, newStatus: string) => {
+  const handleAgentStatusChange = async (agentId: number, newStatus: string) => {
+    setLoading(true);
     try {
-      // Use direct API fetch for better error handling
       const response = await fetch(`/api/agents/${agentId}/status`, {
-        method: 'PATCH',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ status: newStatus }),
-        cache: 'no-store',
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to change agent status: ${response.statusText}`);
       }
@@ -342,18 +353,17 @@ export default function AgentsPage() {
         title: "Status Change Failed",
         description: error instanceof Error ? error.message : "Unknown error",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteAgent = async (agentId: string) => {
+  const handleDeleteAgent = async (agentId: number) => {
+    if (!confirm('Are you sure you want to delete this agent?')) return;
+    
     try {
-      // Use direct API fetch for better error handling
       const response = await fetch(`/api/agents/${agentId}`, {
         method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        cache: 'no-store',
       });
       
       if (!response.ok) {
@@ -501,12 +511,12 @@ export default function AgentsPage() {
               
               <Select value={farmFilter} onValueChange={setFarmFilter}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Farm" />
+                  <SelectValue placeholder="Filter by Farm" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Farms</SelectItem>
-                  {farms.map((farm: { id: string; name: string }) => (
-                    <SelectItem key={farm.id} value={farm.id}>
+                  {farms.map(farm => (
+                    <SelectItem key={farm.id} value={farm.id.toString()}>
                       {farm.name}
                     </SelectItem>
                   ))}
@@ -592,7 +602,7 @@ export default function AgentsPage() {
                     <div className="flex flex-col">
                       <span className="text-muted-foreground">Farm</span>
                       <span className="font-medium">
-                        {farms.find((f: { id: string; name: string }) => f.id === agent.farm_id)?.name || `Farm #${agent.farm_id}`}
+                        {farms.find((f: { id: number; name: string }) => f.id === agent.farm_id)?.name || `Farm #${agent.farm_id}`}
                       </span>
                     </div>
                     
@@ -667,9 +677,9 @@ export default function AgentsPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   
-                  <Link href={`/dashboard/agents/${agent.id}`} passHref>
-                    <Button size="sm">
-                      <Settings className="h-4 w-4 mr-2" />
+                  <Link href={`/dashboard/agents/${agent.id}`}>
+                    <Button size="sm" className="w-full justify-start">
+                      <Settings className="mr-2 h-4 w-4" />
                       Manage
                     </Button>
                   </Link>

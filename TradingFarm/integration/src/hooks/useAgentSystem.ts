@@ -12,14 +12,14 @@ import { useToast } from '@/components/ui/use-toast';
 
 // Agent interface matching database schema
 export interface Agent {
-  id: string;
+  id: number;
   name: string;
-  farm_id: string | null;
+  farm_id: number | null;
   model: string;
   description: string | null;
   status: 'active' | 'paused' | 'inactive';
-  strategy_id: string | null;
-  wallet_id: string | null;
+  strategy_id: number | null;
+  wallet_id: number | null;
   exchange_configs: any;
   performance: any;
   last_active: string | null;
@@ -29,23 +29,23 @@ export interface Agent {
 
 // Farm interface for agent association
 export interface Farm {
-  id: string;
+  id: number;
   name: string;
 }
 
 // Strategy interface for agent configuration
 export interface Strategy {
-  id: string;
+  id: number;
   name: string;
   risk_level: 'low' | 'medium' | 'high';
 }
 
 // Wallet interface for agent funding
 export interface AgentWallet {
-  id: string;
+  id: number;
   name: string;
   balance: number;
-  farm_id: string | null;
+  farm_id: number | null;
 }
 
 export function useAgentSystem() {
@@ -215,7 +215,7 @@ export function useAgentSystem() {
   };
 
   // Update an existing agent
-  const updateAgent = async (agentId: string, agentData: Partial<Agent>) => {
+  const updateAgent = async (agentId: number, agentData: Partial<Agent>) => {
     try {
       setError(null);
 
@@ -276,7 +276,7 @@ export function useAgentSystem() {
   };
 
   // Delete an agent
-  const deleteAgent = async (agentId: string) => {
+  const deleteAgent = async (agentId: number) => {
     try {
       setError(null);
 
@@ -336,7 +336,7 @@ export function useAgentSystem() {
   };
 
   // Start an agent (change status to 'active')
-  const startAgent = async (agentId: string) => {
+  const startAgent = async (agentId: number) => {
     try {
       setError(null);
 
@@ -378,7 +378,7 @@ export function useAgentSystem() {
   };
 
   // Pause an agent (change status to 'paused')
-  const pauseAgent = async (agentId: string) => {
+  const pauseAgent = async (agentId: number) => {
     try {
       setError(null);
 
@@ -420,7 +420,7 @@ export function useAgentSystem() {
   };
 
   // Get detailed agent information, including performance metrics
-  const getAgentDetails = async (agentId: string) => {
+  const getAgentDetails = async (agentId: number) => {
     try {
       setError(null);
 
@@ -468,7 +468,7 @@ export function useAgentSystem() {
   };
 
   // Send a command to an agent via ElizaOS
-  const sendAgentCommand = async (agentId: string, command: string, parameters?: Record<string, any>) => {
+  const sendAgentCommand = async (agentId: number, command: string, parameters?: Record<string, any>) => {
     try {
       setError(null);
 

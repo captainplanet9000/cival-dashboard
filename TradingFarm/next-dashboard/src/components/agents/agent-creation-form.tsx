@@ -142,7 +142,7 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
           
           // Auto-select first farm if only one is available
           if (farmsArray.length === 1) {
-            form.setValue('farm_id', farmsArray[0].id.toString());
+            form.setValue('farm_id', farmsArray[0].id);
           }
         }
       } catch (error) {
@@ -169,7 +169,7 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
       const agentData: AgentCreationRequest = {
         name: values.name,
         description: values.description,
-        farm_id: values.farm_id?.toString(), // Convert number to string for Supabase
+        farm_id: values.farm_id,
         type: 'eliza', // Set the agent type explicitly to match database schema
         strategy_type: values.strategy_type,
         risk_level: values.risk_level,

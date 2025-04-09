@@ -22,7 +22,7 @@ export interface ApiResponse<T> {
 
 // Define the Farm interface (should match the Supabase schema)
 export interface Farm {
-  id: string; 
+  id: number;
   name: string;
   description?: string | null;
   user_id?: string | null;
@@ -83,8 +83,10 @@ export const farmService = {
       if (isMockModeEnabled()) {
         // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        // Return farms from the persistent mockFarmManager
-        return { data: mockFarmManager.getAllFarms() };
+        // Return farms from the persistent mockFarmManager, converting IDs to numbers
+        const mockFarms = mockFarmManager.getAllFarms();
+        const farmsWithNumericIds = mockFarms.map(farm => ({ ...farm, id: Number(farm.id) }));
+        return { data: farmsWithNumericIds };
       }
 
       // Check if we have an API URL set
@@ -150,24 +152,23 @@ export const farmService = {
   /**
    * Get a specific farm by ID
    */
-  async getFarmById(id: string): Promise<ApiResponse<Farm>> {
+  async getFarmById(id: number): Promise<ApiResponse<Farm>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
-        // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        // Get farm from the persistent mockFarmManager
-        const farm = mockFarmManager.getFarmById(id);
+        // Get farm from mock, converting numeric id to string for lookup
+        const farm = mockFarmManager.getFarmById(String(id));
         
         if (!farm) {
           return { error: 'Farm not found' };
         }
-        
-        return { data: farm };
+        // Return mock farm, ensuring ID is converted back to number
+        return { data: { ...farm, id: Number(farm.id) } };
       }
       
       // Check if we have an API URL set
-      const apiUrl = getApiUrl(`farms/${id}`);
+      const apiUrl = getApiUrl(`farms/${String(id)}`);
       if (apiUrl.startsWith('/api/')) {
         // Fallback to Supabase
         const supabase = createBrowserClient();
@@ -192,6 +193,9 @@ export const farmService = {
       }
       
       const result = await response.json();
+      if (result.data && typeof result.data.id === 'string') {
+         result.data.id = Number(result.data.id);
+      }
       return { data: result.data };
       
     } catch (error) {
@@ -203,7 +207,7 @@ export const farmService = {
   /**
    * Get a specific farm by ID for server components
    */
-  async getFarmByIdServer(id: string): Promise<ApiResponse<Farm>> {
+  async getFarmByIdServer(id: number): Promise<ApiResponse<Farm>> {
     try {
       // Server can't rely on browser features, must use Supabase
       const supabase = await createServerClient();
@@ -232,10 +236,7 @@ export const farmService = {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
-        // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        
-        // Create a new farm using the mockFarmManager
         const newFarm = mockFarmManager.createFarm({
           ...farmData,
           created_at: new Date().toISOString(),
@@ -243,8 +244,8 @@ export const farmService = {
           user_id: 'mock-user-id',
           status: farmData.status || 'active'
         });
-        
-        return { data: newFarm as ExtendedFarm };
+        // Return mock farm, ensuring ID is converted to number
+        return { data: { ...newFarm, id: Number(newFarm.id) } }; 
       }
       
       // Get user ID for the farm
@@ -308,37 +309,29 @@ export const farmService = {
   /**
    * Update an existing farm
    */
-  async updateFarm(id: string, farmData: Partial<Omit<Farm, 'id' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<Farm>> {
+  async updateFarm(id: number, farmData: Partial<Omit<Farm, 'id' | 'created_at' | 'updated_at'>>): Promise<ApiResponse<Farm>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
-        // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        
-        // Update the farm in mockFarmManager
-        const updatedFarm = mockFarmManager.updateFarm(id, {
-          ...farmData,
-          updated_at: new Date().toISOString()
-        });
+        // Update farm in mock, converting numeric id to string for lookup
+        const updatedFarm = mockFarmManager.updateFarm(String(id), farmData);
         
         if (!updatedFarm) {
-          return { error: 'Farm not found' };
+          return { error: 'Farm not found or could not be updated' };
         }
-        
-        return { data: updatedFarm };
+        // Return mock farm, ensuring ID is converted back to number
+        return { data: { ...updatedFarm, id: Number(updatedFarm.id) } };
       }
       
       // Check if we have an API URL set
-      const apiUrl = getApiUrl(`farms/${id}`);
+      const apiUrl = getApiUrl(`farms/${String(id)}`);
       if (apiUrl.startsWith('/api/')) {
         // Fallback to Supabase
         const supabase = createBrowserClient();
         const { data, error } = await supabase
           .from('farms')
-          .update({
-            ...farmData,
-            updated_at: new Date().toISOString()
-          })
+          .update(farmData)
           .eq('id', id)
           .select()
           .single();
@@ -365,6 +358,9 @@ export const farmService = {
       }
       
       const result = await response.json();
+      if (result.data && typeof result.data.id === 'string') {
+         result.data.id = Number(result.data.id);
+      }
       return { data: result.data };
       
     } catch (error) {
@@ -376,15 +372,13 @@ export const farmService = {
   /**
    * Delete a farm
    */
-  async deleteFarm(id: string): Promise<ApiResponse<null>> {
+  async deleteFarm(id: number): Promise<ApiResponse<null>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
-        // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        
-        // Delete the farm from mockFarmManager
-        const success = mockFarmManager.deleteFarm(id);
+        // Delete farm in mock, converting numeric id to string for lookup
+        const success = mockFarmManager.deleteFarm(String(id));
         
         if (!success) {
           return { error: 'Farm not found or could not be deleted' };
@@ -394,7 +388,7 @@ export const farmService = {
       }
       
       // Check if we have an API URL set
-      const apiUrl = getApiUrl(`farms/${id}`);
+      const apiUrl = getApiUrl(`farms/${String(id)}`);
       if (apiUrl.startsWith('/api/')) {
         // Fallback to Supabase
         const supabase = createBrowserClient();
@@ -432,53 +426,43 @@ export const farmService = {
   },
 
   /**
-   * Get a summary of a farm's status including goals and agents
+   * Get farm status summary
    */
-  async getFarmStatusSummary(farmId: string): Promise<ApiResponse<FarmStatusSummary>> {
+  async getFarmStatusSummary(farmId: number): Promise<ApiResponse<FarmStatusSummary>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
-        // Initialize the farm manager if needed
         mockFarmManager.initialize();
-        
-        // Get farm status summary from mockFarmManager
-        const statusSummary = mockFarmManager.getFarmStatusSummary(farmId);
-        
-        if (!statusSummary) {
-          return { error: 'Farm not found' };
-        }
-        
-        return { data: statusSummary };
+        // Convert number to string for mock manager
+        const summary = mockFarmManager.getFarmStatusSummary(String(farmId));
+        return { data: summary };
       }
-      
-      // Check if we have an API URL set
-      const apiUrl = getApiUrl(`farms/${farmId}/status-summary`);
+
+      // API route expects string ID in path
+      const apiUrl = getApiUrl(`farms/${String(farmId)}/status-summary`);
       if (apiUrl.startsWith('/api/')) {
-        // Fallback to Supabase
+        // Fallback to Supabase RPC
         const supabase = createBrowserClient();
-        const { data, error } = await supabase
-          .from('farms')
-          .select('status_summary')
-          .eq('id', farmId)
-          .single();
-          
+        const { data, error } = await supabase.rpc('get_farm_status_summary', {
+          farm_id: farmId // Use numeric farmId directly for RPC call
+        });
+
         if (error) {
           return { error: error.message };
         }
-        
-        return { data: data.status_summary };
+        return { data };
       }
-      
+
       // Use API endpoint
       const response = await fetch(apiUrl);
-      
+
       if (!response.ok) {
         return { error: `API Error: ${response.status} ${response.statusText}` };
       }
-      
+
       const result = await response.json();
       return { data: result.data };
-      
+
     } catch (error) {
       console.error('Error fetching farm status summary:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
@@ -488,7 +472,7 @@ export const farmService = {
   /**
    * Update the farm's status summary (typically done automatically by the database)
    */
-  async refreshFarmStatusSummary(farmId: string): Promise<ApiResponse<FarmStatusSummary>> {
+  async refreshFarmStatusSummary(farmId: number): Promise<ApiResponse<FarmStatusSummary>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -496,7 +480,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Refresh farm status summary in mockFarmManager
-        const statusSummary = mockFarmManager.refreshFarmStatusSummary(farmId);
+        const statusSummary = mockFarmManager.refreshFarmStatusSummary(String(farmId));
         
         if (!statusSummary) {
           return { error: 'Farm not found' };
@@ -560,7 +544,7 @@ export const farmService = {
   /**
    * Assign a goal to an agent
    */
-  async assignGoalToAgent(farmId: string, goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+  async assignGoalToAgent(farmId: number, goalId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -568,7 +552,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Assign goal to agent in mockFarmManager
-        const success = mockFarmManager.assignGoalToAgent(farmId, goalId, agentId, isElizaAgent);
+        const success = mockFarmManager.assignGoalToAgent(String(farmId), goalId, agentId, isElizaAgent);
         
         if (!success) {
           return { error: 'Farm or agent not found' };
@@ -625,7 +609,7 @@ export const farmService = {
   /**
    * Unassign a goal from an agent
    */
-  async unassignGoalFromAgent(farmId: string, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
+  async unassignGoalFromAgent(farmId: number, agentId: string, isElizaAgent: boolean = false): Promise<ApiResponse<null>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -633,7 +617,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Unassign goal from agent in mockFarmManager
-        const success = mockFarmManager.unassignGoalFromAgent(farmId, agentId, isElizaAgent);
+        const success = mockFarmManager.unassignGoalFromAgent(String(farmId), agentId, isElizaAgent);
         
         if (!success) {
           return { error: 'Farm or agent not found' };
@@ -689,7 +673,7 @@ export const farmService = {
   /**
    * Get all agents (both regular and ElizaOS) assigned to a goal
    */
-  async getAgentsByGoal(farmId: string, goalId: string): Promise<ApiResponse<{ agents: any[], elizaAgents: any[] }>> {
+  async getAgentsByGoal(farmId: number, goalId: string): Promise<ApiResponse<{ agents: any[], elizaAgents: any[] }>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -697,7 +681,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Get agents by goal from mockFarmManager
-        const agents = mockFarmManager.getAgentsByGoal(farmId, goalId);
+        const agents = mockFarmManager.getAgentsByGoal(String(farmId), goalId);
         
         if (!agents) {
           return { error: 'Farm or goal not found' };
@@ -764,7 +748,7 @@ export const farmService = {
   /**
    * Count agents by farm ID (both regular and ElizaOS agents)
    */
-  async countAgentsByFarm(farmId: string): Promise<ApiResponse<{ total: number, active: number, elizaTotal: number, elizaActive: number }>> {
+  async countAgentsByFarm(farmId: number): Promise<ApiResponse<{ total: number, active: number, elizaTotal: number, elizaActive: number }>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -772,7 +756,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Count agents by farm in mockFarmManager
-        const counts = mockFarmManager.countAgentsByFarm(farmId);
+        const counts = mockFarmManager.countAgentsByFarm(String(farmId));
         
         if (!counts) {
           return { error: 'Farm not found' };
@@ -859,7 +843,7 @@ export const farmService = {
   /**
    * Get all standard agents for a farm
    */
-  async getAgents(farmId: string): Promise<ApiResponse<any[]>> {
+  async getAgents(farmId: number): Promise<ApiResponse<any[]>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -867,7 +851,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Get agents from mockFarmManager
-        const agents = mockFarmManager.getAgents(farmId);
+        const agents = mockFarmManager.getAgents(String(farmId));
         
         if (!agents) {
           return { error: 'Farm not found' };
@@ -912,7 +896,7 @@ export const farmService = {
   /**
    * Get all ElizaOS agents for a farm
    */
-  async getElizaAgents(farmId: string): Promise<ApiResponse<any[]>> {
+  async getElizaAgents(farmId: number): Promise<ApiResponse<any[]>> {
     try {
       // Check for mock mode
       if (isMockModeEnabled()) {
@@ -920,7 +904,7 @@ export const farmService = {
         mockFarmManager.initialize();
         
         // Get ElizaOS agents from mockFarmManager
-        const elizaAgents = mockFarmManager.getElizaAgents(farmId);
+        const elizaAgents = mockFarmManager.getElizaAgents(String(farmId));
         
         if (!elizaAgents) {
           return { error: 'Farm not found' };

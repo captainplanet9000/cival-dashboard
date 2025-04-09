@@ -17,27 +17,51 @@ import { createBrowserClient } from '@/utils/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
 import { CONFIG } from '@/config/mockConfig';
 
-// --- Define Aliases for DB Types --- 
-type VaultRow = Database['public']['Tables']['vaults']['Row'];
-type VaultInsert = Database['public']['Tables']['vaults']['Insert'];
-type VaultUpdate = Database['public']['Tables']['vaults']['Update'];
+// --- Type Aliases based on ACTUAL DB Schema --- 
+// Tables: vault_accounts, vault_transactions
 
-type TransactionLogRow = Database['public']['Tables']['transaction_logs']['Row'];
-type TransactionLogInsert = Database['public']['Tables']['transaction_logs']['Insert'];
-type TransactionLogUpdate = Database['public']['Tables']['transaction_logs']['Update'];
+type VaultAccountRow = Database['public']['Tables']['vault_accounts']['Row'];
+export type VaultAccountInsert = Database['public']['Tables']['vault_accounts']['Insert'];
+type VaultAccountUpdate = Database['public']['Tables']['vault_accounts']['Update'];
 
-type VaultBalanceRow = Database['public']['Tables']['vault_balances']['Row'];
-type VaultBalanceInsert = Database['public']['Tables']['vault_balances']['Insert'];
-type VaultBalanceUpdate = Database['public']['Tables']['vault_balances']['Update'];
+type VaultTransactionRow = Database['public']['Tables']['vault_transactions']['Row'];
+type VaultTransactionInsert = Database['public']['Tables']['vault_transactions']['Insert'];
+type VaultTransactionUpdate = Database['public']['Tables']['vault_transactions']['Update'];
 
-// --- Define Parameter Interfaces (Moved Outside Class) --- 
+// --- REMOVED Aliases for non-existent tables/types ---
+// type TransactionLogRow = ... 
+// type VaultBalanceRow = ...
+
+// Tables confirmed MISSING from schema/types: transaction_logs, vault_balances
+// Functions confirmed MISSING from schema/types: update_account_balance
+
+// --- Define Parameter Interfaces --- 
 
 /**
- * Parameters for creating a transaction log.
+ * Interface for parameters needed to create a vault transaction log entry.
+ * This is used as the input type for the createTransaction method.
+ */
+export interface CreateVaultTransactionLogParams {
+    type: string; // Corresponds to vault_transactions.type (e.g., 'DEPOSIT', 'WITHDRAWAL', 'TRANSFER')
+    amount: number; // Corresponds to vault_transactions.amount
+    currency: string; // Corresponds to vault_transactions.currency
+    source_id: string; // Corresponds to vault_transactions.source_id
+    source_type: string; // Corresponds to vault_transactions.source_type
+    destination_id: string; // Corresponds to vault_transactions.destination_id
+    destination_type: string; // Corresponds to vault_transactions.destination_type
+    initiated_by: string; // Corresponds to vault_transactions.initiated_by
+    status?: TransactionStatus | string; // Corresponds to vault_transactions.status, Optional
+    description?: string | null; // Corresponds to vault_transactions.description, Optional
+    metadata?: Json | null; // Corresponds to vault_transactions.metadata, Optional
+    reference?: string | null; // Corresponds to vault_transactions.reference, Optional
+}
+
+/**
+ * Parameters for creating a transaction log (Legacy or simplified internal use?).
  */
 interface CreateTransactionParams {
     farm_id: string;
-    vault_id?: string | null; // Vault receiving/sending funds
+    account_id?: string | null; // Changed from vault_id to match vault_accounts.id
     transaction_type: string; // Use enum TransactionType values
     asset_symbol: string;
     amount: number; // Note: DB amount is number
@@ -67,8 +91,10 @@ export interface LegacyWallet {
 /**
  * Unified Banking Service
  * 
- * Refactored to align with database types (vaults, transaction_logs, vault_balances).
- * Handles vault and transaction operations for the Trading Farm.
+ * REFACTORED based on ACTUAL schema (vault_accounts, vault_transactions).
+ * Handles vault account and transaction operations for the Trading Farm.
+ * NOTE: Uses non-atomic balance updates via direct table manipulation 
+ *       due to missing update_account_balance function type.
  */
 export class UnifiedBankingService {
   private supabase: ReturnType<typeof createServerClient>; // Add type
@@ -95,405 +121,537 @@ export class UnifiedBankingService {
     return new UnifiedBankingService(isServerSide);
   }
   
-  // #region Vault Operations (Using 'vaults' table) 
+  // #region Vault Account Operations (Using 'vault_accounts' table)
   
   /**
-   * Create a new vault for a farm.
+   * Create a new vault account.
    */
-  async createVault(farmId: string, name: string, description?: string, settings?: Json, metadata?: Json): Promise<VaultRow> {
-    const insertData: VaultInsert = {
-        farm_id: farmId,
-        name: name,
-        description: description,
-        is_active: true,
-        settings: settings || {},
-        metadata: metadata || {}
+  async createAccount(params: VaultAccountInsert): Promise<VaultAccountRow> {
+    // Ensure required fields from vault_accounts definition are provided
+    if (!params.master_id || !params.name || !params.type) {
+        throw new Error('Missing required fields for vault account creation: master_id, name, type');
+    }
+    
+    // Set defaults based on vault_accounts table definition
+    const insertData: VaultAccountInsert = {
+        ...params,
+        // 'description' is NOT in vault_accounts Insert type, removing.
+        // description: params.description, 
+        is_active: params.is_active ?? true,
+        balance: params.balance ?? 0, // Default initial balance to 0
+        locked_amount: params.locked_amount ?? 0, // Default locked amount to 0
+        // currency: params.currency // Ensure currency is provided if needed by schema
+        // Ensure other required fields like owner_id (if applicable) are handled
     };
+    
     const { data, error } = await this.supabase
-      .from('vaults')
+      .from('vault_accounts') 
       .insert(insertData)
       .select()
       .single();
       
-    if (error) throw new Error(`Failed to create vault: ${error.message}`);
-    // TODO: Create initial balance entry in vault_balances?
+    if (error) throw new Error(`Failed to create vault account: ${error.message}`);
     return data;
   }
   
   /**
-   * Get a vault by its ID.
+   * Get a vault account by its ID. Renamed from getVault.
    */
-  async getVault(id: string): Promise<VaultRow | null> {
+  async getAccount(id: string): Promise<VaultAccountRow | null> {
     const { data, error } = await this.supabase
-      .from('vaults')
+      .from('vault_accounts') // Use correct table name
       .select()
       .eq('id', id)
-      .maybeSingle(); // Use maybeSingle if vault might not exist
+      .maybeSingle();
       
-    if (error) throw new Error(`Failed to fetch vault: ${error.message}`);
+    if (error) throw new Error(`Failed to fetch vault account: ${error.message}`);
     return data;
   }
   
   /**
-   * Get vaults associated with a specific farm.
+   * Get vault accounts associated with a specific farm. Renamed from getVaultsByFarm.
    */
-  async getVaultsByFarm(farmId: string): Promise<VaultRow[]> {
+  async getAccountsByFarm(farmId: number): Promise<VaultAccountRow[]> {
     const { data, error } = await this.supabase
-      .from('vaults')
+      .from('vault_accounts') // Use correct table name
       .select()
       .eq('farm_id', farmId);
       
-    if (error) throw new Error(`Failed to fetch vaults for farm ${farmId}: ${error.message}`);
+    if (error) throw new Error(`Failed to fetch vault accounts for farm ${farmId}: ${error.message}`);
     return data || [];
   }
 
   /**
-   * Update a vault.
+   * Update a vault account. Renamed from updateVault.
    */
-  async updateVault(id: string, updates: VaultUpdate): Promise<VaultRow> {
+  async updateAccount(id: string, updates: VaultAccountUpdate): Promise<VaultAccountRow> {
     // Ensure non-updatable fields like id, created_at, farm_id are not in updates
     delete updates.id;
     delete updates.created_at;
     delete updates.farm_id;
 
     const { data, error } = await this.supabase
-      .from('vaults')
+      .from('vault_accounts') // Use correct table name
       .update(updates)
       .eq('id', id)
       .select()
       .single();
       
-    if (error) throw new Error(`Failed to update vault ${id}: ${error.message}`);
+    if (error) throw new Error(`Failed to update vault account ${id}: ${error.message}`);
     return data;
   }
   
-  // #endregion
-  
-  // #region Account Operations (REMOVED/ADAPTED)
-  // Methods related to 'vault_accounts' are removed as the table isn't in generated types.
-  // Logic might be integrated into 'vaults' operations or farm/agent services.
-  // Methods like getAccountsByFarm now map to getVaultsByFarm.
-
   /**
-   * Alias for getVaultsByFarm for compatibility if needed.
+   * Get the current balance directly from the vault_accounts table for a specific account.
+   * --- Method to be kept --- 
    */
-  async getAccountsByFarm(farmId: string): Promise<VaultRow[]> {
-    return this.getVaultsByFarm(farmId);
-  }
-  
-  // #endregion
-  
-  // #region Transaction Operations (Using 'transaction_logs' table)
-
-  /**
-   * Create a new transaction log.
-   * NOTE: This only logs the transaction. Balance updates must be handled separately.
-   */
-  async createTransaction(params: CreateTransactionParams): Promise<TransactionLogRow> {
-    const insertData: TransactionLogInsert = {
-      farm_id: params.farm_id,
-      vault_id: params.vault_id,
-      transaction_type: params.transaction_type,
-      asset_symbol: params.asset_symbol,
-      amount: params.amount,
-      status: params.status || TransactionStatus.PENDING,
-      description: params.description,
-      metadata: params.metadata,
-      linked_account_id: params.linked_account_id,
-      external_id: params.external_id,
-      transaction_hash: params.transaction_hash,
-    };
-
-    // Validate required fields
-    if (!insertData.farm_id || !insertData.transaction_type || !insertData.asset_symbol || insertData.amount === undefined) {
-        throw new Error("Missing required fields for transaction log: farm_id, transaction_type, asset_symbol, amount");
-    }
-
-    const { data, error } = await this.supabase
-      .from('transaction_logs')
-      .insert(insertData)
-      .select()
-      .single();
-
-    if (error) throw new Error(`Failed to create transaction log: ${error.message}`);
-    
-    // IMPORTANT: Balance update logic is NOT included here. 
-    // Needs separate call to update vault_balances, potentially using DB functions.
-    // Consider calling _updateBalances or similar method after this.
-    return data;
+  async getBalance(accountId: string): Promise<number> {
+      const account = await this.getAccount(accountId);
+      if (!account) throw new Error(`Account ${accountId} not found to get balance.`);
+      // Return balance from the row, default to 0 if null/undefined
+      return account.balance ?? 0; 
   }
 
   /**
-   * Get a specific transaction log by ID.
+   * ATOMIC: Calls the database function public.update_account_balance to adjust balance.
    */
-  async getTransaction(id: string): Promise<TransactionLogRow | null> {
-    const { data, error } = await this.supabase
-      .from('transaction_logs')
-      .select()
-      .eq('id', id)
-      .maybeSingle();
-      
-    if (error) throw new Error(`Failed to fetch transaction log ${id}: ${error.message}`);
-    return data;
-  }
-
-  /**
-   * Get transaction logs based on filters.
-   */
-  async getTransactions(filter: { 
-    farmId?: string; 
-    vaultId?: string;
-    type?: string; 
-    status?: string;
-    asset?: string;
-    limit?: number; 
-    offset?: number;
-    // Add date range etc. if needed 
-  }): Promise<TransactionLogRow[]> {
-    let query = this.supabase.from('transaction_logs').select();
-
-    if (filter.farmId) query = query.eq('farm_id', filter.farmId);
-    if (filter.vaultId) query = query.eq('vault_id', filter.vaultId);
-    if (filter.type) query = query.eq('transaction_type', filter.type);
-    if (filter.status) query = query.eq('status', filter.status);
-    if (filter.asset) query = query.eq('asset_symbol', filter.asset);
-    
-    query = query.order('created_at', { ascending: false });
-
-    const limit = filter.limit ?? 50; // Default limit to 50
-    query = query.limit(limit);
-    if (filter.offset !== undefined) { // Check offset explicitly
-      query = query.range(filter.offset, filter.offset + limit - 1);
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw new Error(`Failed to fetch transaction logs: ${error.message}`);
-    return data || [];
-  }
-
-  /**
-   * Update the status of a transaction log.
-   */
-  async updateTransactionStatus(id: string, status: TransactionStatus | string, errorDetails?: Json): Promise<TransactionLogRow> {
-     const updates: TransactionLogUpdate = { 
-         status: status, 
-         metadata: errorDetails ? { error: errorDetails } : undefined 
-     };
-     const { data, error } = await this.supabase
-      .from('transaction_logs')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-      
-     if (error) throw new Error(`Failed to update transaction log ${id} status: ${error.message}`);
-     return data;
-  }
-
-  // #endregion
-
-  // #region Balance Operations (Using 'vault_balances' table)
-
-  /**
-   * Get the balance for a specific asset in a vault.
-   */
-  async getBalance(vaultId: string, assetSymbol: string): Promise<VaultBalanceRow | null> {
-    const { data, error } = await this.supabase
-      .from('vault_balances')
-      .select()
-      .eq('vault_id', vaultId)
-      .eq('asset_symbol', assetSymbol)
-      .maybeSingle();
-
-    if (error) throw new Error(`Failed to fetch balance for vault ${vaultId}, asset ${assetSymbol}: ${error.message}`);
-    return data;
-  }
-
-  /**
-   * Get all balances for a vault.
-   */
-  async getBalances(vaultId: string): Promise<VaultBalanceRow[]> {
-    const { data, error } = await this.supabase
-      .from('vault_balances')
-      .select()
-      .eq('vault_id', vaultId);
-
-    if (error) throw new Error(`Failed to fetch balances for vault ${vaultId}: ${error.message}`);
-    return data || [];
-  }
-
-  /**
-   * Update balance - Use with caution, prefer atomic DB functions.
-   * This is a simple update, NOT atomic. Use DB functions for ledger operations.
-   */
-  private async _updateBalanceDirect(vaultId: string, assetSymbol: string, newAmount: number): Promise<VaultBalanceRow> {
-     console.warn('_updateBalanceDirect is not atomic. Use database functions for balance updates.');
-     // Check if balance exists, insert if not, update if it does
-     const existing = await this.getBalance(vaultId, assetSymbol);
-     
-     let resultData: VaultBalanceRow | null = null;
-     let resultError: Error | null = null;
-
-     if (existing) {
-         const { data, error } = await this.supabase
-             .from('vault_balances')
-             .update({ amount: newAmount, last_updated: new Date().toISOString() })
-             .eq('id', existing.id)
-             .select()
-             .single();
-         resultData = data;
-         resultError = error ? new Error(error.message) : null;
-     } else {
-         const { data, error } = await this.supabase
-             .from('vault_balances')
-             .insert({ vault_id: vaultId, asset_symbol: assetSymbol, amount: newAmount, last_updated: new Date().toISOString() })
-             .select()
-             .single();
-         resultData = data;
-         resultError = error ? new Error(error.message) : null;
-     }
-
-     if (resultError) throw resultError;
-     if (!resultData) throw new Error('Failed to update or insert balance entry.');
-     return resultData;
-  }
-  
-  /**
-   * Atomically updates balances using DB functions (PLACEHOLDER - requires DB function names)
-   * Example assumes functions like 'adjust_vault_balance' exist.
-   */
-  async adjustBalanceAtomic(vaultId: string, assetSymbol: string, amountChange: number): Promise<void> {
-      // IMPORTANT: Replace 'adjust_vault_balance' with your actual DB function name
-      // --- COMMENTING OUT UNTIL CORRECT FUNCTION NAME IS KNOWN --- 
-      /*
-      const { error } = await this.supabase.rpc('adjust_vault_balance', { 
-          p_vault_id: vaultId, 
-          p_asset_symbol: assetSymbol, 
-          p_amount_change: amountChange 
+  private async _updateBalanceAtomic(accountId: string, amountChange: number): Promise<number> {
+      console.log(`Calling RPC update_account_balance for account ${accountId}. Amount change: ${amountChange}.`);
+      const { data, error } = await this.supabase.rpc('update_account_balance', {
+          target_account_id: accountId,
+          amount_change: amountChange
       });
 
       if (error) {
-          console.error("Database function error:", error);
-          throw new Error(`Atomic balance update failed: ${error.message}`);
+          console.error(`RPC update_account_balance failed for account ${accountId}:`, error);
+          // Check for specific error messages if needed, e.g., insufficient funds
+          if (error.message.includes('Insufficient funds')) {
+              throw new Error(`Insufficient funds for account ${accountId}.`);
+          }
+          throw new Error(`Failed to update balance atomically for account ${accountId}: ${error.message}`);
       }
-      */
-     console.warn('adjustBalanceAtomic is disabled until the correct database function name is provided.');
-     // Simulate success for now, or throw an error if preferred
-     await Promise.resolve(); 
+      console.log(`RPC update_account_balance successful for account ${accountId}. New balance: ${data}`);
+      return data as number; // Assuming the function returns the new balance
   }
+  
+  /**
+   * Deletes a vault account by its ID.
+   */
+  async deleteAccount(id: string): Promise<{ success: boolean; error?: string }> {
+      console.log(`Attempting to delete vault account with ID: ${id}`);
+      const { error } = await this.supabase
+          .from('vault_accounts') // Use correct table name
+          .delete()
+          .eq('id', id);
 
-  // #endregion
+      if (error) {
+          console.error(`Failed to delete vault account ${id}: ${error.message}`);
+          throw new Error(`Failed to delete vault account ${id}: ${error.message}`);
+          // Or return { success: false, error: `Failed to delete vault account ${id}: ${error.message}` };
+      }
 
-  // #region Security Policy Management (REMOVED)
-  // Methods related to 'vault_security_policies' are removed.
-  // #endregion
-
-  // #region Audit Log Management (REMOVED)
-  // Methods related to 'vault_audit_logs' are removed.
-  // #endregion
-
-  // #region Legacy Wallet Migration (Keep for now)
-  async getLegacyWallets(farmId: string | number): Promise<LegacyWallet[]> {
-      // Implementation... assumes a 'legacy_wallets' table or similar
-      return [];
+      console.log(`Successfully deleted vault account ${id}.`);
+      return { success: true };
   }
-  async migrateLegacyWallet(legacyWalletId: string | number): Promise<VaultRow> {
-     // Implementation...
-     // 1. Get legacy wallet data
-     // 2. Create a new vault in 'vaults' table for the farm
-     // 3. Create balance entry in 'vault_balances'
-     // 4. Log transaction in 'transaction_logs'
-     // 5. Mark legacy wallet as migrated
-     throw new Error('Legacy migration not fully implemented.');
-  }
+  
   // #endregion
-
-  // #region Helper Mapping Functions (REMOVED/ADAPTED)
-  // Remove mappers for VaultMaster, VaultAccount, VaultTransaction, SecurityPolicy, AuditLogEntry
-  // Add mappers if needed for VaultRow, TransactionLogRow, VaultBalanceRow to simplified app types
-  // For now, service methods will return DB Row types directly.
-  // #endregion
+  
+  // #region Transaction Operations (Using 'vault_transactions' table)
 
   /**
-   * Checks the available balance for a specific asset across all accounts associated with a farm.
-   * Available balance considers total balance minus locked amounts and pending outgoing transactions.
-   * @param farmId - The ID of the farm.
-   * @param assetSymbol - The currency/asset symbol (e.g., 'SUI', 'USDC').
-   * @param requiredAmount - The amount required.
-   * @returns Object indicating if the balance is sufficient and the total available amount.
+   * Logs a transaction to the vault_transactions table and attempts a 
+   * NON-ATOMIC balance update on related vault_accounts if applicable.
+   */
+  async createTransaction(
+      params: CreateVaultTransactionLogParams,
+      attemptDirectBalanceUpdate: boolean = true // Flag to control the non-atomic update
+  ): Promise<VaultTransactionRow> { // Use correct Row type
+      
+    // --- Step 1: Log the transaction intent --- 
+    let logData: VaultTransactionRow | null = null; // Use correct Row type
+    try {
+        // --- Explicit Validation of Required Params (using correct param type) --- 
+        if (params.amount === undefined || params.amount === null) throw new Error("Missing required parameter: amount");
+        if (!params.type) throw new Error("Missing required parameter: type");
+        if (!params.currency) throw new Error("Missing required parameter: currency");
+        if (!params.source_id) throw new Error("Missing required parameter: source_id");
+        if (!params.source_type) throw new Error("Missing required parameter: source_type");
+        if (!params.destination_id) throw new Error("Missing required parameter: destination_id");
+        if (!params.destination_type) throw new Error("Missing required parameter: destination_type");
+        if (!params.initiated_by) throw new Error("Missing required parameter: initiated_by");
+        // --- End Validation ---
+
+        // Map params directly - *should now align with params type*
+        const insertDataSecure: VaultTransactionInsert = {
+            type: params.type,                 
+            amount: params.amount,               
+            currency: params.currency,           
+            source_id: params.source_id,         
+            source_type: params.source_type,       
+            destination_id: params.destination_id, 
+            destination_type: params.destination_type,
+            status: params.status || TransactionStatus.PENDING, // Default applied
+            description: params.description, // Nullable OK
+            metadata: params.metadata, // Nullable OK
+            reference: params.reference, // Nullable OK
+            initiated_by: params.initiated_by,       
+        };
+    
+        const { data, error } = await this.supabase
+              .from('vault_transactions') 
+              .insert(insertDataSecure) 
+              .select()
+              .single();
+      
+        if (error) throw error; 
+        if (!data) throw new Error('Transaction log creation returned no data');
+        logData = data;
+        console.log(`Transaction log created successfully: ${logData.id}, Status: ${logData.status}`);
+
+    } catch (logError: any) {
+        console.error('Failed to create transaction log:', logError);
+        throw new Error(`Failed to create transaction log: ${logError.message}`);
+    }
+
+    // --- Step 2: Attempt NON-ATOMIC balance updates if flagged --- 
+    if (attemptDirectBalanceUpdate && logData) {
+        let sourceUpdateError: any = null;
+        let destUpdateError: any = null;
+        const transactionId = logData.id;
+
+        console.log(`Attempting non-atomic balance updates for transaction ${transactionId}...`);
+
+        // Update source account (Debit) - *should now use correct params type*
+        if (params.source_type === 'vault_account') { 
+            try {
+                 await this._updateBalanceAtomic(params.source_id, -Math.abs(params.amount)); 
+            } catch (error: any) {
+                 sourceUpdateError = error;
+                 console.error(`[NON-ATOMIC FAILURE] Debit failed for source account ${params.source_id}, transaction ${transactionId}:`, error.message);
+            }
+        }
+
+        // Update destination account (Credit) - *should now use correct params type*
+        if (params.destination_type === 'vault_account') {
+             try {
+                 await this._updateBalanceAtomic(params.destination_id, Math.abs(params.amount)); 
+            } catch (error: any) {
+                 destUpdateError = error;
+                 console.error(`[NON-ATOMIC FAILURE] Credit failed for destination account ${params.destination_id}, transaction ${transactionId}:`, error.message);
+                 
+                 // Rollback Attempt (Best Effort) - *should now use correct params type*
+                 if (!sourceUpdateError && params.source_type === 'vault_account') { 
+                     console.warn(`Attempting rollback for transaction ${transactionId}: Crediting source ${params.source_id} back...`);
+                     try {
+                        await this._updateBalanceAtomic(params.source_id, Math.abs(params.amount)); 
+                        console.log(`Rollback successful for source ${params.source_id}.`);
+                     } catch (rollbackError: any) {
+                        console.error(`CRITICAL ROLLBACK FAILURE for transaction ${transactionId}, source ${params.source_id}. REQUIRES MANUAL INTERVENTION.`, rollbackError.message);
+                     }
+                 }
+            }
+        }
+
+        // --- Step 3: Update transaction status based on balance update outcome --- 
+        if (sourceUpdateError || destUpdateError) {
+             const combinedError = `Source Update Error: ${sourceUpdateError?.message || 'None'}; Dest Update Error: ${destUpdateError?.message || 'None'}`;
+             try {
+                  console.warn(`Marking transaction ${transactionId} as FAILED due to balance update issues.`);
+                  const updatedLog = await this.updateTransactionStatus(transactionId, TransactionStatus.FAILED, combinedError);
+                  return updatedLog; // Return the log marked as FAILED
+             } catch(statusUpdateError: any) {
+                  console.error(`CRITICAL: Failed to mark transaction ${transactionId} as FAILED after balance update failure. Requires manual reconciliation.`, statusUpdateError.message);
+                  // Return the original log data, but state is inconsistent
+                  return logData; 
+             }
+         } else {
+             // If balance updates succeeded (or weren't applicable), mark as COMPLETED
+              if (logData.status === TransactionStatus.PENDING) {
+                 console.log(`Balance updates successful for transaction ${transactionId}. Marking as COMPLETED.`);
+                 try {
+                     const updatedLog = await this.updateTransactionStatus(transactionId, TransactionStatus.COMPLETED);
+                     return updatedLog;
+                 } catch (statusUpdateError: any) {
+                      console.error(`Failed to mark transaction ${transactionId} as COMPLETED after successful balance updates. Requires manual review.`, statusUpdateError.message);
+                      // Return original log data, status might be stuck as PENDING
+                      return logData;
+                 }
+             } else {
+                 // If status was already non-pending, just return the log
+                 return logData;
+             }
+         }
+    } else {
+         // If not attempting balance update, or log creation failed, return the initial log data
+         if (!logData) {
+              // This case should ideally not be reached due to earlier throw
+              throw new Error("Log data is unexpectedly null after creation attempt.");
+         }
+         return logData;
+     }
+    // --- COMMENTED OUT OLD RPC CALL --- 
+    // const { data: rpcData, error: rpcError } = await this.supabase.rpc(
+    //     'update_account_balance', // Function needs to exist and type needs to be generated
+    //     { 
+    //         account_id: accountId,
+    //         amount_change: amountChange,
+    //         transaction_type: transactionType // Ensure enum/string matches function param type
+    //     }
+    // );
+    // if (rpcError) throw new Error(`Failed to update balance via RPC: ${rpcError.message}`);
+    // return rpcData; // Assuming RPC returns the updated account/balance
+    // --------------------------------
+  }
+
+  /**
+   * Get a transaction log by its ID from vault_transactions.
+   */
+  async getTransaction(id: string): Promise<VaultTransactionRow | null> { // Use correct Row type
+    const { data, error } = await this.supabase
+      .from('vault_transactions') // Use correct table name
+      .select()
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+        console.error(`Error fetching transaction ${id}:`, error);
+        throw new Error(`Failed to fetch transaction ${id}: ${error.message}`);
+    }
+    return data;
+  }
+
+  /**
+   * Get transaction logs based on a filter, querying the vault_transactions table.
+   */
+  async getTransactions(filter: TransactionFilter): Promise<VaultTransactionRow[]> { // Restore correct return type
+    let query = this.supabase.from('vault_transactions').select(); // Use CORRECT table name
+
+    // ... (Filtering logic remains the same) ...
+    if (filter.accountId) {
+        // Filter where accountId is either source_id or destination_id
+      query = query.or(`source_id.eq.${filter.accountId},destination_id.eq.${filter.accountId}`);
+    }
+    if (filter.types && filter.types.length > 0) {
+      query = query.in('type', filter.types);
+    }
+    if (filter.statuses && filter.statuses.length > 0) {
+      query = query.in('status', filter.statuses);
+    }
+    if (filter.fromDate) {
+        // Remove .toISOString() - Assume filter.fromDate is already an ISO string
+        query = query.gte('created_at', filter.fromDate); 
+    }
+    if (filter.toDate) {
+        // Remove .toISOString() - Assume filter.toDate is already an ISO string
+        query = query.lte('created_at', filter.toDate);
+    }
+    if (filter.minAmount !== undefined) {
+        query = query.gte('amount', filter.minAmount);
+    }
+    if (filter.maxAmount !== undefined) {
+        query = query.lte('amount', filter.maxAmount);
+    }
+    if (filter.search) {
+         // Example: searching description, adjust column/method as needed
+         query = query.ilike('description', `%${filter.search}%`); 
+    }
+
+    // ... (Pagination logic remains the same) ...
+    // Pagination
+    const limit = filter.limit ?? 50; // Default limit
+    query = query.limit(limit);
+    if (filter.offset && filter.offset > 0) {
+       // Supabase range is inclusive [from, to]
+       query = query.range(filter.offset, filter.offset + limit - 1);
+    }
+
+    // ... (Sorting logic remains the same) ...
+    // Sorting
+    // Default sort by creation date descending. Allow overriding via filter if needed.
+    // Note: TransactionFilter type doesn't currently define sorting options.
+    query = query.order('created_at', { ascending: false });
+    
+    const { data, error } = await query;
+      
+    if (error) {
+        console.error("Error fetching transactions:", error);
+        throw new Error(`Failed to fetch transactions: ${error.message}`);
+    }
+    return data || [];
+  }
+
+  /**
+   * Update the status and optionally metadata (for errors) of a transaction log.
+   */
+  async updateTransactionStatus(id: string, status: TransactionStatus | string, errorDetails?: string): Promise<VaultTransactionRow> { // Use correct Row type
+      
+      let updateObject: VaultTransactionUpdate = { // Use correct Update type
+          status: status,
+          updated_at: new Date().toISOString(),
+      };
+
+    // ... (Metadata update logic remains the same) ...
+      // Add error details to metadata if status is FAILED
+      if (status === TransactionStatus.FAILED && errorDetails) {
+          // Fetch existing metadata first to merge, avoid overwriting
+          const currentTx = await this.getTransaction(id);
+          const existingMetadata = currentTx?.metadata ? JSON.parse(JSON.stringify(currentTx.metadata)) : {}; // Deep copy or handle Json type correctly
+          
+          updateObject.metadata = { 
+              ...existingMetadata, // Preserve existing metadata
+              error: errorDetails 
+          } as Json; // Cast may be needed depending on Json type definition
+      }
+
+    const { data, error } = await this.supabase
+          .from('vault_transactions') // Use CORRECT table name
+          .update(updateObject)
+          .eq('id', id)
+      .select()
+      .single();
+      
+      if (error) {
+          console.error(`Error updating transaction status for ${id}:`, error);
+          throw new Error(`Failed to update transaction status for ${id}: ${error.message}`);
+      }
+      console.log(`Updated transaction ${id} status to ${status}.`);
+      return data;
+  }
+  
+  // #endregion
+  
+  // #region Helper/Utility Methods (Based on vault_accounts)
+
+  /**
+   * Checks if a farm has sufficient available balance for a specific asset (currency).
+   * Calculates available balance by summing (balance - locked_amount) across relevant active vault accounts.
    */
   async checkFarmBalance(
       farmId: string,
-      assetSymbol: string,
+      assetSymbol: string, // Corresponds to the 'currency' column in vault_accounts
       requiredAmount: number
   ): Promise<{ sufficient: boolean; availableAmount: number }> {
       let totalAvailableAmount = 0;
 
       try {
-          // 1. Get all vaults associated with the farm
-          const farmVaults = await this.getAccountsByFarm(farmId);
-          if (!farmVaults || farmVaults.length === 0) {
-              console.warn(`No vaults found for farm ${farmId}.`);
+          // 1. Get all active vault accounts associated with the farm
+          const farmAccounts = await this.getAccountsByFarm(Number(farmId));
+          const activeAccounts = farmAccounts.filter(acc => acc.is_active);
+
+          if (!activeAccounts || activeAccounts.length === 0) {
+              console.warn(`No active vault accounts found for farm ${farmId}.`);
               return { sufficient: false, availableAmount: 0 };
           }
 
-          // 2. Iterate through each vault and sum the balance for the specific asset
-          for (const vault of farmVaults) {
-              // Ensure the vault itself is active before checking its balance
-              if (!vault.is_active) continue;
-
-              // Fetch the balance for the specific asset in this vault
-              const balanceDetails = await this.getBalance(vault.id, assetSymbol);
-              totalAvailableAmount += balanceDetails?.amount || 0;
-              // Note: This uses the direct 'amount'. A true 'available' calculation 
-              // would need to factor in pending outgoing transactions from transaction_logs.
+          // 2. Iterate, check currency, and sum available balance
+          for (const account of activeAccounts) {
+              // Check if the account's currency matches the requested assetSymbol
+              if (account.currency === assetSymbol) {
+                  // Calculate available: balance minus locked amount
+                  const available = (account.balance ?? 0) - (account.locked_amount ?? 0);
+                  totalAvailableAmount += available > 0 ? available : 0; // Don't add if locked amount exceeds balance
+              }
           }
 
+          console.log(`Farm ${farmId} balance check for ${assetSymbol}: Required=${requiredAmount}, Available=${totalAvailableAmount}`);
           return {
               sufficient: totalAvailableAmount >= requiredAmount,
               availableAmount: totalAvailableAmount,
           };
 
       } catch (error: any) {
-          console.error(`Error checking balance for farm ${farmId}, asset ${assetSymbol}:`, error);
-          // Default to insufficient on error to be safe
+          console.error(`Error checking balance for farm ${farmId}, asset ${assetSymbol}:`, error.message);
+          // Return insufficient on error to be safe
           return { sufficient: false, availableAmount: 0 };
       }
   }
 
-  // #region Farm Balance Calculation
-
   /**
-   * Calculate the total available balance for a specific asset across all vaults in a farm.
-   * @param farmId The farm ID.
-   * @param assetSymbol The asset symbol (e.g., 'USD', 'BTC').
-   * @returns Total available amount.
+   * Calculate the total raw balance for a specific asset (currency) across all active accounts in a farm.
+   * Note: This sums the raw 'balance' field, ignoring locked amounts.
    */
-  async calculateFarmTotalAvailable(farmId: string, assetSymbol: string): Promise<number> {
-      let totalAvailableAmount = 0;
+  async calculateFarmTotalBalance(farmId: string, assetSymbol: string): Promise<number> {
+      let totalBalance = 0;
+      try {
+          // 1. Get all active vault accounts associated with the farm
+          const farmAccounts = await this.getAccountsByFarm(Number(farmId));
+          const activeAccounts = farmAccounts.filter(acc => acc.is_active);
 
-      // 1. Get all vaults associated with the farm
-      const farmVaults = await this.getVaultsByFarm(farmId);
-
-      // 2. For each vault, find the balance for the specific asset
-      for (const vault of farmVaults) {
-          // Get all balances for this vault
-          const vaultBalances = await this.getBalances(vault.id);
-          // Find the balance matching the requested asset symbol
-          const targetBalance = vaultBalances.find(b => b.asset_symbol === assetSymbol);
-          // Add the amount if found
-          totalAvailableAmount += targetBalance?.amount || 0;
+          // 2. For each active account, add its balance if the currency matches
+          for (const account of activeAccounts) {
+              if (account.currency === assetSymbol) {
+                  totalBalance += account.balance ?? 0;
+              }
+          }
+          console.log(`Farm ${farmId} total balance calculated for ${assetSymbol}: ${totalBalance}`);
+          return totalBalance;
+      } catch (error: any) {
+          console.error(`Error calculating total balance for farm ${farmId}, asset ${assetSymbol}:`, error.message);
+          return 0; // Return 0 on error
       }
-
-      // NOTE: This uses the simple 'amount' from vault_balances.
-      // A more complex calculation might involve checking related pending transactions 
-      // from transaction_logs if 'available' vs 'total' is needed.
-      return totalAvailableAmount;
   }
 
   // #endregion
+
+  // --- DEPRECATED / REMOVED METHODS (Referencing old/missing tables/functions) ---
+  
+  // Method getBalances using non-existent vault_balances
+  /* 
+  async getBalances(vaultId: string): Promise<VaultBalanceRow[]> {
+      const { data, error } = await this.supabase
+          .from('vault_balances') // ERROR: vault_balances does not exist
+          .select()
+          .eq('vault_id', vaultId); 
+
+      if (error) throw new Error(`Failed to fetch balances for vault ${vaultId}: ${error.message}`);
+      return data || [];
+  }
+  */
+
+  // Method upsertBalance using non-existent vault_balances
+  /*
+  async upsertBalance(balance: VaultBalanceInsert): Promise<VaultBalanceRow> {
+      const { data, error } = await this.supabase
+          .from('vault_balances') // ERROR: vault_balances does not exist
+          .upsert(balance)
+          .select()
+          .single();
+
+      if (error) throw new Error(`Failed to upsert balance: ${error.message}`);
+      return data;
+  }
+  */
+
+  // Method createTransactionLog using non-existent transaction_logs
+  /*
+  async createTransactionLog(log: TransactionLogInsert): Promise<TransactionLogRow> {
+      const { data, error } = await this.supabase
+          .from('transaction_logs') // ERROR: transaction_logs does not exist
+          .insert(log)
+          .select()
+          .single();
+
+      if (error) throw new Error(`Failed to create transaction log: ${error.message}`);
+      return data;
+  }
+  */
+
+  // Method getTransactionLog using non-existent transaction_logs
+  /*
+  async getTransactionLog(id: string): Promise<TransactionLogRow | null> {
+    const { data, error } = await this.supabase
+      .from('transaction_logs') // ERROR: transaction_logs does not exist
+      .select()
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) throw new Error(`Failed to fetch transaction log ${id}: ${error.message}`);
+    return data;
+  }
+  */
+
+  // -------------------------------------------------------------------------------
 }
 
-// Export singleton instance
-export const unifiedBankingService = new UnifiedBankingService(); 
+// Export a singleton instance (consider dependency injection for better testability)
+export const unifiedBankingService = UnifiedBankingService.getInstance(false); // Default to client-side instance? Or make context-aware? 

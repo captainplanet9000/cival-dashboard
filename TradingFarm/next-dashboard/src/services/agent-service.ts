@@ -4,8 +4,11 @@
  */
 import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
-import { Database } from '@/types/database.types';
-import { Json } from '@/types/database.types';
+// import { Database } from '@/types/database.types'; // Removed problematic import
+// import { Json } from '@/types/database.types'; // Removed problematic import
+
+// Define Json type locally if needed, or import from a valid source
+export type Json = | string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 // Define a type for the configuration data to improve type safety
 export interface AgentConfiguration {
@@ -46,32 +49,32 @@ export interface Agent {
   id: string;
   name: string;
   description?: string | null;
-  farm_id: string | null;
+  farm_id: number | null;
   type: string;
   strategy_type?: string;
   status: string;
   risk_level?: string;
   target_markets?: string[];
-  config?: Json; // Actual database field
-  configuration?: AgentConfiguration; // Processed configuration for UI
+  config?: Json;
+  configuration?: AgentConfiguration;
   instructions?: string | null;
   permissions?: Json;
   performance?: Json;
   user_id?: string | null;
-  is_active?: boolean; // Calculated property based on status
+  is_active?: boolean;
   performance_metrics?: {
     win_rate?: number;
     profit_loss?: number;
     total_trades?: number;
     average_trade_duration?: number;
   };
-  tools_config?: Json; // ElizaOS tool configuration
-  trading_permissions?: Json; // Trading permissions for exchanges/DeFi
-  llm_config_id?: string; // Reference to LLM configuration
+  tools_config?: Json;
+  trading_permissions?: Json;
+  llm_config_id?: string;
   created_at: string;
   updated_at: string;
-  farms?: {  // Join with farms table (optional)
-    id: string;
+  farms?: {
+    id: string | number;
     name: string;
   };
 }
@@ -83,7 +86,7 @@ export interface ExtendedAgent extends Agent {
 export interface AgentCreationRequest {
   name: string;
   description?: string;
-  farm_id: string;
+  farm_id: number;
   type?: string;
   strategy_type?: string;
   risk_level?: string;
@@ -158,11 +161,13 @@ export const agentService = {
               const configObj = safeGetConfig(agent.config);
               const performanceObj = safeGetConfig(agent.performance);
               
+              // Ensure farm_id is treated as number
+              const numericFarmId = agent.farm_id ? Number(agent.farm_id) : null;
+
               return {
                 ...agent,
-                // Map config to configuration for UI consistency
+                farm_id: numericFarmId,
                 configuration: configObj,
-                // Extract properties from configuration if not already present
                 description: agent.description || configObj.description,
                 strategy_type: agent.strategy_type || configObj.strategy_type,
                 risk_level: agent.risk_level || configObj.risk_level,
@@ -173,7 +178,7 @@ export const agentService = {
                   total_trades: performanceObj.total_trades || 0,
                   average_trade_duration: performanceObj.average_trade_duration || 0
                 },
-                farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+                farm_name: agent.farms?.name || (numericFarmId ? `Farm ${numericFarmId}` : 'No Farm'),
                 is_active: agent.status === 'active'
               };
             });
@@ -202,34 +207,40 @@ export const agentService = {
         const { data, error } = await supabase
           .from('agents')
           .select('*, farms(id, name)')
-          .returns<Agent[]>();
-        
+          // .returns<Agent[]>(); // Removed explicit type argument
+          
         if (error) {
           console.error('Supabase error, checking localStorage cache:', error);
-          return this.getAgentsFromCache();
+          // Fall back to cache logic...
+          const cacheResult = await this.getAgentsFromCache();
+          // Check if cacheResult.data is defined before accessing length
+          if (cacheResult.data && cacheResult.data.length > 0) { 
+            return cacheResult;
+          }
+          // If cache also fails or is empty, return error
+          return { error: `Supabase Error: ${error.message}` };
         }
         
         if (!data || data.length === 0) {
-          // Check if we have anything in cache
           const cacheResult = await this.getAgentsFromCache();
-          if (cacheResult.data && cacheResult.data.length > 0) {
+          // Check if cacheResult.data is defined before accessing length
+          if (cacheResult.data && cacheResult.data.length > 0) { 
             return cacheResult;
           }
-          
           return { data: [] };
         }
         
-        // Transform the data to include farm details and properly cast configuration
-        const extendedAgents: ExtendedAgent[] = data.map(agent => {
-          // Safely extract configuration properties
+        // Transform the data
+        // Add explicit type for 'agent' parameter
+        const extendedAgents: ExtendedAgent[] = data.map((agent: any) => { 
           const configObj = safeGetConfig(agent.config);
           const performanceObj = safeGetConfig(agent.performance);
-          
+          const numericFarmId = agent.farm_id ? Number(agent.farm_id) : null;
+
           return {
             ...agent,
-            // Map config to configuration for UI consistency
+            farm_id: numericFarmId,
             configuration: configObj as AgentConfiguration,
-            // Extract properties from configuration if not already present
             description: agent.description || configObj.description as string | undefined,
             strategy_type: configObj.strategy_type as string | undefined,
             risk_level: configObj.risk_level as string | undefined,
@@ -240,9 +251,9 @@ export const agentService = {
               total_trades: performanceObj.total_trades || 0,
               average_trade_duration: performanceObj.average_trade_duration || 0
             },
-            farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+            farm_name: agent.farms?.name || (numericFarmId ? `Farm ${numericFarmId}` : 'No Farm'), 
             is_active: agent.status === 'active'
-          };
+          } as ExtendedAgent; // Add type assertion if needed
         });
         
         // Cache in localStorage
@@ -255,8 +266,8 @@ export const agentService = {
         
         return { data: extendedAgents };
       } catch (supabaseError) {
-        console.error('Error in Supabase query, returning from cache:', supabaseError);
-        return this.getAgentsFromCache();
+        console.error('Error fetching agents from Supabase:', supabaseError);
+         return { error: supabaseError instanceof Error ? supabaseError.message : 'Unknown Supabase error' };
       }
     } catch (error) {
       console.error('Unexpected error in getAgents, attempting to use cache:', error);
@@ -344,7 +355,7 @@ export const agentService = {
         name: 'BTC Trend Follower',
         description: 'A trend following agent for Bitcoin',
         type: 'trading',
-        farm_id: 'mock-farm-1',
+        farm_id: 1,
         farm_name: 'Bitcoin Farm',
         status: 'active',
         is_active: true,
@@ -371,7 +382,7 @@ export const agentService = {
         name: 'ETH Swing Trader',
         description: 'A swing trading agent for Ethereum',
         type: 'trading',
-        farm_id: 'mock-farm-1',
+        farm_id: 1,
         farm_name: 'Bitcoin Farm',
         status: 'active',
         is_active: true,
@@ -398,7 +409,7 @@ export const agentService = {
         name: 'Crypto Index',
         description: 'A portfolio index agent for top cryptocurrencies',
         type: 'portfolio',
-        farm_id: 'mock-farm-2',
+        farm_id: 2,
         farm_name: 'Crypto Index Farm',
         status: 'paused',
         is_active: false,
@@ -446,7 +457,7 @@ export const agentService = {
           name: `Agent ${id.substring(0, 5)}`,
           description: 'A mock agent created for development',
           type: 'trading',
-          farm_id: 'mock-farm-1',
+          farm_id: 1,
           farm_name: 'Development Farm',
           status: 'active',
           is_active: true,
@@ -499,9 +510,7 @@ export const agentService = {
       
       const extendedAgent: ExtendedAgent = {
         ...data,
-        // Map config to configuration for UI consistency
         configuration: configObj as AgentConfiguration,
-        // Extract properties from configuration
         description: data.description || configObj.description as string | undefined,
         strategy_type: configObj.strategy_type as string | undefined,
         risk_level: configObj.risk_level as string | undefined,
@@ -512,7 +521,7 @@ export const agentService = {
           total_trades: performanceObj.total_trades || 0,
           average_trade_duration: performanceObj.average_trade_duration || 0
         },
-        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        farm_name: data.farms?.name || 'No Farm',
         is_active: data.status === 'active'
       };
       
@@ -591,7 +600,7 @@ export const agentService = {
           return { 
             data: {
               ...agent,
-              farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+              farm_name: agent.farms?.name || 'No Farm',
               configuration: config,
               is_active: agent.status === 'active'
             } 
@@ -645,7 +654,7 @@ export const agentService = {
       // Process the result to match expected format
       const agent: ExtendedAgent = {
         ...data,
-        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        farm_name: data.farms?.name || 'No Farm',
         configuration: config,
         is_active: data.status === 'active'
       };
@@ -700,7 +709,7 @@ export const agentService = {
       user_id: 'mock-user',
       created_at: now,
       updated_at: now,
-      farm_name: `Farm ${agentData.farm_id}`
+      farm_name: 'No Farm'
     };
     
     // Store in localStorage
@@ -749,7 +758,7 @@ export const agentService = {
       user_id: userId,
       created_at: now,
       updated_at: now,
-      farm_name: `Farm ${agentData.farm_id}`
+      farm_name: 'No Farm'
     };
     
     // Store in localStorage
@@ -796,7 +805,7 @@ export const agentService = {
       
       const updatedAgent: ExtendedAgent = {
         ...data,
-        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        farm_name: data.farms?.name || 'No Farm',
         is_active: data.status === 'active'
       };
       
@@ -906,7 +915,7 @@ export const agentService = {
       
       const updatedAgent: ExtendedAgent = {
         ...data,
-        farm_name: data.farms?.name || `Farm ${data.farm_id}`,
+        farm_name: data.farms?.name || 'No Farm',
         is_active: data.status === 'active'
       };
       
@@ -1014,20 +1023,9 @@ export const agentService = {
    */
   async createAgentFromTemplate(
     templateId: string,
-    agentData: {
-      name: string;
-      description?: string;
-      farm_id: string;
-      overrides?: {
-        strategy_type?: string;
-        risk_level?: string;
-        target_markets?: string[];
-        config?: Record<string, any>;
-        instructions?: string;
-        tools_config?: Record<string, any>;
-        trading_permissions?: Record<string, any>
-      }
-    }
+    farmId: number,
+    name: string,
+    configOverrides?: Partial<AgentConfiguration>
   ): Promise<ApiResponse<ExtendedAgent>> {
     try {
       // Use API route instead of direct Supabase query
@@ -1037,11 +1035,10 @@ export const agentService = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: agentData.name,
-          description: agentData.description,
-          farm_id: agentData.farm_id,
+          name,
+          farm_id: farmId,
           template_id: templateId,
-          overrides: agentData.overrides || {}
+          overrides: configOverrides || {}
         }),
         cache: 'no-store',
       });
@@ -1059,7 +1056,7 @@ export const agentService = {
       // Process the agent data to ensure proper formatting
       const agent: ExtendedAgent = {
         ...result.agent,
-        farm_name: result.agent.farm_name || `Farm ${result.agent.farm_id}`,
+        farm_name: result.agent.farms?.name || `Farm ${farmId}`,
         is_active: result.agent.status === 'active',
         // Extract configuration properties
         configuration: result.agent.config || {},
@@ -1296,8 +1293,7 @@ export const agentService = {
    * Broadcast a message to all agents in a farm
    */
   async broadcastToFarm(
-    senderId: string,
-    farmId: string,
+    farmId: number,
     content: string,
     messageType: string = 'broadcast',
     priority: string = 'medium',
@@ -1310,7 +1306,6 @@ export const agentService = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          sender_id: senderId,
           farm_id: farmId,
           content,
           message_type: messageType,
@@ -1405,8 +1400,8 @@ export const agentService = {
    */
   async cloneAgent(
     agentId: string, 
-    newName: string,
-    farmId?: string
+    targetFarmId: number,
+    newName?: string
   ): Promise<ApiResponse<ExtendedAgent>> {
     try {
       // Get the original agent details
@@ -1425,9 +1420,9 @@ export const agentService = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          name: newName,
+          name: newName || originalAgent.name,
           description: `Clone of ${originalAgent.name}`,
-          farm_id: farmId || originalAgent.farm_id,
+          farm_id: targetFarmId,
           type: originalAgent.type,
           strategy_type: originalAgent.strategy_type,
           risk_level: originalAgent.risk_level,
@@ -1494,7 +1489,7 @@ export const agentService = {
       // Format the response
       const formattedAgent: ExtendedAgent = {
         ...newAgent,
-        farm_name: newAgent.farm_name || `Farm ${newAgent.farm_id}`,
+        farm_name: newAgent.farms?.name || `Farm ${targetFarmId}`,
         is_active: false,
         // Extract configuration properties
         configuration: newAgent.config || {},
@@ -1513,5 +1508,60 @@ export const agentService = {
       console.error('Error cloning agent:', error);
       return { error: 'An unexpected error occurred' };
     }
-  }
+  },
+
+  /**
+   * Get agent tool configuration
+   * Add type for 'tool' parameter
+   */
+  getToolConfig(agent: Agent, toolName: string): any | null {
+    const toolsConfig = safeGetConfig(agent.tools_config);
+    if (toolsConfig && toolsConfig.tools && Array.isArray(toolsConfig.tools)) {
+      // Add explicit type for 'tool' parameter
+      const tool = toolsConfig.tools.find((tool: any) => tool.name === toolName);
+      return tool ? tool.config : null;
+    }
+    return null;
+  },
+
+  /**
+   * Get agents for server components
+   */
+  async getAgentsServer(): Promise<ApiResponse<ExtendedAgent[]>> {
+     const supabase = createServerClient();
+     try {
+        const { data, error } = await supabase
+          .from('agents')
+          .select('*, farms(id, name)')
+          // .returns<Agent[]>(); // Removed explicit type argument
+          
+       if (error) { throw error; }
+       if (!data) { return { data: [] }; }
+
+       // Add explicit type for 'agent' parameter
+       const extendedAgents: ExtendedAgent[] = data.map((agent: any) => {
+           const configObj = safeGetConfig(agent.config);
+           const performanceObj = safeGetConfig(agent.performance);
+           const numericFarmId = agent.farm_id ? Number(agent.farm_id) : null;
+
+           return {
+             ...agent,
+             farm_id: numericFarmId,
+             configuration: configObj as AgentConfiguration,
+             description: agent.description || configObj.description as string | undefined,
+             strategy_type: configObj.strategy_type as string | undefined,
+             risk_level: configObj.risk_level as string | undefined,
+             target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : undefined,
+             performance_metrics: { /* ... */ },
+             farm_name: agent.farms?.name || (numericFarmId ? `Farm ${numericFarmId}` : 'No Farm'),
+             is_active: agent.status === 'active'
+           } as ExtendedAgent; // Add type assertion if needed
+       });
+       return { data: extendedAgents };
+
+     } catch (error) {
+        console.error('Error fetching agents on server:', error);
+        return { error: error instanceof Error ? error.message : 'Unknown server error' };
+     }
+  },
 };

@@ -11,7 +11,7 @@ import { toast } from '@/components/ui/use-toast';
 
 // Define TypeScript interfaces based on your database schema
 interface Farm {
-  id: string;
+  id: number;
   name: string;
   description: string;
   status: string;
@@ -22,9 +22,9 @@ interface Farm {
 }
 
 interface Agent {
-  id: string;
+  id: number;
   name: string;
-  farm_id?: string;
+  farm_id?: number;
   status: string;
   type: string;
   model?: string;
@@ -53,7 +53,7 @@ export default function FarmAgentManager() {
   
   const [newAgent, setNewAgent] = useState({
     name: '',
-    farm_id: '',
+    farm_id: null as number | null,
     status: 'idle',
     type: 'trading',
     model: 'gpt-4',
@@ -87,12 +87,12 @@ export default function FarmAgentManager() {
   };
 
   // Fetch agents
-  const fetchAgents = async (farmId?: string) => {
+  const fetchAgents = async (farmId?: number) => {
     setLoading(prev => ({ ...prev, agents: true }));
     try {
       let query = supabase.from('agents').select('*');
       
-      if (farmId) {
+      if (farmId !== undefined && farmId !== null) {
         query = query.eq('farm_id', farmId);
       }
       
@@ -166,7 +166,7 @@ export default function FarmAgentManager() {
 
   // Create a new agent
   const createAgent = async () => {
-    if (!newAgent.name || !newAgent.farm_id) {
+    if (!newAgent.name || newAgent.farm_id === null) {
       toast({
         title: 'Validation Error',
         description: 'Agent name and farm are required',
@@ -201,7 +201,7 @@ export default function FarmAgentManager() {
       // Reset form and refresh agents
       setNewAgent({
         name: '',
-        farm_id: newAgent.farm_id, // Keep the current farm selected
+        farm_id: null,
         status: 'idle',
         type: 'trading',
         model: 'gpt-4',
@@ -220,7 +220,7 @@ export default function FarmAgentManager() {
   };
 
   // Update farm status
-  const updateFarmStatus = async (id: string, status: string) => {
+  const updateFarmStatus = async (id: number, status: string) => {
     setLoading(prev => ({ ...prev, operations: true }));
     try {
       const { error } = await supabase
@@ -250,7 +250,7 @@ export default function FarmAgentManager() {
   };
 
   // Update agent status
-  const updateAgentStatus = async (id: string, status: string) => {
+  const updateAgentStatus = async (id: number, status: string) => {
     setLoading(prev => ({ ...prev, operations: true }));
     try {
       const { error } = await supabase
@@ -280,7 +280,7 @@ export default function FarmAgentManager() {
   };
 
   // Delete a farm (with confirmation)
-  const deleteFarm = async (id: string) => {
+  const deleteFarm = async (id: number) => {
     if (!confirm('Are you sure you want to delete this farm? This will also delete all associated agents.')) {
       return;
     }
@@ -329,7 +329,7 @@ export default function FarmAgentManager() {
   };
 
   // Delete an agent (with confirmation)
-  const deleteAgent = async (id: string) => {
+  const deleteAgent = async (id: number) => {
     if (!confirm('Are you sure you want to delete this agent?')) {
       return;
     }
@@ -575,15 +575,25 @@ export default function FarmAgentManager() {
                 <div className="space-y-2">
                   <Label htmlFor="agent-farm">Farm</Label>
                   <Select 
-                    value={newAgent.farm_id}
-                    onValueChange={(value) => setNewAgent(prev => ({ ...prev, farm_id: value }))}
+                    onValueChange={(value) => {
+                      const farmId = value ? parseInt(value, 10) : null;
+                      setNewAgent(prev => ({ ...prev, farm_id: farmId }));
+                      setSelectedFarm(farms.find(f => f.id === farmId) || null);
+                      if (farmId !== null) fetchAgents(farmId);
+                    }}
+                    value={newAgent.farm_id?.toString() ?? ''}
                   >
-                    <SelectTrigger id="agent-farm">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select farm" />
                     </SelectTrigger>
                     <SelectContent>
                       {farms.map(farm => (
-                        <SelectItem key={farm.id} value={farm.id}>{farm.name}</SelectItem>
+                        <SelectItem 
+                          key={farm.id} 
+                          value={farm.id.toString()}
+                        >
+                          {farm.name} (ID: {farm.id})
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
