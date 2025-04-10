@@ -33,7 +33,8 @@ import { VaultAccount, Transaction, TransactionApproval, createUnifiedBankingSer
 import { useToast } from '@/components/ui/use-toast';
 import { createBrowserClient } from '@/utils/supabase/client';
 import ElizaChatInterface from '@/components/eliza/eliza-chat-interface';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency } from '@/utils/currency-utils';
+import { formatDate } from '@/utils/date-utils';
 
 export default function VaultTransactionsPage() {
   const [accounts, setAccounts] = useState<VaultAccount[]>([]);

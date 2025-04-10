@@ -189,3 +189,52 @@ export const mockOpenRouterModels: ModelDetails[] = [
 export function getOpenRouterModels() {
   return mockOpenRouterModels;
 }
+
+/**
+ * Mock API handler functions for Supabase routes
+ */
+export const mockApiHandlers = {
+  // Handler for API services
+  handleApiServices: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: mockApiServiceProviders
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handler for API service configurations
+  handleApiServiceConfigs: async (req: Request): Promise<Response> => {
+    // Check if request contains user_id parameter
+    const url = new URL(req.url);
+    const userId = url.searchParams.get('user_id');
+    
+    if (userId) {
+      const userConfigs = getUserApiConfigurations(userId);
+      return new Response(
+        JSON.stringify({
+          data: userConfigs
+        }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // Return all configurations if no user_id specified
+    return new Response(
+      JSON.stringify({
+        data: mockUserApiConfigurations
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};

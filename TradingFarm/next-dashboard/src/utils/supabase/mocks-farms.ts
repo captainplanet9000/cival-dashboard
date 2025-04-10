@@ -1,4 +1,4 @@
-import { mockApi } from './mocks-api';
+import { mockApi } from './mocks-supabase';
 import { v4 as uuidv4 } from 'uuid';
 
 // Mock farm data

@@ -28,7 +28,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Eye, ArrowUpDown, Plus, RefreshCcw, ArrowLeftRight } from 'lucide-react';
 import { Transaction, createUnifiedBankingService } from '@/services/unified-banking-service';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency } from '@/utils/currency-utils';
+import { formatDate } from '@/utils/date-utils';
 
 interface TransactionListProps {
   filter?: {

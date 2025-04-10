@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { 
   Send, 
   Zap, 
@@ -30,7 +30,27 @@ interface QuickCommand {
   icon: React.ReactNode
 }
 
-export default function ElizaChatInterface() {
+interface ElizaChatInterfaceProps {
+  initialContext?: {
+    module?: string;
+    userId?: string;
+    farmId?: string;
+    view?: string;
+    accountCount?: number;
+    balance?: number;
+    [key: string]: any;
+  };
+  showTitle?: boolean;
+  title?: string;
+  height?: string;
+}
+
+export default function ElizaChatInterface({
+  initialContext = {},
+  showTitle = true,
+  title = "ElizaOS AI",
+  height = "400px"
+}: ElizaChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 'welcome',
@@ -100,7 +120,7 @@ export default function ElizaChatInterface() {
       timestamp: new Date()
     }
 
-    setMessages(prev => [...prev, userMessage])
+    setMessages((prev: Message[]) => [...prev, userMessage])
     setInputValue('')
     setIsProcessing(true)
 
@@ -228,7 +248,7 @@ export default function ElizaChatInterface() {
       }
     }
 
-    setMessages(prev => [...prev, response])
+    setMessages((prev: Message[]) => [...prev, response])
     setIsProcessing(false)
   }
 
@@ -238,18 +258,16 @@ export default function ElizaChatInterface() {
 
   return (
     <div 
-      className={`dashboard-card ${
-        isExpanded 
-          ? 'fixed inset-6 z-50 flex flex-col' 
-          : 'h-[400px] flex flex-col'
-      }`}
+      className={`dashboard-card ${isExpanded ? 'fixed inset-6 z-50 flex flex-col' : `h-[${height}] flex flex-col`}`}
       ref={chatContainerRef}
     >
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold flex items-center">
-          <Zap className="mr-2 h-5 w-5 text-accent" />
-          ElizaOS AI
-        </h2>
+        {showTitle && (
+          <h2 className="text-xl font-bold flex items-center">
+            <Zap className="mr-2 h-5 w-5 text-accent" />
+            {title}
+          </h2>
+        )}
         <button 
           onClick={toggleExpanded}
           className="p-2 rounded-md hover:bg-muted"
@@ -260,7 +278,7 @@ export default function ElizaChatInterface() {
       
       <div className="chat-container flex-1">
         <div className="chat-messages">
-          {messages.map((message) => (
+          {messages.map((message: Message) => (
             <div 
               key={message.id} 
               className={`mb-4 ${

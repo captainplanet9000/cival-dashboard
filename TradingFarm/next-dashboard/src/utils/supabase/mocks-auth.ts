@@ -29,6 +29,47 @@ export const mockSession = {
   user: mockUsers[0]
 };
 
+// Mock auth handlers for Supabase routes
+export const mockAuthHandlers = {
+  // Create token handler for /auth/v1/token route
+  createToken: async (req: Request): Promise<Response> => {
+    // Parse the request body if it exists
+    let body = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      // Ignore parsing errors
+    }
+
+    // Simulate successful token creation
+    return new Response(
+      JSON.stringify({
+        access_token: mockSession.access_token,
+        refresh_token: mockSession.refresh_token,
+        expires_in: 3600,
+        expires_at: Math.floor(mockSession.expires_at / 1000),
+        token_type: 'bearer',
+        user: mockUsers[0]
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+
+  // Get user handler for /auth/v1/user route
+  getUser: async (): Promise<Response> => {
+    return new Response(
+      JSON.stringify(mockUsers[0]),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};
+
 // Get current user
 export function getCurrentUser() {
   return mockUsers[0];

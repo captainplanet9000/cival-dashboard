@@ -22,7 +22,9 @@ import {
   Calendar,
   Target,
   ArrowRight,
-  ListChecks
+  ListChecks,
+  TrendingUp,
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import { Farm, FarmStatusSummary } from '@/services/farm-service';
@@ -30,6 +32,12 @@ import { AgentCollaborationManager } from '@/components/agents/agent-collaborati
 import { FarmPerformanceCard } from '@/components/farms/farm-performance-card';
 import { FarmAgentsTable } from '@/components/farms/farm-agents-table';
 import { FarmGoalsSection } from '@/components/farms/farm-goals-section';
+import { FarmPerformanceChart } from '@/components/charts/farm-performance-chart';
+import { FarmPerformancePreview } from '@/components/farms/farm-performance-preview';
+import { AssetAllocationChart } from '@/components/charts/asset-allocation-chart';
+import { GoalProgressChart } from '@/components/charts/goal-progress-chart';
+import { GoalProgressPreview } from '@/components/goals/goal-progress-preview';
+import { format, subDays } from 'date-fns';
 
 interface FarmDashboardProps {
   farm: Farm;
@@ -41,6 +49,7 @@ interface FarmDashboardProps {
 
 export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = [], goals = [] }: FarmDashboardProps) {
   const [activeTab, setActiveTab] = useState('overview');
+  const [isLoading, setIsLoading] = useState(false);
   const allAgents = [...(agents || []), ...(elizaAgents || [])];
   
   // Format status summary counts
@@ -56,6 +65,53 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
     active: statusSummary?.agents_active || 0,
     standard: agents?.length || 0,
     eliza: elizaAgents?.length || 0
+  };
+
+  // Generate sample performance data for demo
+  const generatePerformanceData = () => {
+    const dates = [];
+    const values = [];
+    const today = new Date();
+    let value = 10000;
+    
+    for (let i = 30; i >= 0; i--) {
+      const date = subDays(today, i);
+      dates.push(format(date, 'yyyy-MM-dd'));
+      
+      // Generate somewhat realistic price movement
+      const changePercent = (Math.random() * 3 - 1) / 100; // -1% to 2% daily change
+      value = value * (1 + changePercent);
+      values.push(value);
+    }
+    
+    return { dates, values };
+  };
+  
+  // Sample asset allocation
+  const assetAllocation = [
+    { name: 'Bitcoin (BTC)', value: 4500 },
+    { name: 'Ethereum (ETH)', value: 3200 },
+    { name: 'USD Stablecoins', value: 2800 },
+    { name: 'Solana (SOL)', value: 1200 },
+    { name: 'Other Tokens', value: 1300 },
+  ];
+  
+  // Farm metrics for display
+  const farmMetrics = {
+    roi: 0.078, // 7.8%
+    winRate: 0.65, // 65%
+    totalTrades: 145,
+    profitTrades: 94,
+    lossTrades: 51,
+    performance_data: farm.performance_data || generatePerformanceData(),
+  };
+  
+  const handleRefresh = () => {
+    setIsLoading(true);
+    // Simulate refresh
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
   };
 
   return (

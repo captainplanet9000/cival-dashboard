@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { 
@@ -32,7 +32,7 @@ import { VaultAccount, Transaction, createUnifiedBankingService } from '@/servic
 import { useToast } from '@/components/ui/use-toast';
 import { createBrowserClient } from '@/utils/supabase/client';
 import ElizaChatInterface from '@/components/eliza/eliza-chat-interface';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/utils/currency-utils';
 
 export default function VaultDashboardPage() {
   const [accounts, setAccounts] = useState<VaultAccount[]>([]);
@@ -106,9 +106,9 @@ export default function VaultDashboardPage() {
   }, []);
   
   // Get account type counts
-  const getMasterAccountCount = () => accounts.filter(a => a.account_type === 'master').length;
-  const getFarmAccountCount = () => accounts.filter(a => a.account_type === 'farm').length;
-  const getAgentAccountCount = () => accounts.filter(a => a.account_type === 'agent').length;
+  const getMasterAccountCount = () => accounts.filter((a: VaultAccount) => a.account_type === 'master').length;
+  const getFarmAccountCount = () => accounts.filter((a: VaultAccount) => a.account_type === 'farm').length;
+  const getAgentAccountCount = () => accounts.filter((a: VaultAccount) => a.account_type === 'agent').length;
   
   return (
     <div className="space-y-6">

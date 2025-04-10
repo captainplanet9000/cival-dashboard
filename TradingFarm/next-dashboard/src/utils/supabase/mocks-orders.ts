@@ -421,3 +421,34 @@ export function getPendingOrdersByFarmId(farmId: string) {
 export function getOrderById(orderId: string) {
   return mockOrders.find(order => order.id === orderId);
 }
+
+/**
+ * Mock order handler functions for Supabase routes
+ */
+export const mockOrderHandlers = {
+  // Handle orders endpoint
+  handleOrders: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: mockOrders
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handle trades endpoint
+  handleTrades: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: mockTradeHistory
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};

@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Eye, ArrowUpDown, Plus, RefreshCcw } from 'lucide-react';
 import { VaultAccount, createUnifiedBankingService } from '@/services/unified-banking-service';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/utils/currency-utils';
 
 interface AccountsListProps {
   filter?: {

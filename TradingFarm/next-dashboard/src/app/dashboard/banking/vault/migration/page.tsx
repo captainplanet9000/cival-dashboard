@@ -40,7 +40,7 @@ import {
   MigrationReport, 
   createWalletMigrationService 
 } from '@/utils/migration/wallet-migration';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency } from '@/utils/currency-utils';
 
 export default function VaultMigrationPage() {
   const [legacyWallets, setLegacyWallets] = useState<LegacyWallet[]>([]);

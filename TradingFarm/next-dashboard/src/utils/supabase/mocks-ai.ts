@@ -451,3 +451,124 @@ export function predictPriceMovement(marketId: string, timeframe: string) {
     timestamp: new Date().toISOString()
   };
 }
+
+// Mock AI model data
+const mockAIModels = [
+  {
+    id: 'gpt-4-turbo',
+    provider: 'openai',
+    description: 'GPT-4 Turbo with vision capabilities',
+    context_length: 128000,
+    cost_per_token: 0.00001,
+    capabilities: ['text_generation', 'image_understanding', 'code_generation', 'reasoning'],
+    best_for: ['complex analysis', 'creative writing', 'code generation', 'multimodal tasks'],
+    data_updated: '2025-01-15'
+  },
+  {
+    id: 'claude-3-opus',
+    provider: 'anthropic',
+    description: 'Anthropic Claude 3 Opus model',
+    context_length: 200000,
+    cost_per_token: 0.000015,
+    capabilities: ['text_generation', 'image_understanding', 'reasoning', 'research'],
+    best_for: ['detailed analysis', 'complex reasoning', 'document understanding', 'multimodal tasks'],
+    data_updated: '2025-02-01'
+  },
+  {
+    id: 'gemini-pro',
+    provider: 'google',
+    description: 'Google Gemini Pro multimodal model',
+    context_length: 100000,
+    cost_per_token: 0.000008,
+    capabilities: ['text_generation', 'image_understanding', 'code_generation'],
+    best_for: ['content creation', 'educational assistance', 'data analysis', 'multimodal tasks'],
+    data_updated: '2025-02-15'
+  }
+];
+
+/**
+ * Mock AI handler functions for Supabase routes
+ */
+export const mockAIHandlers = {
+  // Handler for getting the list of available AI models
+  getModelsList: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: mockAIModels
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+
+  // Handler for AI market analysis
+  analyzeMarket: async (req: Request): Promise<Response> => {
+    const body = await req.json();
+    const { marketId, timeframe } = body;
+    
+    // Simulate analysis processing time
+    await new Promise(resolve => setTimeout(resolve, 200));
+    
+    const sentiment = analyzeMarketSentiment(marketId);
+    const prediction = predictPriceMovement(marketId, timeframe || '24h');
+    
+    return new Response(
+      JSON.stringify({
+        data: {
+          sentiment,
+          prediction,
+          timestamp: new Date().toISOString()
+        }
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handler for portfolio optimization
+  optimizePortfolio: async (req: Request): Promise<Response> => {
+    const body = await req.json();
+    const { assets, riskProfile } = body;
+    
+    // Simulate optimization processing time
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Generate mock portfolio allocation recommendation
+    const totalWeight = 100;
+    const assetWeights = {};
+    
+    if (assets && assets.length > 0) {
+      let remainingWeight = totalWeight;
+      
+      for (let i = 0; i < assets.length - 1; i++) {
+        // Allocate a portion based on risk profile (higher risk = more volatile assets)
+        const weight = Math.floor(Math.random() * (remainingWeight / 2)) + (remainingWeight / (assets.length * 2));
+        assetWeights[assets[i]] = weight;
+        remainingWeight -= weight;
+      }
+      
+      // Allocate remaining weight to the last asset
+      assetWeights[assets[assets.length - 1]] = remainingWeight;
+    }
+    
+    return new Response(
+      JSON.stringify({
+        data: {
+          allocation: assetWeights,
+          riskRating: riskProfile || 'moderate',
+          diversificationScore: Math.floor(Math.random() * 30) + 70, // 70-100 score
+          rationale: 'Portfolio optimized based on recent market performance, volatility analysis, and correlation metrics.',
+          timestamp: new Date().toISOString()
+        }
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};

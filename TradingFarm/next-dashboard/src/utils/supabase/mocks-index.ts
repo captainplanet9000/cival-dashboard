@@ -115,7 +115,7 @@ import {
 } from './mocks-api';
 
 import { mockUserHandlers } from './mocks-users';
-import { mockFarmHandlers } from './mocks-farms';
+import { mockFarmHandlers } from './mocks-farm-handlers';
 import { mockAgentHandlers } from './mocks-agents';
 import { mockOrderHandlers } from './mocks-orders';
 import { mockAuthHandlers } from './mocks-auth';
@@ -617,7 +617,14 @@ export const mockHandlers: Record<string, (req: Request) => Promise<Response>> =
   
   // Resource handlers
   '/rest/v1/users': mockUserHandlers.handleUsers,
-  '/rest/v1/farms': mockFarmHandlers.handleFarms,
+  '/rest/v1/farms': mockFarmHandlers.handleGetFarms,
+  '/rest/v1/farm': mockFarmHandlers.handleGetFarm,
+  '/rest/v1/farm/create': mockFarmHandlers.handleCreateFarm,
+  '/rest/v1/farm/update': mockFarmHandlers.handleUpdateFarm,
+  '/rest/v1/farm/delete': mockFarmHandlers.handleDeleteFarm,
+  '/rest/v1/farm/status': mockFarmHandlers.handleGetFarmStatusSummary,
+  '/rest/v1/farm/agents': mockFarmHandlers.handleGetFarmAgents,
+  '/rest/v1/farm/eliza-agents': mockFarmHandlers.handleGetFarmElizaAgents,
   '/rest/v1/agents': mockAgentHandlers.handleAgents,
   '/rest/v1/orders': mockOrderHandlers.handleOrders,
   '/rest/v1/trades': mockOrderHandlers.handleTrades,

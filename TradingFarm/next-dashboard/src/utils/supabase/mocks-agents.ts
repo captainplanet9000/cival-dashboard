@@ -678,3 +678,74 @@ export function getAgentActionsByAgentId(agentId: string) {
 export function getAgentsByType(type: string) {
   return mockAllAgents.filter(agent => agent.type === type);
 }
+
+/**
+ * Mock agent handler functions for Supabase routes
+ */
+export const mockAgentHandlers = {
+  // Handle agents endpoint
+  handleAgents: async (req: Request): Promise<Response> => {
+    // Default response with all agents
+    return new Response(
+      JSON.stringify({
+        data: mockAllAgents
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handle goals endpoint
+  handleGoals: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: []
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handle goal strategies endpoint
+  handleGoalStrategies: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: []
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handle goal transactions endpoint
+  handleGoalTransactions: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: []
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  },
+  
+  // Handle goal monitoring endpoint
+  handleGoalMonitoring: async (req: Request): Promise<Response> => {
+    return new Response(
+      JSON.stringify({
+        data: []
+      }),
+      { 
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+};
