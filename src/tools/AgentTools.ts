@@ -3,6 +3,7 @@
  * A tool is essentially a function that performs an action and returns a result.
  */
 import { AgentTool, ToolDefinition, ToolParameterDefinition } from "@/types/agentTypes";
+import { SentimentAnalysisTool } from "./SentimentAnalysisTool";
 
 /**
  * Defines the interface for managing agent tools.
@@ -250,6 +251,11 @@ export class ToolRegistry implements AgentTools {
     this.registerTool(tradingPlatformTool.definition.name, tradingPlatformTool);
     this.registerTool(dataCruncherTool.definition.name, dataCruncherTool);
     this.registerTool(notifierTool.definition.name, notifierTool);
+    
+    // Register the sentiment analysis tool
+    const sentimentAnalyzer = new SentimentAnalysisTool();
+    this.registerTool(sentimentAnalyzer.definition.name, sentimentAnalyzer);
+    
     console.log("AgentTools initialized and default tools registered.");
   }
 

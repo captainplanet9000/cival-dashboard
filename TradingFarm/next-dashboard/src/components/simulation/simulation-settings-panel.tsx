@@ -141,28 +141,64 @@ export default function SimulationSettingsPanel({
   const onSubmit = async (values: SimulationConfigFormValues) => {
     try {
       setIsLoading(true);
+      console.log('Saving simulation settings for agent:', agentId);
+      console.log('Form values:', values);
       
-      await SimulationService.saveAgentSimulationConfig({
-        agentId: values.agentId,
-        exchange: values.exchange,
-        symbols: values.symbols,
-        slippageModelId: values.slippageModelId,
-        feeModelId: values.feeModelId,
-        latencyModelId: values.latencyModelId,
-        fillModelId: values.fillModelId,
-        errorModelId: values.errorModelId,
-        initialBalances: values.initialBalances
-      });
+      // Handle demo agents or connection issues with fallback behavior
+      if (agentId.startsWith('demo')) {
+        console.log('Demo agent detected - simulating save action');
+        
+        // Simulate a delay for better UX
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        toast({
+          title: 'Demo Mode',
+          description: 'Settings would be saved (demo mode active)'
+        });
+        return;
+      }
       
-      toast({
-        title: 'Settings Saved',
-        description: 'Simulation settings have been saved successfully'
-      });
+      try {
+        await SimulationService.saveAgentSimulationConfig({
+          agentId: values.agentId,
+          exchange: values.exchange,
+          symbols: values.symbols,
+          slippageModelId: values.slippageModelId,
+          feeModelId: values.feeModelId,
+          latencyModelId: values.latencyModelId,
+          fillModelId: values.fillModelId,
+          errorModelId: values.errorModelId,
+          initialBalances: values.initialBalances
+        });
+        
+        console.log('Settings saved successfully');
+        
+        toast({
+          title: 'Settings Saved',
+          description: 'Simulation settings have been saved successfully'
+        });
+      } catch (apiError) {
+        console.error('API error when saving settings:', apiError);
+        
+        // Check if it's an authentication error
+        const errorMessage = (apiError as Error).message;
+        if (errorMessage.includes('auth') || errorMessage.includes('unauthorized') || errorMessage.includes('Unauthorized')) {
+          console.log('Authentication issue detected - fallback to demo behavior');
+          toast({
+            title: 'Authentication Required',
+            description: 'Please log in to save settings. Settings remain in local state only.',
+            variant: 'warning'
+          });
+        } else {
+          // Re-throw for main error handler
+          throw apiError;
+        }
+      }
     } catch (error) {
       console.error('Error saving simulation settings:', error);
       toast({
-        title: 'Error',
-        description: 'Failed to save simulation settings',
+        title: 'Warning: Partial Save',
+        description: 'Settings applied in UI but not saved to database. ' + (error as Error).message,
         variant: 'destructive'
       });
     } finally {
@@ -172,11 +208,18 @@ export default function SimulationSettingsPanel({
   
   // Reset balances to default
   const resetBalances = () => {
+    console.log('Reset balances button clicked');
     form.setValue('initialBalances', {
       USDT: 10000,
       BTC: 0.5,
       ETH: 5,
       SOL: 100
+    });
+    
+    // Show confirmation toast
+    toast({
+      title: 'Balances Reset',
+      description: 'Initial balances have been reset to default values'
     });
   };
   
@@ -288,7 +331,11 @@ export default function SimulationSettingsPanel({
                 <Button 
                   type="button" 
                   variant="outline" 
-                  onClick={resetBalances}
+                  onClick={(e) => {
+                    e.preventDefault(); // Prevent any form submission
+                    console.log('Reset balances button clicked');
+                    resetBalances();
+                  }}
                   disabled={isLoading}
                 >
                   Reset to Default Balances
@@ -481,7 +528,11 @@ export default function SimulationSettingsPanel({
             </Tabs>
             
             <div className="flex justify-end">
-              <Button type="submit" disabled={isLoading}>
+              <Button 
+                type="submit" 
+                disabled={isLoading}
+                onClick={() => console.log('Form submit button clicked')}
+              >
                 {isLoading ? 'Saving...' : 'Save Settings'}
               </Button>
             </div>

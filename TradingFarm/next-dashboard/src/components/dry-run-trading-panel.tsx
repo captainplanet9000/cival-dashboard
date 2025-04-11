@@ -62,13 +62,46 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
       try {
         // Get current user ID
         const supabase = createBrowserClient();
+        
+        // Check and log auth status for debugging
+        console.log('Checking auth session...');
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        console.log('Auth session:', sessionData?.session ? 'Valid' : 'None', sessionError);
+        
         const { data: { user } } = await supabase.auth.getUser();
         
         if (!user) {
+          console.log('No authenticated user found');
+          
+          // Show a fallback UI with demo agents for testing
+          setAgents([
+            {
+              id: 'demo-1',
+              name: 'Demo Bitcoin Trader',
+              exchange: 'bybit',
+              execution_mode: 'dry-run',
+              user_id: 'demo',
+              created_at: new Date().toISOString()
+            },
+            {
+              id: 'demo-2',
+              name: 'Demo Ethereum Trader',
+              exchange: 'coinbase',
+              execution_mode: 'dry-run',
+              user_id: 'demo',
+              created_at: new Date().toISOString()
+            }
+          ]);
+          
+          setSelectedAgentId('demo-1');
+          if (onAgentSelect) {
+            onAgentSelect('demo-1', 'Demo Bitcoin Trader', 'bybit');
+          }
+          
           toast({
-            title: 'Authentication Error',
-            description: 'You must be logged in to use the dry-run trading feature',
-            variant: 'destructive'
+            title: 'Demo Mode Active',
+            description: 'Using demo agents since you are not authenticated. Some features will be limited.',
+            variant: 'default'
           });
           return;
         }
@@ -76,12 +109,18 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
         setUserId(user.id);
         
         // Load agents for this user
+        console.log('Loading agents for user:', user.id);
         const { data: agentsData, error } = await supabase
           .from('agents')
           .select('*')
           .eq('user_id', user.id);
         
-        if (error) throw error;
+        if (error) {
+          console.error('Database error when loading agents:', error);
+          throw error;
+        }
+        
+        console.log('Agents loaded:', agentsData?.length || 0);
         
         if (agentsData && agentsData.length > 0) {
           setAgents(agentsData);
@@ -96,12 +135,37 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
               onAgentSelect(agent.id, agent.name, agent.exchange);
             }
           }
+        } else {
+          console.log('No agents found for user');
+          toast({
+            title: 'No Agents Found',
+            description: 'You need to create a trading agent before using dry-run mode.',
+            variant: 'default'
+          });
         }
       } catch (error) {
         console.error('Failed to load agents:', error);
+        
+        // Fallback to demo agents
+        setAgents([
+          {
+            id: 'demo-1',
+            name: 'Demo Bitcoin Trader (Fallback)',
+            exchange: 'bybit',
+            execution_mode: 'dry-run',
+            user_id: 'demo',
+            created_at: new Date().toISOString()
+          }
+        ]);
+        
+        setSelectedAgentId('demo-1');
+        if (onAgentSelect) {
+          onAgentSelect('demo-1', 'Demo Bitcoin Trader (Fallback)', 'bybit');
+        }
+        
         toast({
-          title: 'Load Error',
-          description: `Error loading agents: ${(error as Error).message}`,
+          title: 'Connection Error',
+          description: `Using demo agent due to error: ${(error as Error).message}`,
           variant: 'destructive'
         });
       }
