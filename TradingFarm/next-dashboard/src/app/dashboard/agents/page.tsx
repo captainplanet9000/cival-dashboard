@@ -1,7 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@/utils/supabase/client";
 import { 
   Bot, 
@@ -17,41 +19,104 @@ import {
   RefreshCcw,
   Laptop,
   AlertTriangle,
-  PlusCircle
+  PlusCircle,
+  Shield,
+  Zap,
+  Info,
+  Network,
+  Loader2,
+  Terminal,
+  Code,
+  MessageSquare,
+  Sparkles,
+  Brain,
+  ChevronRight
 } from "lucide-react";
 
-// Define necessary types that were previously imported from agent-service
+// Import our API service hooks
+import useElizaOS from "@/services/hooks/use-elizaos";
+import useExchange from "@/services/hooks/use-exchange";
+import useSimulation from "@/services/hooks/use-simulation";
+import useNotifications from "@/services/hooks/use-notifications";
+
+// Define types for agent integration
+interface AgentModel {
+  id: string;
+  name: string;
+  description: string;
+  provider: string;
+  capabilities: string[];
+  contextSize: number;
+  maxOutputTokens: number;
+  isAvailable: boolean;
+}
+
+interface AgentCapability {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  requiredPermissions: string[];
+}
+
+interface AgentRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: string[];
+  defaultCapabilities: string[];
+}
+
+interface KnowledgeBase {
+  id: string;
+  name: string;
+  description: string;
+  documentCount: number;
+  lastUpdated: string;
+  sizeInBytes: number;
+}
+
 interface AgentConfiguration {
   description?: string;
   strategy_type?: string;
   risk_level?: string;
   target_markets?: string[];
+  tradingPairs?: string[];
+  execution_mode?: 'live' | 'dry-run' | 'backtest';
+  modelConfig?: {
+    modelId: string;
+    temperature: number;
+    maxTokens: number;
+    systemPrompt?: string;
+  };
+  knowledgeBaseIds?: string[];
+  capabilities?: string[];
+  role?: string;
   performance_metrics?: {
     win_rate?: number;
     profit_loss?: number;
     total_trades?: number;
     average_trade_duration?: number;
   };
-  [key: string]: any; // Allow additional configuration options
+  [key: string]: any;
 }
 
 interface Agent {
-  id: number;
+  id: string;
   name: string;
   description?: string | null;
-  farm_id: number | null;
-  type: string;
+  farm_id?: string | null;
+  type: 'trading' | 'analytical' | 'research' | 'conversational';
   strategy_type?: string;
-  status: string;
-  risk_level?: string;
+  status: 'active' | 'paused' | 'initializing' | 'error' | 'inactive';
+  risk_level?: 'low' | 'medium' | 'high';
+  exchange?: string;
   target_markets?: string[];
-  config?: any; // Actual database field
-  configuration?: AgentConfiguration; // Processed configuration for UI
+  config?: any;
+  configuration?: AgentConfiguration;
   instructions?: string | null;
-  permissions?: any;
-  performance?: any;
   user_id?: string | null;
-  is_active?: boolean; // Calculated property based on status
+  is_active?: boolean;
   performance_metrics?: {
     win_rate?: number;
     profit_loss?: number;
@@ -60,14 +125,27 @@ interface Agent {
   };
   created_at: string;
   updated_at: string;
+  execution_mode: 'live' | 'dry-run' | 'backtest';
+  model_id?: string;
+  knowledge_base_ids?: string[];
+  capabilities?: string[];
+  role_id?: string;
 }
 
 interface ExtendedAgent extends Agent {
   farm_name?: string;
-  farms?: {
-    id: number;
-    name: string;
-  }
+  model?: AgentModel;
+  knowledge_bases?: KnowledgeBase[];
+  role?: AgentRole;
+  last_message?: {
+    content: string;
+    timestamp: string;
+  };
+  performance?: {
+    trades: number;
+    win_rate: number;
+    profit_loss: number;
+  };
 }
 
 // Import Shadcn components
@@ -76,18 +154,38 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { UnifiedAgentCreationDialog } from "@/components/agents/unified-agent-creation-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuLabel } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Progress } from "@/components/ui/progress";
 
-// Agent status badge component
-const AgentStatusBadge = ({ status }: { status: string }) => {
+// Import custom components
+import { AgentCreationWizard } from "@/components/agents/agent-creation-wizard";
+import { ModelSelector } from "@/components/agents/model-selector";
+import { KnowledgeBaseSelector } from "@/components/agents/knowledge-base-selector";
+import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { AgentChat } from "@/components/agents/agent-chat";
+import { AgentPerformanceChart } from "@/components/agents/agent-performance-chart";
+import { ExchangeSelector } from "@/components/exchanges/exchange-selector";
+
+// Helper components for the agents page
+
+// Agent status badge component with tooltip
+const AgentStatusBadge = ({ status, tooltipText }: { status: string, tooltipText?: string }) => {
   const getStatusColor = () => {
-    // Add null check to prevent error when status is undefined
     if (!status) return "bg-gray-100 text-gray-800 border-gray-200";
     
     switch (status.toLowerCase()) {
@@ -97,42 +195,218 @@ const AgentStatusBadge = ({ status }: { status: string }) => {
         return "bg-blue-100 text-blue-800 border-blue-200";
       case 'paused':
         return "bg-amber-100 text-amber-800 border-amber-200";
-      case 'stopped':
       case 'inactive':
         return "bg-gray-100 text-gray-800 border-gray-200";
       case 'error':
         return "bg-red-100 text-red-800 border-red-200";
+      case 'training':
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case 'backtest':
+        return "bg-indigo-100 text-indigo-800 border-indigo-200";
       default:
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
 
   const getStatusIcon = () => {
-    // Add null check to prevent error when status is undefined
     if (!status) return <Laptop className="h-3.5 w-3.5 mr-1" />;
     
     switch (status.toLowerCase()) {
       case 'active':
         return <CheckCircle className="h-3.5 w-3.5 mr-1" />;
       case 'initializing':
-        return <Clock className="h-3.5 w-3.5 mr-1" />;
+        return <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />;
       case 'paused':
         return <PauseCircle className="h-3.5 w-3.5 mr-1" />;
-      case 'stopped':
       case 'inactive':
         return <AlertCircle className="h-3.5 w-3.5 mr-1" />;
       case 'error':
         return <AlertTriangle className="h-3.5 w-3.5 mr-1" />;
+      case 'training':
+        return <Brain className="h-3.5 w-3.5 mr-1" />;
+      case 'backtest':
+        return <BarChart className="h-3.5 w-3.5 mr-1" />;
       default:
         return <Laptop className="h-3.5 w-3.5 mr-1" />;
     }
   };
 
-  return (
+  const badge = (
     <Badge variant="outline" className={`${getStatusColor()} flex items-center`}>
       {getStatusIcon()}
       {status ? status.charAt(0).toUpperCase() + status.slice(1) : "Unknown"}
     </Badge>
+  );
+
+  if (tooltipText) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {badge}
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{tooltipText}</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return badge;
+};
+
+// Agent type badge component
+const AgentTypeBadge = ({ type }: { type: string }) => {
+  const getTypeColor = () => {
+    switch (type.toLowerCase()) {
+      case 'trading':
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case 'analytical':
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case 'research':
+        return "bg-amber-100 text-amber-800 border-amber-200";
+      case 'conversational':
+        return "bg-green-100 text-green-800 border-green-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getTypeIcon = () => {
+    switch (type.toLowerCase()) {
+      case 'trading':
+        return <Zap className="h-3.5 w-3.5 mr-1" />;
+      case 'analytical':
+        return <BarChart className="h-3.5 w-3.5 mr-1" />;
+      case 'research':
+        return <Search className="h-3.5 w-3.5 mr-1" />;
+      case 'conversational':
+        return <MessageSquare className="h-3.5 w-3.5 mr-1" />;
+      default:
+        return <Bot className="h-3.5 w-3.5 mr-1" />;
+    }
+  };
+
+  return (
+    <Badge variant="outline" className={`${getTypeColor()} flex items-center`}>
+      {getTypeIcon()}
+      {type.charAt(0).toUpperCase() + type.slice(1)}
+    </Badge>
+  );
+};
+
+// Risk level badge component
+const RiskLevelBadge = ({ level }: { level?: string }) => {
+  if (!level) return null;
+  
+  const getColor = () => {
+    switch (level.toLowerCase()) {
+      case 'low':
+        return "bg-green-100 text-green-800 border-green-200";
+      case 'medium':
+        return "bg-amber-100 text-amber-800 border-amber-200";
+      case 'high':
+        return "bg-red-100 text-red-800 border-red-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  return (
+    <Badge variant="outline" className={`${getColor()} flex items-center`}>
+      <Shield className="h-3.5 w-3.5 mr-1" />
+      {level.charAt(0).toUpperCase() + level.slice(1)}
+    </Badge>
+  );
+};
+
+// Execution mode badge
+const ExecutionModeBadge = ({ mode }: { mode: string }) => {
+  const getColor = () => {
+    switch (mode.toLowerCase()) {
+      case 'live':
+        return "bg-red-100 text-red-800 border-red-200";
+      case 'dry-run':
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case 'backtest':
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getIcon = () => {
+    switch (mode.toLowerCase()) {
+      case 'live':
+        return <Zap className="h-3.5 w-3.5 mr-1" />;
+      case 'dry-run':
+        return <Laptop className="h-3.5 w-3.5 mr-1" />;
+      case 'backtest':
+        return <Clock className="h-3.5 w-3.5 mr-1" />;
+      default:
+        return <Info className="h-3.5 w-3.5 mr-1" />;
+    }
+  };
+
+  return (
+    <Badge variant="outline" className={`${getColor()} flex items-center`}>
+      {getIcon()}
+      {mode.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+    </Badge>
+  );
+};
+
+// Agent Avatar component with AI model indication
+const AgentAvatar = ({ agent }: { agent: ExtendedAgent }) => {
+  // Determine the avatar content based on agent type and model
+  const getAvatarContent = () => {
+    if (agent.model?.provider === 'openai') {
+      return <AvatarImage src="/images/providers/openai-logo.png" alt="OpenAI" />;
+    } else if (agent.model?.provider === 'anthropic') {
+      return <AvatarImage src="/images/providers/anthropic-logo.png" alt="Anthropic" />;
+    } else if (agent.model?.provider === 'google') {
+      return <AvatarImage src="/images/providers/google-logo.png" alt="Google" />;
+    }
+    
+    // Fallback based on agent type
+    const initials = agent.name.split(' ').map(n => n[0]).join('').toUpperCase();
+    let bgColor = "bg-blue-500";
+    
+    switch (agent.type.toLowerCase()) {
+      case 'trading':
+        bgColor = "bg-blue-500";
+        break;
+      case 'analytical':
+        bgColor = "bg-purple-500";
+        break;
+      case 'research':
+        bgColor = "bg-amber-500";
+        break;
+      case 'conversational':
+        bgColor = "bg-green-500";
+        break;
+    }
+    
+    return <AvatarFallback className={bgColor}>{initials}</AvatarFallback>;
+  };
+  
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Avatar className="h-16 w-16 border-2 border-primary/10">
+            {getAvatarContent()}
+          </Avatar>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{agent.model?.name || 'AI Agent'}</p>
+          {agent.model && (
+            <p className="text-xs text-muted-foreground">{agent.model.provider}</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 

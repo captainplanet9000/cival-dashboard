@@ -224,3 +224,88 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 ## Contact
 
 Project Link: [https://github.com/yourusername/trading-farm-platform](https://github.com/yourusername/trading-farm-platform)
+
+# Trading Farm Dashboard Improvements
+
+This repository contains a series of enhancements to improve the Trading Farm Dashboard's API integration, security, and performance.
+
+## Implemented Improvements
+
+### Security Enhancements
+
+- **Request Signing**: Added comprehensive API request signing for exchange interactions in `src/services/security/request-signing.ts`
+- **Content Security Policies**: Implemented secure headers and policies for external connections
+- **Rate Limiting**: Added client-side rate limiting to prevent accidental API abuse
+
+### API Integration
+
+- **Validation**: Added Zod schema validation for all API responses in `src/services/validation/api-schemas.ts`
+- **Mock Services**: Created realistic API mock services for offline development using MSW in `src/mocks/`
+- **Circuit Breaker**: Implemented the circuit breaker pattern for API resilience in `src/services/resilience/circuit-breaker.ts`
+- **API Inspector**: Created a debugging tool for inspecting API calls in `src/utils/api-inspector.ts`
+
+### Advanced Frontend Patterns
+
+- **Optimistic UI**: Implemented optimistic updates with automatic rollbacks in `src/hooks/use-optimistic-mutation.ts`
+- **Smart Caching**: Created advanced cache with TTL and invalidation strategies in `src/services/cache/api-cache.ts`
+- **Query Orchestration**: Added query hooks with dependency management in `src/hooks/use-query.ts`
+- **Retry Strategies**: Implemented exponential backoff and smart retry logic
+
+### Testing and Documentation
+
+- **Integration Tests**: Added integration tests in `src/tests/integration/api-integration.test.ts`
+- **JSDoc Comments**: Added comprehensive JSDoc comments to all interfaces and methods
+- **Component Examples**: Created example components showcasing different API states in `src/components/examples/ApiExampleCard.tsx`
+
+## Getting Started
+
+1. Install dependencies:
+   ```
+   npm install
+   ```
+
+2. Start development server:
+   ```
+   npm run dev
+   ```
+
+3. Run tests:
+   ```
+   npm test
+   ```
+
+## Working Offline
+
+The project now includes a comprehensive mock API that simulates all backend services, allowing for:
+
+- Development without a connection to the actual API
+- Testing different API responses and error scenarios
+- Faster development iterations
+
+To use the mock API, no additional configuration is needed in development mode.
+
+## API Inspector
+
+The API Inspector is a debugging tool that helps you monitor all API interactions. You can:
+
+- See all requests and responses in real-time
+- Download logs for debugging purposes
+- Toggle the inspector in the example component
+
+## Example Component
+
+Check out the `ApiExampleCard` component to see many of these features in action:
+
+- Optimistic UI updates
+- Smart caching
+- API request inspection
+- Error handling
+
+## Contributing
+
+When contributing to this project, please follow the established patterns for:
+
+- API integration
+- Error handling
+- Validation
+- Testing

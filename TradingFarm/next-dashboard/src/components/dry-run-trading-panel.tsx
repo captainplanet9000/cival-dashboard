@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+// This project may be using Next.js with a different React import approach
+import React from 'react';
+const { useState, useEffect, useCallback } = React;
 import { 
   Card, 
   CardContent, 
@@ -14,19 +16,20 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { DryRunExchangeService, OrderParams } from '@/services/exchange-service';
-import { SimulationService } from '@/services/simulation-service';
 import { useToast } from '@/components/ui/use-toast';
 import { createBrowserClient } from '@/utils/supabase/client';
 
-interface VirtualBalance {
-  asset: string;
-  free: number;
-  locked: number;
-}
+// Import new API services
+import useExchange from '@/services/hooks/use-exchange';
+import useSimulation from '@/services/hooks/use-simulation';
+import useNotifications from '@/services/hooks/use-notifications';
+import { Order } from '@/services/clients/exchange-client';
+import type { OrderParams } from '@/services/clients/exchange-client';
+import { SimulationTrade, VirtualBalance as SimVirtualBalance } from '@/services/clients/simulation-client';
+import { MonitoringService } from '@/services/monitoring-service';
 
 interface TradingAgent {
   id: string;
@@ -42,19 +45,86 @@ interface DryRunTradingPanelProps {
 }
 
 export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanelProps) {
-  const [dryRunService, setDryRunService] = useState<DryRunExchangeService | null>(null);
-  const [balances, setBalances] = useState<VirtualBalance[]>([]);
+  // Use our new hooks instead of direct service instances
+  const { toast } = useToast();
+  const { 
+    getLatestPrice, 
+    subscribeToMarket,
+    exchange,
+    loading: exchangeLoading,
+    error: exchangeError,
+    lastPrice,
+    changeExchange,
+    placeOrder
+  } = useExchange({ defaultExchange: 'bybit' });
+  
+  const {
+    agentId,
+    configId,
+    runId,
+    currentRun,
+    balances: virtualBalances,
+    trades,
+    metrics,
+    loading: simulationLoading,
+    error: simulationError,
+    loadAgentSimulationConfigs,
+    createAgentSimulationConfig,
+    startSimulationRun,
+    loadVirtualBalances,
+    executeTrade,
+    selectAgent
+  } = useSimulation();
+  
+  const { createNotification } = useNotifications();
+  
+  // State
+  const [balances, setBalances] = useState<SimVirtualBalance[]>([]);
   const [symbol, setSymbol] = useState('BTCUSDT');
   const [price, setPrice] = useState<number | null>(null);
   const [amount, setAmount] = useState('0.001');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [limitPrice, setLimitPrice] = useState('');
-  const [isInitializing, setIsInitializing] = useState(true);
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [agents, setAgents] = useState<TradingAgent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
-  const { toast } = useToast();
+
+  // Effect for fetching and updating latest price
+  useEffect(() => {
+    if (symbol) {
+      getLatestPrice(symbol)
+        .then((price: number) => {
+          if (price) setPrice(price);
+        })
+        .catch((err: Error) => {
+          console.error('Error fetching price:', err);
+          toast({
+            title: 'Error',
+            description: 'Could not fetch latest price',
+            variant: 'destructive'
+          });
+        });
+      
+      // Subscribe to real-time updates
+      const unsubscribe = subscribeToMarket(symbol, (data: { price?: number }) => {
+        if (data?.price) {
+          setPrice(data.price);
+        }
+      });
+      
+      return () => unsubscribe();
+    }
+  }, [symbol, getLatestPrice, subscribeToMarket, toast]);
+  
+  // Effect to update local balances when virtualBalances from simulation hook changes
+  useEffect(() => {
+    if (virtualBalances && virtualBalances.length > 0) {
+      setBalances(virtualBalances);
+      setIsInitializing(false);
+    }
+  }, [virtualBalances]);
 
   // Load available agents
   useEffect(() => {
@@ -113,59 +183,56 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
         const { data: agentsData, error } = await supabase
           .from('agents')
           .select('*')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .eq('execution_mode', 'dry-run');
         
         if (error) {
-          console.error('Database error when loading agents:', error);
           throw error;
         }
         
-        console.log('Agents loaded:', agentsData?.length || 0);
-        
         if (agentsData && agentsData.length > 0) {
+          console.log('Found agents:', agentsData);
           setAgents(agentsData);
           
-          // Set first agent as default if none selected
-          if (!selectedAgentId && agentsData.length > 0) {
-            const agent = agentsData[0];
-            setSelectedAgentId(agent.id);
-            
-            // Call the callback if provided
-            if (onAgentSelect) {
-              onAgentSelect(agent.id, agent.name, agent.exchange);
-            }
+          // Select the first agent
+          setSelectedAgentId(agentsData[0].id);
+          if (onAgentSelect) {
+            onAgentSelect(agentsData[0].id, agentsData[0].name, agentsData[0].exchange);
           }
         } else {
-          console.log('No agents found for user');
-          toast({
-            title: 'No Agents Found',
-            description: 'You need to create a trading agent before using dry-run mode.',
-            variant: 'default'
-          });
+          console.log('No agents found, creating fallback agent');
+          // No agents found, create a fallback demo agent
+          const { data: newAgent, error: createError } = await supabase
+            .from('agents')
+            .insert([
+              {
+                name: 'Demo Dry Run Agent',
+                exchange: 'bybit',
+                execution_mode: 'dry-run',
+                user_id: user.id
+              }
+            ])
+            .select()
+            .single();
+          
+          if (createError) {
+            console.error('Error creating fallback agent:', createError);
+            throw createError;
+          }
+          
+          if (newAgent) {
+            setAgents([newAgent]);
+            setSelectedAgentId(newAgent.id);
+            if (onAgentSelect) {
+              onAgentSelect(newAgent.id, newAgent.name, newAgent.exchange);
+            }
+          }
         }
       } catch (error) {
-        console.error('Failed to load agents:', error);
-        
-        // Fallback to demo agents
-        setAgents([
-          {
-            id: 'demo-1',
-            name: 'Demo Bitcoin Trader (Fallback)',
-            exchange: 'bybit',
-            execution_mode: 'dry-run',
-            user_id: 'demo',
-            created_at: new Date().toISOString()
-          }
-        ]);
-        
-        setSelectedAgentId('demo-1');
-        if (onAgentSelect) {
-          onAgentSelect('demo-1', 'Demo Bitcoin Trader (Fallback)', 'bybit');
-        }
-        
+        console.error('Error loading agents:', error);
         toast({
-          title: 'Connection Error',
-          description: `Using demo agent due to error: ${(error as Error).message}`,
+          title: 'Error',
+          description: 'Failed to load trading agents. Please try again later.',
           variant: 'destructive'
         });
       }
@@ -173,182 +240,239 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
     
     loadAgents();
   }, [toast, onAgentSelect]);
-  
-  // Initialize dry run service
+
+  // Initialize simulation when agent is selected
   useEffect(() => {
-    async function initializeDryRunService() {
-      if (!selectedAgentId || !userId) return;
-      
-      try {
-        setIsInitializing(true);
-        
-        // Find the selected agent
-        const agent = agents.find((a: TradingAgent) => a.id === selectedAgentId);
-        if (!agent) {
-          toast({
-            title: 'Agent Error',
-            description: 'Selected agent not found',
-            variant: 'destructive'
-          });
-          return;
-        }
-        
-        // Create the dry run service
-        // In a production app, we would use the ExchangeServiceFactory
-        // For TypeScript compatibility, we're creating a mock service using any type
-        const mockBaseService: any = {
-          getAccountBalance: async () => ({
-            balances: [
-              { asset: 'USDT', free: 10000, locked: 0 },
-              { asset: 'BTC', free: 0.5, locked: 0 },
-              { asset: 'ETH', free: 5, locked: 0 }
-            ]
-          }),
-          getMarketData: async () => ({}),
-          getLatestPrice: async () => 50000 + Math.random() * 1000
-        };
-        const dryRun = new DryRunExchangeService(mockBaseService, userId);
-        setDryRunService(dryRun);
-        
-        // Load initial balances
-        const balanceData = await dryRun.getAccountBalance('dry-run');
-        setBalances(balanceData.balances);
-        
-        // Get initial price
-        const currentPrice = await dryRun.getLatestPrice(symbol, 'dry-run');
-        setPrice(currentPrice);
-        
-        setIsInitializing(false);
-        
-        toast({
-          title: 'Dry Run Mode Initialized',
-          description: 'Trading simulator is ready with virtual balances'
-        });
-      } catch (error) {
-        console.error('Failed to initialize dry run service:', error);
-        toast({
-          title: 'Initialization Failed',
-          description: `Error: ${(error as Error).message}`,
-          variant: 'destructive'
-        });
-        setIsInitializing(false);
-      }
+    if (selectedAgentId) {
+      initializeSimulation();
     }
+  }, [selectedAgentId]);
+
+  // Function to initialize the simulation
+  async function initializeSimulation() {
+    setIsInitializing(true);
     
-    initializeDryRunService();
-    
-    // Refresh price every 10 seconds
-    const priceInterval = setInterval(async () => {
-      if (dryRunService) {
-        try {
-          const currentPrice = await dryRunService.getLatestPrice(symbol, 'dry-run');
-          setPrice(currentPrice);
-        } catch (error) {
-          console.error('Failed to update price:', error);
+    try {
+      // Add explicit type annotation to fix TypeScript error
+      const agent = agents.find((a: { id: string, exchange: string, name: string }) => a.id === selectedAgentId);
+      if (!agent) {
+        throw new Error('Selected agent not found');
+      }
+      
+      // Set the exchange from the agent
+      if (agent.exchange !== exchange) {
+        // Change the exchange which will trigger the price update effect
+        changeExchange(agent.exchange);
+      }
+      
+      // Load or create simulation config for this agent
+      const configs = await loadAgentSimulationConfigs(agent.id);
+      
+      let configId;
+      if (configs && configs.length > 0) {
+        // Use existing config
+        configId = configs[0].id;
+      } else {
+        // Create a new simulation config
+        const newConfig = await createAgentSimulationConfig({
+          agentId: agent.id,
+          simulationModelId: 'default', // This would need to be a valid ID from your models table
+          initialBalances: [
+            { currency: 'BTC', amount: 1.0 },
+            { currency: 'USDT', amount: 50000 },
+            { currency: 'ETH', amount: 10.0 }
+          ],
+          tradingPairs: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+          enabledActions: ['market_order', 'limit_order']
+        });
+        
+        if (newConfig) {
+          configId = newConfig.id;
         }
       }
-    }, 10000);
-    
-    return () => {
-      clearInterval(priceInterval);
-    };
-  }, [symbol, toast, selectedAgentId, userId, agents]);
+      
+      // Start a simulation run if we have a config
+      if (configId) {
+        const run = await startSimulationRun(configId, {
+          startedBy: userId || 'anonymous',
+          startedAt: new Date().toISOString()
+        });
+        
+        if (run) {
+          // This will trigger the balances loading effect
+          console.log('Simulation started:', run.id);
+        }
+      }
+      
+      // The balances will be loaded by the effect that watches virtualBalances
+      // The price will be updated by the effect that watches symbol
+
+      // Select the agent in our simulation hook
+      selectAgent(agent.id);
+      
+      setIsInitializing(false);
+      console.log('Simulation initialized for agent:', agent.name);
+      
+      // Send notification
+      createNotification(
+        'Simulation Started',
+        `Dry-run trading simulation started for ${agent.name}`,
+        'info'
+      );
+    } catch (error) {
+      console.error('Error initializing simulation:', error);
+      setIsInitializing(false);
+      toast({
+        title: 'Error',
+        description: 'Failed to initialize trading simulator. Please try again.',
+        variant: 'destructive'
+      });
+    }
+  }
 
   // Handle agent selection
-  const handleAgentChange = (agentId: string) => {
+  function handleAgentChange(agentId: string) {
     setSelectedAgentId(agentId);
-    const agent = agents.find((a: TradingAgent) => a.id === agentId);
     
+    // Add explicit type annotation to fix TypeScript error
+    const agent = agents.find((a: { id: string, exchange: string, name: string }) => a.id === agentId);
     if (agent && onAgentSelect) {
       onAgentSelect(agent.id, agent.name, agent.exchange);
     }
     
-    // Re-initialize with the new agent
-    setDryRunService(null);
-    setBalances([]);
+    // Reset state
     setPrice(null);
-    setIsInitializing(true);
-  };
+    setBalances([]);
+  }
   
   // Reset virtual balances
-  const handleResetBalances = async () => {
-    if (!dryRunService) return;
+  async function handleResetBalances() {
+    if (!runId) {
+      console.error('No active simulation run');
+      toast({
+        title: 'Error',
+        description: 'No active simulation run to reset.',
+        variant: 'destructive'
+      });
+      return;
+    }
     
     try {
-      await dryRunService.resetVirtualBalances();
-      const balanceData = await dryRunService.getAccountBalance('dry-run');
-      setBalances(balanceData.balances);
-      
-      toast({
-        title: 'Balances Reset',
-        description: 'Virtual balances have been reset to default values'
-      });
+      // Start a new simulation run with the same config
+      if (configId) {
+        const run = await startSimulationRun(configId, {
+          startedBy: userId || 'anonymous',
+          startedAt: new Date().toISOString(),
+          reset: true
+        });
+        
+        if (run) {
+          // This will trigger the balances loading effect
+          console.log('Simulation reset with new run:', run.id);
+          
+          toast({
+            title: 'Balances Reset',
+            description: 'Virtual balances have been reset to initial values.',
+            variant: 'default'
+          });
+        }
+      }
     } catch (error) {
+      console.error('Error resetting balances:', error);
       toast({
-        title: 'Reset Failed',
-        description: `Error: ${(error as Error).message}`,
+        title: 'Error',
+        description: 'Failed to reset balances. Please try again.',
         variant: 'destructive'
       });
     }
   };
 
   // Place simulated order
-  const handlePlaceOrder = async () => {
-    if (!dryRunService || !price) return;
+  async function handlePlaceOrder() {
+    if (!runId) {
+      console.error('No active simulation run');
+      toast({
+        title: 'Error',
+        description: 'No active simulation run to place order.',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    if (!price) {
+      console.error('Price not available');
+      return;
+    }
     
     try {
-      const orderParams: OrderParams = {
-        symbol,
-        side,
-        type: orderType,
-        amount: parseFloat(amount),
-        exchange: 'dry-run'
-      };
-      
-      // Add price for limit orders
-      if (orderType === 'limit') {
-        if (!limitPrice || parseFloat(limitPrice) <= 0) {
-          toast({
-            title: 'Invalid Price',
-            description: 'Please enter a valid limit price',
-            variant: 'destructive'
-          });
-          return;
-        }
-        orderParams.price = parseFloat(limitPrice);
+      const amountNum = parseFloat(amount);
+      if (isNaN(amountNum) || amountNum <= 0) {
+        throw new Error('Invalid amount');
       }
       
-      const result = await dryRunService.placeOrder(orderParams);
+      let orderPrice = price;
+      if (orderType === 'limit') {
+        const limitPriceNum = parseFloat(limitPrice);
+        if (isNaN(limitPriceNum) || limitPriceNum <= 0) {
+          throw new Error('Invalid limit price');
+        }
+        orderPrice = limitPriceNum;
+      }
       
-      // Refresh balances
-      const balanceData = await dryRunService.getAccountBalance('dry-run');
-      setBalances(balanceData.balances);
-      
-      toast({
-        title: 'Order Executed',
-        description: `Successfully placed ${side} order for ${amount} ${symbol} at ${result.price}`,
+      // Use our executeTrade function from the simulation hook
+      const trade = await executeTrade({
+        symbol,
+        side: side as 'buy' | 'sell',
+        type: orderType as 'market' | 'limit',
+        amount: amountNum,
+        price: orderType === 'limit' ? parseFloat(limitPrice) : undefined
       });
+      
+      if (trade) {
+        console.log('Order placed:', trade);
+        
+        // Update will happen automatically via the balances effect
+        
+        toast({
+          title: 'Order Executed',
+          description: `Successfully placed ${side} order for ${amountNum} ${symbol.slice(0, -4)}`,
+          variant: 'default'
+        });
+        
+        // Send notification
+        createNotification(
+          'Trade Executed',
+          `${side.toUpperCase()} ${amountNum} ${symbol.slice(0, -4)} at ${orderPrice}`,
+          'success'
+        );
+      }
     } catch (error) {
+      console.error('Error placing order:', error);
       toast({
         title: 'Order Failed',
-        description: `Error: ${(error as Error).message}`,
+        description: error instanceof Error ? error.message : 'Failed to place order',
         variant: 'destructive'
       });
     }
   };
 
   // Calculate estimated cost/proceeds
-  const calculateTotal = () => {
-    if (!price) return '0.00';
+  function calculateTotal() {
+    if (!price || !amount) return '0.00';
     
-    const amountNum = parseFloat(amount) || 0;
-    const priceToUse = orderType === 'limit' ? (parseFloat(limitPrice) || price) : price;
-    const total = amountNum * priceToUse;
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum)) return '0.00';
     
-    // Add 0.1% fee
-    const withFee = side === 'buy' ? total * 1.001 : total * 0.999;
+    const usePrice = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : price;
+    if (isNaN(usePrice)) return '0.00';
     
-    return withFee.toFixed(2);
+    // Apply a 0.1% fee (this is just an example)
+    const total = amountNum * usePrice;
+    const fee = total * 0.001;
+    
+    return side === 'buy' 
+      ? (total + fee).toFixed(2)
+      : (total - fee).toFixed(2);
   };
 
   return (
@@ -396,24 +520,33 @@ export default function DryRunTradingPanel({ onAgentSelect }: DryRunTradingPanel
 
         {/* Virtual Balances */}
         <div className="border p-3 rounded-md">
-          <h3 className="font-medium mb-2">Virtual Balances</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {balances.map((balance: VirtualBalance) => (
-              <div key={balance.asset} className="flex justify-between p-1 border rounded">
-                <span className="font-mono">{balance.asset}:</span>
-                <span className="font-mono">{balance.free.toFixed(6)}</span>
-              </div>
-            ))}
+          <h3 className="font-medium mb-2">Virtual Account Balance</h3>
+          <div className="flex justify-between mb-2">
+            <h3 className="font-medium">Virtual Account Balance</h3>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleResetBalances}
+              disabled={isInitializing}
+            >
+              <RefreshCw className="mr-1 h-4 w-4" />
+              Reset
+            </Button>
           </div>
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="mt-2"
-            onClick={handleResetBalances}
-            disabled={isInitializing}
-          >
-            Reset Balances
-          </Button>
+          {balances.length > 0 ? (
+            <div className="grid grid-cols-3 gap-2">
+              {balances.map((balance: { currency: string, available: number }) => (
+                <div key={balance.currency} className="border rounded p-2 text-center">
+                  <div className="text-sm text-muted-foreground">{balance.currency}</div>
+                  <div className="font-mono">{balance.available.toFixed(4)}</div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-2 text-muted-foreground">
+              {isInitializing ? 'Loading balances...' : 'No balance data available'}
+            </div>
+          )}
         </div>
         
         {/* Market Data */}
