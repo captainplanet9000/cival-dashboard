@@ -73,152 +73,192 @@ const mockGoals = [
 
 // GET handler for goals API route
 export async function GET(request: NextRequest) {
-  // Parse query parameters
-  const url = new URL(request.url);
-  const farmId = url.searchParams.get('farm_id');
-  const limit = parseInt(url.searchParams.get('limit') || '10');
-  const offset = parseInt(url.searchParams.get('offset') || '0');
-  
   try {
-    // Create Supabase server client
+    const searchParams = new URL(request.url).searchParams;
+    
+    // Get filter parameters
+    const status = searchParams.get('status');
+    const goalType = searchParams.get('goalType');
+    const farmId = searchParams.get('farmId');
+    const agentId = searchParams.get('agentId');
+    const includeArchived = searchParams.get('includeArchived') === 'true';
+    const includeHistory = searchParams.get('includeHistory') === 'true';
+    const parentGoalId = searchParams.get('parentGoalId');
+    
+    // Create Supabase client
     const supabase = await createServerClient();
     
-    // First check if user is authenticated
+    // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
-      // Return mock data if no user is authenticated
-      console.log('No authenticated user, returning mock goals data');
-      const filteredGoals = farmId ? mockGoals.filter(goal => goal.farm_id === farmId) : mockGoals;
-      return NextResponse.json({ 
-        data: filteredGoals.slice(offset, offset + limit),
-        count: filteredGoals.length,
-        total: filteredGoals.length
-      });
+      return NextResponse.json(
+        { error: 'Unauthorized - User not authenticated' },
+        { status: 401 }
+      );
     }
     
-    // Build query with all conditions
+    // Initialize query
     let query = supabase
       .from('goals')
-      .select('*', { count: 'exact' })
+      .select(`
+        *,
+        farms!goals_farm_id_fkey (
+          id,
+          name
+        ),
+        agents!goals_agent_id_fkey (
+          id,
+          name
+        ),
+        parent:goals!goals_parent_goal_id_fkey (
+          id,
+          name
+        )
+        ${includeHistory ? `, history:goal_history(*)` : ''}
+      `)
       .eq('user_id', user.id)
-      .range(offset, offset + limit - 1);
+      .order('created_at', { ascending: false });
     
-    // Add farm_id filter if provided
+    // Apply filters if provided
+    if (status) {
+      query = query.eq('status', status);
+    }
+    
+    if (goalType) {
+      query = query.eq('goal_type', goalType);
+    }
+    
     if (farmId) {
       query = query.eq('farm_id', farmId);
     }
     
+    if (agentId) {
+      query = query.eq('agent_id', agentId);
+    }
+    
+    if (parentGoalId) {
+      query = query.eq('parent_goal_id', parentGoalId);
+    } else if (parentGoalId === null || parentGoalId === undefined) {
+      // If no parent_goal_id filter specified, default to top-level goals
+      query = query.is('parent_goal_id', null);
+    }
+    
+    if (!includeArchived) {
+      query = query.eq('archived', false);
+    }
+    
     // Execute query
-    const { data: goals, error, count } = await query;
+    const { data, error } = await query;
     
     if (error) {
-      console.error('Supabase error fetching goals:', error);
-      // Return mock data on error
-      const filteredGoals = farmId ? mockGoals.filter(goal => goal.farm_id === farmId) : mockGoals;
-      return NextResponse.json({ 
-        data: filteredGoals.slice(offset, offset + limit),
-        count: filteredGoals.length,
-        total: filteredGoals.length
-      });
+      console.error('Error fetching goals:', error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
     
-    // Return real data if available, or mock data if no goals found
-    if (goals && goals.length > 0) {
-      return NextResponse.json({ 
-        data: goals,
-        count: goals.length,
-        total: count || goals.length
-      });
-    } else {
-      // Return mock data if no goals found
-      console.log('No goals found for user, returning mock data');
-      const filteredGoals = farmId ? mockGoals.filter(goal => goal.farm_id === farmId) : mockGoals;
-      return NextResponse.json({ 
-        data: filteredGoals.slice(offset, offset + limit),
-        count: filteredGoals.length,
-        total: filteredGoals.length
-      });
-    }
+    // Return goals
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error in goals API route:', error);
-    // Return mock data on error
-    const filteredGoals = farmId ? mockGoals.filter(goal => goal.farm_id === farmId) : mockGoals;
-    return NextResponse.json({ 
-      data: filteredGoals.slice(offset, offset + limit),
-      count: filteredGoals.length,
-      total: filteredGoals.length
-    });
+    console.error('Unexpected error in goals endpoint:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 
 // POST handler for creating a new goal
 export async function POST(request: NextRequest) {
   try {
+    // Get goal data from request
     const goalData = await request.json();
     
-    // Create Supabase server client
+    // Validate required fields
+    if (!goalData.name || !goalData.goal_type) {
+      return NextResponse.json(
+        { error: 'Name and goal type are required' },
+        { status: 400 }
+      );
+    }
+    
+    if (
+      !goalData.farm_id && 
+      !goalData.agent_id && 
+      !goalData.parent_goal_id
+    ) {
+      return NextResponse.json(
+        { error: 'A goal must be associated with a farm, agent, or parent goal' },
+        { status: 400 }
+      );
+    }
+    
+    // Create Supabase client
     const supabase = await createServerClient();
     
-    // Check if user is authenticated
+    // Get authenticated user
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
-      // Return mock success response if no user is authenticated
-      console.log('No authenticated user, returning mock success response');
-      return NextResponse.json({ 
-        data: {
-          ...goalData,
-          id: `goal-${Date.now()}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          user_id: 'mock-user-id'
-        }
-      });
+      return NextResponse.json(
+        { error: 'Unauthorized - User not authenticated' },
+        { status: 401 }
+      );
     }
     
-    // Add user_id to goal data
-    const goalWithUser = {
+    // Prepare goal data with user_id and timestamps
+    const preparedData = {
       ...goalData,
       user_id: user.id,
+      status: goalData.status || 'not_started',
+      current_value: goalData.current_value || 0,
+      progress_percentage: goalData.progress_percentage || 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
     
-    // Insert goal into database
-    const { data: newGoal, error } = await supabase
+    // Calculate initial progress percentage if target value is provided
+    if (
+      preparedData.target_value !== undefined && 
+      preparedData.target_value > 0 && 
+      preparedData.current_value !== undefined
+    ) {
+      const progress = (preparedData.current_value / preparedData.target_value) * 100;
+      preparedData.progress_percentage = Math.min(Math.max(progress, 0), 100);
+      
+      // Auto-set status based on progress
+      if (preparedData.progress_percentage >= 100) {
+        preparedData.status = 'completed';
+      } else if (preparedData.progress_percentage > 0) {
+        preparedData.status = 'in_progress';
+      }
+    }
+    
+    // Insert goal
+    const { data, error } = await supabase
       .from('goals')
-      .insert(goalWithUser)
+      .insert([preparedData])
       .select()
       .single();
     
     if (error) {
-      console.error('Supabase error creating goal:', error);
-      // Return mock success response on error
-      return NextResponse.json({ 
-        data: {
-          ...goalData,
-          id: `goal-${Date.now()}`,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          user_id: 'mock-user-id'
-        }
-      });
+      console.error('Error creating goal:', error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
     
-    return NextResponse.json({ data: newGoal });
+    // Return created goal
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error in goals API POST route:', error);
-    // Return mock success response on error
-    return NextResponse.json({ 
-      data: {
-        ...await request.json(),
-        id: `goal-${Date.now()}`,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        user_id: 'mock-user-id'
-      }
-    });
+    console.error('Unexpected error in goals endpoint:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
 

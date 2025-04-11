@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { useElizaAgentsWithFallback } from '@/hooks/useElizaAgentsWithFallback';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
@@ -22,11 +23,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface FarmAgentAssignmentProps {
-  farmId: number;
+  farmId: string | number;
   onAgentsUpdated?: () => void;
 }
 
 export function FarmAgentAssignment({ farmId, onAgentsUpdated }: FarmAgentAssignmentProps) {
+  // Ensure farmId is handled as a number for comparisons
+  const numericFarmId = typeof farmId === 'string' ? parseInt(farmId, 10) : farmId;
   const [loading, setLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [assignedAgents, setAssignedAgents] = useState<any[]>([]);
@@ -47,14 +50,14 @@ export function FarmAgentAssignment({ farmId, onAgentsUpdated }: FarmAgentAssign
 
   // Load assigned and available agents
   useEffect(() => {
-    if (!agentsLoading && allAgents && farmId) {
-      const assigned = allAgents.filter(agent => agent.farm_id === farmId);
+    if (!agentsLoading && allAgents && numericFarmId) {
+      const assigned = allAgents.filter(agent => agent.farm_id === numericFarmId);
       const available = allAgents.filter(agent => !agent.farm_id || agent.farm_id === null);
       
       setAssignedAgents(assigned);
       setAvailableAgents(available);
     }
-  }, [allAgents, agentsLoading, farmId]);
+  }, [allAgents, agentsLoading, numericFarmId]);
 
   // Handle agent selection for assignment
   const handleAgentSelect = (agentId: string) => {
@@ -76,7 +79,7 @@ export function FarmAgentAssignment({ farmId, onAgentsUpdated }: FarmAgentAssign
     try {
       // Update each selected agent
       for (const agentId of selectedAgents) {
-        await updateAgent(agentId, { farm_id: farmId });
+        await updateAgent(agentId, { farm_id: numericFarmId });
       }
       
       // Refresh the agents list

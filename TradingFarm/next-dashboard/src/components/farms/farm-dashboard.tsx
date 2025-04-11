@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,11 +28,22 @@ import {
   RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
-import { Farm, FarmStatusSummary } from '@/services/farm-service';
+import { Farm } from '@/services/farm-service';
+
+// Define FarmStatusSummary interface if it's not exported from the service
+interface FarmStatusSummary {
+  agents_total?: number;
+  agents_active?: number;
+  goals_total?: number;
+  goals_completed?: number;
+  goals_in_progress?: number;
+  goals_not_started?: number;
+}
 import { AgentCollaborationManager } from '@/components/agents/agent-collaboration-manager';
 import { FarmPerformanceCard } from '@/components/farms/farm-performance-card';
 import { FarmAgentsTable } from '@/components/farms/farm-agents-table';
 import { FarmGoalsSection } from '@/components/farms/farm-goals-section';
+import { FarmAgentAssignment } from '@/components/farms/farm-agent-assignment';
 import { FarmPerformanceChart } from '@/components/charts/farm-performance-chart';
 import { FarmPerformancePreview } from '@/components/farms/farm-performance-preview';
 import { AssetAllocationChart } from '@/components/charts/asset-allocation-chart';
@@ -103,7 +115,7 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
     totalTrades: 145,
     profitTrades: 94,
     lossTrades: 51,
-    performance_data: farm.performance_data || generatePerformanceData(),
+    performance_data: (farm as any).performance_data || generatePerformanceData(),
   };
   
   const handleRefresh = () => {
@@ -112,6 +124,11 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
     setTimeout(() => {
       setIsLoading(false);
     }, 1000);
+  };
+  
+  // Handle updates from agent assignment
+  const handleAgentsUpdated = () => {
+    handleRefresh();
   };
 
   return (
@@ -192,13 +209,14 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
       </div>
       
       {/* Main Content Tabs */}
-      <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="bg-card">
+      <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="grid w-full grid-cols-6 md:w-auto">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="agents">Agents ({allAgents.length})</TabsTrigger>
-          <TabsTrigger value="goals">Goals ({goals.length})</TabsTrigger>
+          <TabsTrigger value="agents">Agents</TabsTrigger>
+          <TabsTrigger value="goals">Goals</TabsTrigger>
           <TabsTrigger value="collaborations">Collaborations</TabsTrigger>
-          <TabsTrigger value="tools">Tools & Resources</TabsTrigger>
+          <TabsTrigger value="tools">Tools</TabsTrigger>
+          <TabsTrigger value="settings">Settings</TabsTrigger>
         </TabsList>
         
         {/* Overview Tab */}
@@ -354,7 +372,7 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
               <FarmAgentsTable 
                 agents={agents || []} 
                 elizaAgents={elizaAgents || []} 
-                farmId={farm.id} 
+                farmId={String(farm.id)} 
               />
             </CardContent>
           </Card>
@@ -377,7 +395,7 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
               </div>
             </CardHeader>
             <CardContent>
-              <FarmGoalsSection farmId={farm.id} initialGoals={goals} />
+              <FarmGoalsSection farmId={String(farm.id)} initialGoals={goals} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -386,7 +404,7 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
         <TabsContent value="collaborations" className="space-y-4">
           <Card>
             <CardContent className="pt-6">
-              <AgentCollaborationManager farmId={farm.id} agents={allAgents} />
+              <AgentCollaborationManager farmId={String(farm.id)} agents={allAgents} />
             </CardContent>
           </Card>
         </TabsContent>
@@ -505,6 +523,63 @@ export function FarmDashboard({ farm, statusSummary, agents = [], elizaAgents = 
                 </Card>
               </div>
             </CardContent>
+          </Card>
+        </TabsContent>
+        
+        {/* Settings Tab */}
+        <TabsContent value="settings" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Farm Settings</CardTitle>
+              <CardDescription>
+                Configure your farm and manage agent assignments
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              {/* Agent Assignment Section */}
+              <div>
+                <h3 className="text-lg font-medium mb-4">Agent Assignment</h3>
+                <FarmAgentAssignment
+                  farmId={String(farm.id)}
+                  onAgentsUpdated={handleAgentsUpdated}
+                />
+              </div>
+              
+              <Separator />
+              
+              {/* Farm Settings */}
+              <div>
+                <h3 className="text-lg font-medium mb-4">Farm Configuration</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <div className="font-medium">Farm Status</div>
+                    <Badge variant={(farm.status || 'inactive') === 'active' ? 'default' : 'secondary'}>
+                      {(farm.status || 'inactive').toUpperCase()}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <div className="font-medium">Auto-balancing</div>
+                    <span>{farm.config?.auto_balance ? 'Enabled' : 'Disabled'}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <div className="font-medium">Default Risk Level</div>
+                    <Badge variant="outline">
+                      {farm.config?.default_risk_level || 'Medium'}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between pb-2">
+                    <div className="font-medium">Goal Priority Mode</div>
+                    <span>{farm.config?.goal_priority_mode || 'Sequential'}</span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button variant="outline" className="w-full">
+                <Cog className="mr-2 h-4 w-4" />
+                Advanced Settings
+              </Button>
+            </CardFooter>
           </Card>
         </TabsContent>
       </Tabs>
