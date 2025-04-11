@@ -5,6 +5,69 @@
  */
 
 /**
+ * Mock ElizaOS agents for fallback
+ */
+export const mockElizaAgents = [
+  {
+    id: 'eliza-1',
+    name: 'Market Analyst',
+    description: 'Analyzes market trends and opportunities',
+    status: 'active',
+    type: 'analytical',
+    strategy_type: 'trend_following',
+    risk_level: 'medium',
+    target_markets: ['BTC/USD', 'ETH/USD'],
+    execution_mode: 'dry-run',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_fallback: true,
+    performance: {
+      trades: 24,
+      win_rate: 67,
+      profit_loss: 8.2
+    }
+  },
+  {
+    id: 'eliza-2',
+    name: 'DeFi Explorer',
+    description: 'Specializes in DeFi protocols and yield opportunities',
+    status: 'active',
+    type: 'research',
+    strategy_type: 'arbitrage',
+    risk_level: 'medium',
+    target_markets: ['ETH/USD', 'SOL/USD'],
+    execution_mode: 'dry-run',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_fallback: true,
+    performance: {
+      trades: 16,
+      win_rate: 72,
+      profit_loss: 5.9
+    }
+  },
+  {
+    id: 'eliza-3',
+    name: 'Trading Assistant',
+    description: 'Executes trades based on strategy signals',
+    status: 'paused',
+    type: 'trading',
+    strategy_type: 'breakout',
+    risk_level: 'high',
+    target_markets: ['BTC/USD', 'SOL/USD'],
+    execution_mode: 'dry-run',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_fallback: true,
+    performance: {
+      trades: 35,
+      win_rate: 58,
+      profit_loss: 12.3
+    }
+  }
+];
+
+/**
  * Mock farms data
  */
 export const mockFarms = [

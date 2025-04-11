@@ -117,9 +117,12 @@ const isMockModeEnabled = () => {
  * GET /api/agents/[id]
  * Returns a specific agent by ID
  */
-export async function GET(request: Request, { params }: RouteParams) {
+export async function GET(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = params;
+    const id = params.id;
     
     // If we're in mock mode, return mock data
     if (isMockModeEnabled()) {
@@ -135,58 +138,55 @@ export async function GET(request: Request, { params }: RouteParams) {
       return NextResponse.json(mockAgent);
     }
     
+    // Create Supabase client
     const supabase = await createServerClient();
     
-    // Verify authentication
+    // Check for user authentication
     const { data: { user } } = await supabase.auth.getUser();
+    
     if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - User not authenticated' },
         { status: 401 }
       );
     }
     
-    // Query the agent
-    const { data: agent, error } = await supabase
+    // Fetch the agent
+    const { data, error } = await supabase
       .from('agents')
-      .select(`
-        *,
-        farms:farm_id (
-          id,
-          name
-        )
-      `)
+      .select('*')
       .eq('id', id)
       .single();
     
     if (error) {
-      console.error(`Error fetching agent ${id}:`, error);
-      
-      // Fallback to mock data
-      const mockAgent = mockAgents.find(agent => agent.id === id);
-      
-      if (!mockAgent) {
-        return NextResponse.json(
-          { error: 'Agent not found' },
-          { status: 404 }
-        );
-      }
-      
-      return NextResponse.json(mockAgent);
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.code === '22P02' ? 400 : 500 }
+      );
     }
     
-    if (!agent) {
+    if (!data) {
       return NextResponse.json(
         { error: 'Agent not found' },
         { status: 404 }
       );
     }
     
-    return NextResponse.json(agent);
+    // Check if user has access to this agent
+    if (data.user_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this agent' },
+        { status: 403 }
+      );
+    }
+    
+    return NextResponse.json(data);
+    
   } catch (error) {
-    console.error(`Error fetching agent ${params.id}:`, error);
+    console.error('Unexpected error:', error);
+    
     return NextResponse.json(
-      { error: 'Failed to fetch agent' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -196,18 +196,13 @@ export async function GET(request: Request, { params }: RouteParams) {
  * PATCH /api/agents/[id]
  * Updates a specific agent
  */
-export async function PATCH(request: Request, { params }: RouteParams) {
+export async function PATCH(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = params;
-    const updateData = await request.json();
-    
-    // Verify input
-    if (!updateData) {
-      return NextResponse.json(
-        { error: 'No update data provided' },
-        { status: 400 }
-      );
-    }
+    const id = params.id;
+    const updates = await request.json();
     
     // If we're in mock mode, simulate an update
     if (isMockModeEnabled()) {
@@ -223,61 +218,88 @@ export async function PATCH(request: Request, { params }: RouteParams) {
       // Update the mock agent
       mockAgents[mockAgentIndex] = {
         ...mockAgents[mockAgentIndex],
-        ...updateData,
+        ...updates,
         updated_at: new Date().toISOString()
       };
       
       return NextResponse.json(mockAgents[mockAgentIndex]);
     }
     
+    // Create Supabase client
     const supabase = await createServerClient();
     
-    // Verify authentication
+    // Check for user authentication
     const { data: { user } } = await supabase.auth.getUser();
+    
     if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - User not authenticated' },
         { status: 401 }
       );
     }
     
-    // Update the agent
-    const { data: updatedAgent, error } = await supabase
+    // Verify the agent exists and belongs to the user
+    const { data: agent, error: fetchError } = await supabase
       .from('agents')
-      .update({
-        ...updateData,
-        updated_at: new Date().toISOString()
-      })
+      .select('user_id')
       .eq('id', id)
-      .select(`
-        *,
-        farms:farm_id (
-          id,
-          name
-        )
-      `)
       .single();
     
-    if (error) {
-      console.error(`Error updating agent ${id}:`, error);
+    if (fetchError) {
       return NextResponse.json(
-        { error: 'Failed to update agent' },
-        { status: 500 }
+        { error: fetchError.message },
+        { status: fetchError.code === '22P02' ? 400 : 500 }
       );
     }
     
-    if (!updatedAgent) {
+    if (!agent) {
       return NextResponse.json(
         { error: 'Agent not found' },
         { status: 404 }
       );
     }
     
-    return NextResponse.json(updatedAgent);
+    // Check if user has access to this agent
+    if (agent.user_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this agent' },
+        { status: 403 }
+      );
+    }
+    
+    // Add updated_at timestamp
+    const updatedData = {
+      ...updates,
+      updated_at: new Date().toISOString()
+    };
+    
+    // Don't allow changing user_id
+    if (updatedData.user_id) {
+      delete updatedData.user_id;
+    }
+    
+    // Update the agent
+    const { data, error } = await supabase
+      .from('agents')
+      .update(updatedData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json(data);
+    
   } catch (error) {
-    console.error(`Error updating agent ${params.id}:`, error);
+    console.error('Unexpected error:', error);
+    
     return NextResponse.json(
-      { error: 'Failed to update agent' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
@@ -287,9 +309,12 @@ export async function PATCH(request: Request, { params }: RouteParams) {
  * DELETE /api/agents/[id]
  * Deletes a specific agent
  */
-export async function DELETE(request: Request, { params }: RouteParams) {
+export async function DELETE(
+  request: Request, 
+  { params }: { params: { id: string } }
+) {
   try {
-    const { id } = params;
+    const id = params.id;
     
     // If we're in mock mode, simulate a delete
     if (isMockModeEnabled()) {
@@ -311,14 +336,45 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       );
     }
     
+    // Create Supabase client
     const supabase = await createServerClient();
     
-    // Verify authentication
+    // Check for user authentication
     const { data: { user } } = await supabase.auth.getUser();
+    
     if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - User not authenticated' },
         { status: 401 }
+      );
+    }
+    
+    // Verify the agent exists and belongs to the user
+    const { data: agent, error: fetchError } = await supabase
+      .from('agents')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+    
+    if (fetchError) {
+      return NextResponse.json(
+        { error: fetchError.message },
+        { status: fetchError.code === '22P02' ? 400 : 500 }
+      );
+    }
+    
+    if (!agent) {
+      return NextResponse.json(
+        { error: 'Agent not found' },
+        { status: 404 }
+      );
+    }
+    
+    // Check if user has access to this agent
+    if (agent.user_id !== user.id) {
+      return NextResponse.json(
+        { error: 'Forbidden - You do not have access to this agent' },
+        { status: 403 }
       );
     }
     
@@ -329,21 +385,21 @@ export async function DELETE(request: Request, { params }: RouteParams) {
       .eq('id', id);
     
     if (error) {
-      console.error(`Error deleting agent ${id}:`, error);
       return NextResponse.json(
-        { error: 'Failed to delete agent' },
+        { error: error.message },
         { status: 500 }
       );
     }
     
     return NextResponse.json(
-      { success: true, message: 'Agent deleted successfully' },
-      { status: 200 }
+      { success: true, message: 'Agent deleted successfully' }
     );
+    
   } catch (error) {
-    console.error(`Error deleting agent ${params.id}:`, error);
+    console.error('Unexpected error:', error);
+    
     return NextResponse.json(
-      { error: 'Failed to delete agent' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }
