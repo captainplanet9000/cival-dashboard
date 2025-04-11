@@ -396,32 +396,10 @@ export default function AgentsPage() {
   const exchange = useExchange({ defaultExchange: 'bybit' });
   const notifications = useNotifications();
   
-  // Fetch agents from the API with connection error handling
+  // Fetch agents from the API
   const fetchAgents = useCallback(async () => {
     setLoading(true);
     try {
-      // First check if elizaOS is available and properly initialized
-      if (!elizaOS || typeof elizaOS.loadAgents !== 'function') {
-        console.warn('ElizaOS API is not properly initialized');
-        // Use mock data during connection issues for better UI experience
-        const mockAgents = [
-          {
-            id: 'mock-1',
-            name: 'Demo Trading Agent',
-            description: 'A demo trading agent (mock data during connection issues)',
-            type: 'trading',
-            status: 'inactive',
-            execution_mode: 'dry-run',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ];
-        setAgents(mockAgents as any);
-        setError('Connection to ElizaOS unavailable. Showing demo data.');
-        return;
-      }
-
-      // Attempt to load actual agents
       const agentsData = await elizaOS.loadAgents();
       
       if (agentsData) {
@@ -446,19 +424,12 @@ export default function AgentsPage() {
       }
     } catch (error) {
       console.error('Error fetching agents:', error);
-      setError('Failed to connect to ElizaOS API. Please check your connection.');
-      
-      // Show toast only for non-connection errors to avoid flooding
-      if (!(error instanceof TypeError && (error as Error).message.includes('fetch'))) {
-        toast({
-          title: 'Error',
-          description: 'Failed to load agents. Please try again later.',
-          variant: 'destructive'
-        });
-      }
-      
-      // Set empty agents list to prevent UI confusion
-      setAgents([]);
+      setError((error as Error).message);
+      toast({
+        title: 'Error',
+        description: 'Failed to load agents. Please try again later.',
+        variant: 'destructive'
+      });
     } finally {
       setLoading(false);
     }
@@ -531,24 +502,13 @@ export default function AgentsPage() {
       ];
       setAvailableRoles(roles);
       
-      // Fetch knowledge bases with proper error handling
-      try {
-        const { data: kbData, error: kbError } = await supabase
-          .from('knowledge_bases')
-          .select('*');
-          
-        if (kbError) {
-          console.warn('Error fetching knowledge bases:', kbError);
-          // Continue with empty knowledge bases rather than throwing
-          setKnowledgeBases([]);
-        } else if (kbData) {
-          setKnowledgeBases(kbData);
-        }
-      } catch (supabaseError) {
-        console.warn('Supabase connection error:', supabaseError);
-        // Continue with empty knowledge bases
-        setKnowledgeBases([]);
-      }
+      // Fetch knowledge bases
+      const { data: kbData, error: kbError } = await supabase
+        .from('knowledge_bases')
+        .select('*');
+        
+      if (kbError) throw kbError;
+      if (kbData) setKnowledgeBases(kbData);
     } catch (error) {
       console.error('Error loading agent resources:', error);
       toast({
@@ -559,27 +519,9 @@ export default function AgentsPage() {
     }
   }, [elizaOS, supabase, toast]);
   
-  // Setup real-time subscription for agent updates with connection error handling
+  // Setup real-time subscription for agent updates
   useEffect(() => {
-    // Check if Supabase is available before setting up subscription
-    const isSupabaseAvailable = async () => {
-      try {
-        // Simple test query to check connection
-        const { error } = await supabase.from('knowledge_bases').select('count', { count: 'exact', head: true });
-        return !error;
-      } catch {
-        return false;
-      }
-    };
-
     const setupRealtimeSubscription = async () => {
-      // Check connection status first
-      const available = await isSupabaseAvailable();
-      if (!available) {
-        console.warn('Supabase connection unavailable, skipping realtime subscription');
-        return null;
-      }
-
       try {
         const subscription = supabase
           .channel('agents-channel')
@@ -590,34 +532,21 @@ export default function AgentsPage() {
           }, (_payload: any) => {
             fetchAgents();
           })
-          .subscribe((status) => {
-            if (status === 'CHANNEL_ERROR') {
-              console.warn('Channel subscription error, retrying in 5s...');
-            }
-          });
+          .subscribe();
 
-        return subscription;
+        return () => {
+          supabase.removeChannel(subscription);
+        };
       } catch (error) {
         console.error('Error setting up realtime subscription:', error);
-        return null;
       }
     };
 
-    // Connection and subscription reference
-    let subscription: any = null;
-    setupRealtimeSubscription().then(sub => {
-      subscription = sub;
-    });
+    setupRealtimeSubscription();
     
     // Cleanup function
     return () => {
-      if (subscription) {
-        try {
-          supabase.removeChannel(subscription);
-        } catch (e) {
-          console.warn('Error removing channel:', e);
-        }
-      }
+      // Any cleanup if needed
     };
   }, [supabase, fetchAgents]);
   
