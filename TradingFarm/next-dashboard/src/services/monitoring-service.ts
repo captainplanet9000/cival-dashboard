@@ -27,6 +27,30 @@ let alertCounter = 0;
 let errorCounter = 0;
 const startTime = new Date();
 
+// Error throttling mechanism
+let lastErrorTime = 0;
+let errorCount = 0;
+const ERROR_THROTTLE_WINDOW = 60000; // 1 minute
+const ERROR_THROTTLE_MAX = 5; // Max errors in the window
+
+// Network status tracking
+let isOffline = false;
+if (typeof window !== 'undefined') {
+  // Initialize network status
+  isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  
+  // Listen to online/offline events
+  window.addEventListener('online', () => {
+    isOffline = false;
+    console.log('Network connection restored. Monitoring service resumed.');
+  });
+  
+  window.addEventListener('offline', () => {
+    isOffline = true;
+    console.warn('Network connection lost. Monitoring service paused.');
+  });
+}
+
 export type MonitoringEventType = 
   // System events
   'system.startup' | 'system.shutdown' | 'system.error' | 'system.warning' | 
@@ -130,6 +154,30 @@ export class MonitoringService {
   private static alertCounts: Record<string, { hourly: number; daily: number; lastTriggered: Date }> = {};
   
   /**
+   * Check if error logging should be throttled
+   */
+  private static shouldThrottleError(): boolean {
+    const now = Date.now();
+    // Reset counter if outside throttle window
+    if (now - lastErrorTime > ERROR_THROTTLE_WINDOW) {
+      errorCount = 0;
+      lastErrorTime = now;
+      return false;
+    }
+    
+    // Increment counter and check if we should throttle
+    errorCount++;
+    return errorCount > ERROR_THROTTLE_MAX;
+  }
+
+  /**
+   * Check if system is offline
+   */
+  private static isSystemOffline(): boolean {
+    return typeof window !== 'undefined' && isOffline;
+  }
+
+  /**
    * Log a monitoring event
    */
   static async logEvent(
@@ -140,6 +188,10 @@ export class MonitoringService {
     },
     isServerSide = true
   ): Promise<string | null> {
+    // Skip logging if offline and in browser
+    if (!isServerSide && this.isSystemOffline()) {
+      return null;
+    }
     try {
       const supabase = isServerSide 
         ? await createServerClient()
@@ -148,24 +200,29 @@ export class MonitoringService {
       const timestamp = new Date().toISOString();
       
       // Prepare the event object with default values and handle level/severity compatibility
-      const event: Omit<MonitoringEvent, 'id'> = {
-        ...eventData,
-        // If severity is missing but level is provided, use level as severity
-        severity: eventData.severity || eventData.level || 'info',
-        // Set default subject if not provided
-        subject: eventData.subject || 'Trading Farm',
-        // Set default source if not provided
-        source: eventData.source || 'app',
-        // Generate a hash for deduplication if not provided
-        event_hash: eventData.event_hash || this.generateEventHash(eventData),
-        // Set default resolution status if not provided
-        resolution_status: eventData.resolution_status || 'open',
-        timestamp
+      const event: MonitoringEvent = {
+        timestamp,
+        severity: eventData.level || eventData.severity || 'info',
+        type: eventData.type,
+        subject: eventData.subject || 'System Event',
+        message: eventData.message,
+        details: eventData.details,
+        source: eventData.source || 'system',
+        user_id: eventData.user_id,
+        farm_id: eventData.farm_id,
+        agent_id: eventData.agent_id,
+        tags: eventData.tags,
+        error_type: eventData.error_type,
+        event_hash: this.generateEventHash(eventData)
       };
       
-      // Increment metrics counter
+      // Track counts by severity
       eventCounter++;
+      if (event.severity === 'error' || event.severity === 'critical') {
+        errorCounter++;
+      }
       
+      // Store event in database
       const { data, error } = await supabase
         .from('monitoring_events')
         .insert(event)
@@ -173,18 +230,9 @@ export class MonitoringService {
         .single();
       
       if (error) {
-        console.error('Error logging monitoring event:', error);
-        // Increment error counter
-        errorCounter++;
-        // Fallback to console logging if DB insert fails
-        console.log(`MONITORING EVENT [${event.severity}] ${event.type}: ${event.message}`, event);
-        return null;
-      }
-      
-      // Trigger alert processing for non-debug events
-      if (data && event.severity !== 'debug') {
-        // Check if we should process this event for alerts
-        if (this.shouldProcessForAlerts(event)) {
+        // Only log error if not being throttled
+        if (!this.shouldThrottleError()) {
+          console.warn('Error logging monitoring event:', error);
           this.processAlerts({
             id: data.id,
             ...event,
@@ -689,8 +737,13 @@ export class MonitoringService {
    * Send webhook alert
    */
   private static async sendWebhookAlert(rule: AlertRule, event: MonitoringEvent, config: any): Promise<void> {
+    // Skip if system is offline
+    if (this.isSystemOffline()) {
+      return;
+    }
+    
     if (!config.url) {
-      console.error('Missing webhook URL for alert action');
+      console.warn('Missing webhook URL for alert action');
       return;
     }
     
@@ -712,14 +765,21 @@ export class MonitoringService {
       timestamp: new Date().toISOString()
     };
     
-    await fetch(config.url, {
-      method: config.method || 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(config.headers || {})
-      },
-      body: JSON.stringify(payload)
-    });
+    try {
+      await fetch(config.url, {
+        method: config.method || 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.headers || {})
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (error) {
+      // Only log error if not being throttled
+      if (!this.shouldThrottleError()) {
+        console.warn('Error sending webhook alert:', error);
+      }
+    }
   }
   
   /**
