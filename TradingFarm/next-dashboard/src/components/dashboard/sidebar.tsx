@@ -190,27 +190,27 @@ export function Sidebar({ farmId }: SidebarProps) {
     core: 'Core Trading',
     execution: 'Execution',
     analytics: 'Analytics',
-    funding: 'Funding',
+    funding: 'Banking & Finance',
     ai: 'AI Center',
-    settings: 'System'
+    settings: 'Settings'
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-10 w-64 border-r border-gray-200 dark:border-gray-800 hidden md:block">
-      <div className="flex flex-col h-full bg-white dark:bg-gray-950 shadow-sm overflow-y-auto">
+    <aside className="fixed inset-y-0 left-0 z-50 hidden w-64 shrink-0 border-r bg-background lg:block">
+      <div className="flex h-full flex-col overflow-auto">
         <div className="p-6">
           <h2 className="text-2xl font-bold">Trading Farm</h2>
         </div>
         <nav className="flex-1 px-4 pb-4">
           {/* Main Dashboard */}
           <ul className="space-y-1 mb-2">
-            {routeGroups.main.map((route) => (
-              <li key={route.href}>
+            {routeGroups.main.map((route, index) => (
+              <li key={`main-${index}-${route.href}`}>
                 <Link
                   href={route.href}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                    pathname === route.href
+                    pathname === route.href || pathname.startsWith(`${route.href}/`)
                       ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
                       : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-50"
                   )}
@@ -222,12 +222,12 @@ export function Sidebar({ farmId }: SidebarProps) {
             ))}
           </ul>
           
-          {/* Core Trading Group */}
-          <div className="mt-4">
+          {/* Core Trading */}
+          <div className="mb-4">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.core}</p>
             <ul className="space-y-1 mt-1">
-              {routeGroups.coreTradingGroup.map((route) => (
-                <li key={route.href}>
+              {routeGroups.coreTradingGroup.map((route, index) => (
+                <li key={`core-${index}-${route.href}`}>
                   <Link
                     href={route.href}
                     className={cn(
@@ -246,11 +246,11 @@ export function Sidebar({ farmId }: SidebarProps) {
           </div>
           
           {/* Execution Group */}
-          <div className="mt-4">
+          <div className="mb-4">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.execution}</p>
             <ul className="space-y-1 mt-1">
-              {routeGroups.executionGroup.map((route) => (
-                <li key={route.href}>
+              {routeGroups.executionGroup.map((route, index) => (
+                <li key={`exec-${index}-${route.href}`}>
                   <Link
                     href={route.href}
                     className={cn(
@@ -269,34 +269,11 @@ export function Sidebar({ farmId }: SidebarProps) {
           </div>
           
           {/* Analytics Group */}
-          <div className="mt-4">
+          <div className="mb-4">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.analytics}</p>
             <ul className="space-y-1 mt-1">
-              {routeGroups.analyticsGroup.map((route) => (
-                <li key={route.href}>
-                  <Link
-                    href={route.href}
-                    className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all",
-                      pathname === route.href || pathname.startsWith(`${route.href}/`)
-                        ? "bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-50"
-                        : "text-gray-500 hover:bg-gray-50 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-50"
-                    )}
-                  >
-                    <route.icon className="h-4 w-4" />
-                    {route.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          {/* Funding Group */}
-          <div className="mt-4">
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.funding}</p>
-            <ul className="space-y-1 mt-1">
-              {routeGroups.fundingGroup.map((route) => (
-                <li key={route.href}>
+              {routeGroups.analyticsGroup.map((route, index) => (
+                <li key={`analytics-${index}-${route.href}`}>
                   <Link
                     href={route.href}
                     className={cn(
@@ -315,11 +292,11 @@ export function Sidebar({ farmId }: SidebarProps) {
           </div>
           
           {/* AI Center Group */}
-          <div className="mt-4">
+          <div className="mb-4">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.ai}</p>
             <ul className="space-y-1 mt-1">
-              {routeGroups.aiCenterGroup.map((route) => (
-                <li key={route.href}>
+              {routeGroups.aiCenterGroup.map((route, index) => (
+                <li key={`ai-${index}-${route.href}`}>
                   <Link
                     href={route.href}
                     className={cn(
@@ -338,11 +315,11 @@ export function Sidebar({ farmId }: SidebarProps) {
           </div>
           
           {/* Settings Group */}
-          <div className="mt-4">
+          <div className="mb-4">
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-3 py-1">{groupLabels.settings}</p>
             <ul className="space-y-1 mt-1">
-              {routeGroups.settingsGroup.map((route) => (
-                <li key={route.href}>
+              {routeGroups.settingsGroup.map((route, index) => (
+                <li key={`settings-${index}-${route.href}`}>
                   <Link
                     href={route.href}
                     className={cn(

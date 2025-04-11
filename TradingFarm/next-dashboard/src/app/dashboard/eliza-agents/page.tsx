@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -11,7 +11,9 @@ import {
   PlayCircle, 
   PauseCircle, 
   StopCircle,
-  MoreHorizontal
+  MoreHorizontal,
+  AlertTriangle,
+  Info
 } from 'lucide-react';
 
 // UI Components
@@ -52,13 +54,15 @@ import { UnifiedAgentCreationDialog } from "@/components/agents/unified-agent-cr
 
 // Service and Hooks
 import { ElizaAgent, elizaOSAgentService } from '@/services/elizaos-agent-service';
-import { useElizaAgents } from '@/hooks/useElizaAgents';
+// Using our robust hook with fallback to mock data
+import { useElizaAgentsWithFallback } from '@/hooks/useElizaAgentsWithFallback';
 
 export default function ElizaAgentsPage() {
-  const { agents, loading, error, refreshAgents, controlAgent } = useElizaAgents();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [currentView, setCurrentView] = useState<'grid' | 'table'>('grid');
+  // Using our robust hook that falls back to mock data when authentication fails
+  const { agents, loading, error, refreshAgents, controlAgent, usingMockData } = useElizaAgentsWithFallback();
+  const [searchTerm, setSearchTerm] = React.useState('');
+  const [filterStatus, setFilterStatus] = React.useState<string>('all');
+  const [currentView, setCurrentView] = React.useState<'grid' | 'table'>('grid');
   const router = useRouter();
   const { toast } = useToast();
 
@@ -127,43 +131,66 @@ export default function ElizaAgentsPage() {
       <div className="flex flex-col space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">ElizaOS Agents</h1>
+            <h1 className="text-2xl font-bold tracking-tight">ElizaOS Agents</h1>
             <p className="text-muted-foreground">
-              Create and manage your AI agents for automated trading and market analysis
+              Manage your autonomous AI-powered trading agents
             </p>
+            {usingMockData && (
+              <div className="mt-2">
+                <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-300">
+                  Demo Mode
+                </Badge>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Using demonstration data. Actual data will appear when you log in.
+                </p>
+              </div>
+            )}
           </div>
-          <UnifiedAgentCreationDialog onSuccess={refreshAgents} />
+          <div className="flex gap-2">
+            <Button asChild className="bg-green-600 hover:bg-green-700 text-lg py-6 px-8 shadow-lg">
+              <Link href="/dashboard/eliza-agents/create" className="gap-2">
+                <Plus className="h-5 w-5" />
+                Create Agent
+              </Link>
+            </Button>
+          </div>
         </div>
         
         {/* Filters and View Controls */}
         <div className="flex flex-col md:flex-row items-center gap-4">
-          <div className="relative w-full md:w-80">
-            <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search agents..."
-              className="pl-8 w-full"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="flex items-center gap-4">
+            <div className="relative w-full md:w-80">
+              <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search agents..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-8 w-full"
+              />
+            </div>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/eliza-agents/create" className="gap-2">
+                <Bot className="h-4 w-4" />
+                Create Agent
+              </Link>
+            </Button>
+            <Select
+              value={filterStatus}
+              onValueChange={(value) => setFilterStatus(value)}
+            >
+              <SelectTrigger className="w-full md:w-40">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Statuses</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="paused">Paused</SelectItem>
+                <SelectItem value="idle">Idle</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+                <SelectItem value="initializing">Initializing</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          
-          <Select
-            value={filterStatus}
-            onValueChange={(value) => setFilterStatus(value)}
-          >
-            <SelectTrigger className="w-full md:w-40">
-              <SelectValue placeholder="Filter by status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="active">Active</SelectItem>
-              <SelectItem value="idle">Idle</SelectItem>
-              <SelectItem value="paused">Paused</SelectItem>
-              <SelectItem value="error">Error</SelectItem>
-              <SelectItem value="initializing">Initializing</SelectItem>
-            </SelectContent>
-          </Select>
-          
           <div className="ml-auto">
             <Tabs 
               value={currentView} 
@@ -179,95 +206,67 @@ export default function ElizaAgentsPage() {
         </div>
 
         {/* Error State */}
-        {error && (
-          <Alert variant="destructive">
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              {error}
+        {error && !loading && agents.length === 0 && (
+          <Alert variant="destructive" className="mt-6">
+            <AlertTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              Error loading agents
+            </AlertTitle>
+            <AlertDescription className="mt-2">
+              <p>{error.message || 'There was a problem loading your agents'}</p>
+              <Button onClick={refreshAgents} variant="outline" size="sm" className="mt-2">
+                Try again
+              </Button>
             </AlertDescription>
           </Alert>
         )}
 
         {/* Loading State */}
         {loading && (
-          currentView === 'grid' ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {[...Array(6)].map((_, i) => (
-                <Card key={i} className="overflow-hidden">
-                  <CardHeader className="pb-0">
-                    <Skeleton className="h-4 w-1/2 mb-2" />
-                    <Skeleton className="h-3 w-3/4" />
-                  </CardHeader>
-                  <CardContent className="pb-3 pt-6">
-                    <div className="space-y-3">
-                      <Skeleton className="h-3 w-full" />
-                      <Skeleton className="h-3 w-full" />
-                      <Skeleton className="h-3 w-3/4" />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="border-t px-6 py-4 flex justify-between">
-                    <Skeleton className="h-8 w-20" />
-                    <Skeleton className="h-8 w-32" />
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <Card>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Farm</TableHead>
-                      <TableHead>Created</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {[...Array(5)].map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-6 w-16" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell><Skeleton className="h-8 w-20" /></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )
+          <div className="flex flex-col items-center justify-center min-h-[400px]">
+            <Skeleton className="h-32 w-32 rounded-full" />
+            <h3 className="mt-4 text-lg font-medium">Loading agents...</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Please wait while we fetch your ElizaOS agents
+            </p>
+          </div>
         )}
         
         {/* Empty State */}
-        {!loading && filteredAgents.length === 0 && (
+        {!loading && !error && agents.length === 0 && (
           <Card>
-            <CardContent className="flex flex-col items-center justify-center p-6 text-center">
-              <Bot className="h-12 w-12 text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold">No agents found</h3>
-              <p className="text-muted-foreground mt-1 mb-4">
-                {agents.length === 0 
-                  ? "Get started by creating your first ElizaOS agent" 
-                  : "No agents match your current filters"
-                }
+            <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+              <Bot className="h-16 w-16 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium">No ElizaOS agents found</h3>
+              <p className="text-sm text-muted-foreground my-2 max-w-md">
+                Create your first AI-powered agent to start automating your trading strategies.
               </p>
-              {agents.length === 0 ? (
-                <UnifiedAgentCreationDialog 
-                  buttonText="Create First Agent" 
-                  onSuccess={refreshAgents} 
-                />
-              ) : (
-                <Button variant="outline" onClick={() => {
-                  setSearchTerm('');
-                  setFilterStatus('all');
-                }}>
-                  Clear Filters
+              <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                <Button 
+                  onClick={() => document.getElementById('create-agent-trigger')?.click()}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create with Dialog
                 </Button>
+                <Button asChild variant="outline">
+                  <Link href="/dashboard/eliza-agents/new">
+                    <Bot className="h-4 w-4 mr-2" />
+                    Create with Form
+                  </Link>
+                </Button>
+              </div>
+              {usingMockData && (
+                <Alert className="mt-6 max-w-lg">
+                  <AlertTitle className="flex items-center gap-2">
+                    <Info className="h-4 w-4" />
+                    Demo Mode Active
+                  </AlertTitle>
+                  <AlertDescription>
+                    You're seeing demo data because you're not authenticated or the server connection failed. 
+                    Some functionality may be limited.
+                  </AlertDescription>
+                </Alert>
+              )}
               )}
             </CardContent>
           </Card>
@@ -428,7 +427,7 @@ export default function ElizaAgentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAgents.map((agent) => (
+                  {filteredAgents.map((agent: ElizaAgent) => (
                     <TableRow key={agent.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/dashboard/agents/${agent.id}`)}>
                       <TableCell className="font-medium">{agent.name}</TableCell>
                       <TableCell>{agent.config.agentType || 'Trading Agent'}</TableCell>

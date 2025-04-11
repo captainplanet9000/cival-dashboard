@@ -8,15 +8,40 @@ import dynamic from "next/dynamic";
 
 // Import UI components
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { ConnectionStatus } from "@/components/dashboard/connection-status";
-import { ResponsiveDebugger } from "@/components/dashboard/responsive-debugger";
-import { Analytics } from "@/components/analytics/analytics";
 
 // Import performance monitoring tools
 import { useReportWebVitals } from 'next/web-vitals';
 
-// Import navigation utilities
-import { usePrefetchRoutes, useSmartPrefetch, useNavigationMetrics } from "@/utils/navigation";
+// Dynamic imports for new components
+const ConnectionStatus = dynamic(
+  () => import("@/components/dashboard/connection-status").then(mod => ({ default: mod.ConnectionStatus })),
+  { ssr: false, loading: () => <div className="h-4 w-24 bg-gray-200 animate-pulse rounded"></div> }
+);
+
+const ResponsiveDebugger = dynamic(
+  () => import("@/components/dashboard/responsive-debugger").then(mod => ({ default: mod.ResponsiveDebugger })),
+  { ssr: false }
+);
+
+const Analytics = dynamic(
+  () => import("@/components/analytics/analytics").then(mod => ({ default: mod.Analytics })),
+  { ssr: false }
+);
+
+/**
+ * Client Components Bundle - simplified version
+ */
+function ClientComponents() {
+  return (
+    <>
+      {/* Analytics tracking (invisible component) */}
+      <Analytics />
+      
+      {/* Responsive layout debugging tool (only in dev mode with ?responsive=true) */}
+      {process.env.NODE_ENV === 'development' && <ResponsiveDebugger />}
+    </>
+  );
+}
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -62,30 +87,26 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Note: Analytics tracking is now handled by the Analytics component
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="h-screen bg-background overflow-hidden relative">
       {/* Performance monitoring */}
       {reportWebVitals()}
       
       {/* Performance and analytics enhancements */}
       <ClientComponents />
       
-      {/* Sidebar - Using our updated component */}
+      {/* Sidebar - Positioned with fixed positioning and high z-index */}
       <Sidebar farmId={farmId} />
 
-      {/* Main content - Wrapped in Suspense for better loading experience */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Main content - Adding left margin to accommodate sidebar */}
+      <div className="ml-0 lg:ml-64 flex-1 flex flex-col overflow-hidden relative z-0">
         {/* Main content area */}
         <main className="flex-1 overflow-auto">
-          <Suspense fallback={<div className="p-6">Loading...</div>}>
-            {children}
-          </Suspense>
+          {children}
         </main>
         
         {/* Footer with connection status */}
         <div className="border-t p-2 px-4 flex justify-between items-center">
-          <Suspense fallback={<div className="h-4 w-24 bg-gray-200 animate-pulse rounded"></div>}>
-            <ConnectionStatus />
-          </Suspense>
+          <ConnectionStatus />
           
           <div className="text-xs text-muted-foreground">
             Trading Farm v1.5.2

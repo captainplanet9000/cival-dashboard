@@ -14,7 +14,7 @@ import {
   AlertTriangle, 
   Clock, 
   Cpu, 
-  Memory, 
+  HardDrive, // Replacing incorrect Memory import with HardDrive for memory usage
   RefreshCw, 
   CheckCircle2, 
   XCircle,
@@ -305,7 +305,7 @@ export function HealthDashboard({ data, onRefresh }: HealthDashboardProps) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
-                  <Memory className="h-4 w-4 mr-2 text-blue-500" />
+                  <HardDrive className="h-4 w-4 mr-2 text-blue-500" />
                   <span className="text-sm">Memory</span>
                 </div>
                 <span className="text-sm font-medium">
@@ -471,8 +471,9 @@ export function HealthDashboard({ data, onRefresh }: HealthDashboardProps) {
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {Object.entries(data.currentHealth.metricsData)
                       .filter(([key]) => key !== 'lastMonitoringUpdate')
-                      .map(([key, value]: [string, any]) => (
-                        <React.Fragment key={key}>
+                      .map(([key, value]: [string, any], index) => (
+                        // Using a more unique key pattern with index to avoid potential duplicates
+                        <React.Fragment key={`health-metric-${key}-${index}`}>
                           <div className="text-sm font-medium">
                             {key.replace(/([A-Z])/g, ' $1').replace(/^./, (str) => str.toUpperCase())}
                           </div>

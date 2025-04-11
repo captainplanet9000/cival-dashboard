@@ -110,7 +110,8 @@ function SimpleBreadcrumb({
     <Breadcrumb className={className} {...props}>
       <BreadcrumbList>
         {items.map((item, index) => (
-          <React.Fragment key={index}>
+          // Use a key on each individual item instead of the Fragment
+          <React.Fragment key={`breadcrumb-item-${index}`}>
             <BreadcrumbItem>{item}</BreadcrumbItem>
             {index < items.length - 1 && <BreadcrumbSeparator />}
           </React.Fragment>

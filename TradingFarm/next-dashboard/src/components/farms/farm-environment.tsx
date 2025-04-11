@@ -31,11 +31,13 @@ import {
   ExternalLink,
   Info,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  FolderOpen
 } from 'lucide-react';
 import Link from 'next/link';
 import { Farm } from '@/services/farm-service';
 import { toast } from '@/components/ui/use-toast';
+import { FarmFileManager } from '@/components/farms/farm-file-manager';
 
 interface FarmEnvironmentProps {
   farm: Farm;
@@ -190,6 +192,10 @@ export function FarmEnvironment({ farm }: FarmEnvironmentProps) {
           <TabsTrigger value="resources">Resources</TabsTrigger>
           <TabsTrigger value="connections">API Connections</TabsTrigger>
           <TabsTrigger value="data">Data Sources</TabsTrigger>
+          <TabsTrigger value="files">
+            <FolderOpen className="h-4 w-4 mr-2" />
+            Files
+          </TabsTrigger>
           <TabsTrigger value="settings">Environment Settings</TabsTrigger>
         </TabsList>
         
@@ -631,6 +637,11 @@ export function FarmEnvironment({ farm }: FarmEnvironmentProps) {
               </Card>
             ))}
           </div>
+        </TabsContent>
+        
+        {/* Files Tab */}
+        <TabsContent value="files" className="space-y-4">
+          <FarmFileManager farm={farm} />
         </TabsContent>
         
         {/* Environment Settings Tab */}

@@ -6,11 +6,16 @@
  * - Risk limit enforcement
  * - Order validation against risk parameters
  * - Drawdown monitoring
+ * - Autonomous agent risk enforcement
+ * - Per-agent customized risk rules
+ * - Trading limits and circuit breakers
  */
 
 import { createBrowserClient } from '@/utils/supabase/client';
+import { createServerClient } from '@/utils/supabase/server';
 import websocketService, { WebSocketTopic } from './websocket-service';
 import { Order } from './advanced-order-service';
+import { MonitoringService } from './monitoring-service';
 
 // Risk Profile Interface
 export interface RiskProfile {
@@ -24,6 +29,59 @@ export interface RiskProfile {
   position_sizing_method: 'fixed' | 'percent_of_balance' | 'risk_based' | 'kelly_criterion' | 'custom';
   auto_hedging: boolean;
   max_open_positions: number;
+  // Enhanced risk rules for autonomous agents
+  agent_circuit_breakers: AgentCircuitBreakers;
+  slippage_tolerance_percent: number;
+  max_position_value_usd: number;
+  max_aggregate_position_value_usd: number;
+  enable_hedging: boolean;
+  max_daily_drawdown_percent: number;
+}
+
+// Circuit breakers for autonomous agents
+export interface AgentCircuitBreakers {
+  consecutive_losses_limit: number;
+  daily_loss_limit_percent: number;
+  volatility_threshold: number;
+  pause_minutes_after_trigger: number;
+  require_manual_reset: boolean;
+}
+
+// Agent risk signal input interface
+export interface AgentRiskInput {
+  agent: any;
+  signal: {
+    action: 'buy' | 'sell' | 'hold' | 'close';
+    confidence?: number;
+    entry_price?: number;
+    take_profit?: number;
+    stop_loss?: number;
+  };
+  marketData: {
+    close: number[];
+    high: number[];
+    low: number[];
+    open: number[];
+    volume: number[];
+    time: number[];
+  };
+  position: any | null;
+  config: any;
+}
+
+// Order parameters output
+export interface OrderParameters {
+  symbol: string;
+  type: 'market' | 'limit' | 'stop' | 'stop_limit';
+  side: 'buy' | 'sell';
+  size: number;
+  price?: number;
+  stop_price?: number;
+  time_in_force?: 'GTC' | 'IOC' | 'FOK';
+  exchange: string;
+  take_profit?: number;
+  stop_loss?: number;
+  risk_to_reward?: number;
 }
 
 // Risk Check Result Interface
@@ -228,22 +286,55 @@ export function calculatePositionSize(
   entryPrice: number,
   stopLossPrice: number,
   riskPercent: number,
-  leverage: number = 1
+  leverage: number = 1,
+  side: 'buy' | 'sell' = 'buy'
 ): PositionSizingResult {
-  // Calculate risk amount (how much money we're willing to risk)
+  // Validate inputs with defensive programming
+  if (!accountBalance || !entryPrice || !riskPercent) {
+    throw new Error('Missing required parameters for position sizing');
+  }
+  
+  if (accountBalance <= 0 || entryPrice <= 0 || riskPercent <= 0) {
+    throw new Error('Invalid parameters for position sizing: values must be positive');
+  }
+  
+  if (leverage <= 0) {
+    throw new Error('Leverage must be positive');
+  }
+  
+  if (riskPercent > 100) {
+    throw new Error('Risk percent cannot exceed 100%');
+  }
+  
+  if (stopLossPrice <= 0) {
+    throw new Error('Stop loss price must be positive');
+  }
+  
+  // For long positions, stop loss should be below entry
+  // For short positions, stop loss should be above entry
+  const isStopLossValid = (side === 'buy' && stopLossPrice < entryPrice) || 
+                          (side === 'sell' && stopLossPrice > entryPrice);
+                          
+  if (!isStopLossValid) {
+    throw new Error(
+      side === 'buy' 
+        ? 'For long positions, stop loss must be lower than entry price' 
+        : 'For short positions, stop loss must be higher than entry price'
+    );
+  }
+  
+  // Calculate risk amount in account currency
   const riskAmount = accountBalance * (riskPercent / 100);
   
-  // Calculate price difference for stop loss
+  // Calculate the price difference (absolute value)
   const priceDifference = Math.abs(entryPrice - stopLossPrice);
-  const riskPerUnit = priceDifference / entryPrice;
   
-  // Calculate position size
-  const positionSize = riskAmount / (entryPrice * riskPerUnit) * leverage;
+  // Risk-to-reward ratio calculation (if we had a take profit)
+  // const riskToReward = takeProfitPrice ? Math.abs(takeProfitPrice - entryPrice) / priceDifference : undefined;
   
-  // Calculate position value
+  // Calculate the position size
+  const positionSize = (riskAmount / priceDifference) * leverage;
   const positionValue = positionSize * entryPrice;
-  
-  // Calculate maximum loss (should be close to risk amount)
   const maxLoss = positionSize * priceDifference;
   
   return {
@@ -425,15 +516,345 @@ function calculateRiskUtilization(
   return Math.min(100, Math.round((exposure / 10000) * 100));
 }
 
-export default {
-  getRiskProfiles,
-  createRiskProfile,
-  updateRiskProfile,
-  deleteRiskProfile,
-  assignRiskProfileToAgent,
-  getAgentRiskProfile,
-  checkOrderAgainstRiskLimits,
-  calculatePositionSize,
-  calculateKellyPositionSize,
-  getAgentRiskMetrics
-};
+/**
+ * Apply risk management rules to an agent trading signal
+ * This is the main entry point for the AgentRunner service
+ */
+export async function applyRiskRules(
+  input: AgentRiskInput
+): Promise<OrderParameters | null> {
+  try {
+    const { agent, signal, marketData, position, config } = input;
+    
+    // If signal is 'hold', no order needed
+    if (signal.action === 'hold') {
+      return null;
+    }
+    
+    // Get the agent's risk profile
+    const riskProfileData = await getAgentRiskProfile(agent.id);
+    if (!riskProfileData) {
+      throw new Error(`No risk profile found for agent ${agent.id}`);
+    }
+    
+    const riskProfile = riskProfileData.risk_profiles;
+    const overrideParams = riskProfileData.override_params || {};
+    
+    // Combine risk profile with overrides
+    const effectiveRiskProfile = {
+      ...riskProfile,
+      ...overrideParams
+    };
+    
+    // Check for circuit breakers
+    const circuitBreakerStatus = await checkCircuitBreakers(agent.id, effectiveRiskProfile);
+    if (circuitBreakerStatus.triggered) {
+      // Log circuit breaker trigger
+      await MonitoringService.logAgentEvent(
+        agent.id,
+        'agent.warning',
+        `Circuit breaker triggered: ${circuitBreakerStatus.reason}`,
+        {
+          reason: circuitBreakerStatus.reason,
+          details: circuitBreakerStatus.details
+        },
+        'warning'
+      );
+      
+      // If circuit breaker is triggered, don't place an order
+      return null;
+    }
+    
+    // Check if we're exceeding the max number of open positions
+    const openPositionsCount = await getOpenPositionsCount(agent.farm_id);
+    if (openPositionsCount >= effectiveRiskProfile.max_open_positions) {
+      await MonitoringService.logAgentEvent(
+        agent.id,
+        'agent.warning',
+        `Max open positions limit reached (${openPositionsCount}/${effectiveRiskProfile.max_open_positions})`,
+        { current: openPositionsCount, limit: effectiveRiskProfile.max_open_positions },
+        'warning'
+      );
+      return null;
+    }
+    
+    // Get the latest price from market data
+    const latestPrice = marketData.close[marketData.close.length - 1];
+    if (!latestPrice) {
+      throw new Error('Invalid market data: missing latest price');
+    }
+    
+    // For closing positions
+    if (signal.action === 'close') {
+      if (!position) {
+        return null; // No position to close
+      }
+      
+      return {
+        symbol: position.symbol,
+        type: 'market',
+        side: position.side === 'buy' ? 'sell' : 'buy', // Opposite of position side
+        size: position.size,
+        exchange: config.exchange || 'bybit'
+      };
+    }
+    
+    // Determine entry price (use signal price or latest market price)
+    const entryPrice = signal.entry_price || latestPrice;
+    
+    // Ensure we have a stop loss
+    if (!signal.stop_loss) {
+      // If no stop loss provided, calculate a default one based on the risk profile
+      // For example, 2% below entry for buys, 2% above for sells
+      const defaultStopDistance = entryPrice * (effectiveRiskProfile.max_risk_per_trade_percent / 100);
+      signal.stop_loss = signal.action === 'buy' 
+        ? entryPrice - defaultStopDistance
+        : entryPrice + defaultStopDistance;
+    }
+    
+    // Get the latest account balance for this farm/exchange
+    const accountBalance = await getAccountBalance(agent.farm_id, config.exchange);
+    
+    // Calculate the position size based on risk rules
+    const positionSizing = calculatePositionSize(
+      accountBalance,
+      entryPrice,
+      signal.stop_loss,
+      effectiveRiskProfile.max_risk_per_trade_percent,
+      config.leverage || 1,
+      signal.action as 'buy' | 'sell'
+    );
+    
+    // Ensure position size doesn't exceed limits
+    let finalSize = positionSizing.suggested_size;
+    
+    // Cap by max position size if needed
+    if (finalSize > effectiveRiskProfile.max_position_size) {
+      finalSize = effectiveRiskProfile.max_position_size;
+    }
+    
+    // Cap by position value if needed
+    const positionValue = finalSize * entryPrice;
+    if (positionValue > effectiveRiskProfile.max_position_value_usd) {
+      finalSize = effectiveRiskProfile.max_position_value_usd / entryPrice;
+    }
+    
+    // Calculate take profit if provided in signal
+    const takeProfitPrice = signal.take_profit || null;
+    
+    // Calculate risk/reward ratio if both take profit and stop loss are provided
+    let riskToReward;
+    if (takeProfitPrice && signal.stop_loss) {
+      const reward = Math.abs(takeProfitPrice - entryPrice);
+      const risk = Math.abs(signal.stop_loss - entryPrice);
+      riskToReward = risk > 0 ? reward / risk : null;
+    }
+    
+    // Return the order parameters
+    return {
+      symbol: config.trading_pairs?.[0] || 'BTCUSDT',  // Default to BTCUSDT if not specified
+      type: 'limit',
+      side: signal.action as 'buy' | 'sell',
+      size: finalSize,
+      price: entryPrice,
+      time_in_force: 'GTC',
+      exchange: config.exchange || 'bybit',
+      take_profit: takeProfitPrice,
+      stop_loss: signal.stop_loss,
+      risk_to_reward: riskToReward
+    };
+  } catch (error) {
+    console.error('Error applying risk rules:', error);
+    await MonitoringService.logSystemEvent(
+      'system.error',
+      `Risk management error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      { error: error instanceof Error ? error.stack : 'Unknown error' },
+      'error'
+    );
+    throw error;
+  }
+}
+
+/**
+ * Check if any circuit breakers are triggered for an agent
+ */
+async function checkCircuitBreakers(agentId: string, riskProfile: RiskProfile) {
+  try {
+    const supabase = createBrowserClient();
+    
+    // Check consecutive losses
+    const { data: trades, error: tradesError } = await supabase
+      .from('trades')
+      .select('id, profit_loss, created_at')
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(riskProfile.agent_circuit_breakers?.consecutive_losses_limit + 1 || 5);
+    
+    if (tradesError) throw tradesError;
+    
+    // Check for consecutive losses
+    if (trades && trades.length > 0) {
+      let consecutiveLosses = 0;
+      for (const trade of trades) {
+        if (trade.profit_loss < 0) {
+          consecutiveLosses++;
+        } else {
+          break; // Stop counting after a profitable trade
+        }
+      }
+      
+      const lossLimit = riskProfile.agent_circuit_breakers?.consecutive_losses_limit || 5;
+      if (consecutiveLosses >= lossLimit) {
+        return {
+          triggered: true,
+          reason: `Consecutive losses circuit breaker (${consecutiveLosses}/${lossLimit})`,
+          details: { consecutiveLosses, limit: lossLimit }
+        };
+      }
+    }
+    
+    // Check for daily loss limit
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Start of today
+    
+    const { data: todayPerformance, error: perfError } = await supabase
+      .from('performance_metrics')
+      .select('daily_pnl, daily_pnl_percent')
+      .eq('agent_id', agentId)
+      .gte('period_end', today.toISOString())
+      .limit(1);
+    
+    if (perfError) throw perfError;
+    
+    if (todayPerformance && todayPerformance.length > 0) {
+      const dailyLossLimit = riskProfile.agent_circuit_breakers?.daily_loss_limit_percent || 5;
+      const dailyPnlPercent = todayPerformance[0].daily_pnl_percent || 0;
+      
+      if (dailyPnlPercent < -dailyLossLimit) {
+        return {
+          triggered: true,
+          reason: `Daily loss limit circuit breaker (${dailyPnlPercent.toFixed(2)}% / -${dailyLossLimit}%)`,
+          details: { currentLoss: dailyPnlPercent, limit: dailyLossLimit }
+        };
+      }
+    }
+    
+    // Check for volatility threshold
+    // This would be implemented with a calculation of recent volatility
+    // For now, we'll just return not triggered
+    
+    return { triggered: false };
+  } catch (error) {
+    console.error('Error checking circuit breakers:', error);
+    // In case of error, default to allowing the trade (don't trigger circuit breaker)
+    return { triggered: false };
+  }
+}
+
+/**
+ * Get count of open positions for a farm
+ */
+async function getOpenPositionsCount(farmId: string): Promise<number> {
+  try {
+    const supabase = createBrowserClient();
+    
+    const { count, error } = await supabase
+      .from('positions')
+      .select('id', { count: 'exact' })
+      .eq('farm_id', farmId)
+      .eq('status', 'open');
+    
+    if (error) throw error;
+    
+    return count || 0;
+  } catch (error) {
+    console.error('Error getting open positions count:', error);
+    return 0; // Default to 0 in case of error
+  }
+}
+
+/**
+ * Get account balance for a farm and exchange
+ */
+async function getAccountBalance(farmId: string, exchange: string): Promise<number> {
+  try {
+    const supabase = createBrowserClient();
+    
+    const { data, error } = await supabase
+      .from('exchange_accounts')
+      .select('balance_usd')
+      .eq('farm_id', farmId)
+      .eq('exchange', exchange)
+      .single();
+    
+    if (error) throw error;
+    
+    return data?.balance_usd || 10000; // Default to 10000 if not found
+  } catch (error) {
+    console.error('Error getting account balance:', error);
+    return 10000; // Default value in case of error
+  }
+}
+
+/**
+ * Create RiskManagementService class
+ */
+export class RiskManagementService {
+  async applyRiskRules(input: AgentRiskInput): Promise<OrderParameters | null> {
+    return applyRiskRules(input);
+  }
+  
+  getRiskProfiles() {
+    return getRiskProfiles();
+  }
+  
+  createRiskProfile(profile: Omit<RiskProfile, 'id'>) {
+    return createRiskProfile(profile);
+  }
+  
+  updateRiskProfile(id: string, updates: Partial<RiskProfile>) {
+    return updateRiskProfile(id, updates);
+  }
+  
+  deleteRiskProfile(id: string) {
+    return deleteRiskProfile(id);
+  }
+  
+  assignRiskProfileToAgent(agentId: string, riskProfileId: string, overrideParams?: any) {
+    return assignRiskProfileToAgent(agentId, riskProfileId, overrideParams);
+  }
+  
+  getAgentRiskProfile(agentId: string) {
+    return getAgentRiskProfile(agentId);
+  }
+  
+  checkOrderAgainstRiskLimits(order: Order, agentId?: string) {
+    return checkOrderAgainstRiskLimits(order, agentId);
+  }
+  
+  calculatePositionSize(
+    accountBalance: number,
+    entryPrice: number,
+    stopLossPrice: number,
+    riskPercent: number,
+    leverage: number = 1,
+    side: 'buy' | 'sell' = 'buy'
+  ) {
+    return calculatePositionSize(accountBalance, entryPrice, stopLossPrice, riskPercent, leverage, side);
+  }
+  
+  calculateKellyPositionSize(
+    accountBalance: number,
+    winRate: number,
+    averageWin: number,
+    averageLoss: number
+  ) {
+    return calculateKellyPositionSize(accountBalance, winRate, averageWin, averageLoss);
+  }
+  
+  getAgentRiskMetrics(agentId: string) {
+    return getAgentRiskMetrics(agentId);
+  }
+}
+
+export default new RiskManagementService();

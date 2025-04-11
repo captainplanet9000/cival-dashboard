@@ -58,8 +58,10 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 
 // Hooks
-import { useElizaAgents } from '@/hooks/useElizaAgents';
+import { useElizaAgentsWithFallback } from '@/hooks/useElizaAgentsWithFallback';
 import { agentService } from '@/services/agent-service';
+// Import mock data for fallback
+import { mockFarms, mockMarkets, mockStrategyTypes } from '@/services/mock-data-service';
 
 // Schema for form validation
 const formSchema = z.object({
@@ -106,8 +108,10 @@ export function UnifiedAgentCreationDialog({
   const [farms, setFarms] = React.useState<{ id: number, name: string }[]>([]);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
+  const [usingMockData, setUsingMockData] = React.useState(false);
   const router = useRouter();
-  const { createAgent: createElizaAgent } = useElizaAgents();
+  // Use the robust hook with fallback
+  const { createAgent: createElizaAgent } = useElizaAgentsWithFallback();
   const supabase = createBrowserClient();
 
   const defaultAgent = farmId 
@@ -185,14 +189,21 @@ export function UnifiedAgentCreationDialog({
             'DOT-USD', 'ADA-USD', 'XRP-USD', 'DOGE-USD', 'LINK-USD'
           ]);
         }
+      } catch (err) {
+        console.error("Error fetching initial form data:", err);
+        // Use mock data as fallback
+        setFarms([
+          { id: 1, name: 'Demo Farm 1' },
+          { id: 2, name: 'Demo Farm 2' },
+          { id: 3, name: 'Demo Farm 3' }
+        ]);
+        setStrategyTypes(['momentum', 'mean_reversion', 'trend_following']);
+        setAvailableMarkets(['BTC-USD', 'ETH-USD', 'SOL-USD', 'AVAX-USD']);
       } finally {
         setLoading(false);
       }
     };
-
-    if (open) {
-      fetchData();
-    }
+    fetchData();
   }, [open]);
 
   // Toggle market selection
@@ -217,6 +228,7 @@ export function UnifiedAgentCreationDialog({
   // Handle form submission
   const onSubmit = async (values: FormValues) => {
     setIsSubmitting(true);
+    console.log("Form submitted with values:", values);
     
     try {
       console.log('Creating agent with values:', values);
@@ -342,7 +354,7 @@ export function UnifiedAgentCreationDialog({
   return (
     <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button className={className}>
+        <Button id="create-agent-trigger" className={className}>
           <PlusCircle className="mr-2 h-4 w-4" />
           {buttonText}
         </Button>
@@ -386,427 +398,442 @@ export function UnifiedAgentCreationDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Step 1: Basic Information */}
-            {currentStep === 1 && (
-              <div className="space-y-4">
-                {/* Agent Type Selection */}
-                <FormField
-                  control={form.control}
-                  name="agent_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Agent Type</FormLabel>
-                      <div className="grid grid-cols-2 gap-4 pt-2">
-                        <Card 
-                          className={`cursor-pointer transition-all ${field.value === 'standard' ? 'ring-2 ring-primary' : 'hover:border-muted-foreground'}`}
-                          onClick={() => form.setValue('agent_type', 'standard')}
-                        >
-                          <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <Bot className="h-12 w-12 mb-2 text-primary" />
-                            <h3 className="font-medium">Standard Agent</h3>
-                            <p className="text-sm text-muted-foreground mt-1">Basic trading bot with customizable strategies</p>
-                          </CardContent>
-                        </Card>
-                        
-                        <Card 
-                          className={`cursor-pointer transition-all ${field.value === 'eliza' ? 'ring-2 ring-primary' : 'hover:border-muted-foreground'}`}
-                          onClick={() => form.setValue('agent_type', 'eliza')}
-                        >
-                          <CardContent className="p-4 flex flex-col items-center justify-center text-center">
-                            <Sparkles className="h-12 w-12 mb-2 text-primary" />
-                            <h3 className="font-medium">ElizaOS Agent</h3>
-                            <p className="text-sm text-muted-foreground mt-1">Advanced AI-powered trading with language capabilities</p>
-                          </CardContent>
-                        </Card>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Agent Name */}
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Agent Name</FormLabel>
-                      <FormControl>
-                        <Input placeholder="e.g., BTC Momentum Trader" {...field} />
-                      </FormControl>
-                      <FormDescription>
-                        A descriptive name for your trading agent
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Description */}
-                <FormField
-                  control={form.control}
-                  name="description"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Description</FormLabel>
-                      <FormControl>
-                        <Textarea 
-                          placeholder="Describe what this agent does..."
-                          className="resize-y"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Brief overview of the agent's purpose and strategy
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Farm Selection */}
-                <FormField
-                  control={form.control}
-                  name="farm_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Farm</FormLabel>
-                      <Select 
-                        onValueChange={(value) => field.onChange(parseInt(value))}
-                        defaultValue={field.value?.toString()}
-                        value={field.value?.toString()}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a farm" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {farms.map((farm) => (
-                            <SelectItem key={farm.id} value={farm.id.toString()}>
-                              {farm.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        The trading farm this agent will belong to
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-            
-            {/* Step 2: Strategy Configuration */}
-            {currentStep === 2 && (
-              <div className="space-y-4">
-                {/* Strategy Type */}
-                <FormField
-                  control={form.control}
-                  name="strategy_type"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Strategy Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select strategy type" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {strategyTypes.map((type) => (
-                            <SelectItem key={type} value={type}>
-                              {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        The type of trading strategy this agent will use
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Risk Level */}
-                <FormField
-                  control={form.control}
-                  name="risk_level"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Risk Level</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select risk level" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="low">
-                            <div className="flex items-center">
-                              <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 mr-2">Low</Badge>
-                              Conservative strategy with minimal risk
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="medium">
-                            <div className="flex items-center">
-                              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 mr-2">Medium</Badge>
-                              Balanced approach to risk and reward
-                            </div>
-                          </SelectItem>
-                          <SelectItem value="high">
-                            <div className="flex items-center">
-                              <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300 mr-2">High</Badge>
-                              Aggressive strategy with higher potential returns
-                            </div>
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormDescription>
-                        The level of risk this agent will take in its trading decisions
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                
-                {/* Target Markets */}
-                <FormField
-                  control={form.control}
-                  name="target_markets"
-                  render={() => (
-                    <FormItem>
-                      <FormLabel>Target Markets</FormLabel>
-                      <FormControl>
-                        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
-                          {availableMarkets.map((market) => (
-                            <Badge
-                              key={market}
-                              variant={isMarketSelected(market) ? "default" : "outline"}
-                              className={`cursor-pointer ${isMarketSelected(market) ? "bg-primary" : ""} px-3 py-2 text-center`}
-                              onClick={() => handleMarketToggle(market)}
+            {/* Only show the form when not loading */}
+            {!loading && (
+              <>
+                {/* Step 1: Basic Information */}
+                {currentStep === 1 && (
+                  <div className="space-y-4">
+                    {/* Agent Type Selection */}
+                    <FormField
+                      control={form.control}
+                      name="agent_type"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Agent Type</FormLabel>
+                          <div className="grid grid-cols-2 gap-4 pt-2">
+                            <Card 
+                              className={`cursor-pointer transition-all ${field.value === 'standard' ? 'ring-2 ring-primary' : 'hover:border-muted-foreground'}`}
+                              onClick={() => form.setValue('agent_type', 'standard')}
                             >
-                              {market}
-                            </Badge>
-                          ))}
-                        </div>
-                      </FormControl>
-                      <FormDescription>
-                        Select the markets this agent will trade in
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            )}
-            
-            {/* Step 3: Advanced Configuration */}
-            {currentStep === 3 && (
-              <div className="space-y-4">
-                {/* Show different configuration based on agent type */}
-                {agentType === 'standard' ? (
-                  <>
-                    {/* Standard Agent Configuration */}
-                    <FormField
-                      control={form.control}
-                      name="auto_start"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">Auto Start</FormLabel>
-                            <FormDescription>
-                              Automatically start trading when the agent is created
-                            </FormDescription>
+                              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                <Bot className="h-12 w-12 mb-2 text-primary" />
+                                <h3 className="font-medium">Standard Agent</h3>
+                                <p className="text-sm text-muted-foreground mt-1">Basic trading bot with customizable strategies</p>
+                              </CardContent>
+                            </Card>
+                            
+                            <Card 
+                              className={`cursor-pointer transition-all ${field.value === 'eliza' ? 'ring-2 ring-primary' : 'hover:border-muted-foreground'}`}
+                              onClick={() => form.setValue('agent_type', 'eliza')}
+                            >
+                              <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                                <Sparkles className="h-12 w-12 mb-2 text-primary" />
+                                <h3 className="font-medium">ElizaOS Agent</h3>
+                                <p className="text-sm text-muted-foreground mt-1">Advanced AI-powered trading with language capabilities</p>
+                              </CardContent>
+                            </Card>
                           </div>
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
                     
+                    {/* Agent Name */}
                     <FormField
                       control={form.control}
-                      name="capital_allocation"
+                      name="name"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Capital Allocation (%)</FormLabel>
+                          <FormLabel>Agent Name</FormLabel>
                           <FormControl>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={100}
-                              {...field}
-                            />
+                            <Input placeholder="e.g., BTC Momentum Trader" {...field} />
                           </FormControl>
                           <FormDescription>
-                            Percentage of farm capital to allocate to this agent
+                            A descriptive name for your trading agent
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
                     
+                    {/* Description */}
                     <FormField
                       control={form.control}
-                      name="leverage"
+                      name="description"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Leverage (1-10x)</FormLabel>
+                          <FormLabel>Description</FormLabel>
                           <FormControl>
-                            <Input
-                              type="number"
-                              min={1}
-                              max={10}
+                            <Textarea 
+                              placeholder="Describe what this agent does..."
+                              className="resize-y"
                               {...field}
                             />
                           </FormControl>
                           <FormDescription>
-                            Maximum leverage the agent can use for trading
+                            Brief overview of the agent's purpose and strategy
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </>
-                ) : (
-                  <>
-                    {/* ElizaOS Agent Configuration */}
-                    <FormField
-                      control={form.control}
-                      name="apiAccess"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">API Access</FormLabel>
-                            <FormDescription>
-                              Allow the agent to access external APIs
-                            </FormDescription>
-                          </div>
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
                     
+                    {/* Farm Selection */}
                     <FormField
                       control={form.control}
-                      name="tradingPermissions"
+                      name="farm_id"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Trading Permissions</FormLabel>
-                          <Select
-                            onValueChange={field.onChange}
-                            defaultValue={field.value}
-                            disabled={!form.getValues('apiAccess')}
+                          <FormLabel>Farm</FormLabel>
+                          <Select 
+                            onValueChange={(value) => field.onChange(parseInt(value))}
+                            defaultValue={field.value?.toString()}
+                            value={field.value?.toString()}
                           >
                             <FormControl>
                               <SelectTrigger>
-                                <SelectValue placeholder="Select permissions" />
+                                <SelectValue placeholder="Select a farm" />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="read">Read Only</SelectItem>
-                              <SelectItem value="suggest">Suggest Trades</SelectItem>
-                              <SelectItem value="execute">Execute Trades</SelectItem>
+                              {farms.map((farm) => (
+                                <SelectItem key={farm.id} value={farm.id.toString()}>
+                                  {farm.name}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           <FormDescription>
-                            What trading actions the agent can perform
+                            The trading farm this agent will belong to
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    
+                  </div>
+                )}
+                
+                {/* Step 2: Strategy Configuration */}
+                {currentStep === 2 && (
+                  <div className="space-y-4">
+                    {/* Strategy Type */}
                     <FormField
                       control={form.control}
-                      name="autoRecovery"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                          <div className="space-y-0.5">
-                            <FormLabel className="text-base">Auto Recovery</FormLabel>
-                            <FormDescription>
-                              Automatically restart the agent if it encounters an error
-                            </FormDescription>
-                          </div>
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="initialInstructions"
+                      name="strategy_type"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Initial Instructions</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Enter any specific instructions for this agent..."
-                              className="resize-y min-h-[100px]"
-                              {...field}
-                            />
-                          </FormControl>
+                          <FormLabel>Strategy Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select strategy type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {strategyTypes.map((type) => (
+                                <SelectItem key={type} value={type}>
+                                  {type.charAt(0).toUpperCase() + type.slice(1).replace('_', ' ')}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <FormDescription>
-                            Optional instructions to guide the agent's behavior
+                            The type of trading strategy this agent will use
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                  </>
+                    
+                    {/* Risk Level */}
+                    <FormField
+                      control={form.control}
+                      name="risk_level"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Risk Level</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select risk level" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="low">
+                                <div className="flex items-center">
+                                  <Badge variant="outline" className="bg-green-100 text-green-800 border-green-300 mr-2">Low</Badge>
+                                  Conservative strategy with minimal risk
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="medium">
+                                <div className="flex items-center">
+                                  <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300 mr-2">Medium</Badge>
+                                  Balanced approach to risk and reward
+                                </div>
+                              </SelectItem>
+                              <SelectItem value="high">
+                                <div className="flex items-center">
+                                  <Badge variant="outline" className="bg-red-100 text-red-800 border-red-300 mr-2">High</Badge>
+                                  Aggressive strategy with higher potential returns
+                                </div>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            The level of risk this agent will take in its trading decisions
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    {/* Target Markets */}
+                    <FormField
+                      control={form.control}
+                      name="target_markets"
+                      render={() => (
+                        <FormItem>
+                          <FormLabel>Target Markets</FormLabel>
+                          <FormControl>
+                            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                              {availableMarkets.map((market) => (
+                                <Badge
+                                  key={market}
+                                  variant={isMarketSelected(market) ? "default" : "outline"}
+                                  className={`cursor-pointer ${isMarketSelected(market) ? "bg-primary" : ""} px-3 py-2 text-center`}
+                                  onClick={() => handleMarketToggle(market)}
+                                >
+                                  {market}
+                                </Badge>
+                              ))}
+                            </div>
+                          </FormControl>
+                          <FormDescription>
+                            Select the markets this agent will trade in
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                 )}
-              </div>
+                
+                {/* Step 3: Advanced Configuration */}
+                {currentStep === 3 && (
+                  <div className="space-y-4">
+                    {/* Show different configuration based on agent type */}
+                    {agentType === 'standard' ? (
+                      <>
+                        {/* Standard Agent Configuration */}
+                        <FormField
+                          control={form.control}
+                          name="auto_start"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                              <div className="space-y-0.5">
+                                <FormLabel className="text-base">Auto Start</FormLabel>
+                                <FormDescription>
+                                  Automatically start trading when the agent is created
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="capital_allocation"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Capital Allocation (%)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={100}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Percentage of farm capital to allocate to this agent
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="leverage"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Leverage (1-10x)</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={10}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Maximum leverage the agent can use for trading
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        {/* ElizaOS Agent Configuration */}
+                        <FormField
+                          control={form.control}
+                          name="apiAccess"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                              <div className="space-y-0.5">
+                                <FormLabel className="text-base">API Access</FormLabel>
+                                <FormDescription>
+                                  Allow the agent to access external APIs
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="tradingPermissions"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Trading Permissions</FormLabel>
+                              <Select
+                                onValueChange={field.onChange}
+                                defaultValue={field.value}
+                                disabled={!form.getValues('apiAccess')}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select permissions" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="read">Read Only</SelectItem>
+                                  <SelectItem value="suggest">Suggest Trades</SelectItem>
+                                  <SelectItem value="execute">Execute Trades</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormDescription>
+                                What trading actions the agent can perform
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="autoRecovery"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                              <div className="space-y-0.5">
+                                <FormLabel className="text-base">Auto Recovery</FormLabel>
+                                <FormDescription>
+                                  Automatically restart the agent if it encounters an error
+                                </FormDescription>
+                              </div>
+                              <FormControl>
+                                <Switch
+                                  checked={field.value}
+                                  onCheckedChange={field.onChange}
+                                />
+                              </FormControl>
+                            </FormItem>
+                          )}
+                        />
+                        
+                        <FormField
+                          control={form.control}
+                          name="initialInstructions"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Initial Instructions</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Enter any specific instructions for this agent..."
+                                  className="resize-y min-h-[100px]"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Optional instructions to guide the agent's behavior
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
+                
+                {/* Navigation and submit buttons */}
+                <DialogFooter className="flex justify-between">
+                  {currentStep > 1 ? (
+                    <Button type="button" variant="outline" onClick={prevStep}>
+                      <ChevronLeft className="mr-2 h-4 w-4" />
+                      Back
+                    </Button>
+                  ) : (
+                    <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+                      Cancel
+                    </Button>
+                  )}
+                  
+                  {currentStep < 3 ? (
+                    <Button type="button" onClick={nextStep}>
+                      Next
+                      <ChevronRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  ) : (
+                    <Button type="submit" disabled={isSubmitting}>
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        'Create Agent'
+                      )}
+                    </Button>
+                  )}
+                </DialogFooter>
+              </>
             )}
             
-            {/* Navigation and submit buttons */}
-            <DialogFooter className="flex justify-between">
-              {currentStep > 1 ? (
-                <Button type="button" variant="outline" onClick={prevStep}>
-                  <ChevronLeft className="mr-2 h-4 w-4" />
-                  Back
-                </Button>
-              ) : (
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  Cancel
-                </Button>
-              )}
-              
-              {currentStep < 3 ? (
-                <Button type="button" onClick={nextStep}>
-                  Next
-                  <ChevronRight className="ml-2 h-4 w-4" />
-                </Button>
-              ) : (
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Agent'
-                  )}
-                </Button>
-              )}
-            </DialogFooter>
+            {/* Show a loader while fetching initial data */}
+            {loading && (
+              <div className="flex items-center justify-center py-8">
+                <div className="text-center">
+                  <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+                  <p className="mt-2 text-sm text-muted-foreground">Loading agent data...</p>
+                </div>
+              </div>
+            )}
           </form>
         </Form>
       </DialogContent>
