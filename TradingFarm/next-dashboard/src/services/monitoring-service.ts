@@ -171,6 +171,32 @@ export class MonitoringService {
   }
 
   /**
+   * Format error for logging in a safe way
+   * Handles empty error objects that cause "Error in logEvent: {}" messages
+   */
+  private static formatError(error: any): string {
+    if (!error) return 'Unknown error (null or undefined)';
+    
+    // If error is an empty object
+    if (typeof error === 'object' && Object.keys(error).length === 0) {
+      return 'Empty error object - likely a network or connection issue';
+    }
+    
+    // If error has a message property
+    if (error.message) return error.message;
+    
+    // If error is a string
+    if (typeof error === 'string') return error;
+    
+    // Fallback: stringify the error object
+    try {
+      return JSON.stringify(error);
+    } catch (e) {
+      return 'Error object could not be stringified';
+    }
+  }
+
+  /**
    * Check if system is offline
    */
   private static isSystemOffline(): boolean {
@@ -188,6 +214,11 @@ export class MonitoringService {
     },
     isServerSide = true
   ): Promise<string | null> {
+    // Skip logging if data is invalid
+    if (!eventData || typeof eventData !== 'object') {
+      return null;
+    }
+    
     // Skip logging if offline and in browser
     if (!isServerSide && this.isSystemOffline()) {
       return null;
@@ -232,17 +263,21 @@ export class MonitoringService {
       if (error) {
         // Only log error if not being throttled
         if (!this.shouldThrottleError()) {
-          console.warn('Error logging monitoring event:', error);
-          this.processAlerts({
-            id: data.id,
-            ...event,
-            timestamp
-          }, isServerSide).catch(err => {
-            console.error('Error processing alerts:', err);
-            errorCounter++;
-          });
+          const formattedError = this.formatError(error);
+          console.warn('Error logging monitoring event:', formattedError);
         }
+        return null;
       }
+      
+      // Process alerts
+      this.processAlerts({
+        id: data.id,
+        ...event,
+        timestamp
+      }, isServerSide).catch(err => {
+        console.error('Error processing alerts:', err);
+        errorCounter++;
+      });
       
       return data.id;
     } catch (error) {
@@ -777,8 +812,11 @@ export class MonitoringService {
     } catch (error) {
       // Only log error if not being throttled
       if (!this.shouldThrottleError()) {
-        console.warn('Error sending webhook alert:', error);
+        // Provide more detailed error message using our formatter
+        const errorMsg = this.formatError(error);
+        console.warn('Error in monitoring service:', errorMsg);
       }
+      // Don't return anything from this void function
     }
   }
   

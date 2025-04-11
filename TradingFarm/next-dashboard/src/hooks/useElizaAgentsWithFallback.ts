@@ -5,219 +5,453 @@
  * when authentication fails or when the backend services are unavailable.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/utils/supabase/client';
-import { toast } from '@/components/ui/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 import { mockElizaAgents, mockDataService } from '@/services/mock-data-service';
 
-export function useElizaAgentsWithFallback() {
-  const [agents, setAgents] = useState<any[]>([]);
+interface AgentCreateParams {
+  name: string;
+  description?: string;
+  config?: Record<string, any>;
+}
+
+interface AgentWithFallback {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'paused' | 'initializing' | 'error' | 'inactive';
+  farm_id?: number;
+  farm_name?: string;
+  type: 'trading' | 'analytical' | 'research' | 'conversational';
+  created_at: string;
+  updated_at: string;
+  user_id?: string;
+  execution_mode: 'live' | 'dry-run' | 'backtest';
+  config?: Record<string, any>;
+  is_fallback?: boolean;
+}
+
+interface UseElizaAgentsWithFallbackResult {
+  agents: AgentWithFallback[];
+  loading: boolean;
+  error: string | null;
+  createAgent: (params: AgentCreateParams) => Promise<AgentWithFallback>;
+  updateAgent: (id: string, updates: Partial<AgentWithFallback>) => Promise<AgentWithFallback | null>;
+  deleteAgent: (id: string) => Promise<boolean>;
+  refreshAgents: () => Promise<void>;
+  isConnected: boolean;
+}
+
+/**
+ * Hook for working with ElizaOS agents with built-in fallback for development/offline scenarios
+ */
+export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
+  const [agents, setAgents] = useState<AgentWithFallback[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [usingMockData, setUsingMockData] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(true);
   const supabase = createBrowserClient();
   const router = useRouter();
+  const { toast } = useToast();
 
-  // Fetch all ElizaOS agents
-  const refreshAgents = async () => {
+  // Load agents from supabase and/or localStorage
+  const loadAgents = useCallback(async () => {
     setLoading(true);
     setError(null);
     
     try {
-      // Check authentication first
-      const { data: authData } = await supabase.auth.getSession();
-      if (!authData.session) {
-        console.log('No active session, using mock data for ElizaOS agents');
-        setAgents(mockElizaAgents);
-        setUsingMockData(true);
-        setLoading(false);
-        return;
-      }
+      // Try to load from Supabase first
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
       
-      // Try using API first
-      try {
-        const response = await fetch('/api/elizaos/agents');
-        if (response.ok) {
-          const data = await response.json();
-          setAgents(data.agents || []);
-          setUsingMockData(false);
-          return;
+      if (userId) {
+        try {
+          // Get agents from database
+          const { data: agentsData, error: agentsError } = await supabase
+            .from('agents')
+            .select('*, farms(name)')
+            .eq('user_id', userId);
+            
+          if (agentsError) {
+            throw agentsError;
+          }
+          
+          if (agentsData && agentsData.length > 0) {
+            // Format agents with farm name
+            const formattedAgents = agentsData.map(agent => ({
+              ...agent,
+              farm_name: agent.farms?.name || undefined,
+              is_fallback: false
+            }));
+            
+            setAgents(formattedAgents);
+            setIsConnected(true);
+            
+            // Save to localStorage as fallback cache
+            localStorage.setItem('cached_agents', JSON.stringify(formattedAgents));
+            
+            return;
+          }
+        } catch (supabaseError) {
+          console.warn('Error loading agents from Supabase:', supabaseError);
+          setIsConnected(false);
         }
-      } catch (apiError) {
-        console.error('API endpoint failed, falling back to direct DB query:', apiError);
       }
       
-      // Try direct DB query
-      const { data, error: fetchError } = await supabase
-        .from('elizaos_agents')
-        .select('*');
+      // If we get here, either:
+      // 1. User is not authenticated
+      // 2. There was an error loading from Supabase
+      // 3. No agents were found
       
-      if (fetchError) {
-        throw fetchError;
+      // Try to load from localStorage cache
+      const cachedAgents = localStorage.getItem('cached_agents');
+      if (cachedAgents) {
+        try {
+          const parsedAgents = JSON.parse(cachedAgents);
+          if (Array.isArray(parsedAgents) && parsedAgents.length > 0) {
+            // Mark these as cached
+            const markedAgents = parsedAgents.map(agent => ({
+              ...agent,
+              is_fallback: true
+            }));
+            setAgents(markedAgents);
+            
+            toast({
+              title: 'Using cached agents',
+              description: 'Unable to connect to server. Using cached data.',
+              variant: 'default'
+            });
+            
+            return;
+          }
+        } catch (parseError) {
+          console.warn('Error parsing cached agents:', parseError);
+        }
       }
       
-      if (data && data.length > 0) {
-        setAgents(data);
-        setUsingMockData(false);
+      // If we get here, no agents were found in Supabase or localStorage
+      // Create a demo agent in development mode
+      if (process.env.NODE_ENV === 'development') {
+        const demoAgent: AgentWithFallback = {
+          id: 'demo-1',
+          name: 'Demo Trading Agent',
+          description: 'A demo agent for development purposes',
+          status: 'active',
+          type: 'trading',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          execution_mode: 'dry-run',
+          is_fallback: true,
+          farm_id: 999,
+          farm_name: 'Development Farm',
+          config: {
+            strategy_type: 'momentum',
+            risk_level: 'medium',
+            target_markets: ['BTC/USD', 'ETH/USD']
+          }
+        };
+        
+        setAgents([demoAgent]);
+        
+        toast({
+          title: 'Development Mode',
+          description: 'Using demo agent for development.',
+          variant: 'default'
+        });
       } else {
-        // No agents found in database, use mock data
-        console.log('No agents found in database, using mock data');
-        setAgents(mockElizaAgents);
-        setUsingMockData(true);
+        // In production, show empty state
+        setAgents([]);
+        
+        toast({
+          title: 'No Agents Found',
+          description: 'Create your first agent to get started.',
+          variant: 'default'
+        });
       }
-    } catch (err) {
-      console.error('Error fetching ElizaOS agents:', err);
-      setError(err instanceof Error ? err : new Error('Failed to fetch agents'));
+    } catch (error) {
+      console.error('Error in loadAgents:', error);
+      setError('Failed to load agents. Please try again.');
+      setIsConnected(false);
       
-      // Always fall back to mock data on error
-      setAgents(mockElizaAgents);
-      setUsingMockData(true);
+      toast({
+        title: 'Connection Error',
+        description: 'Failed to load agents. Check your connection.',
+        variant: 'destructive'
+      });
+      
+      // Try to load from localStorage as fallback
+      try {
+        const cachedAgents = localStorage.getItem('cached_agents');
+        if (cachedAgents) {
+          const parsedAgents = JSON.parse(cachedAgents);
+          if (Array.isArray(parsedAgents)) {
+            // Mark these as cached
+            const markedAgents = parsedAgents.map(agent => ({
+              ...agent,
+              is_fallback: true
+            }));
+            setAgents(markedAgents);
+          }
+        }
+      } catch (fallbackError) {
+        console.error('Fallback error:', fallbackError);
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, [supabase, toast]);
 
-  // Initial data fetch
-  useEffect(() => {
-    refreshAgents();
-  }, []);
-
-  // Control agent (start, stop, pause, resume)
-  const controlAgent = async (agentId: string, action: 'start' | 'stop' | 'pause' | 'resume') => {
-    if (usingMockData) {
-      // Simulate agent control with mock data
-      const updatedAgents = agents.map(agent => {
-        if (agent.id === agentId) {
-          const newStatus = {
-            'start': 'active',
-            'stop': 'idle',
-            'pause': 'paused',
-            'resume': 'active'
-          }[action];
-          
-          return { ...agent, status: newStatus };
-        }
-        return agent;
-      });
-      
-      setAgents(updatedAgents);
-      return;
-    }
-    
+  // Create a new agent
+  const createAgent = useCallback(async (params: AgentCreateParams): Promise<AgentWithFallback> => {
     try {
-      // Check authentication
-      const { data: authData } = await supabase.auth.getSession();
-      if (!authData.session) {
-        throw new Error('Authentication required');
+      // Get current user
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      if (!userId) {
+        throw new Error('You must be authenticated to create an agent');
       }
       
-      // Try API endpoint first
-      try {
-        const response = await fetch(`/api/elizaos/agents/${agentId}/control`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ action }),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`API error: ${response.statusText}`);
-        }
-        
-        // Refresh the agent list
-        await refreshAgents();
-        return;
-      } catch (apiError) {
-        console.error('API control failed, trying direct DB update:', apiError);
-      }
+      // Generate timestamp for now
+      const now = new Date().toISOString();
       
-      // Fall back to direct DB update
-      const newStatus = {
-        'start': 'active',
-        'stop': 'idle',
-        'pause': 'paused',
-        'resume': 'active'
-      }[action];
+      // Create the agent data
+      const agentData = {
+        name: params.name,
+        description: params.description || '',
+        user_id: userId,
+        status: 'initializing',
+        type: 'trading',
+        execution_mode: 'dry-run',
+        created_at: now,
+        updated_at: now,
+        config: params.config || {}
+      };
       
-      const { error: updateError } = await supabase
-        .from('elizaos_agents')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', agentId);
-      
-      if (updateError) throw updateError;
-      
-      // Refresh the agent list
-      await refreshAgents();
-    } catch (error) {
-      console.error(`Error ${action}ing agent:`, error);
-      throw error;
-    }
-  };
-
-  // Create a new ElizaOS agent
-  const createAgent = async (agentData: any) => {
-    if (usingMockData) {
-      // Create a mock agent
-      const newAgent = await mockDataService.createElizaAgent(agentData);
-      setAgents([...agents, newAgent]);
-      return newAgent;
-    }
-    
-    try {
-      // Check authentication
-      const { data: authData } = await supabase.auth.getSession();
-      if (!authData.session) {
-        throw new Error('Authentication required');
-      }
-      
-      // Try API endpoint first
-      try {
-        const response = await fetch('/api/elizaos/agents', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(agentData),
-        });
-        
-        if (!response.ok) {
-          throw new Error(`API error: ${response.statusText}`);
-        }
-        
-        const createdAgent = await response.json();
-        await refreshAgents();
-        return createdAgent;
-      } catch (apiError) {
-        console.error('API creation failed, trying direct DB insert:', apiError);
-      }
-      
-      // Fall back to direct DB insertion
-      const { data, error: insertError } = await supabase
-        .from('elizaos_agents')
+      // Try to insert into database
+      const { data: createdAgent, error: createError } = await supabase
+        .from('agents')
         .insert([agentData])
-        .select()
+        .select('*, farms(name)')
         .single();
       
-      if (insertError) throw insertError;
+      if (createError) {
+        throw createError;
+      }
       
-      // Refresh the agent list
-      await refreshAgents();
-      return data;
+      if (!createdAgent) {
+        throw new Error('Failed to create agent');
+      }
+      
+      // Format the created agent
+      const formattedAgent: AgentWithFallback = {
+        ...createdAgent,
+        farm_name: createdAgent.farms?.name,
+        is_fallback: false
+      };
+      
+      // Update state
+      setAgents(prev => [formattedAgent, ...prev]);
+      
+      // Also cache locally
+      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
+      localStorage.setItem('cached_agents', JSON.stringify([formattedAgent, ...cachedAgents]));
+      
+      return formattedAgent;
     } catch (error) {
       console.error('Error creating agent:', error);
+      
+      // If in development, create a mock agent
+      if (process.env.NODE_ENV === 'development') {
+        const mockAgent: AgentWithFallback = {
+          id: `mock-${Date.now()}`,
+          name: params.name,
+          description: params.description || 'Mock agent for development',
+          status: 'active',
+          type: 'trading',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          execution_mode: 'dry-run',
+          is_fallback: true,
+          config: params.config || {}
+        };
+        
+        // Update state with mock agent
+        setAgents(prev => [mockAgent, ...prev]);
+        
+        // Store in localStorage
+        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
+        localStorage.setItem('mockAgents', JSON.stringify([...mockAgents, mockAgent]));
+        
+        toast({
+          title: 'Development Mode',
+          description: 'Created mock agent for development.',
+          variant: 'default'
+        });
+        
+        return mockAgent;
+      }
+      
+      toast({
+        title: 'Agent Creation Failed',
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        variant: 'destructive'
+      });
+      
       throw error;
     }
-  };
+  }, [supabase, toast]);
+
+  // Update an existing agent
+  const updateAgent = useCallback(async (id: string, updates: Partial<AgentWithFallback>): Promise<AgentWithFallback | null> => {
+    try {
+      // Check if this is a fallback agent
+      const agent = agents.find(a => a.id === id);
+      if (agent?.is_fallback) {
+        // For fallback agents, just update locally
+        const updatedAgent = { ...agent, ...updates, updated_at: new Date().toISOString() };
+        
+        setAgents(prev => prev.map(a => a.id === id ? updatedAgent : a));
+        
+        // Update localStorage
+        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
+        localStorage.setItem('mockAgents', JSON.stringify(
+          mockAgents.map((a: any) => a.id === id ? { ...a, ...updates } : a)
+        ));
+        
+        return updatedAgent;
+      }
+      
+      // For real agents, update in database
+      const { data: updatedAgent, error: updateError } = await supabase
+        .from('agents')
+        .update({ ...updates, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select('*, farms(name)')
+        .single();
+      
+      if (updateError) {
+        throw updateError;
+      }
+      
+      if (!updatedAgent) {
+        throw new Error('Failed to update agent');
+      }
+      
+      // Format the updated agent
+      const formattedAgent: AgentWithFallback = {
+        ...updatedAgent,
+        farm_name: updatedAgent.farms?.name,
+        is_fallback: false
+      };
+      
+      // Update state
+      setAgents(prev => prev.map(a => a.id === id ? formattedAgent : a));
+      
+      // Update cache
+      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
+      localStorage.setItem('cached_agents', JSON.stringify(
+        cachedAgents.map((a: any) => a.id === id ? formattedAgent : a)
+      ));
+      
+      return formattedAgent;
+    } catch (error) {
+      console.error('Error updating agent:', error);
+      
+      toast({
+        title: 'Update Failed',
+        description: error instanceof Error ? error.message : 'Failed to update agent',
+        variant: 'destructive'
+      });
+      
+      return null;
+    }
+  }, [agents, supabase, toast]);
+
+  // Delete an agent
+  const deleteAgent = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      // Check if this is a fallback agent
+      const agent = agents.find(a => a.id === id);
+      if (agent?.is_fallback) {
+        // For fallback agents, just remove locally
+        setAgents(prev => prev.filter(a => a.id !== id));
+        
+        // Update localStorage
+        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
+        localStorage.setItem('mockAgents', JSON.stringify(
+          mockAgents.filter((a: any) => a.id !== id)
+        ));
+        
+        return true;
+      }
+      
+      // For real agents, delete from database
+      const { error: deleteError } = await supabase
+        .from('agents')
+        .delete()
+        .eq('id', id);
+      
+      if (deleteError) {
+        throw deleteError;
+      }
+      
+      // Update state
+      setAgents(prev => prev.filter(a => a.id !== id));
+      
+      // Update cache
+      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
+      localStorage.setItem('cached_agents', JSON.stringify(
+        cachedAgents.filter((a: any) => a.id !== id)
+      ));
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting agent:', error);
+      
+      toast({
+        title: 'Deletion Failed',
+        description: error instanceof Error ? error.message : 'Failed to delete agent',
+        variant: 'destructive'
+      });
+      
+      return false;
+    }
+  }, [agents, supabase, toast]);
+
+  // Refresh agents
+  const refreshAgents = useCallback(async () => {
+    await loadAgents();
+  }, [loadAgents]);
+
+  // Initial load
+  useEffect(() => {
+    loadAgents();
+    
+    // Set up real-time subscription if possible
+    const agentsSubscription = supabase
+      .channel('agents_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, (payload) => {
+        // Refresh agents when changes happen
+        loadAgents();
+      })
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(agentsSubscription);
+    };
+  }, [loadAgents, supabase]);
 
   return {
     agents,
     loading,
     error,
-    refreshAgents,
-    controlAgent,
     createAgent,
-    usingMockData
+    updateAgent,
+    deleteAgent,
+    refreshAgents,
+    isConnected
   };
 }

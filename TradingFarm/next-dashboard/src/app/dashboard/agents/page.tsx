@@ -50,6 +50,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 
 // Define types for agent integration
 interface AgentModel {
@@ -381,6 +384,19 @@ export default function AgentsPage() {
   const [executionModeFilter, setExecutionModeFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   
+  // Memoized filter handlers to prevent infinite render loops
+  const handleStatusFilterChange = useCallback((value: string) => {
+    setStatusFilter(value);
+  }, []);
+  
+  const handleTypeFilterChange = useCallback((value: string) => {
+    setTypeFilter(value);
+  }, []);
+  
+  const handleExecutionModeFilterChange = useCallback((value: string) => {
+    setExecutionModeFilter(value);
+  }, []);
+  
   // Agent creation dialog state
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -390,6 +406,16 @@ export default function AgentsPage() {
   const [availableCapabilities, setAvailableCapabilities] = useState<AgentCapability[]>([]);
   const [availableRoles, setAvailableRoles] = useState<AgentRole[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  
+  // New agent creation states
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentType, setNewAgentType] = useState<string>('trading');
+  const [newAgentDescription, setNewAgentDescription] = useState('');
+  const [newAgentExecutionMode, setNewAgentExecutionMode] = useState<string>('dry-run');
+  const [newAgentRiskLevel, setNewAgentRiskLevel] = useState<string>('medium');
+  const [newAgentModelId, setNewAgentModelId] = useState<string>('');
+  const [newAgentInstructions, setNewAgentInstructions] = useState('');
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   
   // Use our hooks for API integration
   const elizaOS = useElizaOS();
@@ -404,7 +430,7 @@ export default function AgentsPage() {
       if (!elizaOS || typeof elizaOS.loadAgents !== 'function') {
         console.warn('ElizaOS API is not properly initialized');
         // Use mock data during connection issues for better UI experience
-        const mockAgents = [
+        const mockAgents: ExtendedAgent[] = [
           {
             id: 'mock-1',
             name: 'Demo Trading Agent',
@@ -413,20 +439,42 @@ export default function AgentsPage() {
             status: 'inactive',
             execution_mode: 'dry-run',
             created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
+            performance: {
+              trades: 0,
+              win_rate: 0,
+              profit_loss: 0
+            }
+          },
+          {
+            id: 'mock-2',
+            name: 'Market Research Agent',
+            description: 'A demo research agent (mock data during connection issues)',
+            type: 'research',
+            status: 'inactive',
+            execution_mode: 'dry-run',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            performance: {
+              trades: 0,
+              win_rate: 0,
+              profit_loss: 0
+            }
           }
         ];
-        setAgents(mockAgents as any);
+        setAgents(mockAgents);
+        setFilteredAgents(mockAgents);
         setError('Connection to ElizaOS unavailable. Showing demo data.');
         return;
       }
 
       // Attempt to load actual agents
-      const agentsData = await elizaOS.loadAgents();
+      await elizaOS.loadAgents();
       
-      if (agentsData) {
+      const agentList = elizaOS.agents || [];
+      if (agentList.length > 0) {
         // Process agents data with additional info
-        const processedAgents = agentsData.map((agent: any) => {
+        const processedAgents = agentList.map((agent: any) => {
           return {
             ...agent,
             // Set default properties if needed
@@ -435,30 +483,56 @@ export default function AgentsPage() {
               trades: agent.performance_metrics.total_trades || 0,
               win_rate: agent.performance_metrics.win_rate || 0, 
               profit_loss: agent.performance_metrics.profit_loss || 0
-            } : undefined
+            } : {
+              trades: 0,
+              win_rate: 0,
+              profit_loss: 0
+            }
           };
         });
         
         setAgents(processedAgents);
         setError(null);
       } else {
+        // If no agents are found, provide a friendly empty state
         setAgents([]);
+        setError('No agents found. Create your first agent to get started.');
       }
     } catch (error) {
       console.error('Error fetching agents:', error);
       setError('Failed to connect to ElizaOS API. Please check your connection.');
       
+      // Create fallback mock data for better UX during errors
+      const fallbackAgents: ExtendedAgent[] = [
+        {
+          id: 'fallback-1',
+          name: 'Trading Assistant (Fallback)',
+          description: 'Fallback agent displayed during connection issues',
+          type: 'trading',
+          status: 'inactive',
+          execution_mode: 'dry-run',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          performance: {
+            trades: 0,
+            win_rate: 0,
+            profit_loss: 0
+          }
+        }
+      ];
+      
+      setAgents(fallbackAgents);
+      setFilteredAgents(fallbackAgents);
+      
       // Show toast only for non-connection errors to avoid flooding
-      if (!(error instanceof TypeError && (error as Error).message.includes('fetch'))) {
+      const errorMessage = error instanceof Error ? error.message : '';
+      if (!(error instanceof TypeError) || !errorMessage.includes('fetch')) {
         toast({
-          title: 'Error',
-          description: 'Failed to load agents. Please try again later.',
+          title: 'Connection Error',
+          description: 'Failed to load agents. Showing fallback data.',
           variant: 'destructive'
         });
       }
-      
-      // Set empty agents list to prevent UI confusion
-      setAgents([]);
     } finally {
       setLoading(false);
     }
@@ -561,26 +635,81 @@ export default function AgentsPage() {
   
   // Setup real-time subscription for agent updates with connection error handling
   useEffect(() => {
+    // Flag to prevent multiple retry attempts
+    let isSettingUpSubscription = false;
+    let retryCount = 0;
+    const MAX_RETRIES = 2; // Limit retry attempts to avoid console spam
+    let retryTimeout: NodeJS.Timeout | null = null;
+
+    // Better error formatting for empty objects
+    const formatError = (error: any): string => {
+      // Check for null or undefined
+      if (error === null || error === undefined) {
+        return 'Unknown error';
+      }
+      // Check for empty object
+      if (typeof error === 'object') {
+        const keys = Object.keys(error);
+        if (keys.length === 0) {
+          return 'Empty error object - likely a connection issue';
+        }
+        // Has message property
+        if (error.message) {
+          return String(error.message);
+        }
+      }
+      // String error
+      if (typeof error === 'string') {
+        return error;
+      }
+      // Try to stringify
+      try { 
+        return JSON.stringify(error); 
+      } catch (e) { 
+        return 'Unstringifiable error'; 
+      }
+    };
+
     // Check if Supabase is available before setting up subscription
     const isSupabaseAvailable = async () => {
+      // Safety check for supabase client
+      if (!supabase) {
+        return false;
+      }
+      
       try {
         // Simple test query to check connection
-        const { error } = await supabase.from('knowledge_bases').select('count', { count: 'exact', head: true });
-        return !error;
-      } catch {
+        const result = await supabase.from('knowledge_bases').select('count', { count: 'exact', head: true });
+        // Check if there was an error
+        return !result.error;
+      } catch (err) {
+        // Log warning with formatted error
+        console.warn('Supabase connection test failed:', formatError(err));
         return false;
       }
     };
 
     const setupRealtimeSubscription = async () => {
-      // Check connection status first
-      const available = await isSupabaseAvailable();
-      if (!available) {
-        console.warn('Supabase connection unavailable, skipping realtime subscription');
-        return null;
-      }
-
+      // Prevent concurrent setup attempts
+      if (isSettingUpSubscription) return null;
+      isSettingUpSubscription = true;
+      
       try {
+        // Check connection status first
+        const available = await isSupabaseAvailable();
+        if (!available) {
+          if (retryCount < MAX_RETRIES) {
+            console.warn(`Supabase connection unavailable (attempt ${retryCount + 1}/${MAX_RETRIES}), will retry once...`);
+            isSettingUpSubscription = false;
+            retryCount++;
+            // Only retry once after a delay
+            retryTimeout = setTimeout(() => setupRealtimeSubscription(), 5000);
+          } else {
+            console.warn('Max retry attempts reached, skipping realtime subscription');
+          }
+          return null;
+        }
+
         const subscription = supabase
           .channel('agents-channel')
           .on('postgres_changes', { 
@@ -590,16 +719,24 @@ export default function AgentsPage() {
           }, (_payload: any) => {
             fetchAgents();
           })
-          .subscribe((status) => {
+          .subscribe((status: 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED' | string) => {
             if (status === 'CHANNEL_ERROR') {
-              console.warn('Channel subscription error, retrying in 5s...');
+              // Don't retry here - this just logs a warning
+              console.warn('Channel subscription error');
+            } else if (status === 'SUBSCRIBED') {
+              console.log('Successfully subscribed to agents channel');
+              // Reset retry count on successful subscription
+              retryCount = 0;
             }
           });
 
         return subscription;
       } catch (error) {
-        console.error('Error setting up realtime subscription:', error);
+        console.warn('Error setting up realtime subscription:', formatError(error));
+        // Silently fail - the page should still work without realtime updates
         return null;
+      } finally {
+        isSettingUpSubscription = false;
       }
     };
 
@@ -611,11 +748,17 @@ export default function AgentsPage() {
     
     // Cleanup function
     return () => {
+      // Clear any pending retry timeout
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+      
+      // Remove the subscription channel
       if (subscription) {
         try {
           supabase.removeChannel(subscription);
         } catch (e) {
-          console.warn('Error removing channel:', e);
+          console.warn('Error removing channel:', formatError(e));
         }
       }
     };
@@ -627,42 +770,67 @@ export default function AgentsPage() {
     fetchAgentResources();
   }, [fetchAgents, fetchAgentResources]);
   
-  // Apply filters to agents
+  // Apply filters to agents - simplified for stability
   useEffect(() => {
-    if (!agents.length) {
+    // Safety check for empty agents array
+    if (!agents || agents.length === 0) {
       setFilteredAgents([]);
       return;
     }
     
+    // Start with a copy of the agents array
     let filtered = [...agents];
     
-    // Apply status filter
-    if (statusFilter !== 'all') {
-      filtered = filtered.filter(agent => agent.status.toLowerCase() === statusFilter.toLowerCase());
+    // Apply status filter if not showing all
+    if (statusFilter && statusFilter !== 'all') {
+      const statusLower = statusFilter.toLowerCase();
+      filtered = filtered.filter(agent => {
+        // Safely access status property
+        const agentStatus = agent.status ? agent.status.toLowerCase() : '';
+        return agentStatus === statusLower;
+      });
     }
     
-    // Apply type filter
-    if (typeFilter !== 'all') {
-      filtered = filtered.filter(agent => agent.type.toLowerCase() === typeFilter.toLowerCase());
+    // Apply type filter if not showing all
+    if (typeFilter && typeFilter !== 'all') {
+      const typeLower = typeFilter.toLowerCase();
+      filtered = filtered.filter(agent => {
+        // Safely access type property
+        const agentType = agent.type ? agent.type.toLowerCase() : '';
+        return agentType === typeLower;
+      });
     }
     
-    // Apply execution mode filter
-    if (executionModeFilter !== 'all') {
-      filtered = filtered.filter(agent => agent.execution_mode.toLowerCase() === executionModeFilter.toLowerCase());
+    // Apply execution mode filter if not showing all
+    if (executionModeFilter && executionModeFilter !== 'all') {
+      const modeLower = executionModeFilter.toLowerCase();
+      filtered = filtered.filter(agent => {
+        // Safely access execution_mode property
+        const agentMode = agent.execution_mode ? agent.execution_mode.toLowerCase() : '';
+        return agentMode === modeLower;
+      });
     }
     
-    // Apply search query
-    if (searchQuery) {
+    // Apply search query if provided
+    if (searchQuery && searchQuery.length > 0) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(agent => 
-        agent.name.toLowerCase().includes(query) ||
-        (agent.description || '').toLowerCase().includes(query) ||
-        agent.type.toLowerCase().includes(query) ||
-        (agent.strategy_type || '').toLowerCase().includes(query) ||
-        (agent.exchange || '').toLowerCase().includes(query)
-      );
+      filtered = filtered.filter(agent => {
+        // Safely check various properties for matches
+        const name = agent.name ? agent.name.toLowerCase() : '';
+        const description = agent.description ? agent.description.toLowerCase() : '';
+        const type = agent.type ? agent.type.toLowerCase() : '';
+        const strategy = agent.strategy_type ? agent.strategy_type.toLowerCase() : '';
+        const exchange = agent.exchange ? agent.exchange.toLowerCase() : '';
+        
+        return name.includes(query) || 
+               description.includes(query) || 
+               type.includes(query) || 
+               strategy.includes(query) || 
+               exchange.includes(query);
+      });
     }
     
+    // Update the filtered agents state
     setFilteredAgents(filtered);
   }, [agents, statusFilter, typeFilter, executionModeFilter, searchQuery]);
   
@@ -745,37 +913,131 @@ export default function AgentsPage() {
   
   // Handle creating a new agent
   const handleCreateAgent = async (agentData: Partial<Agent>) => {
+    setIsCreatingAgent(true);
+    setError(null);
+    
     try {
-      setIsCreatingAgent(true);
-      const result = await elizaOS.createAgent(agentData);
-      
-      if (result) {
-        toast({
-          title: 'Agent Created',
-          description: 'New agent has been successfully created',
-          variant: 'default'
-        });
-        
-        // Close dialog and refresh agents
-        setShowCreateDialog(false);
-        fetchAgents();
-        
-        // Create notification
-        await notifications.createNotification({
-          type: 'agent_created',
-          title: 'New Agent Created',
-          message: `${agentData.name} has been added to your agents`,
-          status: 'unread',
-          metadata: { agentId: result.id }
-        });
+      // Validate required fields
+      if (!agentData.name) {
+        throw new Error('Agent name is required');
       }
+      
+      if (!agentData.type) {
+        // Set default type if not provided
+        agentData.type = 'trading';
+      }
+      
+      // Set execution mode to dry-run by default for safety
+      if (!agentData.execution_mode) {
+        agentData.execution_mode = 'dry-run';
+      }
+      
+      // Set status to initializing by default
+      if (!agentData.status) {
+        agentData.status = 'initializing';
+      }
+      
+      // Get current user to set ownership
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      
+      if (!userId) {
+        throw new Error('You must be logged in to create an agent');
+      }
+      
+      // Add the user ID to agent data
+      agentData.user_id = userId;
+      
+      // Set created_at and updated_at
+      const now = new Date().toISOString();
+      agentData.created_at = now;
+      agentData.updated_at = now;
+      
+      // Create agent in database
+      const { data: createdAgent, error: createError } = await supabase
+        .from('agents')
+        .insert([agentData])
+        .select()
+        .single();
+      
+      if (createError) {
+        throw createError;
+      }
+      
+      if (!createdAgent) {
+        throw new Error('Failed to create agent - no data returned');
+      }
+      
+      // Get additional info for the agent
+      let extendedAgent: ExtendedAgent = {
+        ...createdAgent,
+        performance: {
+          trades: 0,
+          win_rate: 0,
+          profit_loss: 0
+        }
+      };
+      
+      // Try to fetch farm name if farm_id is provided
+      if (createdAgent.farm_id) {
+        const { data: farmData } = await supabase
+          .from('farms')
+          .select('name')
+          .eq('id', createdAgent.farm_id)
+          .single();
+        
+        if (farmData) {
+          extendedAgent.farm_name = farmData.name;
+        }
+      }
+      
+      // Add agent to state and close dialog
+      setAgents(prev => [extendedAgent, ...prev]);
+      setFilteredAgents(prev => [extendedAgent, ...prev]);
+      setShowCreateDialog(false);
+      
+      // Show success notification
+      toast({
+        title: 'Agent Created',
+        description: `${createdAgent.name} has been created successfully.`,
+      });
+      
+      // Attempt to initialize the agent with elizaOS if available
+      if (elizaOS && typeof elizaOS.initializeAgent === 'function') {
+        try {
+          await elizaOS.initializeAgent(createdAgent.id);
+        } catch (initError) {
+          console.warn('Agent created but initialization failed:', initError);
+          toast({
+            variant: 'default',
+            title: 'Agent Created with Warning',
+            description: 'Agent was created but initialization is pending. You may need to initialize it manually.',
+          });
+        }
+      }
+      
+      return createdAgent;
     } catch (error) {
       console.error('Error creating agent:', error);
+      
+      let errorMessage = 'An unexpected error occurred';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        // Handle Supabase or other object-type errors
+        errorMessage = (error as any).message || JSON.stringify(error);
+      }
+      
+      setError(errorMessage);
+      
       toast({
-        title: 'Error',
-        description: 'Failed to create new agent',
-        variant: 'destructive'
+        variant: 'destructive',
+        title: 'Agent Creation Failed',
+        description: errorMessage,
       });
+      
+      return null;
     } finally {
       setIsCreatingAgent(false);
     }
@@ -808,41 +1070,172 @@ export default function AgentsPage() {
               </Button>
             </DialogTrigger>
             
-            {showCreateDialog && (
-              <DialogContent className="sm:max-w-md">
+            <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+              <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
-                  <DialogTitle>Create a New Agent</DialogTitle>
+                  <DialogTitle>Create New Agent</DialogTitle>
                   <DialogDescription>
-                    Configure your new AI agent for trading or analysis
+                    Fill out the form below to create a new trading agent.
                   </DialogDescription>
                 </DialogHeader>
                 
-                {/* Agent creation form will go here */}
+                {/* Error Alert */}
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong className="font-bold">Error: </strong>
+                    <span className="block sm:inline">{error}</span>
+                  </div>
+                )}
+                
+                {/* Simplified Agent Creation Form */}
                 <div className="grid gap-4 py-4">
-                  <p>Agent creation form - under development</p>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="name" className="text-right">
+                      Name
+                    </Label>
+                    <Input
+                      id="name"
+                      placeholder="Enter agent name"
+                      className="col-span-3"
+                      value={newAgentName}
+                      onChange={(e) => setNewAgentName(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="type" className="text-right">
+                      Type
+                    </Label>
+                    <Select 
+                      value={newAgentType} 
+                      onValueChange={setNewAgentType}
+                    >
+                      <SelectTrigger id="type" className="col-span-3">
+                        <SelectValue placeholder="Select agent type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="trading">Trading</SelectItem>
+                        <SelectItem value="analytical">Analytical</SelectItem>
+                        <SelectItem value="research">Research</SelectItem>
+                        <SelectItem value="conversational">Conversational</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="execution-mode" className="text-right">
+                      Execution Mode
+                    </Label>
+                    <Select 
+                      value={newAgentExecutionMode} 
+                      onValueChange={setNewAgentExecutionMode}
+                    >
+                      <SelectTrigger id="execution-mode" className="col-span-3">
+                        <SelectValue placeholder="Select execution mode" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="dry-run">Dry Run (Simulated)</SelectItem>
+                        <SelectItem value="backtest">Backtest</SelectItem>
+                        <SelectItem value="live">Live Trading</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <Label htmlFor="description" className="text-right">
+                      Description
+                    </Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Describe this agent's purpose"
+                      className="col-span-3"
+                      value={newAgentDescription}
+                      onChange={(e) => setNewAgentDescription(e.target.value)}
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-4 items-center gap-4">
+                    <div className="text-right">
+                      <Label htmlFor="advanced-toggle">Advanced</Label>
+                    </div>
+                    <div className="flex items-center space-x-2 col-span-3">
+                      <Switch 
+                        id="advanced-toggle" 
+                        checked={showAdvancedOptions}
+                        onCheckedChange={setShowAdvancedOptions}
+                      />
+                      <Label htmlFor="advanced-toggle">Show advanced options</Label>
+                    </div>
+                  </div>
+                  
+                  {showAdvancedOptions && (
+                    <>
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="risk-level" className="text-right">
+                          Risk Level
+                        </Label>
+                        <Select 
+                          value={newAgentRiskLevel || 'medium'} 
+                          onValueChange={setNewAgentRiskLevel}
+                        >
+                          <SelectTrigger id="risk-level" className="col-span-3">
+                            <SelectValue placeholder="Select risk level" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="model" className="text-right">
+                          AI Model
+                        </Label>
+                        <Select 
+                          value={newAgentModelId || ''} 
+                          onValueChange={setNewAgentModelId}
+                        >
+                          <SelectTrigger id="model" className="col-span-3">
+                            <SelectValue placeholder="Select AI model (optional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {availableModels.map(model => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="instructions" className="text-right">
+                          Instructions
+                        </Label>
+                        <Textarea
+                          id="instructions"
+                          placeholder="Custom instructions for this agent"
+                          className="col-span-3"
+                          value={newAgentInstructions}
+                          onChange={(e) => setNewAgentInstructions(e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
                 
                 <DialogFooter>
                   <Button 
-                    type="button" 
                     variant="outline" 
                     onClick={() => setShowCreateDialog(false)}
                   >
                     Cancel
                   </Button>
                   <Button 
-                    type="button"
-                    onClick={() => {
-                      // Demo creating a simple agent
-                      handleCreateAgent({
-                        name: 'New Test Agent',
-                        type: 'trading',
-                        status: 'inactive',
-                        execution_mode: 'dry-run',
-                        description: 'A test agent created via the UI'
-                      });
-                    }}
-                    disabled={isCreatingAgent}
+                    onClick={handleCreateSubmit}
+                    disabled={isCreatingAgent || !newAgentName}
                   >
                     {isCreatingAgent ? (
                       <>
@@ -855,7 +1248,7 @@ export default function AgentsPage() {
                   </Button>
                 </DialogFooter>
               </DialogContent>
-            )}
+            </Dialog>
           </Dialog>
         </div>
       </div>
@@ -874,7 +1267,7 @@ export default function AgentsPage() {
             />
           </div>
           
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Filter by status" />
             </SelectTrigger>
@@ -888,7 +1281,7 @@ export default function AgentsPage() {
             </SelectContent>
           </Select>
           
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
+          <Select value={typeFilter} onValueChange={handleTypeFilterChange}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Filter by type" />
             </SelectTrigger>
@@ -901,7 +1294,7 @@ export default function AgentsPage() {
             </SelectContent>
           </Select>
           
-          <Select value={executionModeFilter} onValueChange={setExecutionModeFilter}>
+          <Select value={executionModeFilter} onValueChange={handleExecutionModeFilterChange}>
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Filter by mode" />
             </SelectTrigger>

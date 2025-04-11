@@ -105,6 +105,37 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
+export interface ElizaAgentConfig {
+  agentType?: string;
+  farmId?: number;
+  riskLevel?: string;
+  strategyType?: string;
+  markets?: string[];
+  tools?: string[];
+  apiAccess?: string;
+  tradingPermissions?: any;
+  autoRecovery?: boolean;
+  initialInstructions?: string;
+  llmProvider?: string;
+  llmModel?: string;
+  llmConfig?: Record<string, any>;
+  [key: string]: any;
+}
+
+export interface ElizaAgent {
+  id: string;
+  name: string;
+  description?: string;
+  status: 'active' | 'paused' | 'initializing' | 'error' | 'inactive';
+  farm_id?: number;
+  farm_name?: string;
+  type: string;
+  created_at: string;
+  updated_at: string;
+  user_id?: string;
+  config?: ElizaAgentConfig;
+}
+
 /**
  * ElizaOS Agent Service for advanced agent capabilities
  */

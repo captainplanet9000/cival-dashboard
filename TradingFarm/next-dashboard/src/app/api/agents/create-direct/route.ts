@@ -4,164 +4,119 @@ import { Database } from '@/types/database.types';
 import postgres from 'postgres';
 
 /**
- * Direct agent creation endpoint that uses raw SQL to bypass schema cache issues
+ * Direct Agent Creation API
+ * 
+ * This endpoint bypasses any service layer issues by directly creating agents
+ * in the database, with proper error handling and validation.
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const requestData = await request.json();
+    // Get the request body
+    const agentData = await request.json();
     
-    const supabase = await createServerClient();
+    // Basic validation
+    if (!agentData.name) {
+      return NextResponse.json(
+        { error: 'Agent name is required' },
+        { status: 400 }
+      );
+    }
     
-    // Get the user ID from the authentication session
+    // Get the current authenticated user
+    const supabase = createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'You must be authenticated to create an agent' },
         { status: 401 }
       );
     }
     
-    // Verify user owns the farm
-    const { data: farmData, error: farmError } = await supabase
-      .from('farms')
-      .select('id')
-      .eq('id', requestData.farm_id)
-      .eq('user_id', user.id)
-      .single();
-    
-    if (farmError || !farmData) {
-      return NextResponse.json(
-        { error: 'Farm not found or access denied' },
-        { status: 403 }
-      );
-    }
-    
-    // Prepare agent data
-    const name = requestData.name || 'New Agent';
-    const farmId = requestData.farm_id;
-    const status = requestData.status || 'initializing';
-    const type = requestData.type || 'eliza';
-    
-    // Prepare the configuration JSON object
-    const configObject = {
-      description: requestData.description || '',
-      strategy_type: requestData.strategy_type || 'custom',
-      risk_level: requestData.risk_level || 'medium',
-      target_markets: requestData.target_markets || [],
-      exchange_account_id: requestData.config?.exchange_account_id,
-      max_drawdown_percent: requestData.config?.max_drawdown_percent,
-      auto_start: requestData.config?.auto_start,
-      capital_allocation: requestData.config?.capital_allocation,
-      leverage: requestData.config?.leverage,
-      performance_metrics: {
-        win_rate: 0,
-        profit_loss: 0,
-        total_trades: 0,
-        average_trade_duration: 0
-      },
-      ...(requestData.config || {})
+    // Set default values and timestamps
+    const now = new Date().toISOString();
+    const finalAgentData = {
+      ...agentData,
+      user_id: user.id,
+      created_at: now,
+      updated_at: now,
+      status: agentData.status || 'initializing', // Default to initializing
+      is_active: agentData.is_active !== undefined ? agentData.is_active : false,
     };
     
-    // Connect to database directly for maximum reliability
-    const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+    // If type is not specified, default to 'trading'
+    if (!finalAgentData.type) {
+      finalAgentData.type = 'trading';
+    }
     
-    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    // If execution_mode is not specified, default to 'dry-run' for safety
+    if (!finalAgentData.execution_mode) {
+      finalAgentData.execution_mode = 'dry-run';
+    }
+    
+    // Create the agent
+    const { data: agent, error } = await supabase
+      .from('agents')
+      .insert([finalAgentData])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Error creating agent:', error);
       return NextResponse.json(
-        { error: 'Server configuration error' },
+        { error: error.message || 'Failed to create agent' },
         { status: 500 }
       );
     }
     
-    // Extract necessary connection info from Supabase URL
-    const supabaseUrlMatch = SUPABASE_URL.match(/^(https?:\/\/)(.*?)(:.*?)?$/);
-    if (!supabaseUrlMatch) {
+    // If agent creation was successful but no data was returned, return a generic response
+    if (!agent) {
       return NextResponse.json(
-        { error: 'Invalid Supabase URL format' },
-        { status: 500 }
+        { 
+          success: true,
+          agent: {
+            ...finalAgentData,
+            id: 'pending', // Frontend should handle this special value
+          },
+          message: 'Agent created successfully, but no data was returned. It may appear after refresh.'
+        },
+        { status: 201 }
       );
     }
     
-    const host = supabaseUrlMatch[2] || 'localhost';
-    const port = 5432; // Default Postgres port
+    // Add a farm name to the agent if farm_id is provided
+    let extendedAgent = { ...agent };
     
-    try {
-      // Attempt direct database connection
-      const { data: connectionData, error: connectionError } = await supabase.rpc(
-        'direct_insert_agent',
-        {
-          p_name: name,
-          p_farm_id: farmId,
-          p_status: status,
-          p_type: type,
-          p_config: configObject
+    if (agent.farm_id) {
+      try {
+        const { data: farm } = await supabase
+          .from('farms')
+          .select('name')
+          .eq('id', agent.farm_id)
+          .single();
+        
+        if (farm) {
+          extendedAgent.farm_name = farm.name;
         }
-      );
-      
-      if (connectionError) {
-        console.error('RPC error:', connectionError);
-        throw new Error(`RPC execution failed: ${connectionError.message}`);
+      } catch (farmError) {
+        console.warn('Could not fetch farm name:', farmError);
       }
-      
-      return NextResponse.json({
-        agent: {
-          id: connectionData.id,
-          name: connectionData.name,
-          farm_id: connectionData.farm_id,
-          status: connectionData.status,
-          type: connectionData.type,
-          configuration: connectionData.configuration
-        },
-        message: 'Agent created successfully'
-      });
-      
-    } catch (sqlError) {
-      console.error('SQL execution error:', sqlError);
-      
-      // Last resort: try raw SQL through Supabase's postgresql-functions interface
-      const { data: rawData, error: rawError } = await supabase.rpc(
-        'exec_sql',
-        {
-          sql_string: `
-            INSERT INTO agents (name, farm_id, status, type, configuration, created_at, updated_at)
-            VALUES (
-              '${name.replace(/'/g, "''")}',
-              ${farmId},
-              '${status.replace(/'/g, "''")}',
-              '${type.replace(/'/g, "''")}',
-              '${JSON.stringify(configObject).replace(/'/g, "''")}',
-              NOW(),
-              NOW()
-            )
-            RETURNING id, name, farm_id, status, type;
-          `
-        }
-      );
-      
-      if (rawError) {
-        console.error('Raw SQL execution error:', rawError);
-        return NextResponse.json(
-          { error: `Failed to create agent: ${rawError.message}` },
-          { status: 500 }
-        );
-      }
-      
-      return NextResponse.json({
-        agent: {
-          id: rawData ? rawData[0]?.id : null,
-          name,
-          farm_id: farmId,
-          status,
-          type,
-          configuration: configObject
-        },
-        message: 'Agent created via raw SQL'
-      });
     }
-  } catch (error) {
-    console.error('Agent creation error:', error);
+    
+    // Return success with the created agent
     return NextResponse.json(
-      { error: 'Failed to create agent: ' + (error instanceof Error ? error.message : String(error)) },
+      { 
+        success: true,
+        agent: extendedAgent,
+        message: 'Agent created successfully' 
+      },
+      { status: 201 }
+    );
+    
+  } catch (error) {
+    console.error('Unexpected error creating agent:', error);
+    return NextResponse.json(
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     );
   }
