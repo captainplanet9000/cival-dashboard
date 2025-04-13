@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -21,11 +21,13 @@ import {
 } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // For agent type
 import { ArrowLeft, Loader2 } from 'lucide-react';
+import { TradingAgentForm } from '@/components/agents/trading-agent-form';
 
 export default function CreateAgentPage() {
   const router = useRouter();
   const createAgentMutation = useCreateAgent();
   const { data: farms, isLoading: isLoadingFarms } = useFarms(true);
+  const [tradingAgentConfig, setTradingAgentConfig] = useState<any>(null);
 
   const form = useForm<CreateAgentInput>({
     resolver: zodResolver(createAgentSchema),
@@ -34,12 +36,31 @@ export default function CreateAgentPage() {
       farm_id: null,
     },
   });
+  
+  // Watch for agent type changes to conditionally show configuration forms
+  const selectedAgentType = form.watch('agent_type');
 
   const onSubmit = async (values: CreateAgentInput) => {
+    // Create the base payload
     const payload = {
       ...values,
       farm_id: values.farm_id ? Number(values.farm_id) : null,
     };
+    
+    // Add agent-specific configuration
+    if (values.agent_type === 'trading' && tradingAgentConfig) {
+      payload.configuration = {
+        ...tradingAgentConfig,
+        // Ensure numbers are properly converted
+        initial_capital: Number(tradingAgentConfig.initial_capital),
+        max_position_size_percent: Number(tradingAgentConfig.max_position_size_percent),
+        max_drawdown_percent: Number(tradingAgentConfig.max_drawdown_percent),
+        stop_loss_percent: Number(tradingAgentConfig.stop_loss_percent),
+        take_profit_percent: Number(tradingAgentConfig.take_profit_percent),
+        trailing_stop_percent: tradingAgentConfig.trailing_stop_percent ? Number(tradingAgentConfig.trailing_stop_percent) : undefined,
+      };
+    }
+    
     try {
       const newAgent = await createAgentMutation.mutateAsync(payload);
       router.push(`/dashboard/agents/${newAgent.id}`);
@@ -70,14 +91,13 @@ export default function CreateAgentPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Agent Type *</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select agent type" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {/* TODO: Populate with actual valid agent types */} 
                         <SelectItem value="trading">Trading Agent</SelectItem>
                         <SelectItem value="research">Research Agent</SelectItem>
                         <SelectItem value="monitoring">Monitoring Agent</SelectItem>
@@ -148,14 +168,48 @@ export default function CreateAgentPage() {
                   </FormItem>
                 )}
               />
-
-              {/* TODO: Add other fields like metadata */}
+              
+              {/* Display agent-specific configuration forms */}
+              {selectedAgentType === 'trading' && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-medium mb-4">Trading Agent Configuration</h3>
+                  <TradingAgentForm onConfigChange={setTradingAgentConfig} />
+                </div>
+              )}
+              
+              {/* Show placeholders for other agent types */}
+              {selectedAgentType === 'research' && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-medium mb-4">Research Agent Configuration</h3>
+                  <p className="text-muted-foreground">Research agent configuration options will appear here.</p>
+                </div>
+              )}
+              
+              {selectedAgentType === 'monitoring' && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-medium mb-4">Monitoring Agent Configuration</h3>
+                  <p className="text-muted-foreground">Monitoring agent configuration options will appear here.</p>
+                </div>
+              )}
+              
+              {selectedAgentType === 'manager' && (
+                <div className="mt-6 border-t pt-6">
+                  <h3 className="text-lg font-medium mb-4">Manager Agent Configuration</h3>
+                  <p className="text-muted-foreground">Manager agent configuration options will appear here.</p>
+                </div>
+              )}
             </CardContent>
-            <CardFooter className="flex justify-end">
-               <Button type="submit" disabled={createAgentMutation.isPending || isLoadingFarms}>
-                 {(createAgentMutation.isPending || isLoadingFarms) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                 Create Agent
-               </Button>
+            <CardFooter className="flex justify-between">
+              <Button variant="outline" onClick={() => router.back()}>
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={createAgentMutation.isPending || isLoadingFarms || (selectedAgentType === 'trading' && !tradingAgentConfig)}
+              >
+                {(createAgentMutation.isPending || isLoadingFarms) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create Agent
+              </Button>
             </CardFooter>
           </Card>
         </form>

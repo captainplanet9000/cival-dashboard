@@ -74,6 +74,8 @@ const statusUpdateSchema = z.object({
     'learning',
     'analyzing',
     'trading',
+    'backtesting',
+    'optimizing',
     'coordinating'
   ]),
   details: z.string().optional(),
@@ -88,6 +90,7 @@ const commandSchema = z.object({
     'evaluate_risk',
     'coordinate_agents',
     'query_knowledge',
+    'backtest_strategy',
     'custom'
   ]),
   parameters: z.record(z.any()).optional(),
@@ -468,29 +471,144 @@ async function updateAgentStatus(supabase: any, agentId: string, statusUpdate: a
 
 // Helper function to process agent command
 async function processCommand(supabase: any, agentId: string, command: any) {
-  // Update agent status to busy
-  await supabase
-    .from('elizaos_agents')
-    .update({
-      status: 'busy',
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', agentId);
-
+  const startTime = Date.now();
+  let commandResult;
+  
   try {
-    // Here we would integrate with the actual ElizaOS backend
-    // For now, we'll simulate command processing
-    const processingTime = Math.random() * 1000 + 500; // Random time between 500-1500ms
-    await new Promise(resolve => setTimeout(resolve, processingTime));
-
+    // Validate command schema
+    const commandValidation = commandSchema.safeParse(command);
+    if (!commandValidation.success) {
+      const errorMessage = commandValidation.error.errors.map(e => 
+        `${e.path.join('.')}: ${e.message}`
+      ).join(', ');
+      return {
+        success: false,
+        message: `Invalid command schema: ${errorMessage}`,
+        data: null
+      };
+    }
+    
+    // Get agent information to verify permissions
+    const { data: agent, error: agentError } = await supabase
+      .from('elizaos_agents')
+      .select('*')
+      .eq('id', agentId)
+      .single();
+      
+    if (agentError) {
+      return {
+        success: false,
+        message: `Agent not found: ${agentError.message}`,
+        data: null
+      };
+    }
+    
+    // Update agent status to busy
+    await updateAgentStatus(supabase, agentId, { 
+      status: 'busy', 
+      details: `Processing ${command.type} command` 
+    });
+    
+    // Check if this is a trading agent
+    if (agent.agent_type === 'trading') {
+      try {
+        // Import the trading agent service
+        const { TradingAgentService } = await import('@/services/trading/trading-agent-service');
+        
+        // Create trading agent service instance
+        const tradingService = new TradingAgentService(supabase);
+        
+        // Prepare agent permissions info
+        const agentInfo = {
+          id: agent.id,
+          type: agent.agent_type,
+          permissions: agent.permissions || ['trading:paper'],
+          farmId: agent.farm_id,
+          metadata: agent.metadata || {}
+        };
+        
+        // Set appropriate status based on command type
+        let statusUpdate = { status: 'busy', details: `Executing ${command.type}` };
+        if (command.type === 'analyze_market') {
+          statusUpdate.status = 'analyzing';
+        } else if (command.type === 'execute_trade') {
+          statusUpdate.status = 'trading';
+        } else if (command.type === 'backtest_strategy') {
+          statusUpdate.status = 'backtesting';
+        }
+        
+        await updateAgentStatus(supabase, agentId, statusUpdate);
+        
+        // Process command with trading service
+        commandResult = await tradingService.processCommand(agentId, command, agentInfo);
+      } catch (error) {
+        console.error('Error processing trading command:', error);
+        commandResult = {
+          success: false,
+          message: `Trading command error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          data: null
+        };
+      }
+    } else {
+      // Handle non-trading agent commands
+      // This is a placeholder for other agent types
+      // Simulate processing time
+      const processingTime = Math.random() * 1000 + 500;
+      await new Promise(resolve => setTimeout(resolve, processingTime));
+      
+      // Process command based on type
+      switch (command.type) {
+        case 'analyze_market':
+          commandResult = {
+            success: true,
+            message: 'Market analysis completed',
+            data: {
+              market: command.parameters?.market || 'unknown',
+              trend: 'bullish',
+              indicators: {
+                rsi: 65,
+                macd: { histogram: 0.2, signal: 0.1 }
+              },
+              recommendation: 'buy'
+            }
+          };
+          break;
+          
+        case 'execute_trade':
+          commandResult = {
+            success: true,
+            message: 'Trade executed successfully',
+            data: {
+              orderId: uuidv4(),
+              symbol: command.parameters?.symbol || 'BTC/USDT',
+              side: command.parameters?.side || 'buy',
+              quantity: command.parameters?.quantity || 1,
+              price: command.parameters?.price || 50000,
+              timestamp: new Date().toISOString()
+            }
+          };
+          break;
+          
+        default:
+          commandResult = {
+            success: false,
+            message: `Unsupported command type: ${command.type}`,
+            data: null
+          };
+      }
+    }
+    
+    // Calculate processing time
+    const processingTime = Date.now() - startTime;
+    
     // Update performance metrics
-    const { data: agent } = await supabase
+    const { data: agentData } = await supabase
       .from('elizaos_agents')
       .select('performance_metrics')
       .eq('id', agentId)
       .single();
 
-    const metrics = agent.performance_metrics || {
+    const metrics = agentData?.performance_metrics || {
       commands_processed: 0,
       success_rate: 1.0,
       average_response_time_ms: 0,
@@ -498,50 +616,70 @@ async function processCommand(supabase: any, agentId: string, command: any) {
     };
 
     metrics.commands_processed++;
+    if (!commandResult.success) {
+      // Update success rate
+      metrics.success_rate = (
+        (metrics.success_rate * (metrics.commands_processed - 1) + 0) /
+        metrics.commands_processed
+      );
+    } else {
+      // Update success rate
+      metrics.success_rate = (
+        (metrics.success_rate * (metrics.commands_processed - 1) + 1) /
+        metrics.commands_processed
+      );
+    }
+    
+    // Update average response time
     metrics.average_response_time_ms = (
       (metrics.average_response_time_ms * (metrics.commands_processed - 1) + processingTime) /
       metrics.commands_processed
     );
 
-    // Update agent status and metrics
-    const { data: result, error } = await supabase
-      .from('elizaos_agents')
-      .update({
-        status: 'idle',
-        performance_metrics: metrics,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', agentId)
-      .select();
-
-    if (error) {
-      console.error('Error updating agent status and metrics:', error);
-      return NextResponse.json(
-        { success: false, error: 'Failed to update agent status and metrics' },
-        { status: 500 }
-      );
-    }
-
-    return {
-      success: true,
-      processing_time_ms: processingTime,
-      result: `Command ${command.type} processed successfully`
+    // Update agent status based on command result
+    const statusUpdate = { 
+      status: commandResult.success ? 'idle' : 'error', 
+      details: commandResult.success ? 
+        `Completed ${command.type} command` : 
+        `Error with ${command.type} command: ${commandResult.message}`,
+      performance_metrics: metrics,
+      updated_at: new Date().toISOString()
     };
-  } catch (error) {
-    // Update agent status to error
+    
     await supabase
       .from('elizaos_agents')
-      .update({
-        status: 'error',
-        updated_at: new Date().toISOString()
-      })
+      .update(statusUpdate)
       .eq('id', agentId);
-
-    console.error('Error executing command:', error);
-    return NextResponse.json(
-      { success: false, error: 'Command execution failed' },
-      { status: 500 }
-    );
+    
+    // Add command and response to agent history
+    await addAgentMessage(supabase, agentId, {
+      type: 'command_execution',
+      message: JSON.stringify({
+        command: command,
+        result: commandResult,
+        processing_time_ms: processingTime
+      }),
+      timestamp: new Date().toISOString()
+    });
+    
+    // Add processing time to result
+    return {
+      ...commandResult,
+      processing_time_ms: processingTime
+    };
+  } catch (error) {
+    console.error('Error processing command:', error);
+    // Update agent status to error
+    await updateAgentStatus(supabase, agentId, { 
+      status: 'error', 
+      details: `Error processing command: ${error instanceof Error ? error.message : 'Unknown error'}` 
+    });
+    
+    return {
+      success: false,
+      message: `Command processing error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      data: null
+    };
   }
 }
 
