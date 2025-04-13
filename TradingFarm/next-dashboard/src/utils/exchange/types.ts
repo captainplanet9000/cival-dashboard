@@ -6,6 +6,9 @@ export interface ExchangeCredentials {
   api_key: string;
   api_secret: string;
   passphrase?: string; // For Coinbase
+  walletAddress?: string; // For Hyperliquid
+  privateKey?: string; // For Hyperliquid (securely stored and encrypted)
+  chain?: string; // For blockchain-based exchanges (e.g., 'arbitrum', 'arbitrum_goerli')
   testnet: boolean;
   created_at?: string;
   updated_at?: string;
