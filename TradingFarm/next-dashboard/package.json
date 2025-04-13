@@ -99,6 +99,7 @@
     "react-chartjs-2": "^5.3.0",
     "react-day-picker": "^9.6.4",
     "react-dom": "^19.1.0",
+    "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.55.0",
     "reactflow": "^11.11.4",
     "recharts": "^2.15.1",

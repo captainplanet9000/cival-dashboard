@@ -15,6 +15,16 @@ import { useToast } from "@/components/ui/use-toast";
 import { createBrowserClient } from '@/utils/supabase/client';
 import { KnowledgeDocument } from '@/types/knowledge';
 import { DEMO_MODE, demoKnowledgeDocuments } from '@/utils/demo-data';
+import { BrainAssetsList } from '@/components/brain/brain-assets-list';
+import { ElizaOSConsole } from '@/components/brain/ElizaOSConsole';
+import { BrainFilesTable } from '@/components/brain/BrainFilesTable';
+import { BrainFileProcessor } from '@/components/brain/BrainFileProcessor';
+import { KnowledgeVisualization } from '@/components/brain/KnowledgeVisualization';
+import { AdvancedKnowledgeQuery } from '@/components/brain/AdvancedKnowledgeQuery';
+import { KnowledgeSharing } from '@/components/brain/KnowledgeSharing';
+import { KnowledgeGovernance } from '@/components/brain/KnowledgeGovernance';
+import { KnowledgeAnalyticsDashboard } from '@/components/brain/KnowledgeAnalyticsDashboard';
+import { KnowledgeComments } from '@/components/brain/KnowledgeComments';
 
 interface NewDocument {
   title: string;
@@ -24,6 +34,10 @@ interface NewDocument {
 }
 
 export default function KnowledgeBasePage() {
+  // Control the main knowledge base tabs
+  const [knowledgeTab, setKnowledgeTab] = React.useState('brain');
+  const [selectedBrainFileId, setSelectedBrainFileId] = React.useState<string | null>(null);
+  
   const [searchQuery, setSearchQuery] = React.useState('');
   const [activeTab, setActiveTab] = React.useState('all');
   const [activeTags, setActiveTags] = React.useState<string[]>([]);
@@ -198,131 +212,64 @@ export default function KnowledgeBasePage() {
   });
   
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Knowledge Base</h1>
-        <p className="text-muted-foreground">
-          Search and manage trading knowledge, strategies, and insights
+    <div className="flex flex-col gap-8 mt-4">
+      <h1 className="text-2xl font-bold">ElizaOS Knowledge Management</h1>
+      
+      <div className="rounded-md bg-muted p-4">
+        <h2 className="font-medium mb-2">Getting Started with ElizaOS Knowledge</h2>
+        <p className="text-sm text-muted-foreground">
+          ElizaOS provides advanced knowledge management capabilities for your trading strategies and market research.
+          Upload documents, query the knowledge base, and integrate AI-powered insights into your trading workflow.
         </p>
       </div>
       
-      {connectionError && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Connection Error</AlertTitle>
-          <AlertDescription className="flex justify-between items-center">
-            <span>{connectionError}</span>
-            <Button variant="outline" size="sm" onClick={handleRetryConnection}>Retry Connection</Button>
-          </AlertDescription>
-        </Alert>
-      )}
-      
-      <div className="flex items-center space-x-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="search"
-            placeholder="Search knowledge base..."
-            className="pl-8"
-            value={searchQuery}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              New Document
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[600px]">
-            <DialogHeader>
-              <DialogTitle>Create New Knowledge Document</DialogTitle>
-              <DialogDescription>
-                Add new information to your trading knowledge base.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input 
-                  id="title" 
-                  placeholder="Document title" 
-                  value={newDocument.title}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewDocument({...newDocument, title: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Category</Label>
-                <select 
-                  id="category"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={newDocument.category}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewDocument({...newDocument, category: e.target.value})}
-                >
-                  <option value="strategy">Strategy</option>
-                  <option value="market">Market</option>
-                  <option value="fundamentals">Fundamentals</option>
-                  <option value="management">Risk Management</option>
-                  <option value="psychology">Psychology</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="tags">Tags (comma-separated)</Label>
-                <Input 
-                  id="tags" 
-                  placeholder="technical-analysis, beginner, momentum" 
-                  value={newDocument.tags}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewDocument({...newDocument, tags: e.target.value})}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="content">Content</Label>
-                <Textarea 
-                  id="content" 
-                  placeholder="Write your document content here..." 
-                  rows={8}
-                  value={newDocument.content}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNewDocument({...newDocument, content: e.target.value})}
-                />
-              </div>
-              <Button type="button" onClick={handleCreateDocument}>
-                Create Document
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
-      
-      {/* Active tags display */}
-      {activeTags.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          <div className="flex items-center h-8">
-            <Tag className="h-4 w-4 mr-1" />
-            <span className="text-sm font-medium">Active Filters:</span>
-          </div>
-          {activeTags.map((tag: string) => (
-            <Badge key={tag} variant="secondary" className="cursor-pointer" onClick={() => toggleTag(tag)}>
-              {tag} ✕
-            </Badge>
-          ))}
-          <Button variant="ghost" size="sm" onClick={() => setActiveTags([])}>
-            Clear All
-          </Button>
-        </div>
-      )}
-      
-      <Tabs defaultValue="all" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="all">All Documents</TabsTrigger>
-          <TabsTrigger value="strategy">Strategies</TabsTrigger>
-          <TabsTrigger value="market">Market Analysis</TabsTrigger>
-          <TabsTrigger value="fundamentals">Fundamentals</TabsTrigger>
-          <TabsTrigger value="management">Risk Management</TabsTrigger>
-          <TabsTrigger value="psychology">Psychology</TabsTrigger>
+      <Tabs value={knowledgeTab} onValueChange={setKnowledgeTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="brain">ElizaOS Knowledge</TabsTrigger>
+          <TabsTrigger value="docs">Document Library</TabsTrigger>
+          <TabsTrigger value="sharing">Knowledge Sharing</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="governance">Governance</TabsTrigger>
         </TabsList>
         
-        {/* Documents by category */}
+        <TabsContent value="brain" className="space-y-4">
+        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6">
+          {/* Main Console - Spans first row, first 2 columns on large screens */}
+          <div className="2xl:col-span-2">
+            <ElizaOSConsole farmId={farmData?.id} />
+          </div>
+          
+          {/* File Processor - First row, 3rd column on large screens */}
+          <div>
+            <BrainFileProcessor farmId={farmData?.id} />
+          </div>
+          
+          {/* Advanced Query - Second row, spans first 2 columns on large screens */}
+          <div className="2xl:col-span-2">
+            <AdvancedKnowledgeQuery farmId={farmData?.id} />
+          </div>
+          
+          {/* Knowledge Visualization - Second row, 3rd column on large screens */}
+          <div className="row-span-2">
+            <KnowledgeVisualization farmId={farmData?.id} />
+          </div>
+          
+          {/* Brain Files Table - Third row, spans first 2 columns on large screens */}
+          <div className="2xl:col-span-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Brain Files</CardTitle>
+                <CardDescription>
+                  View and manage your knowledge files
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <BrainFilesTable 
+                  farmId="1" 
+                  onSelectFile={(fileId) => setSelectedBrainFileId(fileId)} 
+                />
+              </CardContent>
+            </Card>
         <TabsContent value={activeTab}>
           <Card>
             <CardHeader>
@@ -414,6 +361,206 @@ export default function KnowledgeBasePage() {
           </Card>
         </TabsContent>
       </Tabs>
+          {/* Document Library Tab */}
+          <TabsContent value="docs" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Document Library</CardTitle>
+                    <CardDescription>
+                      Browse and search your knowledge documents
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Input
+                          placeholder="Search documents..."
+                          className="max-w-md"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        <Button size="sm">
+                          <Plus className="h-4 w-4 mr-1" />
+                          New Document
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              <div>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Categories</CardTitle>
+                    <CardDescription>
+                      Filter by document category
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {['All', 'Strategy', 'Market Analysis', 'Risk Management', 'Psychology'].map((category) => (
+                        <Button 
+                          key={category} 
+                          variant={activeTab === category.toLowerCase() ? 'default' : 'ghost'}
+                          className="w-full justify-start"
+                          onClick={() => setActiveTab(category.toLowerCase())}
+                        >
+                          {category}
+                        </Button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Knowledge Sharing Tab */}
+          <TabsContent value="sharing" className="space-y-4">
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>ElizaOS Knowledge Sharing</CardTitle>
+                  <CardDescription>
+                    Share brain files and knowledge assets with team members and set permissions
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <KnowledgeSharing 
+                    brainFileId={selectedBrainFileId} 
+                    farmId="1" /* Replace with actual farm ID from context */
+                  />
+                </CardContent>
+              </Card>
+
+              {selectedBrainFileId && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Knowledge Comments</CardTitle>
+                    <CardDescription>
+                      Collaborate on knowledge assets with comments and annotations
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <KnowledgeComments 
+                      brainFileId={selectedBrainFileId}
+                      farmId="1" /* Replace with actual farm ID from context */
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Knowledge Analytics Dashboard</CardTitle>
+                <CardDescription>
+                  Insights and metrics on knowledge base usage and effectiveness
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <KnowledgeAnalyticsDashboard 
+                  farmId="1" /* Replace with actual farm ID from context */
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Governance Tab */}
+          <TabsContent value="governance" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Knowledge Governance</CardTitle>
+                <CardDescription>
+                  Monitor compliance, quality, and audit trails for your knowledge base
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <KnowledgeGovernance 
+                  farmId="1" /* Replace with actual farm ID from context */
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Brain Tab (ElizaOS Knowledge) */}
+          <TabsContent value="brain" className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div className="lg:col-span-2 space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>ElizaOS Console</CardTitle>
+                    <CardDescription>
+                      Query your knowledge base and get AI-powered insights
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ElizaOSConsole />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Advanced Query</CardTitle>
+                    <CardDescription>
+                      Perform advanced knowledge queries with multiple parameters
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <AdvancedKnowledgeQuery />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Knowledge Visualization</CardTitle>
+                    <CardDescription>
+                      Visualize connections between knowledge assets
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="h-[400px]">
+                    <KnowledgeVisualization />
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Brain Files</CardTitle>
+                    <CardDescription>
+                      View and manage your knowledge files
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <BrainFilesTable 
+                      farmId="1"
+                      onSelectFile={(fileId) => setSelectedBrainFileId(fileId)}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Processing Status</CardTitle>
+                    <CardDescription>
+                      Monitor file processing tasks
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <BrainFileProcessor />
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
