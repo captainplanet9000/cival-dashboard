@@ -54,7 +54,7 @@ export function Sidebar({ farmId }: SidebarProps) {
       },
       {
         name: 'Agents',
-        href: `/dashboard/agents`,
+        href: `/agents`,
         icon: Bot,
         category: 'core'
       },
@@ -133,20 +133,20 @@ export function Sidebar({ farmId }: SidebarProps) {
     ],
     aiCenterGroup: [
       {
-        name: 'Command & Control',
-        href: `/dashboard/ai-center/command`,
+        name: 'Command Console',
+        href: `/command`,
         icon: BrainCircuit,
         category: 'ai'
       },
       {
         name: 'Knowledge Base',
-        href: `/dashboard/ai-center/knowledge`,
+        href: `/knowledge`,
         icon: BookOpenCheck,
         category: 'ai'
       },
       {
-        name: 'ElizaOS',
-        href: `/dashboard/ai-center/eliza`,
+        name: 'ElizaOS Hub',
+        href: `/elizaos`,
         icon: Brain,
         category: 'ai'
       },

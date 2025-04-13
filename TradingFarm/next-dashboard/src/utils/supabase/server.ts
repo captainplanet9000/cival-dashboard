@@ -4,8 +4,8 @@
  */
 import { createClient } from '@supabase/supabase-js';
 import { cookies } from 'next/headers';
-import { ExtendedDatabase } from '@/types/supabase-extensions';
-import { createServerClient as createMockServerClient } from './mock-client';
+import { createServerComponentClient as createSupabaseServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { Database } from '@/types/database.types';
 
 // Load configuration from environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -22,38 +22,14 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true' ||
  * This version works with both pages/ and app/ directory setups
  */
 export async function createServerClient() {
-  if (useMockData) {
-    // Use mock client if we're in development mode or missing credentials
-    console.log('Using mock Supabase server client');
-    return createMockServerClient();
-  }
-
   // Create and return a Supabase client for the server
-  return createClient<ExtendedDatabase>(
+  return createClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       auth: {
         persistSession: false, // Don't persist session in server context
-        autoRefreshToken: false,
-        detectSessionInUrl: false,
-        flowType: 'pkce',
-        cookieOptions: {
-          name: 'sb-session',
-          path: '/',
-          sameSite: 'lax',
-          domain: '',
-          secure: true
-        }
-      },
-      global: {
-        headers: {
-          'x-my-custom-header': 'tradingfarm-server'
-        },
-        fetch: undefined, // Use default fetch implementation
-      },
-      db: {
-        schema: 'public'
+        autoRefreshToken: false
       }
     }
   );
@@ -69,16 +45,13 @@ export async function createServerAdminClient() {
     throw new Error('Missing Supabase service role key');
   }
 
-  return createClient<ExtendedDatabase>(
+  return createClient<Database>(
     supabaseUrl,
     supabaseServiceKey,
     {
       auth: {
         persistSession: false,
         autoRefreshToken: false
-      },
-      global: {
-        headers: { 'x-application-name': 'trading-farm-dashboard-admin' }
       }
     }
   );
@@ -101,3 +74,11 @@ export async function getSession() {
   const { data: { session } } = await supabase.auth.getSession();
   return session;
 }
+
+/**
+ * Creates a Supabase client for server components
+ */
+export const createServerComponentClient = async () => {
+  const cookieStore = cookies();
+  return createSupabaseServerComponentClient<Database>({ cookies: () => cookieStore });
+};

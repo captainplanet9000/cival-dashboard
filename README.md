@@ -309,3 +309,109 @@ When contributing to this project, please follow the established patterns for:
 - Error handling
 - Validation
 - Testing
+
+# Trading Farm Real-Time Monitoring Dashboard
+
+Real-time monitoring system for Trading Farm agents and farms, featuring live metrics, alerts, and performance visualization.
+
+## Features
+
+- Real-time monitoring of system resources (CPU, memory, disk, network)
+- Live performance charts with multiple visualization options
+- WebSocket integration for true real-time updates
+- Comprehensive alert system with priority levels and filtering
+- Timeline views for historical data analysis
+- Customizable refresh rates and timeframes
+- Farm and agent-specific filtering
+- Status indicators with color-coded metrics
+- Interactive charts with tooltips and legends
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/your-username/trading-farm.git
+cd trading-farm
+```
+
+2. Install dependencies:
+```bash
+npm install
+```
+
+The package.json already includes all required dependencies:
+
+```json
+{
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.4",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.487.0",
+    "next": "^14.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.15.2",
+    "ws": "^8.14.2"
+  }
+}
+```
+
+## Development
+
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Then open [http://localhost:3000/dashboard/real-time-monitor](http://localhost:3000/dashboard/real-time-monitor) to see the real-time dashboard.
+
+## WebSocket Integration
+
+The dashboard uses WebSockets for real-time data updates. In development mode, it uses a mock WebSocket service that simulates real-time data.
+
+For production use, update the WebSocket URL in `src/services/websocket-monitoring-service.ts`:
+
+```typescript
+// Change these URLs to your actual WebSocket endpoints
+const websocketUrl = `wss://api.your-domain.com/v1/monitoring/agents/${agentId}`;
+```
+
+## Available Pages
+
+- `/dashboard/real-time-monitor` - Main real-time monitoring dashboard
+- `/dashboard/agents/[id]` - Agent-specific monitoring
+- `/dashboard/farms/[id]` - Farm-specific monitoring
+
+## Performance Charts
+
+The dashboard includes various chart types:
+
+- Bar charts for trade execution volume
+- Line charts for win rate percentages
+- Area charts for system response times
+
+Charts automatically update in real-time and support different timeframes:
+
+- Hour: Last 60 minutes with 1-minute intervals
+- Day: Last 24 hours with 1-hour intervals
+- Week: Last 7 days with 6-hour intervals
+- Month: Last 30 days with 1-day intervals
+
+## Customization
+
+### Adding New Metrics
+
+To add new metrics to the dashboard:
+
+1. Add the metric definition in the WebSocket service
+2. Update the handlers in the dashboard component
+3. Create visualization components for the new metrics
+
+### Styling
+
+The dashboard uses Tailwind CSS for styling. Customize the appearance by modifying the Tailwind classes in the component files.
+
+## License
+
+MIT

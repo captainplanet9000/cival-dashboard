@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, ReactNode } from 'react';
 import { Bell, Moon, Sun, User, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useDashboard } from '@/contexts/DashboardContext';
 
 interface DashboardHeaderProps {
   toggleSidebar?: () => void;
+  children?: ReactNode;
 }
 
-export function DashboardHeader({ toggleSidebar }: DashboardHeaderProps) {
+export function DashboardHeader({ toggleSidebar, children }: DashboardHeaderProps) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const { selectedFarmId, farms } = useDashboard();
   
@@ -58,6 +59,8 @@ export function DashboardHeader({ toggleSidebar }: DashboardHeaderProps) {
       </div>
       
       <div className="flex items-center space-x-2">
+        {children}
+        
         <Button 
           variant="ghost" 
           size="icon"
@@ -69,14 +72,6 @@ export function DashboardHeader({ toggleSidebar }: DashboardHeaderProps) {
           ) : (
             <Sun className="h-5 w-5" />
           )}
-        </Button>
-        
-        <Button 
-          variant="ghost" 
-          size="icon"
-          title="Notifications"
-        >
-          <Bell className="h-5 w-5" />
         </Button>
         
         <Button 

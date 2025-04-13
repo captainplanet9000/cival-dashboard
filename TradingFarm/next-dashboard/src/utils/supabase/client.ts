@@ -6,6 +6,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { ExtendedDatabase } from '@/types/supabase-extensions';
 import * as mockData from './mocks';
 import { createBrowserClient as createMockBrowserClient } from './mock-client';
+import { Database } from '@/types/database.types';
 
 // Import development configuration (this file is not in .gitignore)
 // @ts-ignore - Dynamic import
@@ -59,7 +60,7 @@ const useMockData = process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true' ||
  * Creates a Supabase client for use in browser environments
  * Will automatically use mock data if connection fails or mock mode is forced
  */
-export function createBrowserClient() {
+export const createBrowserClient = () => {
   if (useMockData) {
     // Use mock client if we're in development mode or missing credentials
     console.log('Using mock Supabase client');

@@ -1,5 +1,8 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+import { createBrowserClient } from '@/utils/supabase/client';
+import { Database } from '@/types/database.types';
 import { 
   useQuery, 
   useMutation, 
@@ -25,22 +28,141 @@ export const farmKeys = {
   agents: (farmId: number) => [...farmKeys.detail(farmId), 'agents'] as const,
 };
 
+// Define Farm type based on database schema
+export type Farm = Database['public']['Tables']['farms']['Row'];
+
+interface UseFarmsOptions {
+  userId?: string;
+  enableRealtime?: boolean;
+}
+
 /**
- * Hook to fetch all farms
+ * Hook for fetching and subscribing to farm data
  */
-export function useFarms() {
-  return useQuery({
-    queryKey: farmKeys.lists(),
-    queryFn: async () => {
-      const { data, error } = await enhancedFarmService.getFarms();
+export function useFarms({ userId, enableRealtime = true }: UseFarmsOptions = {}) {
+  const [farms, setFarms] = useState<Farm[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Fetch farms
+  useEffect(() => {
+    const fetchFarms = async () => {
+      setLoading(true);
+      setError(null);
       
-      if (error) {
-        throw new Error(error);
+      try {
+        const supabase = createBrowserClient();
+        let query = supabase.from('farms').select('*');
+        
+        // If userId is provided, filter by it
+        if (userId) {
+          query = query.eq('user_id', userId);
+        }
+        
+        const { data, error: queryError } = await query;
+        
+        if (queryError) {
+          throw queryError;
+        }
+        
+        setFarms(data || []);
+      } catch (err: any) {
+        console.error('Error fetching farms:', err);
+        setError(err.message || 'Failed to load farms');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchFarms();
+  }, [userId]);
+
+  // Set up real-time subscription
+  useEffect(() => {
+    if (!enableRealtime) return;
+    
+    const supabase = createBrowserClient();
+    
+    // Create a channel for real-time updates
+    const channel = supabase
+      .channel('farms-changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'farms',
+          ...(userId ? { filter: `user_id=eq.${userId}` } : {})
+        }, 
+        (payload) => {
+          // Handle different event types
+          if (payload.eventType === 'INSERT') {
+            setFarms(prev => [...prev, payload.new as Farm]);
+          } else if (payload.eventType === 'UPDATE') {
+            setFarms(prev => 
+              prev.map(farm => 
+                farm.id === payload.new.id ? (payload.new as Farm) : farm
+              )
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setFarms(prev => 
+              prev.filter(farm => farm.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+    
+    // Clean up subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, enableRealtime]);
+
+  // Get active farms
+  const activeFarms = farms.filter(farm => farm.is_active);
+  
+  // Get inactive farms
+  const inactiveFarms = farms.filter(farm => !farm.is_active);
+  
+  // Calculate counts
+  const counts = {
+    total: farms.length,
+    active: activeFarms.length,
+    inactive: inactiveFarms.length
+  };
+
+  // Get a specific farm by ID
+  const getFarmById = (id: string) => farms.find(farm => farm.id === id);
+
+  return {
+    farms,
+    activeFarms,
+    inactiveFarms,
+    counts,
+    loading,
+    error,
+    getFarmById,
+    refresh: async () => {
+      setLoading(true);
+      const supabase = createBrowserClient();
+      let query = supabase.from('farms').select('*');
+      
+      if (userId) {
+        query = query.eq('user_id', userId);
       }
       
-      return data || [];
-    },
-  });
+      const { data, error: refreshError } = await query;
+      
+      if (refreshError) {
+        setError(refreshError.message);
+      } else {
+        setFarms(data || []);
+        setError(null);
+      }
+      
+      setLoading(false);
+    }
+  };
 }
 
 /**

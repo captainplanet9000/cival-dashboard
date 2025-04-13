@@ -1,11 +1,12 @@
 /**
  * Agent Service
- * Handles all agent-related API interactions
+ * Handles all agent-related API interactions with ElizaOS integration
  */
 import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
-// import { Database } from '@/types/database.types'; // Removed problematic import
-// import { Json } from '@/types/database.types'; // Removed problematic import
+import { TradingEventEmitter, TRADING_EVENTS, AgentEvent } from '@/utils/events/trading-events';
+import { knowledgeService } from '@/services/knowledge-service';
+import { v4 as uuidv4 } from 'uuid';
 
 // Define Json type locally if needed, or import from a valid source
 export type Json = | string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
@@ -106,6 +107,7 @@ export interface AgentHistoryEntry {
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
+  meta?: Record<string, any>;
 }
 
 export interface AgentTemplate {
@@ -125,8 +127,68 @@ export interface AgentTemplate {
   updated_at: string;
 }
 
+// ElizaOS Agent Types
+export interface ElizaAgent {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  agent_type_id?: string;
+  status: 'active' | 'inactive' | 'paused' | 'error';
+  instructions?: string;
+  model: string;
+  parameters: Record<string, any>;
+  knowledge_ids: string[];
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AgentRun {
+  id: string;
+  agent_id: string;
+  farm_id?: string;
+  status: 'running' | 'completed' | 'failed' | 'stopped';
+  started_at: string;
+  ended_at?: string;
+  data: Record<string, any>;
+  metrics: Record<string, any>;
+  error?: string;
+}
+
+export interface AgentMessage {
+  id: string;
+  run_id: string;
+  role: 'system' | 'user' | 'agent' | 'tool';
+  content: string;
+  timestamp: string;
+  metadata: Record<string, any>;
+}
+
+export interface Farm {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string;
+  goal: string;
+  status: 'active' | 'inactive' | 'paused';
+  parameters: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+  agents?: ElizaAgent[];
+}
+
+export interface FarmAgent {
+  id: string;
+  farm_id: string;
+  agent_id: string;
+  role: string;
+  parameters: Record<string, any>;
+  created_at: string;
+}
+
 /**
- * Agent service for managing trading agents
+ * Agent service for managing trading agents with ElizaOS integration
  */
 export const agentService = {
   /**
@@ -1523,6 +1585,393 @@ export const agentService = {
     }
     return null;
   },
+  
+  /**
+   * Create a new ElizaOS agent
+   */
+  async createElizaAgent(agentData: {
+    name: string;
+    description?: string;
+    agent_type_id?: string;
+    instructions?: string;
+    model?: string;
+    parameters?: Record<string, any>;
+    knowledge_ids?: string[];
+  }): Promise<ApiResponse<ElizaAgent>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('agents')
+        .insert({
+          name: agentData.name,
+          description: agentData.description || '',
+          agent_type_id: agentData.agent_type_id,
+          status: 'inactive',
+          instructions: agentData.instructions || '',
+          model: agentData.model || 'gpt-4o',
+          parameters: agentData.parameters || {},
+          knowledge_ids: agentData.knowledge_ids || [],
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to create agent: ${error.message}`);
+      }
+      
+      // Emit agent created event
+      TradingEventEmitter.emit(TRADING_EVENTS.AGENT_STARTED, {
+        agentId: data.id,
+        agentName: data.name,
+        status: 'created',
+      });
+      
+      return {
+        success: true,
+        data,
+      };
+    } catch (error: any) {
+      console.error('Error creating ElizaOS agent:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Get all ElizaOS agents
+   */
+  async getElizaAgents(): Promise<ApiResponse<ElizaAgent[]>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('agents')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        throw new Error(`Failed to get agents: ${error.message}`);
+      }
+      
+      return {
+        success: true,
+        data: data || [],
+      };
+    } catch (error: any) {
+      console.error('Error getting ElizaOS agents:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Start an agent run
+   */
+  async startAgentRun(agentId: string, initialData: Record<string, any> = {}): Promise<ApiResponse<AgentRun>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      // Get the agent first
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('id', agentId)
+        .single();
+      
+      if (agentError) {
+        throw new Error(`Agent not found: ${agentError.message}`);
+      }
+      
+      // Create a new run
+      const { data, error } = await supabase
+        .from('agent_runs')
+        .insert({
+          agent_id: agentId,
+          status: 'running',
+          data: initialData,
+          metrics: {},
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to start agent run: ${error.message}`);
+      }
+      
+      // Emit agent started event
+      TradingEventEmitter.emit(TRADING_EVENTS.AGENT_STARTED, {
+        agentId,
+        agentName: agent.name,
+        status: 'running',
+        runId: data.id,
+      });
+      
+      return {
+        success: true,
+        data,
+      };
+    } catch (error: any) {
+      console.error('Error starting agent run:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Send a message to an agent run
+   */
+  async sendAgentMessage(runId: string, content: string, role: 'system' | 'user' = 'user', metadata: Record<string, any> = {}): Promise<ApiResponse<AgentMessage>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      // Create a new message
+      const { data, error } = await supabase
+        .from('agent_messages')
+        .insert({
+          run_id: runId,
+          role,
+          content,
+          metadata,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to send agent message: ${error.message}`);
+      }
+      
+      return {
+        success: true,
+        data,
+      };
+    } catch (error: any) {
+      console.error('Error sending agent message:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Get messages for an agent run
+   */
+  async getAgentMessages(runId: string): Promise<ApiResponse<AgentMessage[]>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('agent_messages')
+        .select('*')
+        .eq('run_id', runId)
+        .order('timestamp', { ascending: true });
+      
+      if (error) {
+        throw new Error(`Failed to get agent messages: ${error.message}`);
+      }
+      
+      return {
+        success: true,
+        data: data || [],
+      };
+    } catch (error: any) {
+      console.error('Error getting agent messages:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Create a new farm for multi-agent coordination
+   */
+  async createFarm(farmData: {
+    name: string;
+    description?: string;
+    goal: string;
+    parameters?: Record<string, any>;
+  }): Promise<ApiResponse<Farm>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('farms')
+        .insert({
+          name: farmData.name,
+          description: farmData.description || '',
+          goal: farmData.goal,
+          status: 'inactive',
+          parameters: farmData.parameters || {},
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to create farm: ${error.message}`);
+      }
+      
+      // Emit farm created event
+      TradingEventEmitter.emit(TRADING_EVENTS.FARM_CREATED, {
+        farmId: data.id,
+        farmName: data.name,
+      });
+      
+      return {
+        success: true,
+        data,
+      };
+    } catch (error: any) {
+      console.error('Error creating farm:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Get all farms
+   */
+  async getFarms(includeAgents: boolean = false): Promise<ApiResponse<Farm[]>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      let query = supabase
+        .from('farms')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      const { data, error } = await query;
+      
+      if (error) {
+        throw new Error(`Failed to get farms: ${error.message}`);
+      }
+      
+      let farms = data || [];
+      
+      // Fetch agents for each farm if requested
+      if (includeAgents && farms.length > 0) {
+        const farmIds = farms.map(farm => farm.id);
+        
+        const { data: farmAgents, error: agentsError } = await supabase
+          .from('farm_agents')
+          .select('*, agent:agent_id(*)')
+          .in('farm_id', farmIds);
+        
+        if (!agentsError && farmAgents) {
+          // Group agents by farm
+          const agentsByFarm: Record<string, ElizaAgent[]> = {};
+          
+          for (const farmAgent of farmAgents) {
+            if (!agentsByFarm[farmAgent.farm_id]) {
+              agentsByFarm[farmAgent.farm_id] = [];
+            }
+            
+            agentsByFarm[farmAgent.farm_id].push(farmAgent.agent);
+          }
+          
+          // Add agents to farms
+          farms = farms.map(farm => ({
+            ...farm,
+            agents: agentsByFarm[farm.id] || [],
+          }));
+        }
+      }
+      
+      return {
+        success: true,
+        data: farms,
+      };
+    } catch (error: any) {
+      console.error('Error getting farms:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Add an agent to a farm
+   */
+  async addAgentToFarm(farmId: string, agentId: string, role: string = 'member', parameters: Record<string, any> = {}): Promise<ApiResponse<FarmAgent>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      // Check if the agent is already in the farm
+      const { data: existing, error: checkError } = await supabase
+        .from('farm_agents')
+        .select('*')
+        .eq('farm_id', farmId)
+        .eq('agent_id', agentId)
+        .maybeSingle();
+      
+      if (checkError) {
+        throw new Error(`Error checking farm agent: ${checkError.message}`);
+      }
+      
+      if (existing) {
+        // Agent already in farm, update the role if needed
+        const { data, error } = await supabase
+          .from('farm_agents')
+          .update({ role, parameters })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        
+        if (error) {
+          throw new Error(`Failed to update farm agent: ${error.message}`);
+        }
+        
+        return {
+          success: true,
+          data,
+        };
+      }
+      
+      // Add agent to farm
+      const { data, error } = await supabase
+        .from('farm_agents')
+        .insert({
+          farm_id: farmId,
+          agent_id: agentId,
+          role,
+          parameters,
+        })
+        .select()
+        .single();
+      
+      if (error) {
+        throw new Error(`Failed to add agent to farm: ${error.message}`);
+      }
+      
+      // Emit agent added to farm event
+      TradingEventEmitter.emit(TRADING_EVENTS.FARM_AGENT_ADDED, {
+        farmId,
+        agentId,
+        role,
+      });
+      
+      return {
+        success: true,
+        data,
+      };
+    } catch (error: any) {
+      console.error('Error adding agent to farm:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
 
   /**
    * Get agents for server components
@@ -1563,5 +2012,160 @@ export const agentService = {
         console.error('Error fetching agents on server:', error);
         return { error: error instanceof Error ? error.message : 'Unknown server error' };
      }
+  },
+  
+  /**
+   * Link agent with knowledge document
+   */
+  async linkAgentWithKnowledge(agentId: string, documentId: string): Promise<ApiResponse<void>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      // Get current knowledge_ids
+      const { data: agent, error: agentError } = await supabase
+        .from('agents')
+        .select('knowledge_ids')
+        .eq('id', agentId)
+        .single();
+      
+      if (agentError) {
+        throw new Error(`Failed to get agent: ${agentError.message}`);
+      }
+      
+      // Update knowledge_ids to include the new document
+      const knowledgeIds = Array.isArray(agent.knowledge_ids) ? agent.knowledge_ids : [];
+      
+      if (!knowledgeIds.includes(documentId)) {
+        knowledgeIds.push(documentId);
+      }
+      
+      const { error } = await supabase
+        .from('agents')
+        .update({ knowledge_ids: knowledgeIds })
+        .eq('id', agentId);
+      
+      if (error) {
+        throw new Error(`Failed to link agent with knowledge: ${error.message}`);
+      }
+      
+      return {
+        success: true,
+      };
+    } catch (error: any) {
+      console.error('Error linking agent with knowledge:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Complete a farm run with ElizaOS agents
+   */
+  async runFarm(farmId: string, parameters: Record<string, any> = {}): Promise<ApiResponse<any>> {
+    try {
+      // 1. Get the farm details with agents
+      const farmResponse = await this.getFarms(true);
+      
+      if (!farmResponse.success || !farmResponse.data) {
+        throw new Error(farmResponse.error || 'Failed to get farm details');
+      }
+      
+      const farm = farmResponse.data.find(f => f.id === farmId);
+      
+      if (!farm) {
+        throw new Error(`Farm not found with ID: ${farmId}`);
+      }
+      
+      // 2. Get the farm agents
+      const { data: farmAgents, error: farmAgentsError } = await (typeof window === 'undefined' ? createServerClient() : createBrowserClient())
+        .from('farm_agents')
+        .select('*, agent:agent_id(*)')
+        .eq('farm_id', farmId);
+      
+      if (farmAgentsError || !farmAgents) {
+        throw new Error(farmAgentsError?.message || 'Failed to get farm agents');
+      }
+      
+      // 3. Start a run for each agent
+      const agentRuns = [];
+      
+      for (const farmAgent of farmAgents) {
+        const agent = farmAgent.agent;
+        
+        // Start agent run
+        const runResponse = await this.startAgentRun(agent.id, {
+          farmId,
+          farmGoal: farm.goal,
+          agentRole: farmAgent.role,
+          parameters: { ...parameters, ...farmAgent.parameters },
+        });
+        
+        if (!runResponse.success || !runResponse.data) {
+          console.error(`Failed to start run for agent ${agent.id}:`, runResponse.error);
+          continue;
+        }
+        
+        agentRuns.push(runResponse.data);
+        
+        // Initialize agent with system message
+        await this.sendAgentMessage(
+          runResponse.data.id,
+          `You are a trading agent in the farm: ${farm.name}. Your role is: ${farmAgent.role}. The farm goal is: ${farm.goal}. Follow your instructions and work with other agents to achieve this goal.`,
+          'system'
+        );
+      }
+      
+      if (agentRuns.length === 0) {
+        throw new Error('Failed to start any agent runs');
+      }
+      
+      // 4. Return success with agent runs
+      return {
+        success: true,
+        data: {
+          farmId,
+          farmName: farm.name,
+          goal: farm.goal,
+          agentRuns,
+        },
+      };
+    } catch (error: any) {
+      console.error('Error running farm:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  },
+  
+  /**
+   * Get agent types for ElizaOS
+   */
+  async getAgentTypes(): Promise<ApiResponse<any[]>> {
+    try {
+      const supabase = typeof window === 'undefined' ? createServerClient() : createBrowserClient();
+      
+      const { data, error } = await supabase
+        .from('agent_types')
+        .select('*')
+        .order('name');
+      
+      if (error) {
+        throw new Error(`Failed to get agent types: ${error.message}`);
+      }
+      
+      return {
+        success: true,
+        data: data || [],
+      };
+    } catch (error: any) {
+      console.error('Error getting agent types:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
   },
 };
