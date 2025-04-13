@@ -3,12 +3,20 @@ import { createServer } from 'http';
 import { parse } from 'url';
 import next from 'next';
 import { randomUUID } from 'crypto';
+import { createAdapter } from '@socket.io/redis-adapter';
+import Redis from 'ioredis';
+import { logger } from '@/utils/logger';
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
 const port = parseInt(process.env.SOCKET_PORT || '3002', 10);
+
+// Redis configuration
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const REDIS_PASSWORD = process.env.REDIS_PASSWORD || '';
+const REDIS_ENABLED = process.env.REDIS_ENABLED === 'true';
 
 // Define message types
 export interface SocketMessage {
@@ -88,6 +96,33 @@ async function startServer() {
       }
     });
 
+    // Set up Redis adapter for Socket.IO if enabled
+    if (REDIS_ENABLED) {
+      try {
+        const pubClient = new Redis(REDIS_URL, {
+          password: REDIS_PASSWORD
+        });
+        const subClient = pubClient.duplicate();
+
+        // Handle Redis connection events
+        pubClient.on('error', (err) => logger.error('Redis Pub Client Error:', err));
+        subClient.on('error', (err) => logger.error('Redis Sub Client Error:', err));
+        
+        // When connected, set up the adapter
+        pubClient.on('connect', () => {
+          logger.info('Redis Pub/Sub connected, setting up Socket.IO adapter');
+          io.adapter(createAdapter(pubClient, subClient));
+        });
+        
+        logger.info('Socket.IO Redis adapter initialized');
+      } catch (error) {
+        logger.error('Failed to initialize Redis adapter:', error);
+        logger.warn('Falling back to in-memory adapter');
+      }
+    } else {
+      logger.info('Redis adapter disabled, using in-memory adapter');
+    }
+
     // Socket.io connection handler
     io.on('connection', (socket) => {
       console.log(`Client connected: ${socket.id}`);
@@ -111,10 +146,25 @@ async function startServer() {
       // Handle ElizaOS commands
       socket.on('ELIZAOS_COMMAND', (data) => {
         const { command, farm_id } = data;
-        console.log(`ElizaOS command received: ${command} for farm ${farm_id}`);
+        logger.info(`ElizaOS command received: ${command} for farm ${farm_id}`);
         
-        // Mock response based on command
-        setTimeout(() => {
+        // Import the agent command queue dynamically to avoid circular dependencies
+        import('../services/redis/agent-command-queue').then(({ AgentCommandQueue }) => {
+          // Push command to the agent's queue
+          AgentCommandQueue.pushCommand(`farm:${farm_id}`, {
+            type: 'USER_COMMAND',
+            command,
+            timestamp: new Date().toISOString(),
+            source: socket.id
+          }).then(commandId => {
+            logger.debug(`Command queued with ID: ${commandId}`);
+          }).catch(err => {
+            logger.error('Error queuing command:', err);
+          });
+        }).catch(err => {
+          logger.error('Error importing agent command queue:', err);
+          // Fall back to mock responses if command queue is unavailable
+          setTimeout(() => {
           const roomName = `farm:${farm_id}:elizaos`;
           const mockResponse = {
             id: randomUUID(),
@@ -163,8 +213,30 @@ async function startServer() {
 
       // Handle disconnections
       socket.on('disconnect', () => {
-        console.log(`Client disconnected: ${socket.id}`);
+        logger.info(`Client disconnected: ${socket.id}`);
       });
+      
+      // Subscribe to ElizaOS agent events if Redis is enabled
+      if (REDIS_ENABLED) {
+        import('../services/redis/agent-coordination').then(({ AgentCoordination }) => {
+          // Register for coordination events
+          AgentCoordination.registerAgent(socket.id, (data) => {
+            // Forward coordination messages to the client
+            if (data.type === 'coordination_request' || data.type === 'coordination_response') {
+              socket.emit(data.type.toUpperCase(), {
+                id: randomUUID(),
+                timestamp: new Date().toISOString(),
+                type: data.type.toUpperCase(),
+                data: data
+              });
+            }
+          }).catch(err => {
+            logger.error('Error registering for agent coordination:', err);
+          });
+        }).catch(err => {
+          logger.error('Error importing agent coordination:', err);
+        });
+      }
     });
 
     // Simulate real-time events
@@ -221,6 +293,31 @@ function sendMockData(socket: any, farmId: string) {
 }
 
 function startRealTimeSimulation(io: Server) {
+  // Initialize Redis-based services if enabled
+  if (REDIS_ENABLED) {
+    // Initialize agent coordination system
+    import('../services/redis/agent-coordination').then(({ AgentCoordination }) => {
+      AgentCoordination.initialize().then(() => {
+        logger.info('Agent coordination system initialized');
+      }).catch(err => {
+        logger.error('Error initializing agent coordination:', err);
+      });
+    }).catch(err => {
+      logger.error('Error importing agent coordination:', err);
+    });
+    
+    // Schedule periodic persistence of knowledge to database
+    import('../services/redis/knowledge-store').then(({ KnowledgeStore }) => {
+      setInterval(() => {
+        KnowledgeStore.persistToDatabase().catch(err => {
+          logger.error('Error persisting knowledge to database:', err);
+        });
+      }, 3600000); // Once per hour
+    }).catch(err => {
+      logger.error('Error importing knowledge store:', err);
+    });
+  }
+  
   // Simulate periodic order updates
   setInterval(() => {
     const statuses = ['pending', 'executed', 'canceled', 'failed'];
@@ -275,6 +372,28 @@ function startRealTimeSimulation(io: Server) {
     io.emit('PRICE_ALERT', message);
   }, 45000);
 }
+
+// Graceful shutdown function to clean up Redis connections
+async function gracefulShutdown() {
+  logger.info('Shutting down socket server...');
+  
+  if (REDIS_ENABLED) {
+    try {
+      // Clean up Redis services
+      const { redisService } = await import('../services/redis/redis-service');
+      await redisService.disconnect();
+      logger.info('Redis connections closed');
+    } catch (error) {
+      logger.error('Error during Redis cleanup:', error);
+    }
+  }
+  
+  process.exit(0);
+}
+
+// Setup signal handlers for graceful shutdown
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // Don't call startServer() directly here
 // Export it to be called by the main process
