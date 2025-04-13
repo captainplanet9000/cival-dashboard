@@ -1,8 +1,11 @@
 'use client';
 
+import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { Database } from '@/types/database.types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { PostgrestError, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 
 // Define Agent type based on database schema
 export type Agent = Database['public']['Tables']['agents']['Row'];
@@ -12,54 +15,47 @@ interface UseAgentsOptions {
   enableRealtime?: boolean;
 }
 
+// Function to fetch agents - will be used by React Query
+const fetchAgents = async (farmId?: string): Promise<Agent[]> => {
+  const supabase = createBrowserClient();
+  let query = supabase.from('agents').select('*');
+
+  if (farmId) {
+    query = query.eq('farm_id', farmId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Supabase error fetching agents:', error);
+    throw error; // React Query will handle this error
+  }
+  
+  return data || [];
+};
+
 /**
- * Hook for fetching and subscribing to agent data
+ * Hook for fetching and subscribing to agent data using React Query
  */
 export function useAgents({ farmId, enableRealtime = true }: UseAgentsOptions = {}) {
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  // Fetch agents
-  useEffect(() => {
-    const fetchAgents = async () => {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const supabase = createBrowserClient();
-        let query = supabase.from('agents').select('*');
-        
-        // If farmId is provided, filter by it
-        if (farmId) {
-          query = query.eq('farm_id', farmId);
-        }
-        
-        const { data, error: queryError } = await query;
-        
-        if (queryError) {
-          throw queryError;
-        }
-        
-        setAgents(data || []);
-      } catch (err: any) {
-        console.error('Error fetching agents:', err);
-        setError(err.message || 'Failed to load agents');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Define a query key, dependent on the farmId
+  const queryKey = farmId ? ['agents', farmId] : ['agents'];
 
-    fetchAgents();
-  }, [farmId]);
+  // Use React Query to fetch agents
+  const { data: agents = [], isLoading: loading, error, refetch } = useQuery<Agent[], PostgrestError>({ 
+    queryKey,
+    queryFn: () => fetchAgents(farmId), 
+    staleTime: 5 * 60 * 1000, // Consider data stale after 5 minutes
+    gcTime: 10 * 60 * 1000, // Garbage collect after 10 minutes
+  });
 
-  // Set up real-time subscription
-  useEffect(() => {
+  // Use React.useEffect
+  React.useEffect(() => {
     if (!enableRealtime) return;
     
     const supabase = createBrowserClient();
-    
-    // Create a channel for real-time updates
     const channel = supabase
       .channel('agents-changes')
       .on('postgres_changes', 
@@ -69,38 +65,32 @@ export function useAgents({ farmId, enableRealtime = true }: UseAgentsOptions = 
           table: 'agents',
           ...(farmId ? { filter: `farm_id=eq.${farmId}` } : {})
         }, 
-        (payload) => {
-          // Handle different event types
-          if (payload.eventType === 'INSERT') {
-            setAgents(prev => [...prev, payload.new as Agent]);
-          } else if (payload.eventType === 'UPDATE') {
-            setAgents(prev => 
-              prev.map(agent => 
-                agent.id === payload.new.id ? (payload.new as Agent) : agent
-              )
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setAgents(prev => 
-              prev.filter(agent => agent.id !== payload.old.id)
-            );
-          }
+        (payload: RealtimePostgresChangesPayload<{ [key: string]: any }>) => {
+          console.log('Agent change received!', payload);
+          queryClient.invalidateQueries({ queryKey }); 
         }
       )
-      .subscribe();
+      .subscribe((status: string, err?: Error) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`Realtime channel subscribed for agents${farmId ? ' of farm ' + farmId : ''}.`);
+        } else if (err) {
+          console.error(`Realtime subscription error for agents: ${status}`, err);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT'){
+           console.error(`Realtime subscription error for agents: ${status}`);
+        }
+      });
     
-    // Clean up subscription on unmount
     return () => {
-      supabase.removeChannel(channel);
+      console.log('Removing realtime channel subscription for agents.');
+      if (supabase && channel) {
+        supabase.removeChannel(channel);
+      }
     };
-  }, [farmId, enableRealtime]);
+  }, [farmId, enableRealtime, queryClient, queryKey]);
 
-  // Get active agents
+  // Calculations can be derived directly from the query data
   const activeAgents = agents.filter(agent => agent.is_active);
-  
-  // Get inactive agents
   const inactiveAgents = agents.filter(agent => !agent.is_active);
-  
-  // Calculate counts
   const counts = {
     total: agents.length,
     active: activeAgents.length,
@@ -113,26 +103,7 @@ export function useAgents({ farmId, enableRealtime = true }: UseAgentsOptions = 
     inactiveAgents,
     counts,
     loading,
-    error,
-    refresh: async () => {
-      setLoading(true);
-      const supabase = createBrowserClient();
-      let query = supabase.from('agents').select('*');
-      
-      if (farmId) {
-        query = query.eq('farm_id', farmId);
-      }
-      
-      const { data, error: refreshError } = await query;
-      
-      if (refreshError) {
-        setError(refreshError.message);
-      } else {
-        setAgents(data || []);
-        setError(null);
-      }
-      
-      setLoading(false);
-    }
+    error: error ? error.message : null, // Return only the error message string
+    refresh: refetch, // Use React Query's refetch function
   };
 } 

@@ -1,11 +1,16 @@
 /**
  * Server-side Supabase client
  * Use this in server components and server actions to interact with Supabase
+ * Compatible with both App Router and Pages Router
+ * 
+ * IMPORTANT: This utility is designed to work in both environments
+ * without causing build errors related to next/headers
  */
 import { createClient } from '@supabase/supabase-js';
-import { cookies } from 'next/headers';
-import { createServerComponentClient as createSupabaseServerComponentClient } from '@supabase/auth-helpers-nextjs';
-import { Database } from '@/types/database.types';
+import type { Database } from '@/types/database.types';
+
+// Determine if we're in a browser environment
+const isBrowser = typeof window !== 'undefined';
 
 // Load configuration from environment variables
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -77,8 +82,27 @@ export async function getSession() {
 
 /**
  * Creates a Supabase client for server components
+ * This function is designed to work in both App Router and Pages Router contexts
+ * 
+ * IMPORTANT: This version DOES NOT use next/headers at build time
+ * to avoid Pages Router compatibility issues
  */
 export const createServerComponentClient = async () => {
-  const cookieStore = cookies();
-  return createSupabaseServerComponentClient<Database>({ cookies: () => cookieStore });
+  try {
+    // Use a universal approach that works in all environments
+    // This ensures there are no build-time imports of App Router-only packages
+    return createClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      }
+    );
+  } catch (error) {
+    console.error('Error creating Supabase client:', error);
+    throw new Error('Failed to initialize Supabase client');
+  }
 };

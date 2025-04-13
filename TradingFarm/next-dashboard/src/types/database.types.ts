@@ -7,230 +7,452 @@ export type Json =
   | Json[]
 
 export interface Database {
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          operationName?: string
-          query?: string
-          variables?: Json
-          extensions?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
-      agents: {
+      elizaos_knowledge_documents: {
         Row: {
-          agent_type: string
-          created_at: string
-          farm_id: string
-          goal_id: string | null
           id: string
-          is_active: boolean
-          last_heartbeat_at: string | null
+          title: string
+          description: string | null
+          content: string
+          document_type: string
           metadata: Json | null
-          settings: Json | null
-          status: string
+          source: string | null
+          created_by: string | null
+          farm_id: number | null
+          is_public: boolean | null
+          created_at: string
           updated_at: string
-          user_id: string | null
         }
         Insert: {
-          agent_type: string
-          created_at?: string
-          farm_id: string
-          goal_id?: string | null
           id?: string
-          is_active?: boolean
-          last_heartbeat_at?: string | null
+          title: string
+          description?: string | null
+          content: string
+          document_type: string
           metadata?: Json | null
-          settings?: Json | null
-          status?: string
+          source?: string | null
+          created_by?: string | null
+          farm_id?: number | null
+          is_public?: boolean | null
+          created_at?: string
           updated_at?: string
-          user_id?: string | null
         }
         Update: {
-          agent_type?: string
-          created_at?: string
-          farm_id?: string
-          goal_id?: string | null
           id?: string
-          is_active?: boolean
-          last_heartbeat_at?: string | null
+          title?: string
+          description?: string | null
+          content?: string
+          document_type?: string
           metadata?: Json | null
-          settings?: Json | null
-          status?: string
+          source?: string | null
+          created_by?: string | null
+          farm_id?: number | null
+          is_public?: boolean | null
+          created_at?: string
           updated_at?: string
-          user_id?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "agents_farm_id_fkey"
+            foreignKeyName: "elizaos_knowledge_documents_created_by_fkey"
+            columns: ["created_by"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elizaos_knowledge_documents_farm_id_fkey"
             columns: ["farm_id"]
-            isOneToOne: false
+            referencedRelation: "farms"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      elizaos_knowledge_chunks: {
+        Row: {
+          id: string
+          document_id: string
+          content: string
+          chunk_index: number
+          embedding: number[] | null
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          content: string
+          chunk_index: number
+          embedding?: number[] | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          content?: string
+          chunk_index?: number
+          embedding?: number[] | null
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elizaos_knowledge_chunks_document_id_fkey"
+            columns: ["document_id"]
+            referencedRelation: "elizaos_knowledge_documents"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      elizaos_knowledge_permissions: {
+        Row: {
+          id: string
+          document_id: string
+          user_id: string | null
+          agent_id: string | null
+          farm_id: number | null
+          permission_level: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          document_id: string
+          user_id?: string | null
+          agent_id?: string | null
+          farm_id?: number | null
+          permission_level: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          document_id?: string
+          user_id?: string | null
+          agent_id?: string | null
+          farm_id?: number | null
+          permission_level?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elizaos_knowledge_permissions_agent_id_fkey"
+            columns: ["agent_id"]
+            referencedRelation: "elizaos_agents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elizaos_knowledge_permissions_document_id_fkey"
+            columns: ["document_id"]
+            referencedRelation: "elizaos_knowledge_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elizaos_knowledge_permissions_farm_id_fkey"
+            columns: ["farm_id"]
             referencedRelation: "farms"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "agents_goal_id_fkey"
-            columns: ["goal_id"]
-            isOneToOne: false
-            referencedRelation: "goals"
+            foreignKeyName: "elizaos_knowledge_permissions_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      elizaos_agent_messages: {
+        Row: {
+          id: string
+          agent_id: string
+          message_type: string
+          content: string
+          metadata: Json | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          agent_id: string
+          message_type: string
+          content: string
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          agent_id?: string
+          message_type?: string
+          content?: string
+          metadata?: Json | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elizaos_agent_messages_agent_id_fkey"
+            columns: ["agent_id"]
+            referencedRelation: "elizaos_agents"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+      elizaos_agents: {
+        Row: {
+          id: string
+          name: string
+          farm_id: number
+          status: string
+          config: Json
+          performance_metrics: Json | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          farm_id: number
+          status?: string
+          config?: Json
+          performance_metrics?: Json | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          farm_id?: number
+          status?: string
+          config?: Json
+          performance_metrics?: Json | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elizaos_agents_created_by_fkey"
+            columns: ["created_by"]
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "agents_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
+            foreignKeyName: "elizaos_agents_farm_id_fkey"
+            columns: ["farm_id"]
+            referencedRelation: "farms"
             referencedColumns: ["id"]
           }
         ]
       }
       farms: {
         Row: {
-          created_at: string
-          description: string | null
-          id: string
-          is_active: boolean
-          metadata: Json | null
+          id: number
           name: string
-          settings: Json | null
+          description: string | null
           status: string
+          created_at: string
           updated_at: string
-          user_id: string
+          created_by: string | null
+          is_active: boolean
+          goal_id: number | null
         }
         Insert: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          metadata?: Json | null
+          id?: number
           name: string
-          settings?: Json | null
+          description?: string | null
           status?: string
+          created_at?: string
           updated_at?: string
-          user_id: string
+          created_by?: string | null
+          is_active?: boolean
+          goal_id?: number | null
         }
         Update: {
-          created_at?: string
-          description?: string | null
-          id?: string
-          is_active?: boolean
-          metadata?: Json | null
+          id?: number
           name?: string
-          settings?: Json | null
+          description?: string | null
           status?: string
+          created_at?: string
           updated_at?: string
-          user_id?: string
+          created_by?: string | null
+          is_active?: boolean
+          goal_id?: number | null
         }
         Relationships: [
           {
-            foreignKeyName: "farms_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
+            foreignKeyName: "farms_created_by_fkey"
+            columns: ["created_by"]
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "farms_goal_id_fkey"
+            columns: ["goal_id"]
+            referencedRelation: "goals"
             referencedColumns: ["id"]
           }
         ]
       }
       goals: {
         Row: {
-          created_at: string
-          description: string | null
-          end_date: string | null
-          farm_id: string
-          goal_type: string
-          id: string
-          last_evaluated_at: string | null
-          metadata: Json | null
+          id: number
           name: string
-          parameters: Json | null
-          priority: number | null
-          progress: number | null
-          start_date: string | null
-          status: string
-          target_asset: string | null
+          description: string | null
           target_value: number | null
-          template_id: string | null
+          current_value: number | null
+          target_date: string | null
+          priority: string
+          status: string
+          created_at: string
           updated_at: string
+          created_by: string | null
+          type: string | null
         }
         Insert: {
-          created_at?: string
-          description?: string | null
-          end_date?: string | null
-          farm_id: string
-          goal_type: string
-          id?: string
-          last_evaluated_at?: string | null
-          metadata?: Json | null
+          id?: number
           name: string
-          parameters?: Json | null
-          priority?: number | null
-          progress?: number | null
-          start_date?: string | null
-          status?: string
-          target_asset?: string | null
+          description?: string | null
           target_value?: number | null
-          template_id?: string | null
+          current_value?: number | null
+          target_date?: string | null
+          priority?: string
+          status?: string
+          created_at?: string
           updated_at?: string
+          created_by?: string | null
+          type?: string | null
         }
         Update: {
-          created_at?: string
-          description?: string | null
-          end_date?: string | null
-          farm_id?: string
-          goal_type?: string
-          id?: string
-          last_evaluated_at?: string | null
-          metadata?: Json | null
+          id?: number
           name?: string
-          parameters?: Json | null
-          priority?: number | null
-          progress?: number | null
-          start_date?: string | null
-          status?: string
-          target_asset?: string | null
+          description?: string | null
           target_value?: number | null
-          template_id?: string | null
+          current_value?: number | null
+          target_date?: string | null
+          priority?: string
+          status?: string
+          created_at?: string
           updated_at?: string
+          created_by?: string | null
+          type?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "goals_farm_id_fkey"
-            columns: ["farm_id"]
-            isOneToOne: false
-            referencedRelation: "farms"
+            foreignKeyName: "goals_created_by_fkey"
+            columns: ["created_by"]
+            referencedRelation: "users"
             referencedColumns: ["id"]
           }
         ]
       }
-    }
+      farm_members: {
+        Row: {
+          id: number
+          farm_id: number
+          user_id: string
+          role: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          farm_id: number
+          user_id: string
+          role?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          farm_id?: number
+          user_id?: string
+          role?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farm_members_farm_id_fkey"
+            columns: ["farm_id"]
+            referencedRelation: "farms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "farm_members_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
+    },
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    },
     Functions: {
-      [_ in never]: never
-    }
+      match_knowledge_chunks: {
+        Args: {
+          query_embedding: number[]
+          match_threshold: number
+          match_count: number
+        }
+        Returns: {
+          id: string
+          document_id: string
+          content: string
+          chunk_index: number
+          metadata: Json
+          similarity: number
+          document: Json
+        }[]
+      }
+      agent_knowledge_search: {
+        Args: {
+          agent_id: string
+          query_embedding: number[]
+          match_threshold: number
+          match_count: number
+        }
+        Returns: {
+          id: string
+          document_id: string
+          content: string
+          chunk_index: number
+          metadata: Json
+          similarity: number
+          document: Json
+        }[]
+      }
+      farm_knowledge_search: {
+        Args: {
+          farm_id: number
+          query_embedding: number[]
+          match_threshold: number
+          match_count: number
+        }
+        Returns: {
+          id: string
+          document_id: string
+          content: string
+          chunk_index: number
+          metadata: Json
+          similarity: number
+          document: Json
+        }[]
+      }
+    },
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    },
     CompositeTypes: {
-      [_ in never]: never
+      [_ in never]: never;
     }
   }
 }

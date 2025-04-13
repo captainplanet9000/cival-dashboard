@@ -1,378 +1,188 @@
 "use client";
 
 import React from "react";
-import { farmService, Farm } from "@/services/farm-service";
-import { createBrowserClient } from "@/utils/supabase/client";
 import Link from "next/link";
-import { 
-  AlertCircle, 
-  Building2, 
-  CheckCircle, 
-  Bot, 
-  Layers, 
-  Settings,
-  PlusCircle,
-  Search,
-  RefreshCcw,
-  BarChart
-} from "lucide-react";
-import { DEMO_MODE } from "@/utils/demo-data";
-
-// Import Shadcn components
+import { useFarms, Farm } from "@/hooks/use-farms";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/components/ui/use-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FarmCreationDialog } from "@/components/farms/farm-creation-dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertCircle, PlusCircle, ArrowRight, CheckCircle, XCircle } from "lucide-react";
+import { formatDistanceToNow } from 'date-fns';
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Search, RefreshCcw } from "lucide-react";
 
-export default function FarmsPage() {
-  const [farms, setFarms] = React.useState<Farm[]>([]);
-  const [filteredFarms, setFilteredFarms] = React.useState<Farm[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = React.useState<string>("");
-  const { toast } = useToast();
-  const supabase = createBrowserClient();
+// Simple status badge for farms
+const FarmStatusBadge = ({ isActive }: { isActive: boolean }) => (
+  <Badge variant={isActive ? 'default' : 'outline'}
+         className={`${isActive ? 'bg-green-100 text-green-700 border-green-200' : 'border-gray-300'} flex items-center w-fit`}>
+    {isActive ? <CheckCircle className="h-3 w-3 mr-1" /> : <XCircle className="h-3 w-3 mr-1" />}
+    {isActive ? 'Active' : 'Inactive'}
+  </Badge>
+);
 
-  // Setup real-time subscription for farm updates
-  React.useEffect(() => {
-    const setupRealtimeSubscription = async () => {
-      try {
-        // Only set up real-time subscriptions when not in demo mode
-        if (!DEMO_MODE && process.env.NODE_ENV !== 'development') {
-          const subscription = supabase
-            .channel('farms-channel')
-            .on('postgres_changes', { 
-              event: '*', 
-              schema: 'public', 
-              table: 'farms' 
-            }, (payload: any) => {
-              fetchFarms();
-            })
-            .subscribe();
+export default function FarmListPage() {
+  // Fetch farms owned by the current user using the hook
+  const { data: allFarms = [], isLoading, error, refetch } = useFarms(true);
+  const [searchQuery, setSearchQuery] = React.useState('');
 
-          return () => {
-            supabase.removeChannel(subscription);
-          };
-        }
-      } catch (error) {
-        console.error('Error setting up realtime subscription:', error);
-      }
-    };
-
-    setupRealtimeSubscription();
-  }, [supabase]);
-
-  // Fetch farms data
-  const fetchFarms = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // If in demo mode or development, add a slight delay to simulate network latency
-      if (DEMO_MODE || process.env.NODE_ENV === 'development') {
-        setTimeout(async () => {
-          const response = await farmService.getFarms();
-          if (response.data) {
-            setFarms(response.data);
-            toast({
-              title: "Demo Mode Active",
-              description: "Showing farm demo data - no database connection required",
-            });
-          }
-          setLoading(false);
-        }, 800);
-        return;
-      }
-      
-      const response = await farmService.getFarms();
-      
-      if (response.error) {
-        setError(response.error);
-        toast({
-          title: "Error Loading Farms",
-          description: response.error,
-          variant: "destructive"
-        });
-      } else if (response.data) {
-        setFarms(response.data);
-        toast({
-          title: "Data Loaded Successfully",
-          description: `Loaded ${response.data.length} farms from database`,
-        });
-      }
-    } catch (error: any) {
-      console.error('Error fetching farms:', error);
-      setError('Failed to load farms. Please try again later.');
-      toast({
-        title: "Connection Error",
-        description: "Using demo data as fallback",
-        variant: "destructive"
-      });
-      
-      // Use demo data as fallback
-      try {
-        const response = await farmService.getFarms();
-        if (response.data) {
-          setFarms(response.data);
-        }
-      } catch (fallbackError) {
-        console.error('Even fallback data failed:', fallbackError);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-  
-  // Load farms on component mount
-  React.useEffect(() => {
-    fetchFarms();
-  }, [fetchFarms]);
-  
-  // Apply search filter when farms or query changes
-  React.useEffect(() => {
-    if (!farms.length) {
-      setFilteredFarms([]);
-      return;
-    }
-    
-    if (!searchQuery.trim()) {
-      setFilteredFarms(farms);
-      return;
-    }
-    
-    const query = searchQuery.toLowerCase().trim();
-    const filtered = farms.filter(farm => 
-      farm.name.toLowerCase().includes(query) || 
-      (farm.description || '').toLowerCase().includes(query) || 
-      (farm.status || '').toLowerCase().includes(query)
+  // Filter farms based on search query
+  const filteredFarms = React.useMemo(() => {
+    if (!searchQuery) return allFarms;
+    const lowerCaseQuery = searchQuery.toLowerCase();
+    return allFarms.filter(farm => 
+      farm.name?.toLowerCase().includes(lowerCaseQuery) ||
+      farm.description?.toLowerCase().includes(lowerCaseQuery)
     );
-    
-    setFilteredFarms(filtered);
-  }, [farms, searchQuery]);
-  
-  // Handle farm creation success
-  const handleFarmCreated = (newFarm: Farm) => {
-    setFarms(prevFarms => [...prevFarms, newFarm]);
-    toast({
-      title: "Farm Created",
-      description: `${newFarm.name} has been created successfully.`
-    });
-  };
-  
-  // Handle farm deletion
-  const handleDeleteFarm = async (farmId: number) => {
-    try {
-      // Optimistic UI update - remove from list immediately
-      setFarms(prevFarms => prevFarms.filter(farm => farm.id !== farmId));
-      
-      // Send deletion request to API
-      const response = await farmService.deleteFarm(farmId);
-      
-      if (response.error) {
-        // Restore on error
-        fetchFarms();
-        toast({
-          title: "Error Deleting Farm",
-          description: response.error,
-          variant: "destructive"
-        });
-      } else {
-        toast({
-          title: "Farm Deleted",
-          description: "The farm has been deleted successfully."
-        });
-      }
-    } catch (error) {
-      // Restore and show error
-      fetchFarms();
-      console.error('Error deleting farm:', error);
-      toast({
-        title: "Error",
-        description: "Failed to delete farm. Please try again later.",
-        variant: "destructive"
-      });
-    }
-  };
+  }, [allFarms, searchQuery]);
 
+  // --- Render Functions ---
+  const renderLoading = () => (
+    <div className="border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {[...Array(4)].map((_, i) => <TableHead key={i}><Skeleton className="h-4 w-24" /></TableHead>)}
+            <TableHead className="text-right"><Skeleton className="h-4 w-20" /></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {[...Array(3)].map((_, i) => (
+            <TableRow key={i}>
+              <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-48" /></TableCell>
+              <TableCell><Skeleton className="h-6 w-20 rounded-full" /></TableCell>
+              <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+              <TableCell className="text-right space-x-2">
+                 <Skeleton className="h-8 w-24 inline-block" />
+                 <Skeleton className="h-8 w-16 inline-block" />
+               </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
+  const renderError = () => (
+    <Alert variant="destructive">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Error Loading Farms</AlertTitle>
+      <AlertDescription>
+        {error?.message || "Could not load your farms. Please try refreshing the page."}
+      </AlertDescription>
+      <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2">Retry</Button>
+    </Alert>
+  );
+
+  const renderFarmTable = () => (
+    <div className="border rounded-md">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Description</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Created</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {filteredFarms.map((farm: Farm) => ( 
+            <TableRow key={farm.id}>
+              <TableCell className="font-medium">{farm.name}</TableCell>
+              <TableCell className="text-sm text-muted-foreground max-w-xs truncate">
+                {farm.description || '-'}
+              </TableCell>
+              <TableCell>
+                <FarmStatusBadge isActive={farm.is_active} />
+              </TableCell>
+              <TableCell className="text-xs">
+                {farm.created_at ? formatDistanceToNow(new Date(farm.created_at), { addSuffix: true }) : '-'}
+              </TableCell>
+              <TableCell className="text-right space-x-2 whitespace-nowrap">
+                <Link href={`/dashboard/farms/${farm.id}`} passHref>
+                  <Button variant="outline" size="sm">
+                    <ArrowRight className="mr-1 h-3.5 w-3.5" /> View
+                  </Button>
+                </Link>
+                <Link href={`/dashboard/farms/${farm.id}/edit`} passHref>
+                  <Button variant="outline" size="sm">Edit</Button>
+                </Link>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+
+  // --- Main Component Return ---
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Trading Farms</h1>
-          <p className="text-muted-foreground">
-            Manage your trading farms and their configurations
-          </p>
-        </div>
-        <FarmCreationDialog onSuccess={handleFarmCreated} />
-      </div>
-      
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search farms by name, description, or status..."
-            className="pl-8"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <Button variant="outline" onClick={fetchFarms}>
-          <RefreshCcw className="h-4 w-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
-      
-      <Separator />
-      
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {Array(3).fill(0).map((_, index) => (
-            <Card key={index} className="overflow-hidden">
-              <CardHeader className="pb-2 space-y-2">
-                <Skeleton className="h-6 w-40" />
-                <Skeleton className="h-4 w-20" />
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-full" />
-                <div className="grid grid-cols-2 gap-4">
-                  <Skeleton className="h-16 w-full" />
-                  <Skeleton className="h-16 w-full" />
-                </div>
-                <Skeleton className="h-4 w-full" />
-              </CardContent>
-              <CardFooter className="pt-2">
-                <div className="flex justify-between w-full">
-                  <Skeleton className="h-9 w-20" />
-                  <Skeleton className="h-9 w-20" />
-                </div>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      ) : filteredFarms.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 border border-dashed rounded-lg space-y-4">
-          <Building2 className="h-16 w-16 text-muted-foreground opacity-20" />
-          <h3 className="text-xl font-semibold">No Farms Found</h3>
-          {farms.length > 0 ? (
-            <p className="text-muted-foreground text-center max-w-md">
-              No farms match your search criteria. Try using different keywords or clear your search.
-            </p>
-          ) : (
-            <p className="text-muted-foreground text-center max-w-md">
-              You haven't created any trading farms yet. Create your first farm to start managing your trading strategies.
-            </p>
+    <div className="space-y-6 p-4 md:p-6">
+      <Card>
+        <CardHeader className="flex flex-row items-start sm:items-center justify-between gap-2 space-y-0 pb-2">
+          <div>
+             <CardTitle className="text-2xl font-semibold">Manage Farms</CardTitle>
+             <CardDescription className="mt-1">
+               Oversee and configure your trading farms.
+             </CardDescription>
+          </div>
+          <Link href="/dashboard/farms/create" passHref>
+            <Button size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" /> Create Farm
+            </Button>
+          </Link>
+        </CardHeader>
+        
+        <CardContent>
+          {/* Search and Refresh Controls */} 
+          <div className="flex items-center gap-2 mt-4 mb-4">
+             <div className="relative flex-1">
+               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+               <Input
+                 type="text"
+                 placeholder="Search farms by name or description..."
+                 className="pl-8"
+                 value={searchQuery}
+                 onChange={(e) => setSearchQuery(e.target.value)}
+               />
+             </div>
+             <Button variant="outline" size="icon" onClick={() => refetch()} disabled={isLoading}>
+               <RefreshCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+             </Button>
+           </div>
+
+          {/* Content Area: Loading, Error, Empty, or Table */}
+          {isLoading && renderLoading()}
+          {error && renderError()}
+          {!isLoading && !error && allFarms.length === 0 && (
+            <div className="text-center py-12 text-gray-500 border border-dashed rounded-md">
+              <p className="mb-2">You haven't created any farms yet.</p>
+              <Link href="/dashboard/farms/create" passHref>
+                <Button size="sm">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Create Your First Farm
+                </Button>
+              </Link>
+            </div>
           )}
-          <FarmCreationDialog variant="default" onSuccess={handleFarmCreated}>
-            <PlusCircle className="h-4 w-4 mr-2" />
-            Create Farm
-          </FarmCreationDialog>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredFarms.filter(farm => farm && farm.id).map((farm: Farm) => (
-            <Card key={farm.id} className="overflow-hidden">
-              <CardHeader className="pb-2">
-                <div className="flex justify-between items-start">
-                  <div className="space-y-1">
-                    <CardTitle className="text-lg">{farm.name}</CardTitle>
-                    <CardDescription>
-                      Created {new Date(farm.created_at).toLocaleDateString()}
-                    </CardDescription>
-                  </div>
-                  <Badge variant={farm.status === 'active' ? 'default' : 'secondary'}>
-                    {farm.status || 'Inactive'}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-sm text-muted-foreground line-clamp-2">
-                  {farm.description || "No description provided."}
-                </p>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="flex flex-col items-center justify-center p-2 bg-muted rounded-md">
-                    <Bot className="h-4 w-4 mb-1 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Agents</span>
-                    <span className="text-lg font-semibold">{farm.agents_count || 0}</span>
-                  </div>
-                  
-                  <div className="flex flex-col items-center justify-center p-2 bg-muted rounded-md">
-                    <Layers className="h-4 w-4 mb-1 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Strategies</span>
-                    <span className="text-lg font-semibold">0</span>
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                    <div 
-                      className="h-full rounded-full bg-blue-500" 
-                      style={{ width: `${calculateFarmHealth(farm)}%` }}
-                    ></div>
-                  </div>
-                  <div className="mt-1 flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">Farm Health</p>
-                    <p className="text-xs font-medium">{calculateFarmHealth(farm)}%</p>
-                  </div>
-                </div>
-              </CardContent>
-              <CardFooter className="pt-2">
-                <div className="flex justify-between w-full">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm">
-                        Actions
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start">
-                      <DropdownMenuItem asChild>
-                        <Link href={`/dashboard/agents?farm=${farm.id}`}>
-                          <Bot className="h-4 w-4 mr-2" />
-                          View Agents
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/dashboard/strategies?farm=${farm.id}`}>
-                          <Layers className="h-4 w-4 mr-2" />
-                          View Strategies
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem asChild>
-                        <Link href={`/dashboard/farms/${farm.id}/performance`}>
-                          <BarChart className="h-4 w-4 mr-2" />
-                          Performance
-                        </Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem 
-                        className="text-red-600"
-                        onClick={() => handleDeleteFarm(farm.id)}
-                      >
-                        <AlertCircle className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                  
-                  <Link href={`/dashboard/farms/${farm.id}`} passHref>
-                    <Button size="sm">
-                      <Settings className="h-4 w-4 mr-2" />
-                      Manage
-                    </Button>
-                  </Link>
-                </div>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
-      )}
+           {!isLoading && !error && allFarms.length > 0 && filteredFarms.length === 0 && (
+             <div className="text-center py-12 text-gray-500">
+              <p>No farms match your search "{searchQuery}".</p>
+            </div>
+          )}
+          {!isLoading && !error && filteredFarms.length > 0 && renderFarmTable()}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,13 +1,19 @@
 'use client';
 
-import * as React from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from 'next/navigation';
 import { websocketConfig } from "@/config/app-config";
 import dynamic from "next/dynamic";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
+
+// Import Wallet Provider
+import { WalletProvider } from '@/contexts/WalletContext';
 
 // Import UI components
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { Toaster } from "@/components/ui/toaster";
 
 // Import performance monitoring tools
 import { useReportWebVitals } from 'next/web-vitals';
@@ -66,6 +72,9 @@ function reportWebVitals() {
   return null;
 }
 
+// Create a client
+const queryClient = new QueryClient();
+
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -87,32 +96,41 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   // Note: Analytics tracking is now handled by the Analytics component
 
   return (
-    <div className="h-screen bg-background overflow-hidden relative">
-      {/* Performance monitoring */}
-      {reportWebVitals()}
-      
-      {/* Performance and analytics enhancements */}
-      <ClientComponents />
-      
-      {/* Sidebar - Positioned with fixed positioning and high z-index */}
-      <Sidebar farmId={farmId} />
-
-      {/* Main content - Adding left margin to accommodate sidebar */}
-      <div className="ml-0 lg:ml-64 flex-1 flex flex-col overflow-hidden relative z-0">
-        {/* Main content area */}
-        <main className="flex-1 overflow-auto">
-          {children}
-        </main>
-        
-        {/* Footer with connection status */}
-        <div className="border-t p-2 px-4 flex justify-between items-center">
-          <ConnectionStatus />
+    <QueryClientProvider client={queryClient}>
+      <WalletProvider>
+        <div className="h-screen bg-background overflow-hidden relative">
+          {/* Performance monitoring */}
+          {reportWebVitals()}
           
-          <div className="text-xs text-muted-foreground">
-            Trading Farm v1.5.2
+          {/* Performance and analytics enhancements */}
+          <ClientComponents />
+          
+          {/* Sidebar - Positioned with fixed positioning and high z-index */}
+          <Sidebar farmId={farmId} />
+
+          {/* Main content - Adding left margin to accommodate sidebar */}
+          <div className="ml-0 lg:ml-64 flex-1 flex flex-col overflow-hidden relative z-0">
+            {/* Main content area */}
+            <main className="flex-1 overflow-auto">
+              {children}
+            </main>
+            
+            {/* Footer with connection status */}
+            <div className="border-t p-2 px-4 flex justify-between items-center">
+              <ConnectionStatus />
+              
+              <div className="text-xs text-muted-foreground">
+                Trading Farm v1.5.2
+              </div>
+            </div>
           </div>
+          
+          {/* Add Toaster here, outside the main content flow */}
+          <Toaster />
         </div>
-      </div>
-    </div>
+      </WalletProvider>
+      {/* Optional React Query Devtools */}
+      <ReactQueryDevtools initialIsOpen={false} />
+    </QueryClientProvider>
   );
 }

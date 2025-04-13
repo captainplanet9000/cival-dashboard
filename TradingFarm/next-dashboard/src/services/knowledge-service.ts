@@ -1,5 +1,5 @@
 /**
- * Knowledge Service
+ * ElizaOS Knowledge Service
  * Handles document processing, vector embeddings, and semantic search
  * for the ElizaOS knowledge management system
  */
@@ -8,6 +8,8 @@ import { createServerClient } from '@/utils/supabase/server';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { ApiResponse } from '@/types/api';
 import { Database } from '@/types/database.types';
+import { KNOWLEDGE_EVENTS } from '@/utils/websocket/events';
+import { getWebSocketClient } from '@/utils/websocket/client';
 
 // Document types supported by the system
 export enum DocumentSourceType {
@@ -19,38 +21,47 @@ export enum DocumentSourceType {
 }
 
 // Document interface
-export interface BrainDocument {
+export interface KnowledgeDocument {
   id?: string;
-  user_id?: string;
   title: string;
+  description?: string;
   content: string;
   metadata?: Record<string, any>;
-  source_type: DocumentSourceType;
-  source_url?: string;
-  file_path?: string;
+  source?: string;
+  document_type: string;
+  created_by?: string;
+  farm_id?: number;
+  is_public?: boolean;
   created_at?: string;
   updated_at?: string;
-  is_archived?: boolean;
 }
 
 // Embedding interface
-export interface BrainEmbedding {
+export interface KnowledgeChunk {
   id?: string;
   document_id: string;
-  embedding: number[];
   content: string;
   chunk_index: number;
+  embedding?: number[];
+  metadata?: Record<string, any>;
   created_at?: string;
+  updated_at?: string;
 }
 
 // Search result interface
 export interface SearchResult {
+  id: string;
   document_id: string;
   content: string;
+  chunk_index: number;
+  metadata?: Record<string, any>;
   similarity: number;
-  title: string;
-  source_type: string;
-  metadata: Record<string, any>;
+  document?: {
+    title: string;
+    description?: string;
+    document_type: string;
+    source?: string;
+  };
 }
 
 // Service configuration
@@ -72,7 +83,7 @@ const DEFAULT_CONFIG: ServiceConfig = {
 };
 
 /**
- * Knowledge Service
+ * ElizaOS Knowledge Service
  * Handles document processing, embeddings, and semantic search
  */
 class KnowledgeService {
@@ -148,13 +159,13 @@ class KnowledgeService {
   /**
    * Add a document to the knowledge base
    */
-  async addDocument(document: BrainDocument): Promise<ApiResponse<BrainDocument>> {
+  async addDocument(document: KnowledgeDocument): Promise<ApiResponse<KnowledgeDocument>> {
     try {
       const supabase = this.getSupabaseClient();
       
       // Insert document
       const { data: docData, error: docError } = await supabase
-        .from('brain_documents')
+        .from('elizaos_knowledge_documents')
         .insert(document)
         .select()
         .single();
@@ -179,7 +190,7 @@ class KnowledgeService {
       
       // Insert embeddings
       const { error: embeddingError } = await supabase
-        .from('brain_embeddings')
+        .from('elizaos_knowledge_chunks')
         .insert(embeddingRecords);
       
       if (embeddingError) {
@@ -210,7 +221,7 @@ class KnowledgeService {
       const [queryEmbedding] = await this.createEmbeddings([query]);
       
       // Search for similar documents using the RPC function
-      const { data, error } = await supabase.rpc('search_brain_embeddings', {
+      const { data, error } = await supabase.rpc('match_knowledge_chunks', {
         query_embedding: queryEmbedding,
         match_threshold: this.config.similarityThreshold,
         match_count: this.config.maxResults,
@@ -236,12 +247,12 @@ class KnowledgeService {
   /**
    * Get a document by ID
    */
-  async getDocument(documentId: string): Promise<ApiResponse<BrainDocument>> {
+  async getDocument(documentId: string): Promise<ApiResponse<KnowledgeDocument>> {
     try {
       const supabase = this.getSupabaseClient();
       
       const { data, error } = await supabase
-        .from('brain_documents')
+        .from('elizaos_knowledge_documents')
         .select('*')
         .eq('id', documentId)
         .single();
@@ -270,9 +281,9 @@ class KnowledgeService {
     try {
       const supabase = this.getSupabaseClient();
       
-      // Deleting the document will cascade delete embeddings
+      // Deleting the document will cascade delete chunks
       const { error } = await supabase
-        .from('brain_documents')
+        .from('elizaos_knowledge_documents')
         .delete()
         .eq('id', documentId);
       
@@ -295,12 +306,12 @@ class KnowledgeService {
   /**
    * List all documents for the current user
    */
-  async listDocuments(): Promise<ApiResponse<BrainDocument[]>> {
+  async listDocuments(): Promise<ApiResponse<KnowledgeDocument[]>> {
     try {
       const supabase = this.getSupabaseClient();
       
       const { data, error } = await supabase
-        .from('brain_documents')
+        .from('elizaos_knowledge_documents')
         .select('*')
         .order('created_at', { ascending: false });
       
@@ -330,7 +341,7 @@ class KnowledgeService {
       
       const { data, error } = await supabase
         .storage
-        .from('farm_brain_assets')
+        .from('elizaos_knowledge_assets')
         .upload(path, file, {
           cacheControl: '3600',
           upsert: false,
@@ -343,7 +354,7 @@ class KnowledgeService {
       // Get public URL
       const { data: urlData } = supabase
         .storage
-        .from('farm_brain_assets')
+        .from('elizaos_knowledge_assets')
         .getPublicUrl(path);
       
       return {
@@ -352,6 +363,87 @@ class KnowledgeService {
       };
     } catch (error: any) {
       console.error('Error uploading file:', error);
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+  }
+  /**
+   * Share knowledge with specific agents, farms, or make public
+   */
+  async shareKnowledge(documentId: string, options: {
+    agentIds?: string[];
+    farmIds?: number[];
+    userIds?: string[];
+    permissionLevel?: 'read' | 'write' | 'admin';
+    isPublic?: boolean;
+  }): Promise<ApiResponse<void>> {
+    try {
+      const supabase = this.getSupabaseClient();
+      const { agentIds = [], farmIds = [], userIds = [], permissionLevel = 'read', isPublic } = options;
+      
+      // If making public, update the document
+      if (isPublic !== undefined) {
+        await supabase
+          .from('elizaos_knowledge_documents')
+          .update({ is_public: isPublic })
+          .eq('id', documentId);
+      }
+      
+      // Create permissions for agents
+      if (agentIds.length > 0) {
+        const agentPermissions = agentIds.map(agentId => ({
+          document_id: documentId,
+          agent_id: agentId,
+          permission_level: permissionLevel,
+        }));
+        
+        await supabase
+          .from('elizaos_knowledge_permissions')
+          .insert(agentPermissions);
+      }
+      
+      // Create permissions for farms
+      if (farmIds.length > 0) {
+        const farmPermissions = farmIds.map(farmId => ({
+          document_id: documentId,
+          farm_id: farmId,
+          permission_level: permissionLevel,
+        }));
+        
+        await supabase
+          .from('elizaos_knowledge_permissions')
+          .insert(farmPermissions);
+      }
+      
+      // Create permissions for users
+      if (userIds.length > 0) {
+        const userPermissions = userIds.map(userId => ({
+          document_id: documentId,
+          user_id: userId,
+          permission_level: permissionLevel,
+        }));
+        
+        await supabase
+          .from('elizaos_knowledge_permissions')
+          .insert(userPermissions);
+      }
+      
+      // Notify via WebSockets
+      const wsClient = getWebSocketClient();
+      wsClient.send(KNOWLEDGE_EVENTS.KNOWLEDGE_SHARED, {
+        documentId,
+        sharedWith: {
+          agents: agentIds,
+          farms: farmIds,
+          users: userIds,
+        }
+      });
+      
+      return { success: true };
+    } catch (error: any) {
+      console.error('Error sharing document:', error);
       return {
         success: false,
         error: error.message,

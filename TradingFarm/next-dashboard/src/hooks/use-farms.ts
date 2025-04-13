@@ -1,22 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { Database } from '@/types/database.types';
-import { 
-  useQuery, 
-  useMutation, 
-  useQueryClient, 
-  QueryKey 
-} from '@tanstack/react-query';
-import { enhancedFarmService } from '@/services/enhanced-farm-service';
-import { 
-  Farm, 
-  Agent, 
-  CreateFarmInput, 
-  UpdateFarmInput 
-} from '@/schemas/farm-schemas';
-import { toast } from '@/components/ui/use-toast';
+import { PostgrestError } from '@supabase/supabase-js';
+import { CreateFarmInput, UpdateFarmInput } from '@/schemas/farm-schemas';
+import { toast } from "@/components/ui/use-toast";
+import { useAuth } from './use-auth';
 
 // Query keys for farms
 export const farmKeys = {
@@ -31,156 +22,168 @@ export const farmKeys = {
 // Define Farm type based on database schema
 export type Farm = Database['public']['Tables']['farms']['Row'];
 
-interface UseFarmsOptions {
-  userId?: string;
-  enableRealtime?: boolean;
-}
+// Fetch multiple farms (optionally by user ID)
+const fetchFarms = async (userId?: string): Promise<Farm[]> => {
+  const supabase = createBrowserClient();
+  let query = supabase.from('farms').select('*').order('created_at', { ascending: false });
+  if (userId) {
+    query = query.eq('owner_id', userId);
+  }
+  const { data, error } = await query;
+  if (error) {
+      console.error("Error fetching farms:", error);
+      throw error;
+  }
+  return data || [];
+};
 
-/**
- * Hook for fetching and subscribing to farm data
- */
-export function useFarms({ userId, enableRealtime = true }: UseFarmsOptions = {}) {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+// Fetch single farm
+const fetchFarm = async (farmId: number): Promise<Farm | null> => {
+  const supabase = createBrowserClient();
+  const { data, error } = await supabase.from('farms').select('*').eq('id', farmId).single();
+  // PGRST116: Row not found, which is expected for non-existent ID
+  if (error && error.code !== 'PGRST116') { 
+      console.error(`Error fetching farm ${farmId}:`, error);
+      throw error;
+  }
+  return data;
+};
 
-  // Fetch farms
-  useEffect(() => {
-    const fetchFarms = async () => {
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const supabase = createBrowserClient();
-        let query = supabase.from('farms').select('*');
-        
-        // If userId is provided, filter by it
-        if (userId) {
-          query = query.eq('user_id', userId);
-        }
-        
-        const { data, error: queryError } = await query;
-        
-        if (queryError) {
-          throw queryError;
-        }
-        
-        setFarms(data || []);
-      } catch (err: any) {
-        console.error('Error fetching farms:', err);
-        setError(err.message || 'Failed to load farms');
-      } finally {
-        setLoading(false);
-      }
-    };
+// Create farm
+const createFarm = async (farmData: CreateFarmInput, ownerId: string): Promise<Farm> => {
+  const supabase = createBrowserClient();
+  const { data, error } = await supabase
+    .from('farms')
+    // Ensure owner_id is included
+    .insert({ ...farmData, owner_id: ownerId })
+    .select()
+    .single();
+  if (error) {
+      console.error("Error creating farm:", error);
+      throw error;
+  }
+  if (!data) {
+    throw new Error("Farm created successfully, but no data returned from Supabase.");
+  }
+  return data as Farm;
+};
 
-    fetchFarms();
-  }, [userId]);
-
-  // Set up real-time subscription
-  useEffect(() => {
-    if (!enableRealtime) return;
-    
-    const supabase = createBrowserClient();
-    
-    // Create a channel for real-time updates
-    const channel = supabase
-      .channel('farms-changes')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'farms',
-          ...(userId ? { filter: `user_id=eq.${userId}` } : {})
-        }, 
-        (payload) => {
-          // Handle different event types
-          if (payload.eventType === 'INSERT') {
-            setFarms(prev => [...prev, payload.new as Farm]);
-          } else if (payload.eventType === 'UPDATE') {
-            setFarms(prev => 
-              prev.map(farm => 
-                farm.id === payload.new.id ? (payload.new as Farm) : farm
-              )
-            );
-          } else if (payload.eventType === 'DELETE') {
-            setFarms(prev => 
-              prev.filter(farm => farm.id !== payload.old.id)
-            );
-          }
-        }
-      )
-      .subscribe();
-    
-    // Clean up subscription on unmount
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [userId, enableRealtime]);
-
-  // Get active farms
-  const activeFarms = farms.filter(farm => farm.is_active);
-  
-  // Get inactive farms
-  const inactiveFarms = farms.filter(farm => !farm.is_active);
-  
-  // Calculate counts
-  const counts = {
-    total: farms.length,
-    active: activeFarms.length,
-    inactive: inactiveFarms.length
-  };
-
-  // Get a specific farm by ID
-  const getFarmById = (id: string) => farms.find(farm => farm.id === id);
-
-  return {
-    farms,
-    activeFarms,
-    inactiveFarms,
-    counts,
-    loading,
-    error,
-    getFarmById,
-    refresh: async () => {
-      setLoading(true);
-      const supabase = createBrowserClient();
-      let query = supabase.from('farms').select('*');
-      
-      if (userId) {
-        query = query.eq('user_id', userId);
-      }
-      
-      const { data, error: refreshError } = await query;
-      
-      if (refreshError) {
-        setError(refreshError.message);
-      } else {
-        setFarms(data || []);
-        setError(null);
-      }
-      
-      setLoading(false);
+// Update farm
+const updateFarm = async ({ farmId, farmData }: { farmId: number; farmData: UpdateFarmInput }): Promise<Farm> => {
+  const supabase = createBrowserClient();
+   // Filter out undefined values before sending update
+  const updatePayload: Partial<UpdateFarmInput> = {};
+  Object.keys(farmData).forEach(key => {
+    if ((farmData as any)[key] !== undefined) {
+      (updatePayload as any)[key] = (farmData as any)[key];
     }
-  };
+  });
+  if (Object.keys(updatePayload).length === 0) {
+     console.warn("Update farm called with no changes.");
+     // Re-fetch current data if no changes sent
+     const currentData = await fetchFarm(farmId);
+     if (!currentData) throw new Error("Farm not found after empty update attempt.");
+     return currentData;
+  }
+
+  const { data, error } = await supabase
+    .from('farms')
+    .update(updatePayload) 
+    .eq('id', farmId)
+    .select()
+    .single();
+  if (error) {
+      console.error(`Error updating farm ${farmId}:`, error);
+      throw error;
+  }
+  if (!data) {
+    throw new Error("Farm updated successfully, but no data returned from Supabase.");
+  }
+  return data as Farm;
+};
+
+/**
+ * Hook to fetch multiple farms, optionally filtered by the current user.
+ */
+export function useFarms(filterByUser: boolean = false) {
+  const { user } = useAuth();
+  // Use user.id directly in queryKey for dependency tracking
+  const queryKey = filterByUser ? ['farms', 'user', user?.id] : ['farms', 'all'];
+
+  return useQuery<Farm[], PostgrestError>({ 
+    queryKey,
+    // Pass user?.id directly to fetch function
+    queryFn: () => fetchFarms(filterByUser ? user?.id : undefined),
+    // Disable query if filtering by user and user ID is not yet available
+    enabled: !filterByUser || !!user?.id, 
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
 }
 
 /**
- * Hook to fetch a specific farm by ID
+ * Hook to fetch a single farm by ID.
  */
-export function useFarm(id: number) {
-  return useQuery({
-    queryKey: farmKeys.detail(id),
-    queryFn: async () => {
-      const { data, error } = await enhancedFarmService.getFarmById(id);
-      
-      if (error) {
-        throw new Error(error);
+export function useFarm(farmId: number | null | undefined) {
+  // Ensure farmId is treated consistently (e.g., always string or number in key)
+  const queryKey = ['farm', farmId]; 
+  return useQuery<Farm | null, PostgrestError>({ 
+    queryKey,
+    queryFn: () => fetchFarm(farmId!), // Use non-null assertion guarded by 'enabled'
+    enabled: typeof farmId === 'number' && !isNaN(farmId), // Ensure farmId is a valid number
+    staleTime: 5 * 60 * 1000, 
+    gcTime: 10 * 60 * 1000, 
+  });
+}
+
+/**
+ * Hook to create a new farm, associating it with the authenticated user.
+ */
+export function useCreateFarm() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth(); // Get user ID for owner_id
+
+  return useMutation<Farm, PostgrestError, CreateFarmInput>({
+    mutationFn: async (farmData) => { 
+      if (!user?.id) { // Check if user is available
+        toast({ title: "Authentication Error", description: "You must be logged in to create a farm.", variant: "destructive" });
+        throw new Error("User not authenticated"); 
       }
-      
-      return data!;
+      return createFarm(farmData, user.id);
     },
-    enabled: !!id, // Only run the query if we have an ID
+    onSuccess: (newFarm) => {
+      // Invalidate all farm list queries
+      queryClient.invalidateQueries({ queryKey: ['farms'] }); 
+      // Update cache for the new farm's detail view
+      queryClient.setQueryData(['farm', newFarm.id], newFarm); 
+      toast({ title: "Farm Created", description: `Farm '${newFarm.name}' created successfully.` });
+    },
+    onError: (error) => {
+       // Toast is handled here, no need to throw again
+      toast({ title: "Error Creating Farm", description: error.message || "An unexpected error occurred.", variant: "destructive" });
+    },
+  });
+}
+
+/**
+ * Hook to update an existing farm.
+ */
+export function useUpdateFarm(farmId: number) {
+  const queryClient = useQueryClient();
+
+  return useMutation<Farm, PostgrestError, UpdateFarmInput>({
+    mutationFn: (farmData) => updateFarm({ farmId, farmData }),
+    onSuccess: (updatedFarm) => {
+      // Invalidate all farm list queries
+      queryClient.invalidateQueries({ queryKey: ['farms'] }); 
+      // Update the specific farm's detail cache
+      queryClient.setQueryData(['farm', farmId], updatedFarm); 
+      toast({ title: "Farm Updated", description: `Farm '${updatedFarm.name}' updated successfully.` });
+    },
+    onError: (error) => {
+       // Toast handled here
+      toast({ title: "Error Updating Farm", description: error.message || "An unexpected error occurred.", variant: "destructive" });
+    },
   });
 }
 
@@ -200,124 +203,5 @@ export function useFarmAgents(farmId: number) {
       return data || [];
     },
     enabled: !!farmId, // Only run the query if we have a farmId
-  });
-}
-
-/**
- * Hook to create a new farm
- */
-export function useCreateFarm() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (farmData: CreateFarmInput) => {
-      const { data, error } = await enhancedFarmService.createFarm(farmData);
-      
-      if (error) {
-        throw new Error(error);
-      }
-      
-      return data!;
-    },
-    onSuccess: (newFarm) => {
-      // Invalidate the farms list query to refetch the data
-      queryClient.invalidateQueries({ queryKey: farmKeys.lists() });
-      
-      // Show success toast
-      toast({
-        title: 'Farm created',
-        description: `Farm "${newFarm.name}" has been created successfully.`,
-      });
-    },
-    onError: (error) => {
-      // Show error toast
-      toast({
-        title: 'Error creating farm',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: 'destructive',
-      });
-    },
-  });
-}
-
-/**
- * Hook to update an existing farm
- */
-export function useUpdateFarm(id: number) {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (farmData: UpdateFarmInput) => {
-      const { data, error } = await enhancedFarmService.updateFarm(id, farmData);
-      
-      if (error) {
-        throw new Error(error);
-      }
-      
-      return data!;
-    },
-    onSuccess: (updatedFarm) => {
-      // Invalidate both the list and the detail queries
-      queryClient.invalidateQueries({ queryKey: farmKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: farmKeys.detail(id) });
-      
-      // Show success toast
-      toast({
-        title: 'Farm updated',
-        description: `Farm "${updatedFarm.name}" has been updated successfully.`,
-      });
-    },
-    onError: (error) => {
-      // Show error toast
-      toast({
-        title: 'Error updating farm',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: 'destructive',
-      });
-    },
-  });
-}
-
-/**
- * Hook to delete a farm
- */
-export function useDeleteFarm() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (id: number) => {
-      // Get the farm details first for the success message
-      const { data: farm } = await enhancedFarmService.getFarmById(id);
-      const farmName = farm?.name || 'Farm';
-      
-      const { error } = await enhancedFarmService.deleteFarm(id);
-      
-      if (error) {
-        throw new Error(error);
-      }
-      
-      return { id, name: farmName };
-    },
-    onSuccess: ({ id, name }) => {
-      // Invalidate the farms list query to refetch the data
-      queryClient.invalidateQueries({ queryKey: farmKeys.lists() });
-      
-      // Remove the specific farm from the cache
-      queryClient.removeQueries({ queryKey: farmKeys.detail(id) });
-      
-      // Show success toast
-      toast({
-        title: 'Farm deleted',
-        description: `Farm "${name}" has been deleted successfully.`,
-      });
-    },
-    onError: (error) => {
-      // Show error toast
-      toast({
-        title: 'Error deleting farm',
-        description: error instanceof Error ? error.message : 'An unknown error occurred',
-        variant: 'destructive',
-      });
-    },
   });
 }

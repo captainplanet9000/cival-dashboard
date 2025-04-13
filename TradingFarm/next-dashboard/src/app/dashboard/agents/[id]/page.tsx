@@ -26,13 +26,20 @@ import {
   Info,
   PlayCircle,
   PauseCircle,
-  StopCircle
+  StopCircle,
+  Edit
 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { DEMO_MODE, demoAgents } from "@/utils/demo-data";
 import { elizaOSAgentService, ElizaAgent } from '@/services/elizaos-agent-service';
 import { useElizaAgents } from "@/hooks/useElizaAgents";
 import { useElizaOS } from "@/hooks/useElizaOS";
+import { useAgent, Agent } from '@/hooks/use-agent';
+import { AgentTrading } from '@/components/agents/details/AgentTrading';
+import { AgentKnowledge } from '@/components/agents/details/AgentKnowledge';
+import { AgentAnalytics } from '@/components/agents/details/AgentAnalytics';
+import { formatDistanceToNow } from 'date-fns';
+import { AgentStatusBadge } from '@/components/agents/agent-status-badge';
 
 // Get agent from API or fallback to demo data
 const getAgent = async (id: string) => {
@@ -85,16 +92,37 @@ const getAgent = async (id: string) => {
   }
 };
 
+// Helper function to render agent details
+const AgentInfoCard = ({ agent }: { agent: Agent }) => (
+  <Card>
+    <CardHeader>
+      <CardTitle>Agent Details</CardTitle>
+      <CardDescription>Core information about this agent.</CardDescription>
+    </CardHeader>
+    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+      <div><span className="font-medium text-muted-foreground">ID:</span> <span className="font-mono">{agent.id}</span></div>
+      <div><span className="font-medium text-muted-foreground">Type:</span> <span className="capitalize">{agent.agent_type}</span></div>
+      <div><span className="font-medium text-muted-foreground">Status:</span> <AgentStatusBadge status={agent.status} tooltipText={`Current status: ${agent.status}`} /></div>
+      <div><span className="font-medium text-muted-foreground">Created:</span> {formatDistanceToNow(new Date(agent.created_at), { addSuffix: true })}</div>
+      <div><span className="font-medium text-muted-foreground">Last Heartbeat:</span> {agent.last_heartbeat_at ? formatDistanceToNow(new Date(agent.last_heartbeat_at), { addSuffix: true }) : 'Never'}</div>
+      {/* TODO: Add Farm ID/Name if available/needed */}
+      {/* Example: <div><span className="font-medium text-muted-foreground">Farm ID:</span> {agent.farm_id || 'N/A'}</div> */} 
+      {/* TODO: Display Brain ID if needed for AgentKnowledge */} 
+      {/* Example: <div><span className="font-medium text-muted-foreground">Brain ID:</span> {(agent.metadata as any)?.brainId || 'N/A'}</div> */}
+    </CardContent>
+  </Card>
+);
+
 export default function AgentDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { toast } = useToast();
-  const { id } = params;
-  const agentId = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '1';
+  const agentId = params.id as string;
   
-  const [agent, setAgent] = React.useState<ElizaAgent | null>(null);
-  const [isLoading, setIsLoading] = React.useState<boolean>(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const { agent, isLoading, error } = useAgent(agentId);
+  const { id } = params;
+  const agentIdFromParams = typeof id === 'string' ? id : Array.isArray(id) ? id[0] : '1';
+  
   const [activeTab, setActiveTab] = React.useState("dashboard");
   const [commandMessages, setCommandMessages] = React.useState<CommandMessage[]>([]);
   const [isProcessingCommand, setIsProcessingCommand] = React.useState(false);
@@ -134,7 +162,7 @@ export default function AgentDetailPage() {
           await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
-        const { data, error } = await getAgent(agentId);
+        const { data, error } = await getAgent(agentIdFromParams);
         
         if (error) {
           setError(error);
@@ -144,8 +172,6 @@ export default function AgentDetailPage() {
             variant: "destructive"
           });
         } else if (data) {
-          setAgent(data);
-          
           // Generate welcome message for the command console
           setCommandMessages([
             {
@@ -182,7 +208,7 @@ export default function AgentDetailPage() {
     };
     
     fetchAgent();
-  }, [agentId, toast]);
+  }, [agentIdFromParams, toast]);
 
   // Handle agent control actions (start, stop, pause, resume)
   const handleControlAgent = async (action: 'start' | 'stop' | 'pause' | 'resume') => {
@@ -197,7 +223,7 @@ export default function AgentDetailPage() {
         'resume': 'active'
       };
       
-      setAgent((prev: ElizaAgent | null) => prev ? {
+      setAgent((prev: Agent | null) => prev ? {
         ...prev,
         status: statusMap[action] as 'active' | 'idle' | 'paused' | 'error' | 'initializing'
       } : null);
@@ -206,7 +232,7 @@ export default function AgentDetailPage() {
       const updatedAgent = await controlAgent(agent.id, action);
       
       // Update state with the response
-      setAgent((prev: ElizaAgent | null) => prev ? {
+      setAgent((prev: Agent | null) => prev ? {
         ...prev,
         ...updatedAgent
       } : null);
@@ -246,7 +272,7 @@ export default function AgentDetailPage() {
       });
       
       // Revert optimistic update
-      setAgent((prev: ElizaAgent | null) => prev);
+      setAgent((prev: Agent | null) => prev);
     }
   };
 
@@ -406,6 +432,18 @@ export default function AgentDetailPage() {
     }
   };
   
+  // TODO: Determine how to get brainId correctly.
+  // This might come from agent.metadata, a related farm's brain, or another table.
+  // Using a placeholder based on potential metadata structure.
+  const brainId = React.useMemo(() => {
+    try {
+      if (agent?.metadata && typeof agent.metadata === 'object' && 'brainId' in agent.metadata) {
+        return (agent.metadata as any).brainId as string | null;
+      }
+    } catch (e) { console.error("Error accessing brainId from metadata:", e); }
+    return null;
+  }, [agent]);
+
   if (isLoading) {
     return (
       <div className="container mx-auto py-6 space-y-6">
@@ -786,6 +824,19 @@ export default function AgentDetailPage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Agent Core Info */} 
+      <AgentInfoCard agent={agent} />
+
+      {/* Sub Components */} 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+         <div className="lg:col-span-2"> {/* Make Trading span full width initially */} 
+            <AgentTrading agent={agent} />
+         </div>
+         <AgentKnowledge brainId={brainId} />
+         <AgentAnalytics agent={agent} />
+      </div>
+
     </div>
   );
 }

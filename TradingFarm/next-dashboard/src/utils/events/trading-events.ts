@@ -34,6 +34,9 @@ export enum TRADING_EVENTS {
   AGENT_ERROR = 'agent:error',
   AGENT_MESSAGE = 'agent:message',
   AGENT_DECISION = 'agent:decision',
+  AGENT_CREATED = 'agent:created',
+  AGENT_UPDATED = 'agent:updated',
+  AGENT_DELETED = 'agent:deleted',
   
   // Farm events
   FARM_CREATED = 'farm:created',

@@ -107,20 +107,28 @@ export const strategySchema = z.object({
   backtest_results: z.record(z.any()).optional(),
 });
 
-// Input schemas for create/update operations
-export const createFarmSchema = farmSchema
-  .omit({ 
-    id: true, 
-    created_at: true, 
-    updated_at: true, 
-    agents: true, 
-    wallets: true
-  })
-  .partial({
-    performance_metrics: true,
-  });
+// Base schema for farm properties we allow editing/creating
+const farmBaseSchema = z.object({
+  name: z.string().min(3, { message: 'Farm name must be at least 3 characters' }).max(100),
+  description: z.string().max(500).optional().nullable(),
+  // owner_id should likely be handled server-side or in the hook based on auth
+  // settings: z.record(z.any()).optional().nullable(), // Allow editing settings as JSON
+  is_active: z.boolean().optional(), // Allow toggling active status
+  // Goal related fields might be handled separately
+});
 
-export const updateFarmSchema = createFarmSchema.partial();
+// Schema for creating a new farm
+export const createFarmSchema = farmBaseSchema.extend({
+  // Add any fields REQUIRED only on creation (if any)
+  name: farmBaseSchema.shape.name, // Explicitly require name on create
+});
+
+// Schema for updating an existing farm (all fields optional)
+export const updateFarmSchema = farmBaseSchema.partial();
+
+// TypeScript types inferred from schemas
+export type CreateFarmInput = z.infer<typeof createFarmSchema>;
+export type UpdateFarmInput = z.infer<typeof updateFarmSchema>;
 
 export const createAgentSchema = agentSchema
   .omit({ 
@@ -137,7 +145,5 @@ export type Farm = z.infer<typeof farmSchema>;
 export type Agent = z.infer<typeof agentSchema>;
 export type Trade = z.infer<typeof tradeSchema>;
 export type Strategy = z.infer<typeof strategySchema>;
-export type CreateFarmInput = z.infer<typeof createFarmSchema>;
-export type UpdateFarmInput = z.infer<typeof updateFarmSchema>;
 export type CreateAgentInput = z.infer<typeof createAgentSchema>;
 export type UpdateAgentInput = z.infer<typeof updateAgentSchema>;
