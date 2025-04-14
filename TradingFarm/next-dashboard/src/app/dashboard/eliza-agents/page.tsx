@@ -1,6 +1,7 @@
 "use client";
 
-import * as React from 'react';
+// @ts-ignore - React will be correctly imported by Next.js
+import React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { 
@@ -55,7 +56,7 @@ import { UnifiedAgentCreationDialog } from "@/components/agents/unified-agent-cr
 // Service and Hooks
 import { ElizaAgent, elizaOSAgentService } from '@/services/elizaos-agent-service';
 // Using our robust hook with fallback to mock data
-import { useElizaAgentsWithFallback } from '@/hooks/useElizaAgentsWithFallback';
+import { useElizaAgentsWithFallback, AgentWithFallback } from '@/hooks/useElizaAgentsWithFallback';
 
 export default function ElizaAgentsPage() {
   // Using our robust hook that falls back to mock data when authentication fails
@@ -97,7 +98,7 @@ export default function ElizaAgentsPage() {
   const filteredAgents = agents.filter(agent => {
     const matchesSearch = 
       agent.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (agent.config.agentType && agent.config.agentType.toLowerCase().includes(searchTerm.toLowerCase()));
+      (agent.config?.agentType && agent.config.agentType.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesStatus = filterStatus === 'all' || agent.status === filterStatus;
     
@@ -176,7 +177,7 @@ export default function ElizaAgentsPage() {
             </Button>
             <Select
               value={filterStatus}
-              onValueChange={(value) => setFilterStatus(value)}
+              onValueChange={(value: string) => setFilterStatus(value)}
             >
               <SelectTrigger className="w-full md:w-40">
                 <SelectValue placeholder="Filter by status" />
@@ -213,7 +214,7 @@ export default function ElizaAgentsPage() {
               Error loading agents
             </AlertTitle>
             <AlertDescription className="mt-2">
-              <p>{error.message || 'There was a problem loading your agents'}</p>
+              <p>{typeof error === 'object' && error !== null && 'message' in error ? (error as Error).message : String(error) || 'There was a problem loading your agents'}</p>
               <Button onClick={refreshAgents} variant="outline" size="sm" className="mt-2">
                 Try again
               </Button>
@@ -267,7 +268,6 @@ export default function ElizaAgentsPage() {
                   </AlertDescription>
                 </Alert>
               )}
-              )}
             </CardContent>
           </Card>
         )}
@@ -275,7 +275,7 @@ export default function ElizaAgentsPage() {
         {/* Data Display - Grid View */}
         {!loading && filteredAgents.length > 0 && currentView === 'grid' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredAgents.map((agent) => (
+            {filteredAgents.map((agent: AgentWithFallback) => (
               <Card key={agent.id} className="overflow-hidden">
                 <CardHeader className="pb-2">
                   <div className="flex items-center justify-between">
@@ -317,14 +317,14 @@ export default function ElizaAgentsPage() {
                   </div>
                   <CardTitle className="mt-2">{agent.name}</CardTitle>
                   <CardDescription>
-                    {agent.config.agentType || 'Trading Agent'}
+                    {agent.config?.agentType || 'Trading Agent'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="pb-2">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Risk Level:</span>
-                      <span className="font-medium">{agent.config.risk_level || 'Medium'}</span>
+                      <span className="font-medium">{agent.config?.risk_level || 'Medium'}</span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">Farm:</span>
@@ -338,11 +338,11 @@ export default function ElizaAgentsPage() {
                     </div>
                   </div>
                   
-                  {agent.config.markets && agent.config.markets.length > 0 && (
+                  {agent.config?.markets && agent.config.markets.length > 0 && (
                     <div className="mt-4">
                       <p className="text-sm font-medium mb-2">Markets:</p>
                       <div className="flex flex-wrap gap-1">
-                        {agent.config.markets.slice(0, 3).map((market) => (
+                        {agent.config.markets.slice(0, 3).map((market: string) => (
                           <Badge key={market} variant="secondary">
                             {market}
                           </Badge>
@@ -427,10 +427,10 @@ export default function ElizaAgentsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredAgents.map((agent: ElizaAgent) => (
+                  {filteredAgents.map((agent: AgentWithFallback) => (
                     <TableRow key={agent.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/dashboard/agents/${agent.id}`)}>
                       <TableCell className="font-medium">{agent.name}</TableCell>
-                      <TableCell>{agent.config.agentType || 'Trading Agent'}</TableCell>
+                      <TableCell>{agent.config?.agentType || 'Trading Agent'}</TableCell>
                       <TableCell>
                         <Badge variant={getStatusVariant(agent.status)}>
                           {getStatusDisplay(agent.status)}

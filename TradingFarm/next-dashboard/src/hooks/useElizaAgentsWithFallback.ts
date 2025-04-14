@@ -5,32 +5,47 @@
  * when authentication fails or when the backend services are unavailable.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+// @ts-ignore - React will be correctly imported by Next.js
+import React from 'react';
+const { useState, useEffect, useCallback } = React;
 import { useRouter } from 'next/navigation';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { mockElizaAgents, mockDataService } from '@/services/mock-data-service';
+import { mockElizaAgents } from '@/services/mock-data-service';
+import { ElizaAgent, ElizaAgentCreationRequest, elizaOSAgentService } from '@/services/elizaos-agent-service';
 
+// Create params match ElizaAgentCreationRequest but with optional fields
 interface AgentCreateParams {
   name: string;
-  description?: string;
-  config?: Record<string, any>;
+  farmId: string;
+  description?: string; // Added for compatibility
+  config?: {
+    agentType?: string;
+    markets?: string[];
+    risk_level?: 'low' | 'medium' | 'high';
+    api_access?: boolean;
+    trading_permissions?: string;
+    auto_recovery?: boolean;
+    max_concurrent_tasks?: number;
+    llm_model?: string;
+  };
 }
 
-interface AgentWithFallback {
-  id: string;
-  name: string;
-  description?: string;
-  status: 'active' | 'paused' | 'initializing' | 'error' | 'inactive';
-  farm_id?: number;
-  farm_name?: string;
-  type: 'trading' | 'analytical' | 'research' | 'conversational';
-  created_at: string;
-  updated_at: string;
-  user_id?: string;
-  execution_mode: 'live' | 'dry-run' | 'backtest';
-  config?: Record<string, any>;
+// Match ElizaAgent interface with is_fallback flag and extra properties
+export interface AgentWithFallback extends Partial<Omit<ElizaAgent, 'performance_metrics'>> {
+  id: string; // Keep id required
+  name: string; // Keep name required
+  status: ElizaAgent['status']; // Keep status required
+  created_at: string; // Keep created_at required
+  updated_at: string; // Keep updated_at required
+  performance_metrics?: ElizaAgent['performance_metrics'];
   is_fallback?: boolean;
+  description?: string; // Add description for compatibility
+  farm_name?: string; // Add farm_name for compatibility
+  type?: string; // Add type for compatibility with previous code
+  execution_mode?: string; // Add execution_mode for compatibility
+  farm_id?: number; // Add farm_id for compatibility
+  user_id?: string; // Add user_id for compatibility
 }
 
 interface UseElizaAgentsWithFallbackResult {
@@ -41,7 +56,9 @@ interface UseElizaAgentsWithFallbackResult {
   updateAgent: (id: string, updates: Partial<AgentWithFallback>) => Promise<AgentWithFallback | null>;
   deleteAgent: (id: string) => Promise<boolean>;
   refreshAgents: () => Promise<void>;
+  controlAgent: (id: string, action: 'start' | 'stop' | 'pause' | 'resume') => Promise<boolean>;
   isConnected: boolean;
+  usingMockData: boolean;
 }
 
 /**
@@ -52,71 +69,60 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(true);
+  const [usingMockData, setUsingMockData] = useState(false);
   const supabase = createBrowserClient();
   const router = useRouter();
   const { toast } = useToast();
 
-  // Load agents from supabase and/or localStorage
-  const loadAgents = useCallback(async () => {
+  // Load agents from elizaos-agent-service and/or localStorage
+  const loadAgents = useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
     
     try {
-      // Try to load from Supabase first
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      
-      if (userId) {
-        try {
-          // Get agents from database
-          const { data: agentsData, error: agentsError } = await supabase
-            .from('agents')
-            .select('*, farms(name)')
-            .eq('user_id', userId);
-            
-          if (agentsError) {
-            throw agentsError;
-          }
+      // Try to load from ElizaOS agent service first
+      try {
+        const elizaAgents = await elizaOSAgentService.getAgents();
+        
+        if (elizaAgents && elizaAgents.length > 0) {
+          // Format agents
+          const formattedAgents: AgentWithFallback[] = elizaAgents.map((agent: ElizaAgent) => ({
+            ...agent,
+            is_fallback: false
+          }));
           
-          if (agentsData && agentsData.length > 0) {
-            // Format agents with farm name
-            const formattedAgents = agentsData.map(agent => ({
-              ...agent,
-              farm_name: agent.farms?.name || undefined,
-              is_fallback: false
-            }));
-            
-            setAgents(formattedAgents);
-            setIsConnected(true);
-            
-            // Save to localStorage as fallback cache
-            localStorage.setItem('cached_agents', JSON.stringify(formattedAgents));
-            
-            return;
-          }
-        } catch (supabaseError) {
-          console.warn('Error loading agents from Supabase:', supabaseError);
-          setIsConnected(false);
+          setAgents(formattedAgents);
+          setIsConnected(true);
+          setUsingMockData(false);
+          
+          // Save to localStorage as fallback cache
+          localStorage.setItem('cached_elizaos_agents', JSON.stringify(formattedAgents));
+          
+          return;
         }
+      } catch (serviceError) {
+        console.warn('Error loading agents from ElizaOS service:', serviceError);
+        setIsConnected(false);
       }
       
       // If we get here, either:
       // 1. User is not authenticated
-      // 2. There was an error loading from Supabase
+      // 2. There was an error loading from ElizaOS service
       // 3. No agents were found
       
       // Try to load from localStorage cache
-      const cachedAgents = localStorage.getItem('cached_agents');
+      const cachedAgents = localStorage.getItem('cached_elizaos_agents');
       if (cachedAgents) {
         try {
           const parsedAgents = JSON.parse(cachedAgents);
           if (Array.isArray(parsedAgents) && parsedAgents.length > 0) {
             // Mark these as cached
-            const markedAgents = parsedAgents.map(agent => ({
+            const markedAgents = parsedAgents.map((agent: any) => ({
               ...agent,
               is_fallback: true
             }));
             setAgents(markedAgents);
+            setUsingMockData(true);
             
             toast({
               title: 'Using cached agents',
@@ -144,12 +150,17 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
           updated_at: new Date().toISOString(),
           execution_mode: 'dry-run',
           is_fallback: true,
-          farm_id: 999,
+          farmId: '999', // Use string for newer interface
           farm_name: 'Development Farm',
+          user_id: 'demo-user', // Add demo user ID
           config: {
-            strategy_type: 'momentum',
+            agentType: 'trading',
+            markets: ['BTC/USD', 'ETH/USD'],
             risk_level: 'medium',
-            target_markets: ['BTC/USD', 'ETH/USD']
+            api_access: true,
+            trading_permissions: 'read-write',
+            auto_recovery: true,
+            max_concurrent_tasks: 3
           }
         };
         
@@ -188,7 +199,7 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
           const parsedAgents = JSON.parse(cachedAgents);
           if (Array.isArray(parsedAgents)) {
             // Mark these as cached
-            const markedAgents = parsedAgents.map(agent => ({
+            const markedAgents = parsedAgents.map((agent: any) => ({
               ...agent,
               is_fallback: true
             }));
@@ -248,16 +259,15 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
       // Format the created agent
       const formattedAgent: AgentWithFallback = {
         ...createdAgent,
-        farm_name: createdAgent.farms?.name,
         is_fallback: false
       };
       
       // Update state
-      setAgents(prev => [formattedAgent, ...prev]);
+      setAgents((prev: AgentWithFallback[]) => [formattedAgent, ...prev]);
       
       // Also cache locally
-      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
-      localStorage.setItem('cached_agents', JSON.stringify([formattedAgent, ...cachedAgents]));
+      const cachedAgents = JSON.parse(localStorage.getItem('cached_elizaos_agents') || '[]');
+      localStorage.setItem('cached_elizaos_agents', JSON.stringify([formattedAgent, ...cachedAgents]));
       
       return formattedAgent;
     } catch (error) {
@@ -275,15 +285,27 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
           updated_at: new Date().toISOString(),
           execution_mode: 'dry-run',
           is_fallback: true,
-          config: params.config || {}
+          farmId: params.farmId || '999', // Use string for newer interface
+          farm_name: 'Development Farm',
+          user_id: 'mock-user', // Add mock user ID
+          config: {
+            agentType: params.config?.agentType || 'trading',
+            markets: params.config?.markets || ['BTC/USD', 'ETH/USD'],
+            risk_level: params.config?.risk_level || 'medium',
+            api_access: params.config?.api_access !== undefined ? params.config.api_access : true,
+            trading_permissions: params.config?.trading_permissions || 'read-write',
+            auto_recovery: params.config?.auto_recovery !== undefined ? params.config.auto_recovery : true,
+            max_concurrent_tasks: params.config?.max_concurrent_tasks || 3,
+            llm_model: params.config?.llm_model
+          }
         };
         
         // Update state with mock agent
-        setAgents(prev => [mockAgent, ...prev]);
+        setAgents((prev: AgentWithFallback[]) => [mockAgent, ...prev]);
         
         // Store in localStorage
-        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
-        localStorage.setItem('mockAgents', JSON.stringify([...mockAgents, mockAgent]));
+        const mockAgents = JSON.parse(localStorage.getItem('mockElizaAgents') || '[]');
+        localStorage.setItem('mockElizaAgents', JSON.stringify([...mockAgents, mockAgent]));
         
         toast({
           title: 'Development Mode',
@@ -308,33 +330,24 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
   const updateAgent = useCallback(async (id: string, updates: Partial<AgentWithFallback>): Promise<AgentWithFallback | null> => {
     try {
       // Check if this is a fallback agent
-      const agent = agents.find(a => a.id === id);
+      const agent = agents.find((a: AgentWithFallback) => a.id === id);
       if (agent?.is_fallback) {
         // For fallback agents, just update locally
         const updatedAgent = { ...agent, ...updates, updated_at: new Date().toISOString() };
         
-        setAgents(prev => prev.map(a => a.id === id ? updatedAgent : a));
+        setAgents((prev: AgentWithFallback[]) => prev.map((a: AgentWithFallback) => a.id === id ? updatedAgent : a));
         
         // Update localStorage
-        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
-        localStorage.setItem('mockAgents', JSON.stringify(
+        const mockAgents = JSON.parse(localStorage.getItem('mockElizaAgents') || '[]');
+        localStorage.setItem('mockElizaAgents', JSON.stringify(
           mockAgents.map((a: any) => a.id === id ? { ...a, ...updates } : a)
         ));
         
         return updatedAgent;
       }
       
-      // For real agents, update in database
-      const { data: updatedAgent, error: updateError } = await supabase
-        .from('agents')
-        .update({ ...updates, updated_at: new Date().toISOString() })
-        .eq('id', id)
-        .select('*, farms(name)')
-        .single();
-      
-      if (updateError) {
-        throw updateError;
-      }
+      // For real agents, update in database using ElizaOS service
+      const updatedAgent = await elizaOSAgentService.updateAgent(id, updates);
       
       if (!updatedAgent) {
         throw new Error('Failed to update agent');
@@ -343,16 +356,15 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
       // Format the updated agent
       const formattedAgent: AgentWithFallback = {
         ...updatedAgent,
-        farm_name: updatedAgent.farms?.name,
         is_fallback: false
       };
       
       // Update state
-      setAgents(prev => prev.map(a => a.id === id ? formattedAgent : a));
+      setAgents((prev: AgentWithFallback[]) => prev.map((a: AgentWithFallback) => a.id === id ? formattedAgent : a));
       
       // Update cache
-      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
-      localStorage.setItem('cached_agents', JSON.stringify(
+      const cachedAgents = JSON.parse(localStorage.getItem('cached_elizaos_agents') || '[]');
+      localStorage.setItem('cached_elizaos_agents', JSON.stringify(
         cachedAgents.map((a: any) => a.id === id ? formattedAgent : a)
       ));
       
@@ -374,40 +386,38 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
   const deleteAgent = useCallback(async (id: string): Promise<boolean> => {
     try {
       // Check if this is a fallback agent
-      const agent = agents.find(a => a.id === id);
+      const agent = agents.find((a: AgentWithFallback) => a.id === id);
       if (agent?.is_fallback) {
         // For fallback agents, just remove locally
-        setAgents(prev => prev.filter(a => a.id !== id));
+        setAgents((prev: AgentWithFallback[]) => prev.filter((a: AgentWithFallback) => a.id !== id));
         
         // Update localStorage
-        const mockAgents = JSON.parse(localStorage.getItem('mockAgents') || '[]');
-        localStorage.setItem('mockAgents', JSON.stringify(
+        const mockAgents = JSON.parse(localStorage.getItem('mockElizaAgents') || '[]');
+        localStorage.setItem('mockElizaAgents', JSON.stringify(
           mockAgents.filter((a: any) => a.id !== id)
         ));
         
         return true;
       }
       
-      // For real agents, delete from database
-      const { error: deleteError } = await supabase
-        .from('agents')
-        .delete()
-        .eq('id', id);
-      
-      if (deleteError) {
-        throw deleteError;
+      // For real agents, use the ElizaOS agent service
+      try {
+        await elizaOSAgentService.deleteAgent(id);
+        
+        // Update state
+        setAgents((prev: AgentWithFallback[]) => prev.filter((a: AgentWithFallback) => a.id !== id));
+        
+        // Update cache
+        const cachedAgents = JSON.parse(localStorage.getItem('cached_elizaos_agents') || '[]');
+        localStorage.setItem('cached_elizaos_agents', JSON.stringify(
+          cachedAgents.filter((a: any) => a.id !== id)
+        ));
+        
+        return true;
+      } catch (error) {
+        console.error('Error deleting agent with service:', error);
+        throw error;
       }
-      
-      // Update state
-      setAgents(prev => prev.filter(a => a.id !== id));
-      
-      // Update cache
-      const cachedAgents = JSON.parse(localStorage.getItem('cached_agents') || '[]');
-      localStorage.setItem('cached_agents', JSON.stringify(
-        cachedAgents.filter((a: any) => a.id !== id)
-      ));
-      
-      return true;
     } catch (error) {
       console.error('Error deleting agent:', error);
       
@@ -426,14 +436,72 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
     await loadAgents();
   }, [loadAgents]);
 
+  // Add control agent function (start, stop, pause, resume)
+  const controlAgent = useCallback(async (id: string, action: 'start' | 'stop' | 'pause' | 'resume'): Promise<boolean> => {
+    try {
+      // Check if this is a fallback agent
+      const agent = agents.find((a: AgentWithFallback) => a.id === id);
+      if (agent?.is_fallback) {
+        // For fallback agents, just update status locally
+        let newStatus: ElizaAgent['status'];
+        
+        switch (action) {
+          case 'start':
+          case 'resume':
+            newStatus = 'active';
+            break;
+          case 'stop':
+            newStatus = 'idle';
+            break;
+          case 'pause':
+            newStatus = 'paused';
+            break;
+          default:
+            newStatus = 'idle';
+        }
+        
+        const updatedAgent = {
+          ...agent,
+          status: newStatus,
+          updated_at: new Date().toISOString()
+        };
+        
+        setAgents((prev: AgentWithFallback[]) => prev.map((a: AgentWithFallback) => a.id === id ? updatedAgent : a));
+        
+        // Update localStorage
+        const mockAgents = JSON.parse(localStorage.getItem('mockElizaAgents') || '[]');
+        localStorage.setItem('mockElizaAgents', JSON.stringify(
+          mockAgents.map((a: any) => a.id === id ? { ...a, status: newStatus } : a)
+        ));
+        
+        return true;
+      }
+      
+      // For real agents, use the service
+      await elizaOSAgentService.controlAgent(id, action);
+      await refreshAgents(); // Refresh to get updated status
+      return true;
+    } catch (error) {
+      console.error(`Error ${action} agent:`, error);
+      
+      toast({
+        title: `${action.charAt(0).toUpperCase() + action.slice(1)} Failed`,
+        description: error instanceof Error ? error.message : `Failed to ${action} agent`,
+        variant: 'destructive'
+      });
+      
+      return false;
+    }
+  }, [agents, refreshAgents, toast]);
+  
   // Initial load
   useEffect(() => {
     loadAgents();
     
     // Set up real-time subscription if possible
     const agentsSubscription = supabase
-      .channel('agents_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agents' }, (payload) => {
+      .channel('elizaos_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'elizaos_agents' }, (payload: any) => {
         // Refresh agents when changes happen
         loadAgents();
       })
@@ -452,6 +520,8 @@ export function useElizaAgentsWithFallback(): UseElizaAgentsWithFallbackResult {
     updateAgent,
     deleteAgent,
     refreshAgents,
-    isConnected
+    controlAgent,
+    isConnected,
+    usingMockData
   };
 }

@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useSocket } from "@/providers/socket-provider";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-import { Check, RefreshCw, Clock, Trash2 } from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Clock, RefreshCw, Trash2 } from "lucide-react";
 
 interface ExecutionNotification {
   id: string;
@@ -29,46 +28,98 @@ export default function ExecutionNotifications({
   farmId, 
   limit = 10 
 }: ExecutionNotificationsProps) {
-  const [notifications, setNotifications] = useState<ExecutionNotification[]>([]);
-  const { isConnected, messages } = useSocket();
+  const [notifications, setNotifications] = React.useState<ExecutionNotification[]>([]);
+  const { isConnected, subscribe, latestMessages } = useSocket();
   const { toast } = useToast();
 
-  useEffect(() => {
-    // Filter execution messages for this farm
-    const executionMessages = messages.filter(
-      (msg) => msg.type === "EXECUTION_UPDATE" && msg.farm_id === farmId
-    );
-
-    if (executionMessages.length > 0) {
-      // Process the latest execution message
-      const latestMessage = executionMessages[executionMessages.length - 1];
-      
-      const newNotification: ExecutionNotification = {
-        id: `exec-${Date.now()}`,
-        symbol: latestMessage.symbol || "Unknown",
-        side: latestMessage.side || "buy",
-        amount: latestMessage.amount || 0,
-        price: latestMessage.price || 0,
-        timestamp: new Date(),
-        status: latestMessage.status || "executed",
-        orderId: latestMessage.order_id || "",
-        executionSpeed: latestMessage.execution_speed || 0
-      };
-
-      // Update the notifications list, keeping the most recent ones based on the limit
-      setNotifications(prev => {
-        const updated = [newNotification, ...prev].slice(0, limit);
-        return updated;
-      });
-
-      // Show toast for new execution
-      toast({
-        title: `Order ${newNotification.status.charAt(0).toUpperCase() + newNotification.status.slice(1)}`,
-        description: `${newNotification.side.toUpperCase()} ${newNotification.amount} ${newNotification.symbol} @ ${newNotification.price}`,
-        variant: newNotification.status === "executed" ? "default" : "destructive",
-      });
+  // Initialize mock data once on mount
+  React.useEffect(() => {
+    // Add mock data for development purposes
+    if (process.env.NEXT_PUBLIC_USE_MOCK_DATA === 'true') {
+      const mockNotifications: ExecutionNotification[] = [
+        {
+          id: 'exec-1',
+          symbol: 'BTC/USD',
+          side: 'buy',
+          amount: 0.05,
+          price: 52890,
+          timestamp: new Date(Date.now() - 120000), // 2 minutes ago
+          status: 'executed',
+          orderId: 'ord-' + Math.random().toString(36).substring(2, 8),
+          executionSpeed: 350,
+        },
+        {
+          id: 'exec-2',
+          symbol: 'ETH/USD',
+          side: 'sell',
+          amount: 1.2,
+          price: 2875,
+          timestamp: new Date(Date.now() - 360000), // 6 minutes ago
+          status: 'partial',
+          orderId: 'ord-' + Math.random().toString(36).substring(2, 8),
+          executionSpeed: 420,
+        },
+      ];
+      setNotifications(mockNotifications);
     }
-  }, [messages, farmId, limit, toast]);
+  }, []); // Empty dependency array means this runs once on mount
+  
+  // Subscribe to execution updates in a separate effect
+  React.useEffect(() => {
+    subscribe('EXECUTION_NOTIFICATION');
+    
+    return () => {
+      // Cleanup will be handled by the provider
+    };
+  }, [subscribe]); // Only subscribe once on mount
+  
+  // Store the latest message in a ref to avoid re-renders
+  const latestMessageRef = React.useRef<any>(null);
+  
+  // Update ref when latestMessages changes
+  React.useEffect(() => {
+    if (latestMessages?.EXECUTION_NOTIFICATION) {
+      latestMessageRef.current = latestMessages.EXECUTION_NOTIFICATION;
+    }
+  }, [latestMessages]);
+  
+  // Process new execution messages with a separate effect and stable dependencies
+  React.useEffect(() => {
+    // Skip if no message
+    if (!latestMessageRef.current) return;
+    
+    const message = latestMessageRef.current;
+    // Reset the ref to avoid processing the same message multiple times
+    latestMessageRef.current = null;
+    
+    // Only process messages for the current farm
+    if (message.farmId !== farmId) return;
+    
+    const newNotification: ExecutionNotification = {
+      id: `exec-${Date.now()}`,
+      symbol: message.symbol || "Unknown",
+      side: message.side || "buy",
+      amount: message.amount || 0,
+      price: message.price || 0,
+      timestamp: new Date(),
+      status: message.status || "executed",
+      orderId: message.order_id || "",
+      executionSpeed: message.execution_speed || 0
+    };
+
+    // Update the notifications list, keeping the most recent ones based on the limit
+    setNotifications((prev: ExecutionNotification[]) => {
+      const updated = [newNotification, ...prev].slice(0, limit);
+      return updated;
+    });
+
+    // Show toast for new execution
+    toast({
+      title: `Order ${newNotification.status.charAt(0).toUpperCase() + newNotification.status.slice(1)}`,
+      description: `${newNotification.side.toUpperCase()} ${newNotification.amount} ${newNotification.symbol} @ ${newNotification.price}`,
+      variant: newNotification.status === "executed" ? "default" : "destructive",
+    });
+  }, [farmId, limit, toast]); // Removed latestMessages from dependencies
 
   // Clear all notifications
   const clearNotifications = () => {
@@ -91,7 +142,8 @@ export default function ExecutionNotifications({
     }
   };
 
-  return (
+  // Memoize the UI to prevent unnecessary re-rendering
+  return React.useMemo(() => (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <Badge variant={isConnected ? "outline" : "destructive"} className="px-2 py-1">
@@ -106,11 +158,11 @@ export default function ExecutionNotifications({
         )}
       </div>
 
-      <ScrollArea className="h-[250px]">
+      <div className="h-[250px] overflow-auto">
         {notifications.length > 0 ? (
           <div className="space-y-2">
-            {notifications.map((notification) => (
-              <div key={notification.id} className="rounded-md border p-3 transition-all">
+            {notifications.map((notification: ExecutionNotification) => (
+              <div key={notification.id} className="rounded-md border p-3 transition-all hover:bg-accent/50">
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center space-x-2">
                     <div className={`text-sm font-medium ${notification.side === "buy" ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
@@ -154,7 +206,7 @@ export default function ExecutionNotifications({
             )}
           </div>
         )}
-      </ScrollArea>
+      </div>
     </div>
-  );
+  ), [notifications, isConnected, clearNotifications, getStatusBadge]);
 }

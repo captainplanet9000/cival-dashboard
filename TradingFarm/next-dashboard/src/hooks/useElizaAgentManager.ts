@@ -116,9 +116,31 @@ export function useElizaAgentManager() {
   // Create a new agent
   const createAgent = React.useCallback(async (agentParams: CreateAgentParams): Promise<ElizaAgent> => {
     try {
-        config: apiConfig,
+      const { name, description, config } = agentParams;
+      
+      // Prepare API config
+      const apiConfig = {
+        agentType: config.agentType || 'trading',
+        strategyType: config.strategyType || 'momentum',
+        markets: config.markets || ['BTC/USD'],
+        tools: config.tools || ['trending-analysis', 'market-data'],
+        risk_level: config.riskLevel || 'medium',
+        api_access: config.apiAccess !== undefined ? config.apiAccess : true,
+        trading_permissions: config.tradingPermissions || 'read-write',
+        auto_recovery: config.autoRecovery !== undefined ? config.autoRecovery : true,
+        max_concurrent_tasks: 3,
+        llm_model: 'gpt-4',
+        initialInstructions: config.initialInstructions
       };
-
+      
+      // Prepare complete agent data
+      const agentData = {
+        name,
+        description,
+        farmId: config.farmId,
+        config: apiConfig
+      };
+      
       // Try API route first
       if (!state.usingMockData) {
         try {
