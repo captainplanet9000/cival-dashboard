@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSocket } from '@/providers/socket-provider';
+import { elizaOSMessagingAdapter } from '@/services/elizaos-messaging-adapter';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,10 +15,12 @@ import {
   Send, 
   Settings,
   Check,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import Link from 'next/link';
+import { useElizaMessaging } from '@/hooks/useElizaMessaging';
 
 interface AgentCommunicationProps {
   agentId: string;
@@ -35,6 +38,8 @@ interface AgentMessage {
   timestamp: string;
   isRead: boolean;
   requiresAction: boolean;
+  sender_id?: string;
+  metadata?: any;
 }
 
 export default function AgentCommunication({ 
@@ -43,67 +48,72 @@ export default function AgentCommunication({
   farmId,
   className
 }: AgentCommunicationProps) {
-  const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const messageEndRef = useRef<HTMLDivElement>(null);
   const [userInput, setUserInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { send, isConnected, latestMessages } = useSocket();
+  const { send, isConnected } = useSocket();
   const { toast } = useToast();
-
-  // Mock initial messages for development
-  useEffect(() => {
-    const initialMessages: AgentMessage[] = [
-      {
-        id: '1',
-        content: 'Market volatility has increased for BTC. Consider adjusting your stop loss parameters.',
-        type: 'alert',
-        timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-        isRead: true,
-        requiresAction: true
-      },
-      {
-        id: '2',
-        content: 'I\'ve identified a potential entry opportunity for ETH based on the current price action and momentum indicators.',
-        type: 'insight',
-        timestamp: new Date(Date.now() - 45 * 60 * 1000).toISOString(),
-        isRead: false,
-        requiresAction: false
-      },
-      {
-        id: '3',
-        content: 'Successfully executed the DCA strategy for your BTC position. Average entry price is now $65,240.',
-        type: 'update',
-        timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-        isRead: true,
-        requiresAction: false
-      }
-    ];
-    
-    setMessages(initialMessages);
-  }, [agentId]);
   
-  // Listen for agent messages from the WebSocket
+  // Use our ElizaOS messaging adapter hook
+  const {
+    messages: elizaMessages,
+    loading,
+    error,
+    sendMessage,
+    sendCommand,
+    refreshMessages
+  } = useElizaMessaging({
+    agentId,
+    refreshInterval: 10000, // Refresh every 10 seconds
+    initialMessageLimit: 50
+  });
+  
+  // Convert ElizaOS messages to our component format
+  const [messages, setMessages] = useState<AgentMessage[]>([]);
+
+  // Convert ElizaOS messages to our format with proper dependency management
   useEffect(() => {
-    const agentUpdate = latestMessages?.AGENT_UPDATE;
-    if (agentUpdate && agentUpdate.agentId === agentId) {
-      // Add new message from agent
-      const newMessage: AgentMessage = {
-        id: `msg-${Date.now()}`,
-        content: agentUpdate.content,
-        type: agentUpdate.type || 'update',
-        timestamp: new Date().toISOString(),
-        isRead: false,
-        requiresAction: agentUpdate.requiresAction || false
-      };
+    if (elizaMessages && elizaMessages.length > 0) {
+      const convertedMessages: AgentMessage[] = elizaMessages.map((msg: any) => ({
+        id: msg.id,
+        content: msg.content,
+        // Map message types
+        type: mapMessageType(msg.message_type, msg.metadata?.source),
+        timestamp: msg.timestamp,
+        isRead: msg.read,
+        requiresAction: msg.requires_response || false,
+        sender_id: msg.sender_id,
+        metadata: msg.metadata
+      }));
       
-      setMessages(prev => [newMessage, ...prev]);
-      
-      // Show toast notification for new message
+      setMessages(convertedMessages);
+    }
+  }, [elizaMessages]);
+  
+  // Helper to map message types from ElizaOS to our UI format
+  const mapMessageType = (messageType: string, source?: string): MessageType => {
+    if (messageType === 'alert' || source === 'system') return 'alert';
+    if (messageType === 'analysis' || source === 'strategy') return 'insight';
+    if (messageType === 'command' || messageType === 'status' || messageType === 'direct') return 'update';
+    if (messageType === 'query') return 'question';
+    return 'update';
+  };
+  
+  // Scroll to bottom when new messages arrive
+  useEffect(() => {
+    messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+  
+  // Show errors from messaging API
+  useEffect(() => {
+    if (error) {
       toast({
-        title: `New message from ${agentName}`,
-        description: agentUpdate.content.substring(0, 100) + (agentUpdate.content.length > 100 ? '...' : ''),
+        title: "Communication Error",
+        description: error,
+        variant: "destructive"
       });
     }
-  }, [latestMessages, agentId, agentName, toast]);
+  }, [error, toast]);
   
   // Send message to agent
   const handleSendMessage = async () => {
@@ -171,12 +181,20 @@ export default function AgentCommunication({
   };
   
   // Mark a message as read
-  const markAsRead = (messageId: string) => {
-    setMessages(prev => 
-      prev.map(msg => 
-        msg.id === messageId ? { ...msg, isRead: true } : msg
-      )
-    );
+  const markAsRead = async (messageId: string) => {
+    try {
+      // First update the UI optimistically
+      setMessages((prev: AgentMessage[]) => 
+        prev.map((msg: AgentMessage) => 
+          msg.id === messageId ? { ...msg, isRead: true } : msg
+        )
+      );
+      
+      // Then use the adapter to update the message status
+      await elizaOSMessagingAdapter.markAsRead(messageId);
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+    }
   };
   
   // Handle action button click
@@ -289,7 +307,7 @@ export default function AgentCommunication({
           <div className="max-h-[300px] overflow-y-auto p-0">
             {messages.length > 0 ? (
               <div className="divide-y">
-                {messages.map(message => (
+                {messages.map((message: AgentMessage) => (
                   <div 
                     key={message.id} 
                     className={`p-3 ${message.isRead ? '' : 'bg-muted/30'}`}

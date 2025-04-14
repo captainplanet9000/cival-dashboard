@@ -41,7 +41,7 @@ export function Sidebar({ farmId }: SidebarProps) {
     main: [
       {
         name: 'Dashboard',
-        href: `/dashboard`,
+        href: `/dashboard/overview`,
         icon: LayoutDashboard,
         category: 'main'
       }
@@ -49,25 +49,25 @@ export function Sidebar({ farmId }: SidebarProps) {
     coreTradingGroup: [
       {
         name: 'Farms',
-        href: `/dashboard/farms`,
+        href: `/dashboard/farm`,
         icon: Factory,
         category: 'core'
       },
       {
         name: 'Agents',
-        href: `/agents`,
+        href: `/dashboard/agents`,
         icon: Bot,
         category: 'core'
       },
       {
         name: 'Goals',
-        href: `/dashboard/goals`,
+        href: `/goals`,
         icon: Target,
         category: 'core'
       },
       {
         name: 'Strategies',
-        href: `/dashboard/strategies`,
+        href: `/strategies`,
         icon: Briefcase,
         category: 'core'
       }
@@ -75,19 +75,19 @@ export function Sidebar({ farmId }: SidebarProps) {
     executionGroup: [
       {
         name: 'Positions',
-        href: `/dashboard/execution/positions`,
+        href: `/trading/positions`,
         icon: Target,
         category: 'execution'
       },
       {
         name: 'Order History',
-        href: `/dashboard/execution/orders`,
+        href: `/trading/orders/history`,
         icon: History,
         category: 'execution'
       },
       {
         name: 'Activity Logs',
-        href: `/dashboard/execution/logs`,
+        href: `/dashboard/agent-trading`,
         icon: Activity,
         category: 'execution'
       }
@@ -95,19 +95,19 @@ export function Sidebar({ farmId }: SidebarProps) {
     analyticsGroup: [
       {
         name: 'Performance',
-        href: `/dashboard/analytics/performance`,
+        href: `/dashboard/simulation`,
         icon: LineChart,
         category: 'analytics'
       },
       {
         name: 'Risk Analysis',
-        href: `/dashboard/analytics/risk`,
+        href: `/dashboard/bybit-test`,
         icon: Shield,
         category: 'analytics'
       },
       {
         name: 'Market Insights',
-        href: `/dashboard/analytics/market`,
+        href: `/trading/live-data`,
         icon: BarChart,
         category: 'analytics'
       }
@@ -115,19 +115,19 @@ export function Sidebar({ farmId }: SidebarProps) {
     fundingGroup: [
       {
         name: 'Accounts & Balances',
-        href: `/dashboard/funding/accounts`,
+        href: `/dashboard/banking`,
         icon: Wallet,
         category: 'funding'
       },
       {
         name: 'Vault',
-        href: `/dashboard/funding/vault`,
+        href: `/dashboard/collaboration`,
         icon: Building2,
         category: 'funding'
       },
       {
         name: 'Transactions',
-        href: `/dashboard/funding/transactions`,
+        href: `/dashboard/dry-run`,
         icon: ArrowRightLeft,
         category: 'funding'
       }
@@ -135,25 +135,25 @@ export function Sidebar({ farmId }: SidebarProps) {
     aiCenterGroup: [
       {
         name: 'Command Console',
-        href: `/command`,
+        href: `/dashboard/command-console`,
         icon: BrainCircuit,
         category: 'ai'
       },
       {
         name: 'Knowledge Base',
-        href: `/knowledge`,
+        href: `/dashboard/guides`,
         icon: BookOpenCheck,
         category: 'ai'
       },
       {
         name: 'ElizaOS Hub',
-        href: `/elizaos`,
+        href: `/elizaos/agents`,
         icon: Brain,
         category: 'ai'
       },
       {
         name: 'AI Advisor',
-        href: `/dashboard/ai-center/advisor`,
+        href: `/dashboard/ai-advisor`,
         icon: Zap, 
         category: 'ai'
       }

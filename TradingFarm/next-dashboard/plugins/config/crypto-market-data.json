@@ -1,0 +1,11 @@
+{
+  "plugin": "crypto-market-data",
+  "version": "1.2.0",
+  "settings": {
+    "updateInterval": 5000,
+    "prioritySymbols": ["BTC-USDT", "ETH-USDT"],
+    "dataProviders": ["binance", "bybit"],
+    "cacheStrategy": "redis",
+    "historicalDataPoints": 100
+  }
+}
