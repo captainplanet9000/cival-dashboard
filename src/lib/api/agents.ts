@@ -1,5 +1,8 @@
 import { apiClient } from './client';
 import type { Strategy } from './strategies';
+import { createServerClient } from '@/utils/supabase/server';
+import { Database, Json } from '@/types/database.types';
+import { AgentSpecs } from '@/types/database-json.types';
 
 // Agent interfaces
 export interface Agent {
@@ -87,6 +90,18 @@ export interface AgentTrade {
   pnl: number;
   fees: number;
   timestamp: string;
+}
+
+// Basic type for worker agent info
+export type WorkerAgentBasicInfo = Omit<Database['public']['Tables']['worker_agents']['Row'], 'specs'> & {
+  specs: AgentSpecs | null;
+};
+
+// Input DTO for creating a basic worker
+export interface CreateBasicWorkerDto {
+  manager_id?: string | null;
+  specs: AgentSpecs;
+  initial_status?: string;
 }
 
 // Agent API class
@@ -183,5 +198,39 @@ export class AgentApi {
     }>
   > {
     return apiClient.get(`${this.BASE_PATH}/exchanges`);
+  }
+
+  /**
+   * Creates a basic worker agent record.
+   * Assumes server-side execution (e.g., called from an API route).
+   * @param data DTO containing necessary worker creation data.
+   * @returns Promise resolving to the newly created worker agent's basic info.
+   */
+  public static async createBasicWorkerAgent(data: CreateBasicWorkerDto): Promise<WorkerAgentBasicInfo> {
+    const supabase = createServerClient();
+    const specsJson = data.specs as unknown as Json;
+    const insertData: Database['public']['Tables']['worker_agents']['Insert'] = {
+      manager_id: data.manager_id,
+      specs: specsJson,
+      status: data.initial_status ?? 'initializing',
+      // last_heartbeat and elizaos_session_id likely set by agent process later
+    };
+
+    const { data: newAgentData, error: createError } = await supabase
+      .from('worker_agents')
+      .insert(insertData)
+      .select()
+      .single();
+
+    if (createError) {
+      console.error('Error creating basic worker agent:', createError);
+      throw new Error(createError.message || 'Failed to create worker agent');
+    }
+
+    const newAgent = newAgentData as any; // Use any for mapping robustness
+    return {
+      ...newAgent,
+      specs: newAgent.specs as AgentSpecs | null,
+    } as WorkerAgentBasicInfo;
   }
 } 

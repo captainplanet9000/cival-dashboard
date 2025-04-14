@@ -2,12 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Farm } from '../../hooks/useFarms';
-import { supabase } from '../../integrations/supabase/client';
+import { FarmApi, FarmBasicInfo } from '@/lib/api/farms';
+import { StrategyApi, StrategyBasicInfo } from '@/lib/api/strategies';
+import { PerformanceMetrics } from '@/types/database-json.types';
 
 export default function DashboardOverviewPage() {
-  const [farms, setFarms] = useState<Farm[]>([]);
-  const [strategies, setStrategies] = useState<any[]>([]);
+  const [farms, setFarms] = useState<FarmBasicInfo[]>([]);
+  const [strategies, setStrategies] = useState<StrategyBasicInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -16,31 +17,19 @@ export default function DashboardOverviewPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        
-        // Fetch farms
-        const { data: farmsData, error: farmsError } = await supabase
-          .from('farms')
-          .select('*')
-          .eq('is_active', true)
-          .limit(5);
-        
-        if (farmsError) throw farmsError;
-        
-        // Fetch strategies
-        const { data: strategiesData, error: strategiesError } = await supabase
-          .from('trading_strategies')
-          .select('*')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(5);
-        
-        if (strategiesError) throw strategiesError;
-        
+        setError(null);
+
+        // Fetch data in parallel using the API class methods
+        const [farmsData, strategiesData] = await Promise.all([
+          FarmApi.fetchActiveFarms(5),
+          StrategyApi.fetchRecentStrategies(5)
+        ]);
+
         setFarms(farmsData);
         setStrategies(strategiesData);
       } catch (error: any) {
         console.error('Error fetching dashboard data:', error);
-        setError(error.message);
+        setError(error.message || 'An unknown error occurred');
       } finally {
         setLoading(false);
       }
@@ -104,7 +93,7 @@ export default function DashboardOverviewPage() {
                           </Link>
                         </td>
                         <td className="py-3">
-                          {farm.performance_metrics?.profit_loss 
+                          {(farm.performance_metrics && typeof farm.performance_metrics.profit_loss === 'number')
                             ? <span className={farm.performance_metrics.profit_loss >= 0 ? "text-green-600" : "text-red-600"}>
                                 {farm.performance_metrics.profit_loss >= 0 ? "+" : ""}{farm.performance_metrics.profit_loss.toFixed(2)}%
                               </span>
@@ -157,7 +146,7 @@ export default function DashboardOverviewPage() {
                           </Link>
                         </td>
                         <td className="py-3 capitalize">
-                          {strategy.strategy_type}
+                          {strategy.strategy_type?.replace(/_/g, ' ') ?? 'N/A'}
                         </td>
                         <td className="py-3 text-gray-500">
                           {formatDate(strategy.created_at)}
@@ -210,8 +199,8 @@ export default function DashboardOverviewPage() {
                 <span className="font-medium">{farms.length}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-600">Active Strategies</span>
-                <span className="font-medium">{strategies.filter(s => s.is_active).length}</span>
+                <span className="text-gray-600">Recent Strategies</span>
+                <span className="font-medium">{strategies.length}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-600">API Status</span>

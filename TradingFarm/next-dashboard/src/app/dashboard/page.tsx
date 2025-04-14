@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,109 +29,60 @@ import {
 } from "lucide-react";
 import { useSocket } from "@/providers/socket-provider";
 import { useTheme } from "next-themes";
-import { createBrowserClient } from "@/utils/supabase/client";
 import Link from "next/link";
-import { ExtendedAgent, agentService } from "@/services/agent-service";
 import UnifiedDashboard from "@/components/dashboard/unified-dashboard";
 import RiskMetricsCard from "@/components/risk-management/risk-metrics-card";
+import SimplifiedRiskCard from "@/components/risk-management/simplified-risk-card";
 import CommandConsole from "@/components/elizaos/command-console";
 import OrderUpdatesStream from "@/components/websocket/order-updates-stream";
 import ExecutionNotifications from "@/components/websocket/execution-notifications";
 import PriceAlertSystem from "@/components/websocket/price-alert-system";
 import { WidgetContainer } from "@/components/dashboard/widget-container";
 
-// Dashboard data interface
-interface DashboardData {
-  portfolioValue: number;
-  pnl24h: number;
-  winRate: number;
-  avgTradeDuration: string;
-  topPair: string;
-  riskExposure: number;
-  riskExposureTrend: 'up' | 'down' | 'neutral';
-}
+// Import TanStack Query hooks
+import { useFarmAgents } from "@/hooks/react-query/use-agent-queries";
+import { useDashboardData, useRiskMetrics } from "@/hooks/react-query/use-dashboard-queries";
+
+// Use the DashboardData interface from our query hook
 
 export default function DashboardPage() {
   // State
-  const [data, setData] = React.useState<DashboardData | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
   const [farmId, setFarmId] = React.useState<string>("farm-1");
   const [activeTab, setActiveTab] = React.useState<string>("unified");
-  const [agents, setAgents] = React.useState<ExtendedAgent[]>([]);
-  const [loadingAgents, setLoadingAgents] = React.useState(true);
   const [currentTime, setCurrentTime] = React.useState<string>("");
+  const [error, setError] = React.useState<string | null>(null);
+  
+  // TanStack Query hooks
+  const { 
+    data: agents = [], 
+    isLoading: loadingAgents,
+    isError: agentsError,
+    refetch: refetchAgents
+  } = useFarmAgents(farmId);
+  
+  // Dashboard data using TanStack Query
+  const {
+    data: dashboardData,
+    isLoading: loadingDashboard,
+    isError: dashboardError,
+    refetch: refetchDashboard
+  } = useDashboardData(farmId);
+  
+  // Risk metrics data using TanStack Query
+  const {
+    data: riskData,
+    isLoading: loadingRisk,
+    refetch: refetchRisk
+  } = useRiskMetrics(farmId);
 
   // Hooks
   const { isConnected } = useSocket();
   const { theme, setTheme } = useTheme();
   const { toast } = useToast();
-  const supabase = createBrowserClient();
 
-  // Initialize dashboard
+  // Initialize dashboard time and observe agent query errors
   React.useEffect(() => {
-    async function initDashboard() {
-      try {
-        setLoading(true);
-        
-        // Mock dashboard data for now
-        const mockDashboardData: DashboardData = {
-          portfolioValue: 125000,
-          pnl24h: 3450,
-          winRate: 68,
-          avgTradeDuration: "4h 32m",
-          topPair: "BTC/USD",
-          riskExposure: 35,
-          riskExposureTrend: "neutral"
-        };
-        
-        setData(mockDashboardData);
-        
-        // Fetch agents
-        try {
-          const { mockStandardAgents, mockElizaAgents } = await import('@/utils/supabase/mocks-agents');
-          
-          // Combine and filter agents for this farm
-          const farmAgents = [...mockStandardAgents, ...mockElizaAgents]
-            .filter(agent => agent.farm_id === farmId)
-            .map(agent => ({
-              ...agent,
-              id: agent.id,
-              name: agent.name,
-              type: agent.type || 'standard',
-              status: agent.status,
-              farm_id: agent.farm_id,
-              capabilities: agent.capabilities || [],
-              performance: agent.performance || {
-                win_rate: 0,
-                profit_loss: 0,
-                total_trades: 0, 
-                average_trade_duration: 0
-              }
-            }));
-          
-          setAgents(farmAgents);
-        } catch (err) {
-          console.error("Error fetching agents:", err);
-          toast({
-            title: "Error",
-            description: "Failed to load agent data",
-            variant: "destructive",
-          });
-        } finally {
-          setLoadingAgents(false);
-        }
-      } catch (err) {
-        console.error("Error loading dashboard:", err);
-        setError("Failed to load dashboard data");
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    initDashboard();
-    
-    // Update current time
+    // Update current time immediately
     const now = new Date();
     setCurrentTime(now.toLocaleTimeString());
     
@@ -140,8 +91,21 @@ export default function DashboardPage() {
       setCurrentTime(new Date().toLocaleTimeString());
     }, 60000);
     
+    // If there's an error with the agents query, show a toast
+    if (agentsError) {
+      setError("Failed to load agent data");
+      toast({
+        title: "Error",
+        description: "Failed to load agent data",
+        variant: "destructive",
+      });
+    } else {
+      // Clear any previous error when query succeeds
+      setError(null);
+    }
+    
     return () => clearInterval(timeInterval);
-  }, [farmId, toast]);
+  }, [agentsError, toast]);
 
   // Toggle theme function
   const toggleTheme = () => {
@@ -150,34 +114,31 @@ export default function DashboardPage() {
 
   // Refresh dashboard data
   const refreshDashboard = async () => {
-    setLoading(true);
+    setError(null);
     
     try {
-      // Update with slightly randomized data for demo purposes
-      const updatedData: DashboardData = {
-        portfolioValue: 125000 + Math.floor(Math.random() * 5000) - 2500,
-        pnl24h: 3450 + Math.floor(Math.random() * 500) - 250,
-        winRate: 68 + Math.floor(Math.random() * 5) - 2,
-        avgTradeDuration: `4h ${Math.floor(Math.random() * 60)}m`,
-        topPair: Math.random() > 0.3 ? "BTC/USD" : "ETH/USD",
-        riskExposure: 35 + Math.floor(Math.random() * 10) - 5,
-        riskExposureTrend: Math.random() > 0.6 ? "neutral" : (Math.random() > 0.5 ? "up" : "down")
-      };
+      // Update time
+      setCurrentTime(new Date().toLocaleTimeString());
       
-      setData(updatedData);
+      // Refetch all data using TanStack Query's refetch methods
+      await Promise.all([
+        refetchAgents(),
+        refetchDashboard(),
+        refetchRisk()
+      ]);
+      
       toast({
         title: "Dashboard Updated",
         description: "Latest data has been loaded",
       });
     } catch (err) {
       console.error("Error refreshing dashboard:", err);
+      setError("Failed to refresh dashboard data");
       toast({
         title: "Update Failed",
         description: "Could not refresh dashboard data",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -197,7 +158,7 @@ export default function DashboardPage() {
   // Main dashboard render
   return (
     <div className="p-6 space-y-6">
-      {loading ? (
+      {loadingDashboard || (agents.length === 0 && loadingAgents) ? (
         <div className="animate-pulse space-y-4">
           <div className="h-10 bg-muted rounded"></div>
           <div className="h-10 bg-muted rounded"></div>
@@ -228,7 +189,7 @@ export default function DashboardPage() {
               variant="outline"
               size="icon"
               onClick={refreshDashboard}
-              disabled={loading}
+              disabled={loadingDashboard || loadingAgents}
               aria-label="Refresh Data"
             >
               <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
@@ -240,30 +201,30 @@ export default function DashboardPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Portfolio Value"
-          value={data?.portfolioValue || 125000}
+          value={dashboardData?.portfolioValue || 125000}
           description="Total value across all assets"
           trend="up"
           icon={<DollarSign className="h-4 w-4" />}
         />
         <StatCard
           title="24h PnL"
-          value={data?.pnl24h || 3450}
+          value={dashboardData?.pnl24h || 3450}
           description="Profit and loss in the last 24 hours"
           trend="up"
           icon={<Activity className="h-4 w-4" />}
         />
         <StatCard
           title="Win Rate"
-          value={data?.winRate || 68}
+          value={dashboardData?.winRate || 68}
           description="Percentage of profitable trades"
           trend="neutral"
           icon={<Percent className="h-4 w-4" />}
         />
         <StatCard
           title="Risk Exposure"
-          value={data?.riskExposure || 35}
+          value={dashboardData?.riskExposure || 35}
           description="Current risk exposure percentage"
-          trend={data?.riskExposureTrend || "neutral"}
+          trend={dashboardData?.riskExposureTrend || "neutral"}
           icon={<ShieldAlert className="h-4 w-4" />}
         />
       </div>
@@ -290,7 +251,7 @@ export default function DashboardPage() {
             <CardDescription>
               {loadingAgents
                 ? "Loading agent data..."
-                : `${agents.filter(a => a.status === 'active').length} out of ${agents.length} agents are active`}
+                : `${agents.filter((a: any) => a.status === 'active').length} out of ${agents.length} agents are active`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -300,9 +261,17 @@ export default function DashboardPage() {
                 <div className="h-12 bg-muted rounded"></div>
                 <div className="h-12 bg-muted rounded"></div>
               </div>
+            ) : agentsError ? (
+              <div className="text-center p-4">
+                <p className="text-red-500">Error loading agents</p>
+                <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchAgents()}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </Button>
+              </div>
             ) : agents.length > 0 ? (
               <div className="space-y-4">
-                {agents.slice(0, 5).map(agent => (
+                {agents.slice(0, 5).map((agent: any) => (
                   <div
                     key={agent.id}
                     className="flex items-center justify-between p-2 border rounded-md"
@@ -383,19 +352,28 @@ export default function DashboardPage() {
         
         <TabsContent value="risk" className="space-y-6 mt-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <RiskMetricsCard title="Exposure by Asset" metrics={[
-              { name: 'BTC/USD', value: '40%', status: 'warning' },
-              { name: 'ETH/USD', value: '24%', status: 'normal' },
-              { name: 'SOL/USD', value: '20%', status: 'normal' },
-              { name: 'AVAX/USD', value: '16%', status: 'normal' }
-            ]} />
-            
-            <RiskMetricsCard title="Exposure by Exchange" metrics={[
-              { name: 'Binance', value: '42%', status: 'warning' },
-              { name: 'FTX', value: '0%', status: 'danger' },
-              { name: 'Kraken', value: '35%', status: 'normal' },
-              { name: 'Coinbase', value: '23%', status: 'normal' }
-            ]} />
+            {loadingRisk ? (
+              <>
+                <div className="animate-pulse bg-muted h-60 rounded-md"></div>
+                <div className="animate-pulse bg-muted h-60 rounded-md"></div>
+              </>
+            ) : (
+              <>
+                <SimplifiedRiskCard 
+                  title="Exposure by Asset" 
+                  metrics={riskData?.assetExposure || []} 
+                  isLoading={loadingRisk}
+                  onRefresh={refetchRisk}
+                />
+                
+                <SimplifiedRiskCard 
+                  title="Exposure by Exchange" 
+                  metrics={riskData?.exchangeExposure || []} 
+                  isLoading={loadingRisk}
+                  onRefresh={refetchRisk}
+                />
+              </>
+            )}
           </div>
         </TabsContent>
         

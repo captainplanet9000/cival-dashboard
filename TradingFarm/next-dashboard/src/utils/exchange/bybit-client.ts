@@ -1,5 +1,11 @@
 import crypto from 'crypto';
 import { BybitBalance, BybitOrder, BybitPosition, ExchangeCredentials, MarketData, OrderParams, WebSocketMessage } from './types';
+import { ServerVaultService, ExchangeName } from '@/utils/supabase/vault-service';
+
+// Environment configuration
+const ENV = {
+  USE_VAULT: process.env.USE_SUPABASE_VAULT === 'true'
+};
 
 export class BybitClient {
   private apiKey: string;
@@ -21,9 +27,32 @@ export class BybitClient {
       this.baseUrl = 'https://api.bybit.com';
       this.wsBaseUrl = 'wss://stream.bybit.com';
     }
+    
+    // For server-side execution, attempt to use Vault if available
+    if (typeof window === 'undefined' && ENV.USE_VAULT && !this.apiKey) {
+      this.initializeFromVault(credentials.exchange);
+    }
   }
 
   // Helper method to generate signature for API requests
+  // Initialize credentials from vault if needed
+  private async initializeFromVault(exchange: string): Promise<void> {
+    // Convert string to ExchangeName type
+    const exchangeName = exchange as ExchangeName;
+    try {
+      const vaultCredentials = await ServerVaultService.getExchangeCredentials(exchangeName);
+      if (vaultCredentials && vaultCredentials.apiKey && vaultCredentials.apiSecret) {
+        this.apiKey = vaultCredentials.apiKey;
+        this.apiSecret = vaultCredentials.apiSecret;
+        console.log('Successfully loaded Bybit credentials from vault');
+      } else {
+        console.warn('Vault credentials incomplete or not found for Bybit');
+      }
+    } catch (error) {
+      console.error('Error loading Bybit credentials from vault:', error);
+    }
+  }
+
   private getSignature(timestamp: string, method: string, path: string, data?: any): string {
     const dataQueryString = data ? new URLSearchParams(data).toString() : '';
     const stringToSign = `${timestamp}${this.apiKey}${method}${path}${dataQueryString}`;
