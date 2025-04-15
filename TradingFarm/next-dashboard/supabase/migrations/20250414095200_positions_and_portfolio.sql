@@ -201,9 +201,10 @@ CREATE OR REPLACE FUNCTION public.calculate_position_pnl(
     p_current_price NUMERIC(24, 8)
 )
 RETURNS NUMERIC(24, 8)
+LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = '';
-LANGUAGE plpgsql AS $$
+SET search_path = ''
+AS $$
 DECLARE
     v_side VARCHAR(10);
     v_quantity NUMERIC(24, 8);
@@ -252,7 +253,7 @@ BEGIN
     END IF;
     
     -- Check if a position already exists for this symbol
-    SELECT id, side, EXISTS(id), quantity
+    SELECT id, side, CASE WHEN id IS NOT NULL THEN TRUE ELSE FALSE END, quantity
     INTO v_position_id, v_position_side, v_position_exists, v_new_quantity
     FROM public.positions
     WHERE 

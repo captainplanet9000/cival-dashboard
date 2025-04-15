@@ -7,23 +7,23 @@ BEGIN
     -- Create handle_created_at function if it doesn't exist
     IF NOT EXISTS (SELECT FROM pg_proc WHERE proname = 'handle_created_at') THEN
         CREATE OR REPLACE FUNCTION public.handle_created_at()
-        RETURNS TRIGGER AS $$
+        RETURNS TRIGGER AS $func$
         BEGIN
           NEW.created_at = NOW();
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
+        $func$ LANGUAGE plpgsql;
     END IF;
 
     -- Create handle_updated_at function if it doesn't exist
     IF NOT EXISTS (SELECT FROM pg_proc WHERE proname = 'handle_updated_at') THEN
         CREATE OR REPLACE FUNCTION public.handle_updated_at()
-        RETURNS TRIGGER AS $$
+        RETURNS TRIGGER AS $func$
         BEGIN
           NEW.updated_at = NOW();
           RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql;
+        $func$ LANGUAGE plpgsql;
     END IF;
 
     -- Create uuid extension if it doesn't exist
@@ -386,7 +386,7 @@ BEGIN
         LANGUAGE plpgsql
         SECURITY INVOKER
         SET search_path = ''
-        AS $$
+        AS $func_body$
         DECLARE
             v_risk_param_id UUID;
             v_max_position_size NUMERIC(24, 8);
@@ -495,7 +495,7 @@ BEGIN
             
             RETURN v_result;
         END;
-        $$;
+        $func_body$;
     END IF;
 END $$;
 
@@ -511,7 +511,7 @@ BEGIN
         LANGUAGE plpgsql
         SECURITY INVOKER
         SET search_path = ''
-        AS $$
+        AS $calc_pnl$
         DECLARE
             v_side VARCHAR(10);
             v_quantity NUMERIC(24, 8);
@@ -548,6 +548,6 @@ BEGIN
             
             RETURN v_pnl;
         END;
-        $$;
+        $calc_pnl$;
     END IF;
 END $$;

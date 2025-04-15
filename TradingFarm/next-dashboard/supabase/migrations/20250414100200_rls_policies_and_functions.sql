@@ -575,7 +575,7 @@ BEGIN
     END IF;
     
     -- Check if a position already exists for this symbol
-    SELECT id, side, EXISTS(id), quantity
+    SELECT id, side, CASE WHEN id IS NOT NULL THEN TRUE ELSE FALSE END, quantity
     INTO v_position_id, v_position_side, v_position_exists, v_new_quantity
     FROM public.positions
     WHERE 

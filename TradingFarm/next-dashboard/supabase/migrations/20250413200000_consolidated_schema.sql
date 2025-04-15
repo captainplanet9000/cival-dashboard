@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS public.strategies (
 
 CREATE INDEX IF NOT EXISTS idx_strategies_farm_id ON public.strategies(farm_id);
 CREATE INDEX IF NOT EXISTS idx_strategies_user_id ON public.strategies(user_id);
-CREATE INDEX IF NOT EXISTS idx_strategies_is_template ON public.strategies(is_template);
+CREATE INDEX IF NOT EXISTS idx_strategiwlate ON public.strategies(is_template);
 
 -- Create wallets table
 CREATE TABLE IF NOT EXISTS public.wallets (

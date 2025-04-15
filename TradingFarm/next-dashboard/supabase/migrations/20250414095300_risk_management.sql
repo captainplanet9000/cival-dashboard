@@ -261,9 +261,10 @@ CREATE OR REPLACE FUNCTION public.validate_risk_check(
     p_risk_parameter_id UUID DEFAULT NULL
 )
 RETURNS JSONB
+LANGUAGE plpgsql
 SECURITY INVOKER
-SET search_path = '';
-LANGUAGE plpgsql AS $$
+SET search_path = ''
+AS $$
 DECLARE
     v_risk_param_id UUID;
     v_max_position_size NUMERIC(24, 8);
