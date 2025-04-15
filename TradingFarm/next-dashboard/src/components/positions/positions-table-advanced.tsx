@@ -42,7 +42,7 @@ import {
   X,
   Filter
 } from 'lucide-react';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/utils/date-utils';
 import { useToast } from '@/components/ui/use-toast';
 import { reconcilePosition } from '@/app/actions/position-actions';
 import { 

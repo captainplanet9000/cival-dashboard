@@ -1,13 +1,7 @@
 'use client';
 
-<<<<<<< HEAD
 import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-=======
-import * as React from 'react';
-import { Card, CardContent } from "@/components/ui/card";
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
@@ -36,47 +30,50 @@ import {
 import { useSocket } from "@/providers/socket-provider";
 import { useTheme } from "next-themes";
 import Link from "next/link";
-<<<<<<< HEAD
-import UnifiedDashboard from "@/components/dashboard/unified-dashboard";
-import RiskMetricsCard from "@/components/risk-management/risk-metrics-card";
-import SimplifiedRiskCard from "@/components/risk-management/simplified-risk-card";
-import CommandConsole from "@/components/elizaos/command-console";
-=======
-import { ExtendedAgent, agentService } from "@/services/agent-service";
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
 import OrderUpdatesStream from "@/components/websocket/order-updates-stream";
 import ExecutionNotifications from "@/components/websocket/execution-notifications";
 import PriceAlertSystem from "@/components/websocket/price-alert-system";
 import { WidgetContainer } from "@/components/dashboard/widget-container";
 import { ElizaOSCentricLayout, Widget } from '@/components/layouts/elizaos-centric-layout';
-import { usePortfolioData } from '@/hooks/use-portfolio-data';
-import { useMarketData } from '@/hooks/use-market-data';
-import { useAgentStatus } from '@/hooks/use-agent-status';
 import { LineChart as ChartComponent, BarChart as BarChartComponent, PieChart } from '@/components/charts';
 
 // Import TanStack Query hooks
 import { useFarmAgents } from "@/hooks/react-query/use-agent-queries";
 import { useDashboardData, useRiskMetrics } from "@/hooks/react-query/use-dashboard-queries";
+import { useMarketData } from "@/hooks/react-query/use-market-queries";
+import { usePortfolioData } from "@/hooks/react-query/use-portfolio-queries";
+import { getCacheTimeForEntity } from "@/utils/react-query/enhanced-cache-config";
 
-// Use the DashboardData interface from our query hook
+// Types for dashboard data
+interface Agent {
+  id: string;
+  name: string;
+  status: 'active' | 'paused' | 'inactive';
+  type: string;
+  capabilities: string[];
+  performance: {
+    winRate: number;
+    profitLoss: number;
+  };
+}
 
 export default function DashboardPage() {
   // State
   const [farmId, setFarmId] = React.useState<string>("farm-1");
-<<<<<<< HEAD
   const [activeTab, setActiveTab] = React.useState<string>("unified");
-=======
-  const [agents, setAgents] = React.useState<ExtendedAgent[]>([]);
-  const [loadingAgents, setLoadingAgents] = React.useState(true);
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
   const [currentTime, setCurrentTime] = React.useState<string>("");
-  const [error, setError] = React.useState<string | null>(null);
   
-  // TanStack Query hooks
+  // Hooks
+  const { theme, setTheme } = useTheme();
+  const { toast } = useToast();
+  const { isConnected } = useSocket();
+  
+  // TanStack Query hooks with enhanced cache configuration
   const { 
     data: agents = [], 
     isLoading: loadingAgents,
     isError: agentsError,
+    error: agentsErrorData,
     refetch: refetchAgents
   } = useFarmAgents(farmId);
   
@@ -94,24 +91,21 @@ export default function DashboardPage() {
     isLoading: loadingRisk,
     refetch: refetchRisk
   } = useRiskMetrics(farmId);
-
-  // Hooks
-  const { isConnected } = useSocket();
-  const { theme, setTheme } = useTheme();
-  const { toast } = useToast();
-<<<<<<< HEAD
-=======
-  const supabase = createBrowserClient();
   
-  // New data hooks
-  const { data: portfolioData, isLoading: isLoadingPortfolio } = usePortfolioData(farmId);
-  const { data: marketData, isLoading: isLoadingMarket } = useMarketData();
-  const { data: agentStatus, isLoading: isLoadingAgents } = useAgentStatus(farmId);
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
+  // Market data 
+  const {
+    data: marketData,
+    isLoading: loadingMarket,
+  } = useMarketData();
+  
+  // Portfolio data
+  const {
+    data: portfolioData,
+    isLoading: loadingPortfolio,
+  } = usePortfolioData(farmId);
 
   // Initialize dashboard time and observe agent query errors
   React.useEffect(() => {
-<<<<<<< HEAD
     // Update current time immediately
     const now = new Date();
     setCurrentTime(now.toLocaleTimeString());
@@ -121,21 +115,19 @@ export default function DashboardPage() {
       setCurrentTime(new Date().toLocaleTimeString());
     }, 60000);
     
-    // If there's an error with the agents query, show a toast
+    // Show error toast if there's an issue with agent data
     if (agentsError) {
-      setError("Failed to load agent data");
       toast({
-        title: "Error",
-        description: "Failed to load agent data",
+        title: "Error loading agents",
+        description: agentsErrorData instanceof Error 
+          ? agentsErrorData.message 
+          : "An unknown error occurred",
         variant: "destructive",
       });
-    } else {
-      // Clear any previous error when query succeeds
-      setError(null);
     }
     
     return () => clearInterval(timeInterval);
-  }, [agentsError, toast]);
+  }, [agentsError, agentsErrorData, toast]);
 
   // Toggle theme function
   const toggleTheme = () => {
@@ -144,8 +136,6 @@ export default function DashboardPage() {
 
   // Refresh dashboard data
   const refreshDashboard = async () => {
-    setError(null);
-    
     try {
       // Update time
       setCurrentTime(new Date().toLocaleTimeString());
@@ -156,127 +146,18 @@ export default function DashboardPage() {
         refetchDashboard(),
         refetchRisk()
       ]);
-=======
-    async function initDashboard() {
-      try {
-        setLoading(true);
-        
-        // Mock dashboard data for now
-        const mockDashboardData: DashboardData = {
-          portfolioValue: 125000,
-          pnl24h: 3450,
-          winRate: 68,
-          avgTradeDuration: "4h 32m",
-          topPair: "BTC/USD",
-          riskExposure: 35,
-          riskExposureTrend: "neutral"
-        };
-        
-        setData(mockDashboardData);
-        
-        // Fetch agents
-        try {
-          const { mockStandardAgents, mockElizaAgents } = await import('@/utils/supabase/mocks-agents');
-          
-          // Combine and filter agents for this farm
-          const farmAgents = [...mockStandardAgents, ...mockElizaAgents]
-            .filter(agent => agent.farm_id === farmId)
-            .map(agent => ({
-              ...agent,
-              id: agent.id,
-              name: agent.name,
-              type: agent.type || 'standard',
-              status: agent.status,
-              farm_id: agent.farm_id,
-              capabilities: agent.capabilities || [],
-              performance: agent.performance || {
-                win_rate: 0,
-                profit_loss: 0,
-                total_trades: 0, 
-                average_trade_duration: 0
-              }
-            }));
-          
-          setAgents(farmAgents);
-        } catch (err) {
-          console.error("Error fetching agents:", err);
-          toast({
-            title: "Error",
-            description: "Failed to load agent data",
-            variant: "destructive",
-          });
-        } finally {
-          setLoadingAgents(false);
-        }
-        
-        // Set current time
-        setCurrentTime(new Date().toLocaleString());
-      } catch (err) {
-        console.error("Error initializing dashboard:", err);
-        setError("Failed to load dashboard data");
-        toast({
-          title: "Error",
-          description: "Failed to initialize dashboard",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    }
-    
-    initDashboard();
-    
-    // Set up refresh interval
-    const interval = setInterval(() => {
-      setCurrentTime(new Date().toLocaleString());
-    }, 60000); // Update time every minute
-    
-    return () => clearInterval(interval);
-  }, [farmId, toast, supabase]);
-  
-  // Function to refresh the dashboard
-  const refreshDashboard = async () => {
-    toast({
-      title: "Refreshing",
-      description: "Updating dashboard data...",
-    });
-    
-    setLoading(true);
-    
-    try {
-      // This would typically re-fetch data from API
-      // For now, just update some mock values
-      if (data) {
-        setData({
-          ...data,
-          portfolioValue: data.portfolioValue + Math.random() * 1000 - 500,
-          pnl24h: data.pnl24h + Math.random() * 200 - 100,
-          winRate: Math.min(100, Math.max(0, data.winRate + Math.random() * 6 - 3)),
-        });
-      }
-      
-      // Update current time
-      setCurrentTime(new Date().toLocaleString());
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
       
       toast({
-        title: "Refreshed",
-        description: "Dashboard data updated",
+        title: "Dashboard refreshed",
+        description: `Last updated: ${new Date().toLocaleTimeString()}`,
       });
-    } catch (err) {
-      console.error("Error refreshing dashboard:", err);
-      setError("Failed to refresh dashboard data");
+    } catch (error) {
       toast({
-        title: "Error",
-        description: "Failed to refresh dashboard data",
+        title: "Error refreshing dashboard",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
         variant: "destructive",
       });
     }
-  };
-  
-  // Function to toggle theme
-  const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark");
   };
 
   // Sample top performing asset data
@@ -284,18 +165,18 @@ export default function DashboardPage() {
     { asset: 'BTC', allocation: 35, performance: 12.5 },
     { asset: 'ETH', allocation: 25, performance: 8.2 },
     { asset: 'SOL', allocation: 15, performance: 24.8 },
-    { asset: 'AVAX', allocation: 10, performance: 15.3 },
-    { asset: 'BNB', allocation: 8, performance: 5.1 },
-    { asset: 'Others', allocation: 7, performance: 4.3 },
+    { asset: 'BNB', allocation: 10, performance: 5.3 },
+    { asset: 'DOT', allocation: 8, performance: -2.1 },
+    { asset: 'AVAX', allocation: 7, performance: 15.7 },
   ];
 
-  // Placeholder data for portfolio allocation chart
-  const portfolioAllocationData = {
-    labels: topAssets.map(a => a.asset),
+  // Asset allocation chart data
+  const assetAllocationData = {
+    labels: topAssets.map(asset => asset.asset),
     datasets: [
       {
-        label: 'Allocation (%)',
-        data: topAssets.map(a => a.allocation),
+        label: 'Allocation %',
+        data: topAssets.map(asset => asset.allocation),
         backgroundColor: [
           'rgba(255, 99, 132, 0.7)',
           'rgba(54, 162, 235, 0.7)',
@@ -318,34 +199,22 @@ export default function DashboardPage() {
         data: [50200, 50800, 51200, 50600, 52000, 53500, 53000],
         borderColor: 'rgb(255, 99, 132)',
         backgroundColor: 'rgba(255, 99, 132, 0.5)',
-        tension: 0.3,
+        tension: 0.2,
       },
       {
         label: 'ETH Price',
-        data: [2700, 2750, 2780, 2760, 2850, 2900, 2880],
+        data: [2800, 2750, 2900, 3000, 3100, 3050, 3200],
         borderColor: 'rgb(54, 162, 235)',
         backgroundColor: 'rgba(54, 162, 235, 0.5)',
-        tension: 0.3,
+        tension: 0.2,
       },
     ],
   };
 
-  // Agent performance data
-  const agentPerformanceData = {
-    labels: agentStatus?.agents.map(a => a.name) || ['Agent 1', 'Agent 2', 'Agent 3', 'Agent 4'],
-    datasets: [
-      {
-        label: 'Win Rate (%)',
-        data: agentStatus?.agents.map(a => a.performance?.winRate || 0) || [65, 58, 72, 61],
-        backgroundColor: 'rgba(75, 192, 192, 0.7)',
-      },
-    ],
-  };
-
-  // If loading, show loading spinner
-  if (loading && !data) {
+  // Show loading state if any critical data is still loading
+  if (loadingDashboard && loadingAgents) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="h-screen w-full flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
           <RefreshCw className="h-12 w-12 animate-spin text-primary" />
           <p className="text-lg">Loading dashboard...</p>
@@ -355,402 +224,347 @@ export default function DashboardPage() {
   }
 
   return (
-<<<<<<< HEAD
-    <div className="p-6 space-y-6">
-      {loadingDashboard || (agents.length === 0 && loadingAgents) ? (
-        <div className="animate-pulse space-y-4">
-          <div className="h-10 bg-muted rounded"></div>
-          <div className="h-10 bg-muted rounded"></div>
-          <div className="h-10 bg-muted rounded"></div>
-        </div>
-      ) : (
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold">Trading Farm Dashboard</h1>
-            <p className="text-muted-foreground">
-              Monitor your trading performance and manage your automated agents.
-            </p>
-          </div>
-          <div className="mt-4 md:mt-0 space-x-2 flex items-center">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={toggleTheme}
-              aria-label="Toggle Theme"
-            >
-              {theme === "dark" ? (
-                <Sun className="h-[1.2rem] w-[1.2rem]" />
-              ) : (
-                <Moon className="h-[1.2rem] w-[1.2rem]" />
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={refreshDashboard}
-              disabled={loadingDashboard || loadingAgents}
-              aria-label="Refresh Data"
-            >
-              <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Portfolio Value"
-          value={dashboardData?.portfolioValue || 125000}
-          description="Total value across all assets"
-          trend="up"
-          icon={<DollarSign className="h-4 w-4" />}
-        />
-        <StatCard
-          title="24h PnL"
-          value={dashboardData?.pnl24h || 3450}
-          description="Profit and loss in the last 24 hours"
-          trend="up"
-          icon={<Activity className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Win Rate"
-          value={dashboardData?.winRate || 68}
-          description="Percentage of profitable trades"
-          trend="neutral"
-          icon={<Percent className="h-4 w-4" />}
-        />
-        <StatCard
-          title="Risk Exposure"
-          value={dashboardData?.riskExposure || 35}
-          description="Current risk exposure percentage"
-          trend={dashboardData?.riskExposureTrend || "neutral"}
-          icon={<ShieldAlert className="h-4 w-4" />}
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Performance Overview</CardTitle>
-            <CardDescription>
-              Track your trading farm's performance over time
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="h-[300px] flex items-center justify-center">
-            <div className="text-center text-muted-foreground">
-              <LineChart className="h-16 w-16 mx-auto mb-2" />
-              <p>Performance chart will appear here</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Active Agents</CardTitle>
-            <CardDescription>
-              {loadingAgents
-                ? "Loading agent data..."
-                : `${agents.filter((a: any) => a.status === 'active').length} out of ${agents.length} agents are active`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {loadingAgents ? (
-              <div className="animate-pulse space-y-2">
-                <div className="h-12 bg-muted rounded"></div>
-                <div className="h-12 bg-muted rounded"></div>
-                <div className="h-12 bg-muted rounded"></div>
-              </div>
-            ) : agentsError ? (
-              <div className="text-center p-4">
-                <p className="text-red-500">Error loading agents</p>
-                <Button variant="outline" size="sm" className="mt-2" onClick={() => refetchAgents()}>
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                  Try Again
-                </Button>
-              </div>
-            ) : agents.length > 0 ? (
-              <div className="space-y-4">
-                {agents.slice(0, 5).map((agent: any) => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center justify-between p-2 border rounded-md"
-                  >
-                    <div className="flex items-center">
-                      <div
-                        className={`w-2 h-2 rounded-full mr-2 ${
-                          agent.status === "active"
-                            ? "bg-green-500"
-                            : agent.status === "paused"
-                            ? "bg-yellow-500"
-                            : "bg-red-500"
-                        }`}
-                      ></div>
-                      <div>
-                        <p className="font-medium">{agent.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {agent.type}
-                        </p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={
-                        agent.status === "active"
-                          ? "outline"
-                          : agent.status === "paused"
-                          ? "secondary"
-                          : "destructive"
-                      }
-                    >
-                      {agent.status}
-                    </Badge>
-                  </div>
-                ))}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full"
-                  asChild
-                >
-                  <Link href="/agents">
-                    <Bot className="mr-2 h-4 w-4" />
-                    View All Agents
-                  </Link>
-                </Button>
-=======
     <ElizaOSCentricLayout
-      farmId={farmId}
-      topWidgets={
+      title="Trading Farm Dashboard"
+      description={`Last updated: ${currentTime} | ${isConnected ? 'Connected' : 'Disconnected'}`}
+      actions={
         <>
-          {/* Portfolio Summary Widget */}
-          <Widget title="Portfolio Summary" width="medium" height="small">
-            {isLoadingPortfolio ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="flex flex-col p-2">
-                  <span className="text-xs text-muted-foreground">Total Value</span>
-                  <span className="text-2xl font-bold">${data?.portfolioValue.toLocaleString() || "0"}</span>
-                  <span className="text-xs text-green-500">+2.4% (24h)</span>
-                </div>
-                <div className="flex flex-col p-2">
-                  <span className="text-xs text-muted-foreground">Daily P&L</span>
-                  <span className="text-2xl font-bold text-green-500">+${data?.pnl24h.toLocaleString() || "0"}</span>
-                  <span className="text-xs text-muted-foreground">2.6%</span>
-                </div>
-                <div className="flex flex-col p-2">
-                  <span className="text-xs text-muted-foreground">Active Positions</span>
-                  <span className="text-2xl font-bold">12</span>
-                  <span className="text-xs text-muted-foreground">4 in profit</span>
-                </div>
-                <div className="flex flex-col p-2">
-                  <span className="text-xs text-muted-foreground">Risk Score</span>
-                  <span className="text-2xl font-bold">Medium</span>
-                  <span className="text-xs text-amber-500">Caution</span>
-                </div>
-              </div>
-            )}
-          </Widget>
-
-          {/* Market Overview Widget */}
-          <Widget title="Market Overview" width="medium" height="small">
-            {isLoadingMarket ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="flex flex-col p-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">BTC/USD</span>
-                    <Badge variant="outline" className="text-green-500">+1.8%</Badge>
-                  </div>
-                  <span className="text-xl">$52,890</span>
-                  <span className="text-xs text-muted-foreground">Vol: $23.4B</span>
-                </div>
-                <div className="flex flex-col p-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">ETH/USD</span>
-                    <Badge variant="outline" className="text-green-500">+3.2%</Badge>
-                  </div>
-                  <span className="text-xl">$2,890</span>
-                  <span className="text-xs text-muted-foreground">Vol: $12.1B</span>
-                </div>
-                <div className="flex flex-col p-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-medium">SOL/USD</span>
-                    <Badge variant="outline" className="text-green-500">+4.5%</Badge>
-                  </div>
-                  <span className="text-xl">$135.20</span>
-                  <span className="text-xs text-muted-foreground">Vol: $5.6B</span>
-                </div>
-              </div>
-            )}
-          </Widget>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            className="mr-2"
+            aria-label="Toggle Theme"
+          >
+            {theme === "dark" ? <Sun className="h-[1.2rem] w-[1.2rem]" /> : <Moon className="h-[1.2rem] w-[1.2rem]" />}
+          </Button>
+          <Button
+            onClick={refreshDashboard}
+            disabled={loadingDashboard || loadingAgents}
+            aria-label="Refresh Data"
+          >
+            <RefreshCw className="h-[1.2rem] w-[1.2rem]" />
+          </Button>
         </>
       }
       leftWidgets={
         <>
-          {/* Portfolio Allocation Widget */}
-          <Widget title="Portfolio Allocation" height="medium">
-            <div className="h-full flex items-center justify-center">
-              <PieChart 
-                data={portfolioAllocationData}
-                options={{
-                  plugins: {
-                    legend: {
-                      position: 'right',
-                      labels: {
-                        boxWidth: 12,
-                        padding: 10,
-                      }
-                    }
-                  }
-                }}
-              />
+          {/* Portfolio Summary */}
+          <Widget title="Portfolio Summary" width="full" height="medium">
+            <div className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <Card className="shadow-sm border-2 border-muted">
+                  <CardContent className="pt-6 px-6 pb-5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-base font-medium text-muted-foreground mb-1.5">Total Balance</p>
+                        <div className="flex flex-col">
+                          <h3 className="text-3xl font-bold tracking-tight mb-0.5">$186,432.80</h3>
+                          <span className="text-sm text-muted-foreground">As of today</span>
+                        </div>
+                      </div>
+                      <div className="bg-primary/10 p-3 rounded-full">
+                        <DollarSign className="h-7 w-7 text-primary" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="shadow-sm border-2 border-muted">
+                  <CardContent className="pt-6 px-6 pb-5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-base font-medium text-muted-foreground mb-1.5">Active Positions</p>
+                        <div className="flex flex-col">
+                          <h3 className="text-3xl font-bold tracking-tight mb-0.5">14</h3>
+                          <span className="text-sm text-muted-foreground">Across all markets</span>
+                        </div>
+                      </div>
+                      <div className="bg-primary/10 p-3 rounded-full">
+                        <Layers className="h-7 w-7 text-primary" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="shadow-sm border-2 border-muted">
+                  <CardContent className="pt-6 px-6 pb-5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-base font-medium text-muted-foreground mb-1.5">24h Change</p>
+                        <div className="flex flex-col">
+                          <h3 className="text-3xl font-bold tracking-tight text-green-500 mb-0.5">+$3,240.50</h3>
+                          <span className="text-sm text-green-500/80">Up 1.7% today</span>
+                        </div>
+                      </div>
+                      <div className="bg-green-500/10 p-3 rounded-full">
+                        <TrendingUp className="h-7 w-7 text-green-500" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="shadow-sm border-2 border-muted">
+                  <CardContent className="pt-6 px-6 pb-5">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="text-base font-medium text-muted-foreground mb-1.5">ROI (30d)</p>
+                        <div className="flex flex-col">
+                          <h3 className="text-3xl font-bold tracking-tight text-green-500 mb-0.5">+8.2%</h3>
+                          <span className="text-sm text-green-500/80">Outperforming market</span>
+                        </div>
+                      </div>
+                      <div className="bg-green-500/10 p-3 rounded-full">
+                        <Percent className="h-7 w-7 text-green-500" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <h4 className="text-sm font-medium mb-3">Asset Allocation</h4>
+              <div className="h-[200px]">
+                <PieChart
+                  data={assetAllocationData}
+                />
+              </div>
             </div>
           </Widget>
           
-          {/* Active Agents Widget */}
-          <Widget title="Active Agents" height="medium">
-            {isLoadingAgents ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {agentStatus?.agents.slice(0, 4).map(agent => (
-                  <div key={agent.id} className="flex justify-between items-center p-2 border rounded-md">
-                    <div>
-                      <div className="font-medium">{agent.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Last active: {new Date(agent.lastActive).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    </div>
-                    <Badge className={
-                      agent.status === 'active' ? "bg-green-500" : 
-                      agent.status === 'idle' ? "bg-amber-500" : 
-                      "bg-red-500"
-                    }>
-                      {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-                    </Badge>
-                  </div>
-                )) || (
-                  <div>No agents available</div>
-                )}
-                <Button variant="outline" className="w-full mt-2">
-                  <Plus className="h-4 w-4 mr-2" /> Add Agent
-                </Button>
-              </div>
-            )}
-<<<<<<< HEAD
-          </CardContent>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="unified" value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center justify-between">
-          <TabsList>
-            <TabsTrigger value="unified">Unified Dashboard</TabsTrigger>
-            <TabsTrigger value="risk">Risk Management</TabsTrigger>
-            <TabsTrigger value="elizaos">ElizaOS</TabsTrigger>
-          </TabsList>
-          <Badge variant="outline" className="ml-auto h-7">
-            {currentTime}
-          </Badge>
-        </div>
-        
-        <TabsContent value="unified" className="mt-6">
-          <UnifiedDashboard farmId={farmId} hasElizaOS={true} />
-        </TabsContent>
-        
-        <TabsContent value="risk" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Risk Metrics */}
+          <Widget title="Risk Overview" width="full" height="small">
             {loadingRisk ? (
-              <>
-                <div className="animate-pulse bg-muted h-60 rounded-md"></div>
-                <div className="animate-pulse bg-muted h-60 rounded-md"></div>
-              </>
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
             ) : (
-              <>
-                <SimplifiedRiskCard 
-                  title="Exposure by Asset" 
-                  metrics={riskData?.assetExposure || []} 
-                  isLoading={loadingRisk}
-                  onRefresh={refetchRisk}
-                />
+              <div className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+                  <Card className="shadow-sm border-2 border-muted">
+                    <CardContent className="py-5 px-5">
+                      <div className="flex flex-col items-center">
+                        <p className="text-base font-medium text-muted-foreground mb-3">Portfolio Risk</p>
+                        <div className="relative w-20 h-20 mb-3">
+                          <div className="absolute inset-0 rounded-full bg-yellow-200 dark:bg-yellow-900/50"></div>
+                          <div className="absolute inset-1 rounded-full bg-background flex items-center justify-center">
+                            <span className="text-xl font-semibold">Med</span>
+                          </div>
+                        </div>
+                        <p className="text-sm font-medium">72/100</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="shadow-sm border-2 border-muted">
+                    <CardContent className="py-5 px-5">
+                      <div className="flex flex-col items-center">
+                        <p className="text-base font-medium text-muted-foreground mb-3">Drawdown</p>
+                        <h3 className="text-3xl font-bold mb-3">8.4%</h3>
+                        <p className="text-sm font-medium text-yellow-500 bg-yellow-100 dark:bg-yellow-900/30 py-1 px-3 rounded-full">Warning</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="shadow-sm border-2 border-muted">
+                    <CardContent className="py-5 px-5">
+                      <div className="flex flex-col items-center">
+                        <p className="text-base font-medium text-muted-foreground mb-3">Volatility</p>
+                        <h3 className="text-3xl font-bold mb-3">5.2%</h3>
+                        <p className="text-sm font-medium text-green-500 bg-green-100 dark:bg-green-900/30 py-1 px-3 rounded-full">Normal</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
                 
-                <SimplifiedRiskCard 
-                  title="Exposure by Exchange" 
-                  metrics={riskData?.exchangeExposure || []} 
-                  isLoading={loadingRisk}
-                  onRefresh={refetchRisk}
-                />
-              </>
+                <div className="flex items-center space-x-2 text-sm">
+                  <ShieldAlert className="h-4 w-4 text-yellow-500" />
+                  <span className="text-yellow-500 font-medium">Risk Alert:</span>
+                  <span>BTC position exceeds allocation target by 5%</span>
+                </div>
+              </div>
             )}
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="elizaos" className="space-y-6 mt-6">
-          <div className="min-h-[400px]">
-            <CommandConsole farmId={farmId} height="full" />
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      <Card className="overflow-hidden">
-        <CardHeader>
-          <CardTitle>Real-time Market Updates</CardTitle>
-          <CardDescription>
-            Get live notifications about your trading activity
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="p-0">
-          <WidgetContainer 
-            id="market-updates"
-            title="Market Updates"
-            className="h-64"
-          >
-            <div className="p-4">
-              <OrderUpdatesStream />
-=======
+          </Widget>
+          
+          {/* Agent Status */}
+          <Widget title="Trading Agents" width="full" height="medium">
+            {loadingAgents ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="p-1">
+                <div className="grid gap-3">
+                  {agents.slice(0, 4).map((agent: {
+                    id: string;
+                    name: string;
+                    status: 'active' | 'paused' | 'inactive';
+                    type: string;
+                    performance: {
+                      profitLoss: number;
+                      winRate: number;
+                    };
+                  }) => (
+                    <Card key={agent.id} className="bg-muted/40">
+                      <CardContent className="p-3">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center space-x-3">
+                            <div className="bg-primary/10 p-2 rounded-full">
+                              <Bot className="h-5 w-5 text-primary" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{agent.name}</p>
+                              <div className="flex items-center text-xs text-muted-foreground">
+                                <span className="mr-2">{agent.type}</span>
+                                <Badge variant={
+                                  agent.status === 'active' ? 'default' : 
+                                  agent.status === 'paused' ? 'outline' : 'secondary'
+                                }>
+                                  {agent.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-medium ${agent.performance.profitLoss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              {agent.performance.profitLoss >= 0 ? '+' : ''}{agent.performance.profitLoss}%
+                            </p>
+                            <p className="text-xs text-muted-foreground">{agent.performance.winRate}% win rate</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                <div className="mt-3 text-center">
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/dashboard/agents">
+                      <Plus className="h-4 w-4 mr-1" />
+                      View All Agents
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            )}
           </Widget>
         </>
       }
-      rightWidgets={
+      centerWidgets={
         <>
-          {/* Market Performance Widget */}
-          <Widget title="Market Performance" height="medium">
-            <div className="h-full flex items-center justify-center">
-              <ChartComponent 
-                data={marketPerformanceData}
-                options={{
-                  scales: {
-                    y: {
-                      beginAtZero: false,
-                    },
-                  },
-                }}
-              />
-            </div>
+          {/* Market Overview */}
+          <Widget title="Market Overview" width="full" height="medium">
+            {loadingMarket ? (
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : (
+              <div className="p-1">
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <Card className="bg-muted/40">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-muted-foreground">BTC/USDT</p>
+                          <h3 className="text-xl font-bold">$52,890.40</h3>
+                          <p className="text-xs text-green-500">+2.4% (24h)</p>
+                        </div>
+                        <div className="bg-green-500/10 p-1.5 rounded">
+                          <ArrowUp className="h-5 w-5 text-green-500" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-muted/40">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-muted-foreground">ETH/USDT</p>
+                          <h3 className="text-xl font-bold">$2,890.75</h3>
+                          <p className="text-xs text-green-500">+1.8% (24h)</p>
+                        </div>
+                        <div className="bg-green-500/10 p-1.5 rounded">
+                          <ArrowUp className="h-5 w-5 text-green-500" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-muted/40">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-muted-foreground">SOL/USDT</p>
+                          <h3 className="text-xl font-bold">$134.80</h3>
+                          <p className="text-xs text-red-500">-0.7% (24h)</p>
+                        </div>
+                        <div className="bg-red-500/10 p-1.5 rounded">
+                          <ArrowDown className="h-5 w-5 text-red-500" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card className="bg-muted/40">
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-sm text-muted-foreground">BNB/USDT</p>
+                          <h3 className="text-xl font-bold">$410.50</h3>
+                          <p className="text-xs text-green-500">+0.5% (24h)</p>
+                        </div>
+                        <div className="bg-green-500/10 p-1.5 rounded">
+                          <ArrowRight className="h-5 w-5 text-green-500" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                <h4 className="text-sm font-medium mb-3">7-Day Performance</h4>
+                <div className="h-[200px]">
+                  <ChartComponent
+                    data={marketPerformanceData}
+                    options={{
+                      responsive: true,
+                      plugins: {
+                        legend: {
+                          position: 'top',
+                        },
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+            )}
           </Widget>
           
-          {/* Agent Performance Widget */}
-          <Widget title="Agent Performance" height="medium">
-            <div className="h-full flex items-center justify-center">
-              <BarChartComponent 
-                data={agentPerformanceData}
-                options={{
-                  indexAxis: 'y',
-                  plugins: {
-                    legend: {
-                      display: false,
+          {/* Top Performing Assets */}
+          <Widget title="Top Performing Assets" width="full" height="small">
+            <div className="p-1">
+              <div className="h-[150px]">
+                <BarChartComponent
+                  data={{
+                    labels: topAssets.map(asset => asset.asset),
+                    datasets: [
+                      {
+                        label: 'Performance %',
+                        data: topAssets.map(asset => asset.performance),
+                        backgroundColor: topAssets.map(asset => 
+                          asset.performance >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)'
+                        ),
+                      },
+                    ],
+                  }}
+                  options={{
+                    indexAxis: 'y',
+                    plugins: {
+                      legend: {
+                        display: false,
+                      },
                     },
-                  },
-                }}
-              />
+                  }}
+                />
+              </div>
             </div>
           </Widget>
         </>
@@ -817,7 +631,6 @@ export default function DashboardPage() {
           {/* Price Alert System */}
           <Widget title="Market Alerts" width="full" height="small">
             <div className="p-1">
->>>>>>> ee530173d166877056f383bf6b7f0704e2a4e0da
               {isConnected ? (
                 <Badge className="mb-2" variant="outline">
                   <span className="h-2 w-2 rounded-full bg-green-500 mr-1 inline-block"></span>

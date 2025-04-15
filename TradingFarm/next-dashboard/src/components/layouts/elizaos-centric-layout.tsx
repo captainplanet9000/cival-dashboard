@@ -34,25 +34,25 @@ const Widget = ({
   }[height];
 
   const widthClass = {
-    small: 'w-full md:w-1/3',
-    medium: 'w-full md:w-1/2',
-    large: 'w-full md:w-2/3',
+    small: 'w-full lg:w-1/3',
+    medium: 'w-full lg:w-1/2',
+    large: 'w-full lg:w-2/3',
     full: 'w-full',
   }[width];
 
   return (
     <div className={cn(
-      'border rounded-md overflow-hidden bg-card shadow-sm', 
+      'border rounded-md overflow-hidden bg-card shadow-sm flex flex-col', 
       widthClass,
       !isCollapsed && heightClass,
       className
     )}>
-      <div className="flex justify-between items-center p-3 border-b bg-muted/30">
-        <h3 className="font-medium text-sm">{title}</h3>
+      <div className="flex justify-between items-center px-4 py-3 border-b bg-muted/30">
+        <h3 className="font-medium">{title}</h3>
         {collapsible && (
           <button 
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground ml-2"
           >
             {isCollapsed ? (
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -67,8 +67,8 @@ const Widget = ({
         )}
       </div>
       <div className={cn(
-        "transition-all duration-300 ease-in-out",
-        isCollapsed ? 'h-0 p-0 overflow-hidden' : 'p-3 overflow-auto'
+        "transition-all duration-300 ease-in-out flex-1",
+        isCollapsed ? 'h-0 p-0 overflow-hidden' : 'p-4 overflow-auto'
       )}>
         {children}
       </div>
@@ -78,65 +78,118 @@ const Widget = ({
 
 interface ElizaOSCentricLayoutProps {
   farmId: string;
+  title?: string;
+  description?: string;
+  actions?: ReactNode;
   topWidgets?: ReactNode;
   leftWidgets?: ReactNode;
   rightWidgets?: ReactNode;
   bottomWidgets?: ReactNode;
+  centerWidgets?: ReactNode;
 }
 
 export function ElizaOSCentricLayout({
   farmId,
+  title,
+  description,
+  actions,
   topWidgets,
   leftWidgets,
   rightWidgets,
   bottomWidgets,
+  centerWidgets,
 }: ElizaOSCentricLayoutProps) {
   const { theme } = useTheme();
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   
   return (
-    <div className="container mx-auto p-3">
-      {/* Top row widgets */}
-      {topWidgets && (
-        <div className="flex flex-wrap gap-4 mb-4">
-          {topWidgets}
+    <div className="min-h-screen flex flex-col py-6 px-4 overflow-hidden">
+      {/* Header with title and actions if provided */}
+      {(title || actions) && (
+        <div className="container mx-auto max-w-7xl mb-6">
+          <div className="flex justify-between items-center border-b pb-4 mb-4">
+            <div>
+              {title && <h1 className="text-2xl font-bold">{title}</h1>}
+              {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            </div>
+            {actions && (
+              <div className="flex items-center">
+                {actions}
+              </div>
+            )}
+          </div>
         </div>
       )}
       
-      {/* Main content area with side widgets and center console */}
-      <div className="flex flex-col md:flex-row gap-4 mb-4">
-        {/* Left column widgets */}
-        {leftWidgets && (
-          <div className="w-full md:w-1/4 space-y-4">
-            {leftWidgets}
+      <div className="container mx-auto max-w-7xl flex-1 flex flex-col space-y-8">
+        {/* ElizaOS Command Console - Main Focal Point */}
+        <div className="w-full border rounded-md shadow-md overflow-hidden bg-card h-[40vh] min-h-[350px] flex flex-col">
+          <div className="bg-muted/50 p-3 border-b flex justify-between items-center">
+            <h3 className="font-medium">ElizaOS Command Console</h3>
+            <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+              <span>{farmId ? `Farm ID: ${farmId}` : 'No Farm Selected'}</span>
+              <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">Active</span>
+            </div>
           </div>
-        )}
-        
-        {/* Center column - ElizaOS Command Console */}
-        <div className="w-full md:flex-1 flex flex-col">
-          <div className="border rounded-md shadow-md overflow-hidden bg-card flex-1 flex flex-col">
+          <div className="flex-1 overflow-hidden">
             <CommandConsole 
               farmId={farmId}
               height="full"
-              className="border-0 shadow-none h-[calc(100vh-220px)] max-h-[800px] flex-1 flex flex-col"
+              className="border-0 shadow-none h-full w-full flex-1 flex flex-col"
               autoScroll={true}
             />
           </div>
         </div>
         
-        {/* Right column widgets */}
-        {rightWidgets && (
-          <div className="w-full md:w-1/4 space-y-4">
-            {rightWidgets}
+        {/* Scrollable Dashboard Content Below Console */}
+        <div 
+          ref={scrollContainerRef}
+          className="flex-1 overflow-y-auto pr-2 pb-6 space-y-8 dashboard-content-area"
+          style={{ 
+            maxHeight: 'calc(60vh - 2rem)',
+            scrollbarWidth: 'thin',
+            scrollbarColor: theme === 'dark' ? '#4b5563 #1f2937' : '#d1d5db #f3f4f6' 
+          }}
+        >
+          {/* Top row widgets */}
+          {topWidgets && (
+            <div className="flex flex-wrap gap-6">
+              {topWidgets}
+            </div>
+          )}
+          
+          {/* Main content area with side widgets */}
+          <div className="flex flex-col lg:flex-row gap-8">
+            {/* Left column widgets */}
+            {leftWidgets && (
+              <div className="w-full lg:w-1/4 space-y-8 mb-8 lg:mb-0">
+                {leftWidgets}
+              </div>
+            )}
+            
+            {/* Center column - Custom content */}
+            {centerWidgets && (
+              <div className="w-full lg:flex-1 flex flex-col">
+                {centerWidgets}
+              </div>
+            )}
+            
+            {/* Right column widgets */}
+            {rightWidgets && (
+              <div className="w-full lg:w-1/4 space-y-8 mb-8 lg:mb-0">
+                {rightWidgets}
+              </div>
+            )}
           </div>
-        )}
-      </div>
-      
-      {/* Bottom row widgets */}
-      {bottomWidgets && (
-        <div className="flex flex-wrap gap-4">
-          {bottomWidgets}
+          
+          {/* Bottom row widgets */}
+          {bottomWidgets && (
+            <div className="flex flex-wrap gap-6 mt-8">
+              {bottomWidgets}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

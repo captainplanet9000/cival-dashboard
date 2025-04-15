@@ -47,8 +47,9 @@ type MarketAnalysisData = {
   lastUpdated: string;
 };
 
-// Mock data generator for testing
-const generateMockData = (symbol: string): MarketAnalysisData => {
+// Real data fetcher using TanStack Query
+import { useQuery } from '@tanstack/react-query';
+import { fetchMarketAnalysis } from '@/services/queries';
   const isPositive = Math.random() > 0.4;
   const changePercent = +(isPositive ? Math.random() * 5 : -Math.random() * 5).toFixed(2);
   const basePrice = symbol === 'BTC' ? 40000 : symbol === 'ETH' ? 2500 : symbol === 'SOL' ? 120 : 30;

@@ -22,12 +22,13 @@ import { ArrowLeft, Bot, Database, PlusCircle, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/use-toast';
 
-// Mock data for farms
-const MOCK_FARMS = [
-  { id: 1, name: 'Crypto Trading Farm', type: 'crypto' },
-  { id: 2, name: 'Stock Trading Farm', type: 'stock' },
-  { id: 3, name: 'DeFi Yield Farm', type: 'defi' },
-];
+import { useQuery } from '@tanstack/react-query';
+import { fetchFarms } from '@/services/queries';
+
+const { data: farms, isLoading: farmsLoading, error: farmsError } = useQuery({
+  queryKey: ['farms'],
+  queryFn: fetchFarms,
+});
 
 export default function CommandConsolePage() {
   const router = useRouter();

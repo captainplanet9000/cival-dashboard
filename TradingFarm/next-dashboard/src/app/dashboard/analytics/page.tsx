@@ -3,29 +3,18 @@
 import { useState } from 'react'
 import { BarChart2, TrendingUp, Clock, Calendar, Download, Printer, Share2, Filter, ArrowLeft, ArrowRight } from 'lucide-react'
 
-// Mock data for performance stats
-const performanceStats = [
-  { title: 'Total Return', value: '+28.5%', change: '+2.3%', period: 'Since Inception' },
-  { title: 'Monthly Return', value: '+4.2%', change: '+0.8%', period: 'Mar 2025' },
-  { title: 'Winning Trades', value: '72%', change: '+3%', period: 'Last 30 Days' },
-  { title: 'Average Win', value: '+2.8%', change: '-0.3%', period: 'Per Trade' }
-]
+import { useQuery } from '@tanstack/react-query';
+import { fetchPerformanceStats, fetchMonthlyReturns } from '@/services/queries';
 
-// Mock data for monthly returns
-const monthlyReturns = [
-  { month: 'Jan', return: 2.1 },
-  { month: 'Feb', return: 3.4 },
-  { month: 'Mar', return: 4.2 },
-  { month: 'Apr', return: -1.3 },
-  { month: 'May', return: 5.2 },
-  { month: 'Jun', return: 2.7 },
-  { month: 'Jul', return: 3.8 },
-  { month: 'Aug', return: -0.9 },
-  { month: 'Sep', return: 4.1 },
-  { month: 'Oct', return: 2.9 },
-  { month: 'Nov', return: 3.5 },
-  { month: 'Dec', return: 5.7 }
-]
+const { data: performanceStats = [], isLoading: statsLoading, error: statsError } = useQuery<any[]>({
+  queryKey: ['performanceStats'],
+  queryFn: fetchPerformanceStats,
+});
+
+const { data: monthlyReturns = [], isLoading: returnsLoading, error: returnsError } = useQuery<any[]>({
+  queryKey: ['monthlyReturns'],
+  queryFn: fetchMonthlyReturns,
+});
 
 // Mock data for strategy performance
 const strategyPerformance = [

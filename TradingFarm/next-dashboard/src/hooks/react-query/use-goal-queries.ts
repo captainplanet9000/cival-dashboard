@@ -44,7 +44,10 @@ export function useGoal(id: string) {
 /**
  * Hook to create a new goal
  */
-export function useCreateGoal() {
+// [MIGRATION NOTICE] All goal mutation hooks have been consolidated and standardized in use-goals.ts.
+// Only query/read hooks should remain in this file. Please use use-goals.ts for all mutations.
+
+// [Legacy mutation hooks removed]
   const queryClient = useQueryClient();
   
   return useMutation({

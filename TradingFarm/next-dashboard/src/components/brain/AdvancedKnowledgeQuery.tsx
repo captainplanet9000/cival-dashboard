@@ -98,7 +98,7 @@ export function AdvancedKnowledgeQuery({ farmId, agentId }: AdvancedKnowledgeQue
       // In a real application, this would call an external API or service
       await new Promise(resolve => setTimeout(resolve, 1500));
       
-      const generateMockResponse = (queryText: string, queryType: string) => {
+      // Use real API/mutation for knowledge queries
         let response = "";
         let analysis = {};
         

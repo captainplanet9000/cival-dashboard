@@ -508,3 +508,6 @@ export const api = {
   trading: tradingApi,
   exchanges: exchangeApi,
 };
+
+// Alias for compatibility with hooks and tests
+export const apiService = api;

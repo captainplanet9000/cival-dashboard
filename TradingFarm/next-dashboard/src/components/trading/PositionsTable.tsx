@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/utils/date-utils';
 import { X } from 'lucide-react';
 import { TradingSystemClient } from '@/utils/supabase/trading-system';
 import { useMarketDataStore } from '@/utils/exchanges/market-data-service';

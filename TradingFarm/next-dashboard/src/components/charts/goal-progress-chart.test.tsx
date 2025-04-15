@@ -88,7 +88,7 @@ describe('GoalProgressChart', () => {
     render(<GoalProgressChart goal={sampleGoal} showTargetDate={true} />);
     
     // Target date should be displayed
-    expect(screen.getByText(/Due: 5 days remaining/)).toBeInTheDocument();
+    expect(screen.getByText((content, node) => node?.textContent?.includes('Due: 5 days remaining'))).toBeInTheDocument();
   });
 
   it('renders overdue status for past target dates', async () => {

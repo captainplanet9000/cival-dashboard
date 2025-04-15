@@ -79,136 +79,17 @@ export function LineChart({ data, options = {} }: ChartProps) {
   return <Line data={data} options={mergedOptions} />;
 }
 
-// Area Chart (Line with fill)
-export function AreaChart({ data, options = {} }: ChartProps) {
-  // Transform data to ensure fill is enabled for all datasets
-  const areaData = {
-    ...data,
-    datasets: data.datasets.map(dataset => ({
-      ...dataset,
-      fill: true,
-    })),
-  };
-  
-  const defaultOptions: ChartOptions<'line'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-      },
-    },
-    elements: {
-      line: {
-        tension: 0.4,
-      },
-    },
-    interaction: {
-      mode: 'nearest',
-      axis: 'x',
-      intersect: false
-    }
-  };
-  
-  // Merge default options with user options
-  const mergedOptions = { ...defaultOptions, ...options };
-  
-  return <Line data={areaData} options={mergedOptions} />;
-}
+// [REMOVED] Chart.js-based AreaChart and legacy code. Use Recharts-based AreaChartComponent from ui/chart.tsx instead.
+// No code here. All chart components are exported as named functions above.
 
-// Bar Chart Component
-export function BarChart({ data, options = {} }: ChartProps) {
-  const defaultOptions: ChartOptions<'bar'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top',
-      },
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-      },
-    },
-    scales: {
-      y: {
-        beginAtZero: true,
-      },
-    },
-  };
-  
-  // Merge default options with user options
-  const mergedOptions = { ...defaultOptions, ...options };
-  
-  return <Bar data={data} options={mergedOptions} />;
-}
+// [REMOVED] Chart.js-based BarChart and legacy code. Use Recharts-based BarChartComponent from ui/chart.tsx instead.
+// No code here. All chart components are exported as named functions above.
 
-// Pie Chart Component
-export function PieChart({ data, options = {} }: ChartProps) {
-  const defaultOptions: ChartOptions<'pie'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'right',
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.raw;
-            const total = context.chart.data.datasets[0].data.reduce((a: number, b: number) => a + b, 0);
-            const percentage = ((value as number / total) * 100).toFixed(1);
-            return `${label}: ${value} (${percentage}%)`;
-          }
-        }
-      },
-    },
-  };
-  
-  // Merge default options with user options
-  const mergedOptions = { ...defaultOptions, ...options };
-  
-  return <Pie data={data} options={mergedOptions} />;
-}
+// [REMOVED] Chart.js-based PieChart and legacy code. Use Recharts-based PieChartComponent from ui/chart.tsx instead.
+// No code here. All chart components are exported as named functions above.
 
-// Doughnut Chart Component
-export function DoughnutChart({ data, options = {} }: ChartProps) {
-  const defaultOptions: ChartOptions<'doughnut'> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'right',
-      },
-      tooltip: {
-        callbacks: {
-          label: function(context) {
-            const label = context.label || '';
-            const value = context.raw;
-            const total = context.chart.data.datasets[0].data.reduce((a: number, b: number) => a + b, 0);
-            const percentage = ((value as number / total) * 100).toFixed(1);
-            return `${label}: ${value} (${percentage}%)`;
-          }
-        }
-      },
-    },
-  };
-  
-  // Merge default options with user options
-  const mergedOptions = { ...defaultOptions, ...options };
-  
-  return <Doughnut data={data} options={mergedOptions} />;
-}
+// [REMOVED] Chart.js-based DoughnutChart and legacy code. Use Recharts-based PieChartComponent from ui/chart.tsx instead.
+// No code here. All chart components are exported as named functions above.
 
 // Radar Chart Component
 export function RadarChart({ data, options = {} }: ChartProps) {
@@ -233,5 +114,4 @@ export function RadarChart({ data, options = {} }: ChartProps) {
   return <Radar data={data} options={mergedOptions} />;
 }
 
-// Export all chart types
-export { Bar, Line, Pie, Doughnut, Radar };
+// [REMOVED] Chart.js exports. Use Recharts-based chart components from ui/chart.tsx.

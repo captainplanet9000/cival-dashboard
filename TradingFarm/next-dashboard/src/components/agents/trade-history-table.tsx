@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowDownUp, Eye } from "lucide-react";
-import { formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/utils/date-utils';
 
 interface Trade {
   id: string;
@@ -30,16 +30,7 @@ interface TradeHistoryTableProps {
 }
 
 export function TradeHistoryTable({ trades }: TradeHistoryTableProps) {
-  // Format timestamp to a readable format
-  const formatDate = (timestamp: string) => {
-    try {
-      const date = new Date(timestamp);
-      return formatDistanceToNow(date, { addSuffix: true });
-    } catch (error) {
-      return 'Invalid date';
-    }
-  };
-  
+
   return (
     <div className="rounded-md border">
       <Table>

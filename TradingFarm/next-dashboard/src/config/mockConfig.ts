@@ -19,7 +19,7 @@ const parseNumEnv = (name: string, defaultValue: number): number => {
 };
 
 // Master switch for all mocks
-const USE_MOCKS = parseBoolEnv('NEXT_PUBLIC_USE_MOCKS', true);
+const USE_MOCKS = false; // DISABLED: Use real services
 
 // Configuration object controlling all mock behavior
 export const CONFIG = {
@@ -32,7 +32,7 @@ export const CONFIG = {
   
   // Supabase client mock settings
   supabase: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_SUPABASE', true),
+    useMock: false,
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_SUPABASE_LATENCY_MS', 50),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_SUPABASE_FAILURE_RATE', 0.01),
     consistentFailures: parseBoolEnv('NEXT_PUBLIC_MOCK_SUPABASE_CONSISTENT_FAILURES', false),
@@ -40,21 +40,21 @@ export const CONFIG = {
   
   // Storage service mock settings
   storage: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_STORAGE', true),
+    useMock: false,
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_STORAGE_LATENCY_MS', 100),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_STORAGE_FAILURE_RATE', 0.01),
   },
   
   // Vault service mock settings
   vault: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_VAULT', true),
+    useMock: false,
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_VAULT_LATENCY_MS', 150),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_VAULT_FAILURE_RATE', 0.01),
   },
   
   // Exchange service mock settings
   exchange: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_EXCHANGES', true),
+    useMock: false,
     useTestnet: parseBoolEnv('NEXT_PUBLIC_USE_EXCHANGE_TESTNET', true),
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_EXCHANGE_LATENCY_MS', 200),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_EXCHANGE_FAILURE_RATE', 0.02),
@@ -63,7 +63,7 @@ export const CONFIG = {
   
   // Blockchain service mock settings
   blockchain: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_BLOCKCHAIN', true),
+    useMock: false,
     useTestnet: parseBoolEnv('NEXT_PUBLIC_USE_BLOCKCHAIN_TESTNET', true),
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_BLOCKCHAIN_LATENCY_MS', 500),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_BLOCKCHAIN_FAILURE_RATE', 0.05),
@@ -71,7 +71,7 @@ export const CONFIG = {
   
   // AI service mock settings
   ai: {
-    useMock: USE_MOCKS && parseBoolEnv('NEXT_PUBLIC_USE_MOCK_AI', true),
+    useMock: false,
     latencyMs: parseNumEnv('NEXT_PUBLIC_MOCK_AI_LATENCY_MS', 1000),
     failureRate: parseNumEnv('NEXT_PUBLIC_MOCK_AI_FAILURE_RATE', 0.01),
   }

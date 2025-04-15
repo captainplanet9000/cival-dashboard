@@ -7,8 +7,8 @@
 window.devConfig = {
   // Mock data configuration
   mockDataConfig: {
-    enabled: true,          // Set to true to enable mock data
-    forceMockMode: true,    // Force mock mode even when Supabase is available
+    enabled: false,          // Set to false to disable mock data
+    forceMockMode: false,    // Do not force mock mode
   },
 
   // Supabase connection

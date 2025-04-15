@@ -129,3 +129,24 @@ class MockIntersectionObserver implements IntersectionObserver {
 }
 
 global.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
+
+// Mock window.matchMedia for tests (Vitest/JSDOM does not implement it by default)
+if (!window.matchMedia) {
+  window.matchMedia = function (query: string) {
+    return {
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: vi.fn(), // deprecated
+      removeListener: vi.fn(), // deprecated
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as unknown as MediaQueryList;
+  };
+}
+
+// Mock scrollIntoView for all elements
+if (!window.HTMLElement.prototype.scrollIntoView) {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+}

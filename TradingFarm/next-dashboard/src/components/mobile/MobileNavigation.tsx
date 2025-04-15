@@ -9,88 +9,26 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-  Home,
-  BarChart2,
-  Briefcase,
-  Users,
-  Settings,
-  Bell,
-  Menu,
-  X,
-  ChevronRight,
-  LogOut,
-  Smartphone,
-  Zap,
-  Globe,
-  Clock,
-  Database,
-} from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NAVIGATION, NAVIGATION_SECONDARY } from '@/config/navigation';
+
 
 export function MobileNavigation() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
 
-  const navigation = [
-    {
-      name: "Dashboard",
-      href: "/dashboard",
-      icon: Home,
-      current: pathname === "/dashboard",
-    },
-    {
-      name: "Analytics",
-      href: "/dashboard/analytics",
-      icon: BarChart2,
-      current: pathname === "/dashboard/analytics",
-    },
-    {
-      name: "Trading",
-      href: "/dashboard/trading",
-      icon: Briefcase,
-      current: pathname === "/dashboard/trading",
-      badge: "Live",
-    },
-    {
-      name: "Collaboration",
-      href: "/dashboard/collaboration",
-      icon: Users,
-      current: pathname === "/dashboard/collaboration",
-      badge: "New",
-    },
-    {
-      name: "Settings",
-      href: "/dashboard/settings",
-      icon: Settings,
-      current: pathname === "/dashboard/settings",
-    },
-  ];
+  // Use NAVIGATION config for primary navigation
+  // Optionally, you can filter/flatten as needed for mobile
+  const navigation = NAVIGATION.flatMap(group => group.items.map(item => ({ ...item, group: group.group })));
 
-  const secondaryNavigation = [
-    {
-      name: "Notifications",
-      icon: Bell,
-      href: "/dashboard/notifications",
-      current: pathname === "/dashboard/notifications",
-      count: 5,
-    },
-    {
-      name: "Sync Status",
-      icon: Database,
-      href: "/dashboard/sync",
-      current: pathname === "/dashboard/sync",
-    },
-    {
-      name: "Offline Mode",
-      icon: Clock,
-      href: "/dashboard/offline",
-      current: pathname === "/dashboard/offline",
-    },
-  ];
+
+  // Use NAVIGATION_SECONDARY config for secondary/mobile nav
+  // TODO: Integrate with user roles/permissions context
+  const userRole = 'user'; // Replace with actual user role logic
+  const secondaryNavigation = NAVIGATION_SECONDARY.filter(item => item.roles.includes(userRole));
 
   const handleClose = () => setOpen(false);
 

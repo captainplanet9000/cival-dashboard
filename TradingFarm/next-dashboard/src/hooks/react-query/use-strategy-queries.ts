@@ -71,7 +71,7 @@ export interface StrategyBacktestResult {
     entryTime: string;
     exitTime?: string;
     symbol: string;
-    direction: 'long' | 'short';
+    direction: "long" | "short";
     entryPrice: number;
     exitPrice?: number;
     size: number;
@@ -101,7 +101,7 @@ export interface StrategyExecution {
   signals: {
     timestamp: string;
     symbol: string;
-    direction: 'long' | 'short' | 'exit';
+    direction: "long" | 'exit';
     price: number;
     reason: string;
     confidence: number;
@@ -133,10 +133,10 @@ export function useStrategies(filters: StrategyFilters = {}) {
       // return apiService.getStrategies(filters);
       
       // For now, return mock data
-      return Array.from({ length: 10 }).map((_, index) => ({
+      return Array.from({ length: 3 }).map((_, index) => ({
         id: `strategy-${index + 1}`,
         farmId: filters.farmId || 'farm-1',
-        name: `Strategy ${index + 1}`,
+        name: index === 0 ? 'Golden Cross' : `Strategy ${index + 1}`,
         description: `Description for strategy ${index + 1}`,
         type: ['Trend Following', 'Mean Reversion', 'Breakout', 'Pattern Recognition', 'ML Based'][Math.floor(Math.random() * 5)],
         status: ['active', 'paused', 'archived'][Math.floor(Math.random() * 3)] as 'active' | 'paused' | 'archived',
@@ -300,7 +300,7 @@ export function useStrategyBacktests(strategyId: string) {
           const exitTime = new Date(Math.min(endDate.getTime(), entryTime.getTime() + tradeDuration));
           
           const symbol = ['BTC/USD', 'ETH/USD', 'SOL/USD'][Math.floor(Math.random() * 3)];
-          const direction = Math.random() > 0.5 ? 'long' : 'short';
+          const direction: "long" | "short" = Math.random() > 0.5 ? "long" : "short";
           const entryPrice = 30000 + Math.random() * 5000;
           const isWinning = tradeIndex < winningTrades;
           const pnlMultiplier = isWinning ? (Math.random() * 0.1 + 0.01) : (Math.random() * -0.1 - 0.01);
@@ -318,7 +318,7 @@ export function useStrategyBacktests(strategyId: string) {
               ? (exitPrice - entryPrice) * (Math.random() * 10000 + 1000) / entryPrice
               : (entryPrice - exitPrice) * (Math.random() * 10000 + 1000) / entryPrice,
             pnlPercentage: pnlMultiplier * 100,
-            status: 'closed',
+            status: "closed" as "open" | "closed",
             reason: isWinning 
               ? ['Take Profit', 'Target Reached', 'Signal Exit'][Math.floor(Math.random() * 3)]
               : ['Stop Loss', 'Signal Reversal', 'Risk Management Exit'][Math.floor(Math.random() * 3)],
@@ -435,7 +435,7 @@ export function useStrategyExecutions(strategyId: string) {
           return {
             timestamp: signalTime.toISOString(),
             symbol: ['BTC/USD', 'ETH/USD', 'SOL/USD'][Math.floor(Math.random() * 3)],
-            direction: ['long', 'short', 'exit'][Math.floor(Math.random() * 3)] as 'long' | 'short' | 'exit',
+            direction: (Math.random() > 0.3 ? 'long' : 'exit') as 'long' | 'exit',
             price: 30000 + Math.random() * 5000,
             reason: `Signal ${signalIndex + 1} reason`,
             confidence: Math.random() * 100,
@@ -507,6 +507,9 @@ export function useStrategyExecutions(strategyId: string) {
  * Combined hook for all strategy data
  * This uses dependent queries to minimize unnecessary fetches
  */
+// Alias for test compatibility
+export const useStrategyDetail = useStrategy;
+
 export function useStrategyAnalytics(strategyId: string) {
   const strategyQuery = useStrategy(strategyId);
   

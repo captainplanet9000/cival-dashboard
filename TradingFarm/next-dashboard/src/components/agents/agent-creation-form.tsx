@@ -3,7 +3,8 @@
 import React from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
-import * as z from 'zod';
+// Canonical Zod schema and type for agent creation
+import { createAgentSchema, CreateAgentInput } from '@/schemas/agent-schemas';
 import { 
   Bot, 
   Landmark, 
@@ -51,24 +52,18 @@ import { Slider } from '@/components/ui/slider';
 import { toast } from '@/components/ui/use-toast';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 
-const formSchema = z.object({
-  name: z.string().min(3, { message: "Agent name must be at least 3 characters." }),
-  description: z.string().optional(),
-  farm_id: z.coerce.number({ required_error: "Please select a farm." }),
-  strategy_type: z.string({ required_error: "Please select a strategy type." }),
-  risk_level: z.string({ required_error: "Please select a risk level." }),
-  target_markets: z.array(z.string()).min(1, { message: "Select at least one market." }),
-  exchange_account_id: z.string().optional(),
-  max_drawdown_percent: z.coerce.number().min(1).max(100).optional(),
-  auto_start: z.boolean().default(false),
-  use_advanced_config: z.boolean().default(false),
-  capital_allocation: z.coerce.number().min(1).max(100).default(10),
-  leverage: z.coerce.number().min(1).max(10).default(1),
-  config: z.record(z.any()).optional(),
-});
+/**
+ * Zod + React Hook Form Pattern (Standardized)
+ *
+ * - Define canonical Zod schema and type in /schemas/agent-schemas.ts
+ * - Import schema and inferred type here
+ * - Use zodResolver(schema) in useForm for validation
+ * - Always keep schema fields/types in sync with Supabase and service layer
+ * - Use the inferred type for form values and submission
+ * - This pattern ensures type safety, reusability, and maintainability
+ */
 
-// Types
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = CreateAgentInput;
 type FarmType = { id: number; name: string };
 
 export interface AgentCreationFormProps {
@@ -88,7 +83,7 @@ export function AgentCreationForm({ onSuccess, onCancel }: AgentCreationFormProp
 
   // Initialize form
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(createAgentSchema),
     defaultValues: {
       name: '',
       description: '',

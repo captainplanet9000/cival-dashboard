@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Progress } from "@/components/ui/progress"
 import { cn } from "@/utils/cn"
+import { formatDate } from '@/utils/date-utils';
 
 export type StrategyStatus = "active" | "inactive" | "backtest" | "error" | "optimizing"
 
@@ -67,11 +68,6 @@ export function StrategyCard({
   const isOptimizing = status === "optimizing"
   const isBacktesting = status === "backtest"
   
-  const formatDate = (date?: string | Date) => {
-    if (!date) return "Never"
-    const d = typeof date === "string" ? new Date(date) : date
-    return d.toLocaleString()
-  }
 
   const getStatusBadge = () => {
     switch (status) {

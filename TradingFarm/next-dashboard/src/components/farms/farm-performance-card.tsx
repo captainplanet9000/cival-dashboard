@@ -372,20 +372,13 @@ export function FarmPerformanceCard({ farmId }: FarmPerformanceCardProps) {
       
       <div className="flex justify-end">
         <Button variant="outline" size="sm" asChild>
-          <Link href={`/dashboard/farms/${farmId}/performance`}>
-            View Detailed Performance
-          </Link>
-        </Button>
+  <Link href={`/dashboard/farms/${farmId}/performance`}>
+    View Detailed Performance
+  </Link>
+</Button>
       </div>
     </div>
   );
 }
 
-// For simplicity, include the Link component definition in the same file
-function Link({ href, children, className }: { href: string, children: React.ReactNode, className?: string }) {
-  return (
-    <a href={href} className={className}>
-      {children}
-    </a>
-  );
-}
+import Link from 'next/link';

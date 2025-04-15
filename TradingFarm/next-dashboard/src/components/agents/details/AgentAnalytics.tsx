@@ -15,7 +15,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/utils/date-utils';
 import { Badge } from "@/components/ui/badge";
 
 interface AgentAnalyticsProps {
@@ -102,7 +102,7 @@ export const AgentAnalytics: React.FC<AgentAnalyticsProps> = ({ agent }: AgentAn
                 <TaskStatusBadge status={task.status} />
               </TableCell>
               <TableCell className="text-xs">
-                {task.created_at ? formatDistanceToNow(new Date(task.created_at), { addSuffix: true }) : '-'}
+                {task.created_at ? formatDate(task.created_at) : '-'}
               </TableCell>
               <TableCell className="text-xs text-red-600 max-w-xs truncate">
                 {task.error_message || '-'}

@@ -40,7 +40,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 import { useState } from "react";
-import { formatDistanceToNow } from "date-fns";
+import { formatDate } from '@/utils/date-utils';
 
 // Define workflow status badge colors
 const workflowStatusColors: Record<WorkflowStatus, string> = {
@@ -128,8 +128,8 @@ export const workflowColumns: ColumnDef<Workflows>[] = [
       );
     },
     cell: ({ row }) => {
-      const date = new Date(row.getValue("created_at"));
-      return <div className="text-sm text-muted-foreground">{formatDistanceToNow(date, { addSuffix: true })}</div>;
+      const date = row.getValue("created_at");
+      return <div className="text-sm text-muted-foreground">{formatDate(date)}</div>;
     },
   },
   {

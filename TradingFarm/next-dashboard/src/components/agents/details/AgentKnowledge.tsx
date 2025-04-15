@@ -16,7 +16,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertCircle, FileText, Link as LinkIcon, UploadCloud } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDate } from '@/utils/date-utils';
 import { Badge } from "@/components/ui/badge";
 
 interface AgentKnowledgeProps {
@@ -93,7 +93,7 @@ export const AgentKnowledge: React.FC<AgentKnowledgeProps> = ({ brainId }: Agent
                 <DocumentStatusBadge status={doc.status} />
               </TableCell>
               <TableCell className="text-xs">
-                {doc.created_at ? formatDistanceToNow(new Date(doc.created_at), { addSuffix: true }) : '-'}
+                {doc.created_at ? formatDate(doc.created_at) : '-'}
               </TableCell>
               <TableCell className="text-right space-x-2 whitespace-nowrap">
                 {doc.source_url && (

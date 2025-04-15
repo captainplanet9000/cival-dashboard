@@ -148,3 +148,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Next.js Team for the amazing framework
 - Supabase for the backend infrastructure
 - TailwindCSS for the styling system
+
+
+

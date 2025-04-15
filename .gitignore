@@ -17,8 +17,12 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# lib/ and lib64/ were previously ignored to avoid Python build artifacts.
+# However, we want to track src/lib/llm/ for LLM integration code in the dashboard.
+# If you use Python, ensure your build artifacts do not conflict with this path.
+#lib/
+#lib64/
+
 parts/
 sdist/
 var/
