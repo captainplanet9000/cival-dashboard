@@ -73,21 +73,24 @@ export default function PriceAlertSystem({
       return;
     }
     
-    // Filter for PRICE_ALERT messages
+    // Filter and map PRICE_ALERT messages from socket
     const priceAlertMessages = messages
-      .filter(msg => msg.type === 'PRICE_ALERT')
+      .filter(msg => msg.event === 'PRICE_ALERT')
       .slice(-limit)
-      .map(msg => ({
-        id: msg.id || `alert-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        symbol: msg.symbol || 'BTC/USDT',
-        price: msg.price || 50000,
-        threshold: msg.threshold || 50000,
-        type: msg.alert_type || 'above',
-        timestamp: msg.timestamp || new Date().toISOString(),
-        message: msg.message || `${msg.symbol || 'BTC/USDT'} price alert`,
-        priority: msg.priority || 'medium',
-        exchange: msg.exchange || 'Aggregate'
-      }));
+      .map(msg => {
+        const d = (msg as any).data;
+        return {
+          id: d.id || `alert-${Date.now()}-${Math.random().toString(36).substring(2,9)}`,
+          symbol: d.symbol || 'BTC/USDT',
+          price: d.price ?? 50000,
+          threshold: d.threshold ?? 50000,
+          type: d.alert_type || 'above',
+          timestamp: d.timestamp || new Date().toISOString(),
+          message: d.message || `${d.symbol || 'BTC/USDT'} price alert`,
+          priority: d.priority || 'medium',
+          exchange: d.exchange || 'Aggregate'
+        };
+      });
     
     if (priceAlertMessages.length > 0) {
       setAlerts(prev => {

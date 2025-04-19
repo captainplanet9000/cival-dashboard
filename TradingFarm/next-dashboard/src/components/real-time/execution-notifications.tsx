@@ -77,22 +77,25 @@ export default function ExecutionNotifications({
       return;
     }
     
-    // Filter for EXECUTION_NOTIFICATION messages
+    // Filter and map EXECUTION_NOTIFICATION messages
     const executionMessages = messages
-      .filter(msg => msg.type === 'EXECUTION_NOTIFICATION')
+      .filter(msg => msg.event === 'EXECUTION_NOTIFICATION')
       .slice(-limit)
-      .map(msg => ({
-        id: msg.id || `exec-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-        symbol: msg.symbol || 'BTC/USDT',
-        side: msg.side || 'buy',
-        quantity: msg.quantity || 0.01,
-        price: msg.price || 50000,
-        value: (msg.quantity || 0.01) * (msg.price || 50000),
-        timestamp: msg.timestamp || new Date().toISOString(),
-        status: msg.status || 'success',
-        message: msg.message || 'Order executed',
-        exchange: msg.exchange || 'Binance'
-      }));
+      .map(msg => {
+        const d = (msg as any).data;
+        return {
+          id: d.id || `exec-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+          symbol: d.symbol || 'BTC/USDT',
+          side: d.side || 'buy',
+          quantity: d.quantity || 0.01,
+          price: d.price || 50000,
+          value: d.value ?? (d.quantity || 0.01) * (d.price || 50000),
+          timestamp: d.timestamp || msg.timestamp,
+          status: d.status || 'success',
+          message: d.message || 'Order executed',
+          exchange: d.exchange || 'Binance'
+        };
+      });
     
     if (executionMessages.length > 0) {
       setExecutions(prev => {

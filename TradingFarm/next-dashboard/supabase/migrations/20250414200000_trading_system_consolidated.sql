@@ -248,6 +248,7 @@ BEGIN
     END IF;
 END $$;
 
+-- DEPRECATED: Use 20250413200000_consolidated_schema.sql for all new environments. This migration is retained for historical reference only.
 -- Positions Table
 DO $$ 
 BEGIN

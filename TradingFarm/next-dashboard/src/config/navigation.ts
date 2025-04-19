@@ -1,6 +1,80 @@
+/**
+ * Trading Farm Navigation Configuration
+ *
+ * This file centralizes all navigation groups, items, icons, and route metadata for use in sidebar, mobile, breadcrumbs, menus, etc.
+ *
+ * - Edit this file to add, remove, or reorganize navigation items and groups.
+ * - Each group can have a label, role restrictions, and an array of items.
+ * - Each item can have a name, href, icon, roles, and optional badge.
+ * - Use roles to control visibility (e.g., 'user', 'admin').
+ * - The config is consumed by all navigation components (Sidebar, Navbar, MobileNavigation).
+ * - To add a new section, add a new group object.
+ * - To show/hide items for certain users, adjust the 'roles' array.
+ * - Use the 'badge' field to display notification counts or status indicators.
+ *
+ * Example:
+ * {
+ *   group: 'core',
+ *   label: 'Core Trading',
+ *   roles: ['user', 'admin'],
+ *   items: [
+ *     { name: 'Farms', href: '/dashboard/farm', icon: Factory, roles: ['user', 'admin'], badge: 3 }
+ *   ]
+ * }
+ */
+
+// TypeScript interfaces for navigation config
+export interface NavigationItem {
+  /** Display name for the navigation item */
+  name: string;
+  /** Route path (relative to app root) */
+  href: string;
+  /** Icon component from Lucide or other icon set */
+  icon: React.ComponentType<{ className?: string }>;
+  /** Array of roles that can see this item */
+  roles: string[];
+  /** Optional: Breadcrumb label for this route */
+  breadcrumb?: string;
+  /** Optional: Show as a tab in UI */
+  tab?: boolean;
+  /** Optional: Badge value (number or string) */
+  badge?: number | string;
+  /** ElizaOS/AI agent metadata: intent, description, tags, etc. */
+  elizaMeta?: {
+    intent: string;
+    description: string;
+    tags?: string[];
+    [key: string]: any;
+  };
+  /** Optional: Any additional metadata for AI/ElizaOS, etc. */
+  [key: string]: any;
+}
+
+export interface NavigationGroup {
+  /** Unique group key */
+  group: string;
+  /** Display label for the group */
+  label: string;
+  /** Roles that can see this group */
+  roles: string[];
+  /** Items in this group */
+  items: NavigationItem[];
+  /** ElizaOS/AI agent metadata for the group */
+  elizaMeta?: {
+    intent: string;
+    description: string;
+    tags?: string[];
+    [key: string]: any;
+  };
+}
+
+// For secondary/mobile navigation
+export interface NavigationSecondaryItem extends NavigationItem {
+  /** Optional: Badge value for notifications */
+  badge?: number | string;
+}
+
 // Central navigation config for Trading Farm Dashboard
-// This file centralizes all navigation items, icons, and route metadata
-// for use in sidebar, mobile, breadcrumbs, menus, etc.
 
 import {
   LayoutDashboard,
@@ -37,7 +111,18 @@ import {
   Database,
 } from 'lucide-react';
 
-export const NAVIGATION = [
+/**
+ * Main navigation groups for the Trading Farm dashboard.
+ *
+ * To add a new group, append a new object to this array.
+ * To add a new item, add it to the `items` array of the appropriate group.
+ *
+ * Example usage (in a component):
+ * import { NAVIGATION } from '@/config/navigation';
+ *
+ * NAVIGATION.filter(group => group.roles.includes(userRole)).map(...)
+ */
+export const NAVIGATION: NavigationGroup[] = [
   {
     group: 'main',
     label: 'Main',
@@ -93,6 +178,7 @@ export const NAVIGATION = [
     roles: ['user', 'admin'],
     items: [
       { name: 'Command Console', href: '/dashboard/command-console', icon: BrainCircuit, roles: ['admin'], breadcrumb: 'Command Console', tab: false },
+      { name: 'Agent Orchestration', href: '/dashboard/agent-orchestration', icon: Users, roles: ['admin'], breadcrumb: 'Agent Orchestration', tab: false },
       { name: 'Knowledge Base', href: '/dashboard/guides', icon: BookOpenCheck, roles: ['user', 'admin'], breadcrumb: 'Knowledge Base', tab: false },
       { name: 'ElizaOS Hub', href: '/elizaos/agents', icon: Brain, roles: ['admin'], breadcrumb: 'ElizaOS Hub', tab: false },
       { name: 'AI Advisor', href: '/dashboard/ai-advisor', icon: Zap, roles: ['user', 'admin'], breadcrumb: 'AI Advisor', tab: false },
@@ -111,7 +197,17 @@ export const NAVIGATION = [
 
 // Secondary/mobile-only navigation (notifications, sync, offline, etc.)
 // Extend with roles/permissions, breadcrumb, and tab metadata as needed
-export const NAVIGATION_SECONDARY = [
+/**
+ * Secondary/mobile-only navigation items.
+ *
+ * Use for notifications, sync, offline, or mobile-specific features.
+ *
+ * Example usage:
+ * import { NAVIGATION_SECONDARY } from '@/config/navigation';
+ *
+ * NAVIGATION_SECONDARY.filter(item => item.roles.includes(userRole)).map(...)
+ */
+export const NAVIGATION_SECONDARY: NavigationSecondaryItem[] = [
   {
     name: 'Notifications',
     href: '/dashboard/notifications',
@@ -119,6 +215,14 @@ export const NAVIGATION_SECONDARY = [
     roles: ['user', 'admin'],
     badge: 5, // Example badge count
     breadcrumb: 'Notifications',
+    tab: false
+  },
+  {
+    name: 'Agent Orchestration',
+    href: '/dashboard/agent-orchestration',
+    icon: Users,
+    roles: ['admin'],
+    breadcrumb: 'Agent Orchestration',
     tab: false
   },
   {

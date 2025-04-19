@@ -9,6 +9,9 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Avatar } from '@/components/ui/avatar';
 import { agentMessagingService, ElizaCommandResponse } from '@/services/agent-messaging';
+import { useAgentEvents } from '@/hooks/useAgentOrchestration';
+import { createBrowserClient } from '@/utils/supabase/client';
+import type { Database } from '@/types/database.types';
 import { Loader2, Send, AlertCircle, Info, Brain, ChevronRight, Database, TrendingUp, Bot } from 'lucide-react';
 
 type MessageType = 'command' | 'query' | 'response' | 'system' | 'error';
@@ -35,58 +38,34 @@ export function ElizaCommandConsole({ agentId, agentName }: ElizaCommandConsoleP
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // --- PHASE 4: Persistent Event History via Supabase ---
+  const { data: eventHistory, isLoading: isLoadingEvents, error: eventsError } = useAgentEvents(agentId);
+  const supabase = createBrowserClient<Database>();
+
   useEffect(() => {
-    // Load previous messages
-    const loadMessages = async () => {
-      const response = await agentMessagingService.getMessagesForAgent(agentId, 20, true);
-      
-      if (response.success && response.data) {
-        const formattedMessages = response.data
-          .filter(msg => msg.message_type === 'command' || msg.message_type === 'query' || 
-                         msg.metadata?.is_response)
-          .map(msg => ({
-            id: msg.id,
-            content: msg.content,
-            type: msg.metadata?.is_response ? 'response' : 
-                  msg.message_type === 'query' ? 'query' : 'command',
-            source: msg.metadata?.source || 
-                    (msg.sender_id === agentId ? 'system' : 'user'),
-            timestamp: new Date(msg.timestamp),
-            metadata: msg.metadata || {}
-          }));
-        
-        setMessages(formattedMessages);
-      }
-      
-      // Add welcome message if no messages exist
-      if (!response.data || response.data.length === 0) {
-        setMessages([
-          {
-            id: 'welcome',
-            content: `Welcome to the ElizaOS Command Console. I'm ${agentName}, your trading agent. How can I assist you today?`,
-            type: 'system',
-            source: 'system',
-            timestamp: new Date(),
-            metadata: { welcome: true }
-          }
-        ]);
-      }
-    };
-    
-    loadMessages();
-    
-    // Subscribe to ElizaOS events
-    const unsubscribe = agentMessagingService.subscribeToElizaEvents(
-      agentId,
-      (response) => {
-        handleElizaResponse(response);
-      }
-    );
-    
-    return () => {
-      unsubscribe();
-    };
-  }, [agentId, agentName]);
+    // If eventHistory is loaded, map to messages
+    if (eventHistory && eventHistory.length > 0) {
+      setMessages(eventHistory.map(evt => ({
+        id: evt.id,
+        content: evt.content,
+        type: evt.type as MessageType,
+        source: evt.source as SourceType,
+        timestamp: new Date(evt.created_at),
+        metadata: evt.metadata || {}
+      })));
+    } else {
+      setMessages([
+        {
+          id: 'welcome',
+          content: `Welcome to the ElizaOS Command Console. I'm ${agentName}, your trading agent. How can I assist you today?`,
+          type: 'system',
+          source: 'system',
+          timestamp: new Date(),
+          metadata: { welcome: true }
+        }
+      ]);
+    }
+  }, [eventHistory, agentName]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -95,7 +74,8 @@ export function ElizaCommandConsole({ agentId, agentName }: ElizaCommandConsoleP
     }
   }, [messages]);
 
-  const handleElizaResponse = (response: ElizaCommandResponse) => {
+  // Persist response to agent_events
+  const handleElizaResponse = async (response: ElizaCommandResponse) => {
     setMessages(prevMessages => [
       ...prevMessages,
       {
@@ -107,66 +87,72 @@ export function ElizaCommandConsole({ agentId, agentName }: ElizaCommandConsoleP
         metadata: response.metadata
       }
     ]);
-    
+    // --- Persist to Supabase ---
+    await supabase.from('agent_events').insert({
+      agent_id: agentId,
+      type: response.type === 'ERROR_RESPONSE' ? 'error' : 'response',
+      source: response.source,
+      content: response.content,
+      metadata: response.metadata
+    });
     setIsLoading(false);
   };
 
   const handleInputSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!inputText.trim() || isLoading) return;
-    
     const isQuery = inputText.trim().endsWith('?') || 
                    inputText.toLowerCase().startsWith('what') ||
                    inputText.toLowerCase().startsWith('how') ||
-                   inputText.toLowerCase().startsWith('why');
-    
-    // Add user message to the list
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      content: inputText,
+                   inputText.toLowerCase().startsWith('show') ||
+                   inputText.toLowerCase().startsWith('analyze');
+    setIsLoading(true);
+    // Add user command to message list
+    setMessages(prevMessages => [
+      ...prevMessages,
+      {
+        id: `user-${Date.now()}`,
+        content: inputText,
+        type: isQuery ? 'query' : 'command',
+        source: 'user',
+        timestamp: new Date(),
+        metadata: {}
+      }
+    ]);
+    // --- Persist user command to Supabase ---
+    await supabase.from('agent_events').insert({
+      agent_id: agentId,
       type: isQuery ? 'query' : 'command',
       source: 'user',
-      timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
-    setIsLoading(true);
-    
+      content: inputText,
+      metadata: {}
+    });
     // Send command to agent
     try {
-      await agentMessagingService.sendElizaCommand(
-        agentId,
-        inputText,
-        { messageId: userMessage.id }
-      );
-      
-      // The response will be handled by the subscription
-      
-    } catch (error) {
-      console.error('Error sending command:', error);
-      
-      // Add error message
-      setMessages(prev => [
-        ...prev,
+      const response = await agentMessagingService.sendCommandToAgent(agentId, inputText);
+      handleElizaResponse(response);
+    } catch (err) {
+      setMessages(prevMessages => [
+        ...prevMessages,
         {
           id: `error-${Date.now()}`,
-          content: 'There was an error processing your command. Please try again.',
+          content: 'Failed to send command. Please try again.',
           type: 'error',
           source: 'system',
-          timestamp: new Date()
+          timestamp: new Date(),
+          metadata: { error: err }
         }
       ]);
-      
       setIsLoading(false);
-    }
-    
-    // Focus input after sending
-    if (inputRef.current) {
-      inputRef.current.focus();
+    } finally {
+      setInputText('');
     }
   };
+
+  // Focus input after sending
+  if (inputRef.current) {
+    inputRef.current.focus();
+  }
 
   // Get icon based on message source
   const getSourceIcon = (source: SourceType) => {

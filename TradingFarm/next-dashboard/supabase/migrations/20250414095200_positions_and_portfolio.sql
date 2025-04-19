@@ -1,3 +1,4 @@
+-- DEPRECATED: Use 20250413200000_consolidated_schema.sql for all new environments. This migration is retained for historical reference only.
 -- Migration: Add positions and portfolio schema
 -- This migration adds tables for tracking positions and portfolio management
 

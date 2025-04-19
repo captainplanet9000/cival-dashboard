@@ -29,6 +29,7 @@ import { FormError, FormSuccess } from '@/forms';
 import { cn } from '@/lib/utils';
 import { enhancedFarmService } from '@/services/enhanced-farm-service';
 import { useFarmStore } from '@/stores';
+import { useAgentAssignments, useCreateAgentAssignment } from '@/hooks/useAgentOrchestration';
 
 interface AgentAssignmentFormProps {
   farmId: number;
@@ -88,37 +89,28 @@ export function AgentAssignmentForm({ farmId, goalId }: AgentAssignmentFormProps
     },
   });
   
-  // Handle form submission
+  // --- PHASE 4: Supabase CRUD Integration ---
+import { useAgentAssignments, useCreateAgentAssignment } from '@/hooks/useAgentOrchestration';
+
+// ... inside AgentAssignmentForm
+const createAssignment = useCreateAgentAssignment();
+const { data: assignments, isLoading: isLoadingAssignments } = useAgentAssignments(String(farmId));
+
+// Handle form submission
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setError(undefined);
     setSuccess(undefined);
     setIsPending(true);
-    
     try {
-      // Different API calls based on whether this is a goal or farm assignment
-      const response = goalId
-        ? await enhancedFarmService.assignAgentToGoal(
-            values.agent_id, 
-            goalId, 
-            values.allocation_percentage, 
-            values.is_primary, 
-            values.instructions
-          )
-        : await enhancedFarmService.assignAgentToFarm(
-            values.agent_id, 
-            farmId, 
-            values.allocation_percentage, 
-            values.is_primary, 
-            values.instructions
-          );
-      
-      if (response.error) {
-        throw new Error(response.error);
-      }
-      
+      await createAssignment.mutateAsync({
+        farm_id: values.farm_id,
+        goal_id: values.goal_id,
+        agent_id: values.agent_id,
+        allocation_percentage: values.allocation_percentage,
+        is_primary: values.is_primary,
+        instructions: values.instructions,
+      });
       setSuccess("Agent assigned successfully!");
-      
-      // Redirect after a brief delay to show success message
       setTimeout(() => {
         if (goalId) {
           router.push(`/dashboard/farms/${farmId}/goals/${goalId}`);
@@ -236,7 +228,7 @@ export function AgentAssignmentForm({ farmId, goalId }: AgentAssignmentFormProps
                       max={100}
                       step={1}
                       defaultValue={[field.value]}
-                      onValueChange={(value) => field.onChange(value[0])}
+                      onValueChange={(value: number[]) => field.onChange(value[0])}
                       className="py-4"
                     />
                   </FormControl>

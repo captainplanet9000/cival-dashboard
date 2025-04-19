@@ -42,6 +42,7 @@ import { LogsViewer } from './logs-viewer';
 import { PerformanceDashboard } from './performance-dashboard';
 import { AgentComparison } from './agent-comparison';
 import { createClientClient } from '@/utils/supabase/client';
+import { useAgentEvents, useAgentAnomalyAlerts } from '@/hooks/useAgentOrchestration';
 import { format } from 'date-fns';
 
 interface AgentMonitoringDashboardProps {

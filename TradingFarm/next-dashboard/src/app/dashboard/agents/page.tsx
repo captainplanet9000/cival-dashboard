@@ -1,10 +1,16 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { useAgents, Agent } from '@/hooks/use-agents'; // Assuming this hook provides agent list
+import { useAgents, Agent } from '@/hooks/use-agents';
+import { useFarms } from '@/hooks/use-farms';
+import { useStrategies } from '@/hooks/use-strategies';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Users } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -71,8 +77,98 @@ const AgentStatusBadge = ({ status, tooltipText }: { status: string, tooltipText
 };
 
 
+// --- Bulk Assignment Modal ---
+function BulkAssignAgentsDialog({ open, onOpenChange, agents, farms, strategies, onAssign }: any) {
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [selectedFarm, setSelectedFarm] = useState<string>("");
+  const [selectedStrategy, setSelectedStrategy] = useState<string>("");
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedAgents([]);
+      setSelectedFarm("");
+      setSelectedStrategy("");
+    }
+  }, [open]);
+
+  const handleAgentToggle = (id: string) => {
+    setSelectedAgents(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+  };
+
+  const handleAssign = () => {
+    if (selectedAgents.length && (selectedFarm || selectedStrategy)) {
+      onAssign(selectedAgents, selectedFarm, selectedStrategy);
+      onOpenChange(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Bulk Assign Agents</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium mb-2">Select Agents</label>
+              <div className="border rounded-md max-h-40 overflow-auto">
+                {agents.map((agent: Agent) => (
+                  <div key={agent.id} className="flex items-center px-3 py-2 border-b last:border-b-0">
+                    <Checkbox checked={selectedAgents.includes(agent.id)} onCheckedChange={() => handleAgentToggle(agent.id)} />
+                    <span className="ml-2 font-medium">{agent.name || agent.agent_type}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{agent.status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">Assign to Farm</label>
+                <select value={selectedFarm} onChange={e => setSelectedFarm(e.target.value)} className="w-full border rounded-md px-2 py-1">
+                  <option value="">-- Select Farm --</option>
+                  {farms.map((farm: any) => (
+                    <option key={farm.id} value={farm.id}>{farm.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Assign to Strategy</label>
+                <select value={selectedStrategy} onChange={e => setSelectedStrategy(e.target.value)} className="w-full border rounded-md px-2 py-1">
+                  <option value="">-- Select Strategy --</option>
+                  {strategies.map((strategy: any) => (
+                    <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button type="button" variant="secondary">Cancel</Button>
+          </DialogClose>
+          <Button onClick={handleAssign} disabled={!selectedAgents.length || (!selectedFarm && !selectedStrategy)}>
+            Assign Selected
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AgentListPage() {
   const { agents: agentData, loading: isLoading, error } = useAgents();
+  const { farms, isLoading: isFarmsLoading } = useFarms();
+  const { strategies, isLoading: isStrategiesLoading } = useStrategies();
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+
+  const handleBulkAssign = async (agentIds: string[], farmId: string, strategyId: string) => {
+    // TODO: Call API to assign agents in bulk
+    // Example: await assignAgentsToFarmOrStrategy(agentIds, farmId, strategyId);
+    // For now, just log
+    console.log('Bulk assign:', { agentIds, farmId, strategyId });
+  };
 
   const renderLoading = () => (
     <div className="border rounded-md">
@@ -161,11 +257,16 @@ export default function AgentListPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-2xl font-semibold">Manage Agents</CardTitle>
-          <Link href="/dashboard/agents/create" passHref>
-             <Button size="sm">
-                <PlusCircle className="mr-2 h-4 w-4" /> Create New Agent
-             </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
+              <Users className="mr-2 h-4 w-4" /> Bulk Assign
+            </Button>
+            <Link href="/dashboard/agents/create" passHref>
+               <Button size="sm">
+                  <PlusCircle className="mr-2 h-4 w-4" /> Create New Agent
+               </Button>
+            </Link>
+          </div>
         </CardHeader>
         <CardDescription className="px-6 pb-4">
           View, configure, and manage all agents operating within your farms.
