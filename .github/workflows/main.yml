@@ -1,15 +1,31 @@
-name: DeFi Protocol Integration Framework CI/CD
+name: Trading Farm Multi-Chain Integration CI/CD
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feat/multi-chain-integration ]
   pull_request:
     branches: [ main, develop ]
+  workflow_dispatch:
+    inputs:
+      chain:
+        description: 'Target chain for manual workflow run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - evm
+          - sonic
+          - sui
+          - solana
 
 jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
@@ -24,11 +40,16 @@ jobs:
       
       - name: Run ESLint
         run: npm run lint
-  
+        env:
+          TARGET_CHAIN: ${{ matrix.chain }}
+
   test:
     name: Test
     runs-on: ubuntu-latest
     needs: lint
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
@@ -40,14 +61,29 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+        
+      - name: Install chain-specific dependencies
+        run: |
+          if [ "${{ matrix.chain }}" == "sui" ]; then
+            npm install @mysten/sui.js @m-safe/sui-sdk
+          elif [ "${{ matrix.chain }}" == "solana" ]; then
+            npm install @solana/web3.js @jup-ag/api @sqds/core
+          elif [ "${{ matrix.chain }}" == "sonic" ]; then
+            npm install @safe-global/protocol-kit
+          fi
       
       - name: Run unit tests
         run: npm test
-  
+        env:
+          TARGET_CHAIN: ${{ matrix.chain }}
+
   integration-test:
     name: Integration Tests
     runs-on: ubuntu-latest
     needs: test
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
@@ -59,19 +95,38 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+
+      - name: Install chain-specific dependencies
+        run: |
+          if [ "${{ matrix.chain }}" == "sui" ]; then
+            npm install @mysten/sui.js @m-safe/sui-sdk
+          elif [ "${{ matrix.chain }}" == "solana" ]; then
+            npm install @solana/web3.js @jup-ag/api @sqds/core
+          elif [ "${{ matrix.chain }}" == "sonic" ]; then
+            npm install @safe-global/protocol-kit
+          fi
       
       - name: Run integration tests
         run: npm run test:integration
         env:
+          TARGET_CHAIN: ${{ matrix.chain }}
           PROVIDER_URL_ETHEREUM: ${{ secrets.PROVIDER_URL_ETHEREUM }}
           PROVIDER_URL_ARBITRUM: ${{ secrets.PROVIDER_URL_ARBITRUM }}
           PROVIDER_URL_POLYGON: ${{ secrets.PROVIDER_URL_POLYGON }}
-          TEST_PRIVATE_KEY: ${{ secrets.TEST_PRIVATE_KEY }}
-  
+          PROVIDER_URL_SONIC: ${{ secrets.PROVIDER_URL_SONIC }}
+          PROVIDER_URL_SUI: ${{ secrets.PROVIDER_URL_SUI }}
+          PROVIDER_URL_SOLANA: ${{ secrets.PROVIDER_URL_SOLANA }}
+          TEST_PRIVATE_KEY_EVM: ${{ secrets.TEST_PRIVATE_KEY_EVM }}
+          TEST_PRIVATE_KEY_SUI: ${{ secrets.TEST_PRIVATE_KEY_SUI }}
+          TEST_PRIVATE_KEY_SOLANA: ${{ secrets.TEST_PRIVATE_KEY_SOLANA }}
+
   build:
     name: Build
     runs-on: ubuntu-latest
     needs: [lint, test]
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
@@ -83,16 +138,28 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
+
+      - name: Install chain-specific dependencies
+        run: |
+          if [ "${{ matrix.chain }}" == "sui" ]; then
+            npm install @mysten/sui.js @m-safe/sui-sdk
+          elif [ "${{ matrix.chain }}" == "solana" ]; then
+            npm install @solana/web3.js @jup-ag/api @sqds/core
+          elif [ "${{ matrix.chain }}" == "sonic" ]; then
+            npm install @safe-global/protocol-kit
+          fi
       
       - name: Build
         run: npm run build
+        env:
+          TARGET_CHAIN: ${{ matrix.chain }}
       
       - name: Upload build artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: build-artifacts
+          name: build-artifacts-${{ matrix.chain }}
           path: dist/
-  
+
   docs:
     name: Generate Documentation
     runs-on: ubuntu-latest
@@ -120,16 +187,19 @@ jobs:
 
   deploy-dev:
     name: Deploy to Development
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/feat/multi-chain-integration')
     runs-on: ubuntu-latest
     needs: [build, integration-test]
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
-          name: build-artifacts
+          name: build-artifacts-${{ matrix.chain }}
           path: dist/
       
       - name: Set up Node.js
@@ -144,6 +214,7 @@ jobs:
       - name: Deploy to Development Environment
         run: npm run deploy:dev
         env:
+          TARGET_CHAIN: ${{ matrix.chain }}
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
   deploy-prod:
@@ -151,13 +222,16 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: [build, integration-test]
+    strategy:
+      matrix:
+        chain: [evm, sonic, sui, solana]
     steps:
       - uses: actions/checkout@v3
       
       - name: Download build artifacts
         uses: actions/download-artifact@v3
         with:
-          name: build-artifacts
+          name: build-artifacts-${{ matrix.chain }}
           path: dist/
       
       - name: Set up Node.js
@@ -172,6 +246,7 @@ jobs:
       - name: Deploy to Production Environment
         run: npm run deploy:prod
         env:
+          TARGET_CHAIN: ${{ matrix.chain }}
           DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
 
   notify:

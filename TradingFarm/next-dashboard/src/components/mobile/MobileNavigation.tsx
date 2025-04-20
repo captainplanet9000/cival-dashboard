@@ -426,6 +426,5 @@ const MobileNavigation = memo(function MobileNavigationComponent({ userRole = 'u
       </Sheet>
     </>
   );
-}
-
-export { MobileNavigation }; // Export the memoized navigation component
+});
+export default MobileNavigation; // Export the memoized navigation component

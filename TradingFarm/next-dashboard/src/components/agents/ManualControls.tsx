@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { createBrowserClient } from '@/utils/supabase/client';
+// Removed duplicate import
 
 export function EmergencyStopButton({ agentId }: { agentId: string }) {
   const supabase = createBrowserClient();

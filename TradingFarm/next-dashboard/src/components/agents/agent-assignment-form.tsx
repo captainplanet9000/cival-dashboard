@@ -27,7 +27,6 @@ import { Agent } from '@/schemas/farm-schemas';
 import { useFarm, useFarmAgents } from '@/hooks';
 import { FormError, FormSuccess } from '@/forms';
 import { cn } from '@/lib/utils';
-import { enhancedFarmService } from '@/services/enhanced-farm-service';
 import { useFarmStore } from '@/stores';
 import { useAgentAssignments, useCreateAgentAssignment } from '@/hooks/useAgentOrchestration';
 

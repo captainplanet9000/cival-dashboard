@@ -40,6 +40,8 @@ import {
 import { knowledgeService, DocumentSourceType } from '@/services/knowledge-service';
 import { TradingEventEmitter, TRADING_EVENTS } from '@/utils/events/trading-events';
 import { useToast } from '@/components/ui/use-toast';
+import { toolsService, ConfirmationData } from '@/services/tools-service';
+import { TradeConfirmationDialog } from './TradeConfirmationDialog';
 
 // Command message interface
 interface CommandMessage {
@@ -71,6 +73,11 @@ export function CommandConsole() {
   const [uploadingFile, setUploadingFile] = useState(false);
   const [listeningToEvents, setListeningToEvents] = useState(false);
   
+  // Natural language trading confirmation
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [confirmationData, setConfirmationData] = useState<ConfirmationData | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<string>('');
+  
   // Initialize chat with ai/react
   const { messages, input, handleInputChange, handleSubmit, setMessages, isLoading, error } = useChat({
     api: '/api/chat',
@@ -97,6 +104,159 @@ export function CommandConsole() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [formattedMessages]);
   
+  // Process commands that start with natural language instead of a slash
+  const processNaturalLanguage = async (command: string) => {
+    try {
+      // Show typing indicator
+      const tempMessageId = `temp-${Date.now()}`;
+      setMessages(prev => [...prev, {
+        id: tempMessageId,
+        role: 'assistant',
+        content: 'Processing your command...',
+      }]);
+      
+      // Get the current user ID
+      const userId = await toolsService.getCurrentUserId();
+      
+      // Send to backend tools API
+      const response = await toolsService.executeCommand({
+        command,
+        user_id: userId || undefined
+      });
+      
+      // Remove typing indicator
+      setMessages(prev => prev.filter(msg => msg.id !== tempMessageId));
+      
+      // Check if we need confirmation
+      if (response.needs_confirmation && response.confirmation_data) {
+        setConfirmationData(response.confirmation_data);
+        setPendingCommand(command);
+        setConfirmationOpen(true);
+        
+        // Add AI message showing the confirmation is needed
+        setMessages(prev => [...prev, {
+          id: `ai-${Date.now()}`,
+          role: 'assistant',
+          content: `I need your confirmation before executing this ${response.confirmation_data.action}. Please review the details.`,
+        }]);
+        
+        return;
+      }
+      
+      // Add the response to the chat
+      setMessages(prev => [...prev, {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: response.response,
+      }]);
+    } catch (error) {
+      console.error('Error processing natural language command:', error);
+      setMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to process command'}`,
+      }]);
+    }
+  };
+  
+  // Handle confirm action
+  const handleConfirmAction = async () => {
+    setConfirmationOpen(false);
+    
+    // Add confirmation message
+    setMessages(prev => [...prev, {
+      id: `system-${Date.now()}`,
+      role: 'system',
+      content: `Action confirmed: ${confirmationData?.action}`,
+    }]);
+    
+    // Add a processing message
+    const processingId = `processing-${Date.now()}`;
+    setMessages(prev => [...prev, {
+      id: processingId,
+      role: 'assistant',
+      content: 'Executing command...',
+    }]);
+    
+    try {
+      // Get the current user ID
+      const userId = await toolsService.getCurrentUserId();
+      
+      // Execute with confirmation=true
+      const response = await toolsService.executeCommand({
+        command: pendingCommand,
+        user_id: userId || undefined
+      });
+      
+      // Remove processing message
+      setMessages(prev => prev.filter(msg => msg.id !== processingId));
+      
+      // Add the response
+      setMessages(prev => [...prev, {
+        id: `ai-${Date.now()}`,
+        role: 'assistant',
+        content: response.response,
+      }]);
+    } catch (error) {
+      console.error('Error executing confirmed command:', error);
+      
+      // Remove processing message
+      setMessages(prev => prev.filter(msg => msg.id !== processingId));
+      
+      // Add error message
+      setMessages(prev => [...prev, {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        content: `Error: ${error instanceof Error ? error.message : 'Failed to execute command'}`,
+      }]);
+    } finally {
+      setConfirmationData(null);
+      setPendingCommand('');
+    }
+  };
+  
+  // Handle cancel action
+  const handleCancelAction = () => {
+    setConfirmationOpen(false);
+    setConfirmationData(null);
+    setPendingCommand('');
+    
+    // Add cancellation message
+    setMessages(prev => [...prev, {
+      id: `system-${Date.now()}`,
+      role: 'system',
+      content: `Action cancelled: ${confirmationData?.action}`,
+    }]);
+  };
+  
+  // Intercept form submission to handle natural language commands
+  const handleFormSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    
+    // Skip empty messages
+    if (!input.trim()) return;
+    
+    // Add user message to the chat immediately
+    setMessages(prev => [...prev, {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: input,
+    }]);
+    
+    const command = input.trim();
+    
+    // Clear input
+    handleInputChange({ target: { value: '' } } as React.ChangeEvent<HTMLInputElement>);
+    
+    // If it starts with a slash, treat it as a command
+    if (command.startsWith('/')) {
+      // Process system command - existing logic
+    } else {
+      // Natural language command - send to backend
+      processNaturalLanguage(command);
+    }
+  };
+
   // Subscribe to trading events when component mounts
   useEffect(() => {
     if (!listeningToEvents) {
@@ -215,6 +375,24 @@ export function CommandConsole() {
   // Handle file upload button click
   const handleUploadClick = () => {
     fileInputRef.current?.click();
+  };
+  
+  // Quick command buttons
+  const quickCommands = [
+    { label: 'BTC Price', command: 'What is the current price of Bitcoin?' },
+    { label: 'My Positions', command: 'Show me my open positions' },
+    { label: 'Market Overview', command: 'Give me a market overview' },
+  ];
+  
+  const handleQuickCommand = (command: string) => {
+    // Set the input value
+    handleInputChange({ target: { value: command } } as React.ChangeEvent<HTMLInputElement>);
+    
+    // Focus the input
+    const inputElement = document.querySelector('input[type="text"]') as HTMLInputElement;
+    if (inputElement) {
+      inputElement.focus();
+    }
   };
   
   // Handle file upload
@@ -408,9 +586,24 @@ export function CommandConsole() {
           </div>
         </ScrollArea>
       </CardContent>
-      <CardFooter className="p-4 pt-2 border-t">
+      <div className="p-2 pb-0 border-t">
+        <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-thin">
+          {quickCommands.map((cmd, index) => (
+            <Button 
+              key={index} 
+              variant="outline" 
+              size="sm"
+              onClick={() => handleQuickCommand(cmd.command)}
+              className="whitespace-nowrap"
+            >
+              {cmd.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <CardFooter className="p-4 pt-2">
         <form 
-          onSubmit={handleSubmit}
+          onSubmit={handleFormSubmit}
           className="flex items-center space-x-2 w-full"
         >
           <Button
@@ -450,6 +643,15 @@ export function CommandConsole() {
           onChange={handleFileUpload}
         />
       </CardFooter>
+      
+      {/* Trade confirmation dialog */}
+      <TradeConfirmationDialog 
+        open={confirmationOpen}
+        onOpenChange={setConfirmationOpen}
+        confirmationData={confirmationData}
+        onConfirm={handleConfirmAction}
+        onCancel={handleCancelAction}
+      />
     </Card>
   );
 }

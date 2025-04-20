@@ -136,6 +136,7 @@ export const NAVIGATION: NavigationGroup[] = [
     label: 'Core Trading',
     roles: ['user', 'admin'],
     items: [
+      { name: 'Trading Hub', href: '/trading-hub', icon: Zap, roles: ['user', 'admin'], breadcrumb: 'Trading Hub', tab: true, badge: 'New' },
       { name: 'Farms', href: '/dashboard/farm', icon: Factory, roles: ['user', 'admin'], breadcrumb: 'Farms', tab: true },
       { name: 'Agents', href: '/dashboard/agents', icon: Bot, roles: ['admin'], breadcrumb: 'Agents', tab: false },
       { name: 'Goals', href: '/goals', icon: Target, roles: ['user', 'admin'], breadcrumb: 'Goals', tab: false },

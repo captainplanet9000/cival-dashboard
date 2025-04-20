@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createBrowserClient } from '@/utils/supabase/client';
 import type { Database } from '@/types/database.types';
 
-const supabase = createBrowserClient<Database>();
+const supabase = createBrowserClient();
 
 // ---- Agent Assignments ----
 export function useAgentAssignments(agentId?: string) {
@@ -80,6 +80,43 @@ export function useResolveAgentAnomalyAlert() {
       const { error } = await supabase.from('agent_anomaly_alerts').update({ resolved: true, resolved_at: new Date().toISOString() }).eq('id', id);
       if (error) throw error;
       return id;
+    },
+    onSuccess: () => queryClient.invalidateQueries(['agent_anomaly_alerts']),
+  });
+}
+
+// ---- Phase 4: Agent Event & Alert Mutations ----
+export function useCreateAgentEvent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      event: Omit<Database['public']['Tables']['agent_events']['Insert'], 'id' | 'created_at'>
+    ) => {
+      const { data, error } = await supabase
+        .from('agent_events')
+        .insert(event)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => queryClient.invalidateQueries(['agent_events']),
+  });
+}
+
+export function useCreateAgentAnomalyAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      alert: Omit<Database['public']['Tables']['agent_anomaly_alerts']['Insert'], 'id' | 'created_at' | 'resolved'>
+    ) => {
+      const { data, error } = await supabase
+        .from('agent_anomaly_alerts')
+        .insert(alert)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => queryClient.invalidateQueries(['agent_anomaly_alerts']),
   });

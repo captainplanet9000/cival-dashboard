@@ -42,7 +42,7 @@ import { LogsViewer } from './logs-viewer';
 import { PerformanceDashboard } from './performance-dashboard';
 import { AgentComparison } from './agent-comparison';
 import { createClientClient } from '@/utils/supabase/client';
-import { useAgentEvents, useAgentAnomalyAlerts } from '@/hooks/useAgentOrchestration';
+import { useAgentEvents, useAgentAnomalyAlerts, useResolveAgentAnomalyAlert } from '@/hooks/useAgentOrchestration';
 import { format } from 'date-fns';
 
 interface AgentMonitoringDashboardProps {
@@ -68,6 +68,11 @@ export function AgentMonitoringDashboard({
   const { toast } = useToast();
   const supabase = createClientClient();
   
+  // Hooks for agent events and anomaly alerts
+  const { data: agentEvents, isLoading: eventsLoading, refetch: refetchEvents } = useAgentEvents(agentId);
+  const { data: anomalyAlerts, isLoading: alertsLoading, refetch: refetchAlerts } = useAgentAnomalyAlerts(agentId);
+  const resolveAlertMutation = useResolveAgentAnomalyAlert();
+  
   // Load initial data
   useEffect(() => {
     loadInitialData();
@@ -92,6 +97,10 @@ export function AgentMonitoringDashboard({
       fetchPerformanceData();
     } else if (activeTab === 'comparison') {
       fetchComparisonData();
+    } else if (activeTab === 'events') {
+      refetchEvents();
+    } else if (activeTab === 'alerts') {
+      refetchAlerts();
     }
   }, [activeTab]);
   
@@ -120,6 +129,10 @@ export function AgentMonitoringDashboard({
         fetchPerformanceData(false);
       } else if (activeTab === 'comparison') {
         fetchComparisonData(false);
+      } else if (activeTab === 'events') {
+        refetchEvents();
+      } else if (activeTab === 'alerts') {
+        refetchAlerts();
       }
     }, refreshInterval);
   };
@@ -306,6 +319,10 @@ export function AgentMonitoringDashboard({
       fetchPerformanceData();
     } else if (activeTab === 'comparison') {
       fetchComparisonData();
+    } else if (activeTab === 'events') {
+      refetchEvents();
+    } else if (activeTab === 'alerts') {
+      refetchAlerts();
     }
   };
   
@@ -398,6 +415,16 @@ export function AgentMonitoringDashboard({
             <BarChart2 className="h-4 w-4" />
             <span className="hidden md:inline">Comparison</span>
             <span className="inline md:hidden">Compare</span>
+          </TabsTrigger>
+          <TabsTrigger value="events" className="flex gap-2 items-center">
+            <ClipboardList className="h-4 w-4" />
+            <span className="hidden md:inline">Events</span>
+            <span className="inline md:hidden">Events</span>
+          </TabsTrigger>
+          <TabsTrigger value="alerts" className="flex gap-2 items-center">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="hidden md:inline">Alerts</span>
+            <span className="inline md:hidden">Alerts</span>
           </TabsTrigger>
         </TabsList>
         
@@ -539,6 +566,93 @@ export function AgentMonitoringDashboard({
                 <div className="flex flex-col items-center justify-center h-40">
                   <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
                   <p className="mt-4 text-sm text-muted-foreground">Loading comparison data...</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="events" className="space-y-4">
+          {eventsLoading ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center justify-center h-40">
+                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                  <p className="mt-4 text-sm text-muted-foreground">Loading events...</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : agentEvents && agentEvents.length > 0 ? (
+            <div className="divide-y">
+              {agentEvents.map(ev => (
+                <Card key={ev.id}>
+                  <CardContent>
+                    <div className="flex justify-between items-center">
+                      <p className="font-medium">{ev.event_type}</p>
+                      <time className="text-sm text-muted-foreground">
+                        {format(new Date(ev.created_at), 'HH:mm:ss')}
+                      </time>
+                    </div>
+                    <p className="text-sm">{ev.payload || JSON.stringify(ev)}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-6">
+                <div className="flex flex-col items-center justify-center h-40">
+                  <AlertTriangle className="h-12 w-12 text-yellow-500" />
+                  <p className="mt-4 text-lg font-medium">No events</p>
+                  <p className="text-sm text-muted-foreground">
+                    There are no events for this agent.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+        
+        <TabsContent value="alerts" className="space-y-4">
+          {alertsLoading ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center justify-center h-40">
+                  <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                  <p className="mt-4 text-sm text-muted-foreground">Loading alerts...</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : anomalyAlerts && anomalyAlerts.length > 0 ? (
+            <div className="divide-y">
+              {anomalyAlerts.map(alert => (
+                <Card key={alert.id}>
+                  <CardContent>
+                    <div className="flex justify-between items-center">
+                      <p className="font-medium">{alert.alert_type}</p>
+                      <time className="text-sm text-muted-foreground">
+                        {format(new Date(alert.created_at), 'HH:mm:ss')}
+                      </time>
+                    </div>
+                    <p className="text-sm">{alert.description}</p>
+                    {!alert.resolved && (
+                      <Button size="sm" onClick={() => resolveAlertMutation.mutate(alert.id)}>
+                        Resolve
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-6">
+                <div className="flex flex-col items-center justify-center h-40">
+                  <AlertTriangle className="h-12 w-12 text-gray-500" />
+                  <p className="mt-4 text-lg font-medium">No alerts</p>
+                  <p className="text-sm text-muted-foreground">
+                    There are no anomaly alerts for this agent.
+                  </p>
                 </div>
               </CardContent>
             </Card>

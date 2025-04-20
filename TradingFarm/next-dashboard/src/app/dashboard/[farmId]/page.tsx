@@ -12,7 +12,14 @@ interface DashboardPageProps {
 }
 
 export default async function DashboardPage({ params }: DashboardPageProps) {
-  const { farmId } = params;
+  // Safely extract farmId from params
+  const farmId = params?.farmId;
+  
+  // Ensure we have a valid farmId
+  if (!farmId) {
+    return notFound();
+  }
+  
   const farmIdNumber = parseInt(farmId, 10);
   
   try {

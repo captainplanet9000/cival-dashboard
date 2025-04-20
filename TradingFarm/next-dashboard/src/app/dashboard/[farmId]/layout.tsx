@@ -14,7 +14,14 @@ export default async function DashboardLayout({
   children,
   params
 }: DashboardLayoutProps) {
-  const { farmId } = params;
+  // Safely extract farmId from params
+  const farmId = params?.farmId;
+  
+  // Ensure we have a valid farmId before proceeding
+  if (!farmId) {
+    return redirect('/dashboard');
+  }
+  
   const supabase = await createServerClient();
   
   // Check if user is authenticated
@@ -31,7 +38,7 @@ export default async function DashboardLayout({
     .eq('id', farmId)
     .single();
   
-  if (error || !farm || farm.owner_id !== user.id) {
+  if (error || !farm || farm.user_id !== user.id) {
     console.error('Farm access error:', error);
     return redirect('/dashboard');
   }

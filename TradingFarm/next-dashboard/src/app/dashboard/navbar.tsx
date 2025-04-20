@@ -1,13 +1,14 @@
 'use client';
 import Link from 'next/link';
-import { useNavigation, UserRole } from '@/utils/useNavigation';
+import { useNavigation, UserRole } from '@/utils/NavigationService';
+import { NavigationItem } from '@/config/navigation';
 
 export function Navbar({ userRole = 'user' }: { userRole?: UserRole }) {
   const { allItems, isActive } = useNavigation(userRole);
 
   return (
     <nav className="flex items-center gap-6 lg:gap-8 overflow-x-auto pb-2" aria-label="Dashboard Navigation">
-      {allItems.map(item => (
+      {allItems.map((item: NavigationItem) => (
         <Link
           key={item.href}
           href={item.href}

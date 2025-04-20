@@ -1,3 +1,5 @@
+'use client';
+
 import { NAVIGATION, NAVIGATION_SECONDARY } from '@/config/navigation';
 import { usePathname } from 'next/navigation';
 import { useMemo } from 'react';
