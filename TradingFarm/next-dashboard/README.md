@@ -11,6 +11,7 @@ Trading Farm Dashboard is a comprehensive platform for crypto trading operations
 - Track orders and trades
 - Analyze performance metrics
 - Visualize trading data
+- **Leverage AI-powered DeFi analytics and strategy recommendations via the ElizaOS DeFi Console**
 
 Built with Next.js 14, TypeScript, Tailwind CSS, and leveraging a Supabase database.
 
@@ -25,10 +26,12 @@ src/
 │   ├── dashboard/     # Dashboard Pages
 │   └── auth/          # Authentication Pages
 ├── components/        # React Components
+│   ├── ai/            # AI-powered panels (ElizaOS DeFi Command Panel, etc)
+│   └── dashboard/     # Dashboard widgets (ElizaDeFiConsoleWidget, etc)
 ├── data-access/       # Data Access Layer
 │   ├── models/        # Data Models
 │   ├── repositories/  # Data Repositories
-│   └── services/      # Business Logic
+│   └── services/      # Business Logic (elizaos-defi-service, strategy-engine, etc)
 ├── lib/               # Utilities
 └── types/             # TypeScript Types
 ```
@@ -73,6 +76,7 @@ For detailed API documentation, see [API_IMPLEMENTATION.md](./API_IMPLEMENTATION
 - Performance metrics
 - Recent activity
 - Value locked
+- **ElizaOS DeFi Console**: AI-powered DeFi analytics, lending, risk, and strategy command interface (new widget)
 
 ### Farm Management
 - Create and configure farms
@@ -97,12 +101,26 @@ For detailed API documentation, see [API_IMPLEMENTATION.md](./API_IMPLEMENTATION
 - Profit factors
 - Market insights
 
+### ElizaOS DeFi Console (NEW)
+- Natural language interface for DeFi lending, borrowing, and risk analysis
+- Integrated with Aave lending module and strategy engine
+- Real-time DeFi analytics and recommendations
+- Embedded as a dashboard widget for convenient access
+- Supports toast notifications for opportunities and risks
+
 ## Getting Started
 
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
 - Supabase account (for database)
+
+### ElizaOS DeFi Console Usage
+
+Once the app is running, you will find the **ElizaOS DeFi Console** as a dedicated widget on the main dashboard. Use it to:
+- Ask natural language questions about DeFi lending, borrowing, and strategies
+- Get real-time analytics, risk assessments, and actionable recommendations
+- Interact with the Aave lending module and strategy engine through a unified AI interface
 
 ### Installation
 

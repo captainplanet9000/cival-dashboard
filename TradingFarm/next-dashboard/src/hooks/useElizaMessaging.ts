@@ -13,6 +13,9 @@ import {
   AgentCommunicationResponse 
 } from '@/services/elizaos-messaging-adapter';
 
+export type { AgentMessage };
+
+
 interface UseElizaMessagingProps {
   agentId: string;
   refreshInterval?: number; // in milliseconds, set to 0 to disable auto-refresh

@@ -98,19 +98,19 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <WalletProvider>
-        <div className="h-screen bg-background overflow-hidden relative">
+        <div className="h-screen bg-background overflow-hidden">
           {/* Performance monitoring */}
           {reportWebVitals()}
           
           {/* Performance and analytics enhancements */}
           <ClientComponents />
           
-          {/* Sidebar - Positioned with fixed positioning and high z-index */}
+          {/* Sidebar is now fixed position in its component */}
           <Sidebar farmId={farmId} />
 
-          {/* Main content - Adding left margin to accommodate sidebar */}
-          <div className="ml-0 lg:ml-64 flex-1 flex flex-col overflow-hidden relative z-0">
-            {/* Main content area */}
+          {/* Main content area - add margin to account for fixed sidebar */}
+          <div className="ml-64 flex-1 flex flex-col overflow-hidden h-screen">
+            {/* Main content */}
             <main className="flex-1 overflow-auto">
               {children}
             </main>

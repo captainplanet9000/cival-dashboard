@@ -17,6 +17,8 @@ import Link from "next/link";
 import ModelCreationDialog from "@/components/ml/model-creation-dialog";
 import ModelCard from "@/components/ml/model-card";
 import ModelDetailView from "@/components/ml/model-detail-view";
+import ModelPredictionForm from '@/components/ml/ModelPredictionForm';
+import ModelTrainingForm from '@/components/ml/ModelTrainingForm';
 
 export default function MLDashboardPage() {
   const { models, loading, error, refreshModels } = useMlModels();
@@ -27,6 +29,10 @@ export default function MLDashboardPage() {
   const selectedModel = selectedModelId 
     ? models.find(m => m.id === selectedModelId) 
     : null;
+
+  // Modal states for prediction and training
+  const [showPredictionModal, setShowPredictionModal] = useState(false);
+  const [showTrainingModal, setShowTrainingModal] = useState(false);
 
   // Filter models by type for tabs
   const classificationModels = models.filter(m => m.type === 'classification');
@@ -52,6 +58,18 @@ export default function MLDashboardPage() {
         </Button>
       </div>
 
+      {/* Action buttons for selected model */}
+      {selectedModel && (
+        <div className="flex gap-2 mb-4">
+          <Button variant="outline" onClick={() => setShowPredictionModal(true)}>
+            Run Prediction
+          </Button>
+          <Button variant="outline" onClick={() => setShowTrainingModal(true)}>
+            Train Model
+          </Button>
+        </div>
+      )}
+
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -60,6 +78,22 @@ export default function MLDashboardPage() {
             {error}
           </AlertDescription>
         </Alert>
+      )}
+
+      {/* Model Prediction/Training Modals */}
+      {selectedModelId && (
+        <>
+          <ModelPredictionForm
+            open={showPredictionModal}
+            onOpenChange={setShowPredictionModal}
+            modelId={String(selectedModelId)}
+          />
+          <ModelTrainingForm
+            open={showTrainingModal}
+            onOpenChange={setShowTrainingModal}
+            modelId={String(selectedModelId)}
+          />
+        </>
       )}
 
       {/* Status overview cards */}

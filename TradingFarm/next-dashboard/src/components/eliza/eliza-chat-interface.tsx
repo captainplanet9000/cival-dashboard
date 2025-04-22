@@ -1,6 +1,7 @@
 "use client"
 
-import React, { useState, useRef, useEffect } from 'react'
+import * as React from 'react' // Fixes lint: useEffect, useRef, useState
+import type { AgentMessage } from '@/hooks/useElizaMessaging';
 import { 
   Send, 
   Zap, 
@@ -11,17 +12,19 @@ import {
   HelpCircle,
   X,
   Maximize2,
-  Minimize2
+  Minimize2,
+  PlusCircle,
+  Users,
+  Database
 } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { ElizaAgentCreationDialog } from './ElizaAgentCreationDialog';
+import ElizaAgentManager from './ElizaAgentManager';
+import KnowledgeManager from './KnowledgeManager';
 
-type MessageType = 'user' | 'ai' | 'system'
-
-interface Message {
-  id: string
-  content: string
-  type: MessageType
-  timestamp: Date
-}
+// AgentMessage comes from ElizaOS backend, which includes: id, content, message_type, timestamp, etc.
+// We'll adapt AgentMessage to the local display type if needed.
 
 interface QuickCommand {
   id: string
@@ -45,25 +48,58 @@ interface ElizaChatInterfaceProps {
   height?: string;
 }
 
+import { useElizaMessaging } from '@/hooks/useElizaMessaging';
+import { useElizaAgents } from '@/hooks/useElizaAgents';
+
 export default function ElizaChatInterface({
   initialContext = {},
   showTitle = true,
   title = "ElizaOS AI",
-  height = "400px"
-}: ElizaChatInterfaceProps = {}) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 'welcome',
-      content: 'Welcome to ElizaOS AI Command Console. How can I assist you with your trading today?',
-      type: 'ai',
-      timestamp: new Date()
-    }
-  ])
-  const [inputValue, setInputValue] = useState('')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [isExpanded, setIsExpanded] = useState(false)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const chatContainerRef = useRef<HTMLDivElement>(null)
+  height = "400px",
+  agentId: agentIdProp
+}: ElizaChatInterfaceProps & { agentId?: string } = {}) {
+  const { agents, loading: agentsLoading } = useElizaAgents(initialContext.farmId);
+  const agentId = agentIdProp || (agents.length > 0 ? agents[0].id : undefined);
+  const {
+    messages: agentMessages,
+    loading: messagesLoading,
+    error: messagesError,
+    sendCommand,
+    refreshMessages
+  } = useElizaMessaging({ agentId: agentId || '' });
+
+  // Adapt AgentMessage[] to local display type (with .type and .timestamp as Date)
+  const messages = React.useMemo(() =>
+    agentMessages.map((msg) => {
+      let type: 'user' | 'ai' | 'system';
+      switch (msg.message_type) {
+        case 'direct':
+          type = 'user'; break;
+        case 'broadcast':
+          type = 'system'; break;
+        case 'command':
+        case 'status':
+        case 'analysis':
+        case 'alert':
+        case 'query':
+        default:
+          type = 'ai'; break;
+      }
+      return {
+        id: msg.id,
+        content: msg.content,
+        type,
+        timestamp: typeof msg.timestamp === 'string' ? new Date(msg.timestamp) : msg.timestamp
+      };
+    }),
+    [agentMessages]
+  );
+
+  const [inputValue, setInputValue] = React.useState('');
+  const [isProcessing, setIsProcessing] = React.useState(false);
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const chatContainerRef = React.useRef<HTMLDivElement>(null);
 
   // Quick commands for common actions
   const quickCommands: QuickCommand[] = [
@@ -109,147 +145,27 @@ export default function ElizaChatInterface({
   }
 
   // Handle message submission
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (inputValue.trim() === '' || isProcessing) return
-
-    const userMessage: Message = {
-      id: `user-${Date.now()}`,
-      content: inputValue,
-      type: 'user',
-      timestamp: new Date()
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inputValue.trim() === '' || isProcessing || !agentId) return;
+    setIsProcessing(true);
+    try {
+      await sendCommand(inputValue);
+      setInputValue('');
+      setTimeout(() => refreshMessages(), 500);
+    } finally {
+      setIsProcessing(false);
     }
-
-    setMessages((prev: Message[]) => [...prev, userMessage])
-    setInputValue('')
-    setIsProcessing(true)
-
-    // Process the command
-    processElizaCommand(inputValue)
   }
 
   // Handle quick command click
   const handleQuickCommand = (command: string) => {
-    setInputValue(command)
-    
-    // Submit the form programmatically
-    const form = document.getElementById('eliza-chat-form') as HTMLFormElement
-    if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }))
-  }
-
-  // Process ElizaOS command (simulated AI response)
-  const processElizaCommand = async (command: string) => {
-    // Simulate processing delay (would connect to backend in real implementation)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    let response: Message
-
-    // Detect intent (would be handled by Gemma 3 in real implementation)
-    if (command.toLowerCase().includes('status') || command.toLowerCase().includes('system')) {
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `
-        📊 **System Status**
-        
-        All trading systems are operational:
-        - Auto-Trading: Active
-        - Risk Manager: Monitoring
-        - Exchange Connections: 4 connected
-        - Active Agents: 8
-        
-        Current CPU usage: 32%
-        Memory usage: 2.1GB
-        Network latency: 45ms
-        `,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    } else if (command.toLowerCase().includes('market') || command.toLowerCase().includes('analyze')) {
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `
-        📈 **Market Analysis**
-        
-        Current market conditions:
-        - BTC: Bullish trend, support at $63,200
-        - ETH: Consolidating, resistance at $3,550
-        - SOL: Upward momentum, potential breakout above $145
-        
-        Market sentiment: Moderately bullish
-        Volatility index: Medium (45/100)
-        Notable events: Fed meeting tomorrow may impact markets
-        `,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    } else if (command.toLowerCase().includes('optimize') || command.toLowerCase().includes('strategy')) {
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `
-        ⚙️ **Strategy Optimization**
-        
-        Based on recent performance, I recommend:
-        - Increase position size for SOL trades by 5%
-        - Adjust stop loss from fixed to trailing (2%)
-        - Consider adding AVAX to your portfolio for diversification
-        - Reduce exposure to high-risk altcoins temporarily
-        
-        Expected improvement: +2.3% in monthly returns
-        Confidence score: 78%
-        `,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    } else if (command.toLowerCase().includes('risk')) {
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `
-        🛡️ **Risk Assessment**
-        
-        Current risk profile:
-        - Overall risk level: Moderate (62/100)
-        - Highest exposure: BTC (35% of portfolio)
-        - Drawdown protection: Active (10% max)
-        - Danger zones: Leveraged positions in ETH
-        
-        Recommendation: Consider reducing leverage and implementing tighter stop-losses during this period of increased volatility.
-        `,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    } else if (command.toLowerCase().includes('help') || command.toLowerCase().includes('what can you do')) {
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `
-        🤖 **ElizaOS Capabilities**
-        
-        I can help you with:
-        - Monitoring system status and health
-        - Analyzing market conditions and trends
-        - Optimizing trading strategies
-        - Assessing and managing risk
-        - Setting and tracking trading goals
-        - Managing your trading farms
-        - Executing trades with natural language
-        - Providing insights on market movements
-        
-        Try asking me specific questions about your trading activities, or use the quick command buttons below.
-        `,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    } else {
-      // Generic response for unrecognized commands
-      response = {
-        id: `ai-${Date.now()}`,
-        content: `I've processed your command: "${command}". In a fully implemented system, I would connect to the trading farm backend to execute this command and provide relevant information. Is there anything specific about your trading strategy or market conditions you'd like to know?`,
-        type: 'ai',
-        timestamp: new Date()
-      }
-    }
-
-    setMessages((prev: Message[]) => [...prev, response])
-    setIsProcessing(false)
+    setInputValue(command);
+    // Programmatically submit the form
+    setTimeout(() => {
+      const form = document.getElementById('eliza-chat-form') as HTMLFormElement;
+      if (form) form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+    }, 0);
   }
 
   const toggleExpanded = () => {
@@ -262,12 +178,42 @@ export default function ElizaChatInterface({
       ref={chatContainerRef}
     >
       <div className="flex justify-between items-center mb-4">
-        {showTitle && (
-          <h2 className="text-xl font-bold flex items-center">
-            <Zap className="mr-2 h-5 w-5 text-accent" />
-            {title}
-          </h2>
-        )}
+        <div className="flex items-center gap-2">
+          {showTitle && (
+            <h2 className="text-xl font-bold flex items-center">
+              <Zap className="mr-2 h-5 w-5 text-accent" />
+              {title}
+            </h2>
+          )}
+          {/* Action buttons */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button size="icon" variant="ghost" title="Create Agent" className="ml-2"><PlusCircle className="h-5 w-5" /></Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader><DialogTitle>Create New Agent</DialogTitle></DialogHeader>
+              <ElizaAgentCreationDialog farmId={initialContext.farmId} onSuccess={() => {}} buttonText="Create Agent" />
+            </DialogContent>
+          </Dialog>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button size="icon" variant="ghost" title="Manage Agents"><Users className="h-5 w-5" /></Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>Manage Agents</DialogTitle></DialogHeader>
+              <ElizaAgentManager farmId={initialContext.farmId} />
+            </DialogContent>
+          </Dialog>
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button size="icon" variant="ghost" title="View Memory"><Database className="h-5 w-5" /></Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>Agent Memory</DialogTitle></DialogHeader>
+              <KnowledgeManager agentId={agentId} farmId={initialContext.farmId} allowEdit={false} />
+            </DialogContent>
+          </Dialog>
+        </div>
         <button 
           onClick={toggleExpanded}
           className="p-2 rounded-md hover:bg-muted"

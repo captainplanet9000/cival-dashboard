@@ -149,17 +149,17 @@ export function FarmList({ userId, onEdit, onDelete, onStatusChange, onView }: F
             {farms.map((farm) => (
               <TableRow key={farm.id}>
                 <TableCell className="font-medium">
-                  {onView ? (
-                    <Button 
-                      variant="link" 
-                      className="p-0 h-auto font-medium"
-                      onClick={() => onView(farm)}
-                    >
-                      {farm.name}
-                    </Button>
-                  ) : (
-                    farm.name
-                  )}
+                  <Button 
+                    variant="link" 
+                    className="p-0 h-auto font-medium"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.location.href = `/dashboard/farms/${farm.id}/overview`;
+                      }
+                    }}
+                  >
+                    {farm.name}
+                  </Button>
                 </TableCell>
                 <TableCell>{getStatusBadge(farm)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground line-clamp-1">
@@ -175,11 +175,13 @@ export function FarmList({ userId, onEdit, onDelete, onStatusChange, onView }: F
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Actions</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      {onView && (
-                        <DropdownMenuItem onClick={() => onView(farm)}>
-                          <Activity className="h-4 w-4 mr-2" /> View Details
-                        </DropdownMenuItem>
-                      )}
+                      <DropdownMenuItem onClick={() => {
+                        if (typeof window !== 'undefined') {
+                          window.location.href = `/dashboard/farms/${farm.id}/overview`;
+                        }
+                      }}>
+                        <Activity className="h-4 w-4 mr-2" /> View Details
+                      </DropdownMenuItem>
                       {onStatusChange && (
                         <DropdownMenuItem onClick={() => onStatusChange(farm, !farm.is_active)}>
                           {farm.is_active ? (

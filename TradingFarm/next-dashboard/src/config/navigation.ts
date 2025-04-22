@@ -126,21 +126,18 @@ export const NAVIGATION: NavigationGroup[] = [
   {
     group: 'main',
     label: 'Main',
-    roles: ['user', 'admin'], // Example: restrict groups by role
+    roles: ['user', 'admin'],
     items: [
-      { name: 'Dashboard', href: '/dashboard/overview', icon: LayoutDashboard, roles: ['user', 'admin'], breadcrumb: 'Dashboard', tab: true },
+      { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['user', 'admin'], breadcrumb: 'Dashboard', tab: true },
     ],
   },
   {
-    group: 'core',
-    label: 'Core Trading',
+    group: 'farms',
+    label: 'Farms',
     roles: ['user', 'admin'],
     items: [
-      { name: 'Trading Hub', href: '/trading-hub', icon: Zap, roles: ['user', 'admin'], breadcrumb: 'Trading Hub', tab: true, badge: 'New' },
-      { name: 'Farms', href: '/dashboard/farm', icon: Factory, roles: ['user', 'admin'], breadcrumb: 'Farms', tab: true },
-      { name: 'Agents', href: '/dashboard/agents', icon: Bot, roles: ['admin'], breadcrumb: 'Agents', tab: false },
-      { name: 'Goals', href: '/goals', icon: Target, roles: ['user', 'admin'], breadcrumb: 'Goals', tab: false },
-      { name: 'Strategies', href: '/strategies', icon: Briefcase, roles: ['user', 'admin'], breadcrumb: 'Strategies', tab: true },
+      { name: 'Farms Overview', href: '/dashboard/farms', icon: Factory, roles: ['user', 'admin'], breadcrumb: 'Farms', tab: true },
+      { name: 'Active Farm', href: '/dashboard/farms/active', icon: Database, roles: ['user', 'admin'], breadcrumb: 'Active Farm', tab: true },
     ],
   },
   {
@@ -148,7 +145,8 @@ export const NAVIGATION: NavigationGroup[] = [
     label: 'Execution',
     roles: ['user', 'admin'],
     items: [
-      { name: 'Positions', href: '/trading/positions', icon: Target, roles: ['user', 'admin'], breadcrumb: 'Positions', tab: true },
+      { name: 'Portfolio', href: '/dashboard/portfolio', icon: BarChart2, roles: ['user', 'admin'], breadcrumb: 'Portfolio', tab: true },
+      { name: 'Trading Hub', href: '/trading-hub', icon: Zap, roles: ['user', 'admin'], breadcrumb: 'Trading Hub', tab: true, badge: 'New' },
       { name: 'Order History', href: '/trading/orders/history', icon: History, roles: ['user', 'admin'], breadcrumb: 'Order History', tab: false },
       { name: 'Activity Logs', href: '/dashboard/agent-trading', icon: Activity, roles: ['admin'], breadcrumb: 'Activity Logs', tab: false },
     ],
@@ -158,19 +156,19 @@ export const NAVIGATION: NavigationGroup[] = [
     label: 'Analytics',
     roles: ['user', 'admin'],
     items: [
-      { name: 'Performance', href: '/dashboard/simulation', icon: LineChart, roles: ['user', 'admin'], breadcrumb: 'Performance', tab: true },
-      { name: 'Risk Analysis', href: '/dashboard/bybit-test', icon: Shield, roles: ['admin'], breadcrumb: 'Risk Analysis', tab: false },
-      { name: 'Market Insights', href: '/trading/live-data', icon: BarChart, roles: ['user', 'admin'], breadcrumb: 'Market Insights', tab: false },
+      { name: 'Performance', href: '/dashboard/analytics/performance', icon: LineChart, roles: ['user', 'admin'], breadcrumb: 'Performance', tab: true },
+      { name: 'Risk Analysis', href: '/dashboard/analytics/risk', icon: Shield, roles: ['admin'], breadcrumb: 'Risk Analysis', tab: false },
+      { name: 'Market Insights', href: '/dashboard/analytics/market', icon: BarChart, roles: ['user', 'admin'], breadcrumb: 'Market Insights', tab: false },
     ],
   },
   {
-    group: 'funding',
-    label: 'Funding',
+    group: 'vault',
+    label: 'Vault',
     roles: ['user', 'admin'],
     items: [
-      { name: 'Accounts & Balances', href: '/dashboard/banking', icon: Wallet, roles: ['user', 'admin'], breadcrumb: 'Accounts & Balances', tab: false },
-      { name: 'Vault', href: '/dashboard/collaboration', icon: Building2, roles: ['user', 'admin'], breadcrumb: 'Vault', tab: false },
-      { name: 'Transactions', href: '/dashboard/dry-run', icon: ArrowRightLeft, roles: ['admin'], breadcrumb: 'Transactions', tab: false },
+      { name: 'Accounts & Balances', href: '/dashboard/vault/accounts', icon: Wallet, roles: ['user', 'admin'], breadcrumb: 'Accounts & Balances', tab: false },
+      { name: 'Vault Security', href: '/dashboard/vault/security', icon: Building2, roles: ['user', 'admin'], breadcrumb: 'Vault', tab: false },
+      { name: 'Transactions', href: '/dashboard/vault/transactions', icon: ArrowRightLeft, roles: ['admin'], breadcrumb: 'Transactions', tab: false },
     ],
   },
   {
@@ -194,6 +192,22 @@ export const NAVIGATION: NavigationGroup[] = [
       { name: 'Connections', href: '/dashboard/settings/connections', icon: Blocks, roles: ['admin'], breadcrumb: 'Connections', tab: false },
     ],
   },
+];
+
+// Farm-specific navigation items that appear when a farm is selected
+/**
+ * Farm-specific navigation items that show up in secondary navigation when a farm is selected.
+ * These items will be displayed in a tabbed interface within farm detail pages.
+ * 
+ * The actual routing will use the dynamic farm ID from context or route params.
+ */
+export const FARM_NAVIGATION: NavigationItem[] = [
+  { name: 'Overview', href: '/dashboard/farms/:farmId', icon: LayoutDashboard, roles: ['user', 'admin'], breadcrumb: 'Farm Overview', tab: true },
+  { name: 'Agents', href: '/dashboard/farms/:farmId/agents', icon: Bot, roles: ['user', 'admin'], breadcrumb: 'Farm Agents', tab: true },
+  { name: 'Goals', href: '/dashboard/farms/:farmId/goals', icon: Target, roles: ['user', 'admin'], breadcrumb: 'Farm Goals', tab: true },
+  { name: 'Strategies', href: '/dashboard/farms/:farmId/strategies', icon: Briefcase, roles: ['user', 'admin'], breadcrumb: 'Farm Strategies', tab: true },
+  { name: 'Performance', href: '/dashboard/farms/:farmId/performance', icon: LineChart, roles: ['user', 'admin'], breadcrumb: 'Farm Performance', tab: true },
+  { name: 'Settings', href: '/dashboard/farms/:farmId/settings', icon: Settings, roles: ['user', 'admin'], breadcrumb: 'Farm Settings', tab: true },
 ];
 
 // Secondary/mobile-only navigation (notifications, sync, offline, etc.)

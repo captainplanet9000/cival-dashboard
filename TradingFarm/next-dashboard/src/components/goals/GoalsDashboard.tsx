@@ -1,10 +1,10 @@
-'use client';
-
 /**
  * Goals Dashboard Component
  * Displays and manages all trading goals
  */
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from '@/components/ui/use-toast';
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -26,15 +26,97 @@ import {
 import { TradingEventEmitter, TRADING_EVENTS } from '@/utils/events/trading-events';
 import { acquisitionGoalService } from '@/services/acquisition-goal-service';
 
-export function GoalsDashboard() {
+interface GoalsDashboardProps {
+  farmId?: string;
+}
+
+export function GoalsDashboard({ farmId }: GoalsDashboardProps) {
   // State for goals
-  const [goals, setGoals] = useState<any[]>([]);
-  const [filteredGoals, setFilteredGoals] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  type Agent = { id: string; name: string; status: 'active' | 'paused' | 'unknown' };
+  type TradingGoal = {
+    id: string;
+    name: string;
+    description?: string;
+    farm_id?: string;
+    status: string;
+    goal_type: string;
+    priority?: string;
+    progress?: { percentage: number; current_amount?: number; last_update?: string };
+  };
+  type Goal = {
+    goal_id: string;
+    trading_goal: TradingGoal;
+    assigned_agent_ids?: string[];
+    assigned_agents?: Agent[];
+    current_amount?: number;
+    target_amount: number;
+    target_asset: string;
+    created_at: string;
+  };
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [filteredGoals, setFilteredGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [detailOpen, setDetailOpen] = useState<boolean>(false);
+
+  // Fetch assigned agents for each goal (simulate, adapt to your backend)
+  useEffect(() => {
+    if (!goals.length) return;
+    // Example: fetch agent info for each goal's assigned_agent_ids
+    // Replace with real API call as needed
+    setGoals(prevGoals => prevGoals.map(goal => ({
+      ...goal,
+      assigned_agents: (goal.assigned_agent_ids || []).map((id: string, i: number) => ({
+        id,
+        name: `Agent ${id}`,
+        status: i % 2 === 0 ? 'active' : 'paused', // Simulate status
+      }))
+    })));
+  }, [goals.length]);
+
+  // Handler: Edit Goal
+  const handleEditGoal = (goal: Goal) => {
+    toast({ title: 'Edit Goal', description: `Would open edit dialog for ${goal.trading_goal.name}` });
+    // TODO: Implement edit logic/modal
+  };
+
+  // Handler: Pause/Resume Goal
+  const handlePauseResumeGoal = async (goal: Goal) => {
+    try {
+      // Simulate status toggle, replace with real API call
+      setGoals((prevGoals: Goal[]) =>
+        prevGoals.map((g: Goal) =>
+          g.goal_id === goal.goal_id
+            ? {
+                ...g,
+                trading_goal: {
+                  ...g.trading_goal,
+                  status: g.trading_goal.status === 'paused' ? 'active' : 'paused',
+                },
+              }
+            : g
+        )
+      );
+      toast({ title: `${goal.trading_goal.status === 'paused' ? 'Resumed' : 'Paused'} Goal`, description: goal.trading_goal.name });
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to pause/resume goal', variant: 'destructive' });
+    }
+  };
+
+  // Handler: Delete Goal
+  const handleDeleteGoal = async (goal: Goal) => {
+    try {
+      setGoals((prevGoals: Goal[]) => prevGoals.filter((g: Goal) => g.goal_id !== goal.goal_id));
+      toast({ title: 'Deleted Goal', description: goal.trading_goal.name });
+      setDetailOpen(false);
+    } catch (err) {
+      toast({ title: 'Error', description: 'Failed to delete goal', variant: 'destructive' });
+    }
+  };
+
   // Filters and search
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
@@ -68,10 +150,10 @@ export function GoalsDashboard() {
     loadGoals();
   };
   
-  const handleGoalProgressUpdated = (data: any) => {
-    // Update the specific goal's progress
-    setGoals(prevGoals => {
-      return prevGoals.map(goal => {
+  type GoalProgressData = { goalId: string; currentAmount: number; percentage: number; timestamp: string };
+  const handleGoalProgressUpdated = (data: GoalProgressData) => {
+    setGoals((prevGoals: Goal[]) => {
+      return prevGoals.map((goal: Goal) => {
         if (goal.trading_goal.id === data.goalId) {
           return {
             ...goal,
@@ -92,7 +174,7 @@ export function GoalsDashboard() {
     });
   };
   
-  const loadGoals = async () => {
+  const loadGoals = async (): Promise<void> => {
     setLoading(true);
     setError(null);
     
@@ -100,8 +182,12 @@ export function GoalsDashboard() {
       const response = await acquisitionGoalService.getAcquisitionGoals();
       
       if (response.success && response.data) {
-        setGoals(response.data);
-        setFilteredGoals(response.data);
+        let goalsData = response.data;
+        if (farmId) {
+          goalsData = goalsData.filter((goal: any) => goal.trading_goal.farm_id === farmId);
+        }
+        setGoals(goalsData);
+        setFilteredGoals(goalsData);
       } else {
         setError(response.error || 'Failed to load goals');
       }
@@ -113,13 +199,13 @@ export function GoalsDashboard() {
     }
   };
   
-  const applyFilters = () => {
+  const applyFilters = (): void => {
     let filtered = [...goals];
     
     // Apply search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(goal => 
+      filtered = filtered.filter((goal: Goal) => 
         goal.trading_goal.name.toLowerCase().includes(query) ||
         (goal.trading_goal.description && goal.trading_goal.description.toLowerCase().includes(query)) ||
         goal.target_asset.toLowerCase().includes(query)
@@ -128,29 +214,28 @@ export function GoalsDashboard() {
     
     // Apply status filter
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(goal => goal.trading_goal.status === statusFilter);
+      filtered = filtered.filter((goal: Goal) => goal.trading_goal.status === statusFilter);
     }
     
     // Apply type filter (currently all are acquisition, but prepared for future types)
     if (typeFilter !== 'all') {
-      filtered = filtered.filter(goal => goal.trading_goal.goal_type === typeFilter);
+      filtered = filtered.filter((goal: Goal) => goal.trading_goal.goal_type === typeFilter);
     }
     
     // Apply priority filter
     if (priorityFilter !== 'all') {
-      filtered = filtered.filter(goal => goal.trading_goal.priority === priorityFilter);
+      filtered = filtered.filter((goal: Goal) => goal.trading_goal.priority === priorityFilter);
     }
     
     setFilteredGoals(filtered);
   };
   
-  const getStatusBadgeVariant = (status: string) => {
+  const getStatusBadgeVariant = (status: string): 'default' | 'destructive' | 'secondary' | 'outline' => {
     switch (status) {
       case 'active':
       case 'in_progress':
-        return 'default';
       case 'completed':
-        return 'success';
+        return 'default';
       case 'failed':
         return 'destructive';
       case 'pending':
@@ -162,7 +247,7 @@ export function GoalsDashboard() {
     }
   };
   
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string): string => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
@@ -170,10 +255,10 @@ export function GoalsDashboard() {
     });
   };
   
-  const getGoalIcon = (goalType: string) => {
+  const getGoalIcon = (goalType: string): React.ReactNode => {
     switch (goalType) {
       case 'acquisition':
-        return <Target className="h-4 w-4" />;
+        return <Badge className="bg-green-500" variant="default">Online</Badge>;
       case 'profit':
         return <TrendingUp className="h-4 w-4" />;
       case 'portfolio':
@@ -181,7 +266,7 @@ export function GoalsDashboard() {
       case 'risk_management':
         return <Briefcase className="h-4 w-4" />;
       default:
-        return <Target className="h-4 w-4" />;
+        return <Badge className="bg-green-500" variant="default">Online</Badge>;
     }
   };
   
@@ -332,113 +417,105 @@ export function GoalsDashboard() {
             </Alert>
           )}
           
-          <ScrollArea className="h-[calc(100vh-320px)] min-h-[400px]">
-            <div className="space-y-4 pr-3">
-              {filteredGoals.length > 0 ? (
-                filteredGoals.map((goal) => (
-                  <Link 
-                    key={goal.goal_id}
-                    href={`/goals/${goal.goal_id}`} 
-                    className="block"
+          <div className="space-y-4 pr-3">
+            {filteredGoals.length > 0 ? (
+              filteredGoals.map((goal: Goal) => (
+                <div
+                  key={goal.goal_id}
+                  className="block"
+                >
+                  <div
+                    className="border rounded-lg p-4 hover:bg-accent/50 transition-colors cursor-pointer"
+                    onClick={() => { setSelectedGoal(goal); setDetailOpen(true); }}
                   >
-                    <div className="border rounded-lg p-4 hover:bg-accent/50 transition-colors cursor-pointer">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-                            {getGoalIcon(goal.trading_goal.goal_type)}
-                          </div>
-                          
-                          <div>
-                            <h3 className="font-medium">{goal.trading_goal.name}</h3>
-                            <p className="text-sm text-muted-foreground line-clamp-1">
-                              {goal.trading_goal.description || 
-                                `Acquire ${goal.target_amount} ${goal.target_asset}`}
-                            </p>
-                          </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
+                          {getGoalIcon(goal.trading_goal.goal_type)}
                         </div>
-                        
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 sm:mt-0">
-                          <Badge variant={getStatusBadgeVariant(goal.trading_goal.status)}>
-                            {goal.trading_goal.status.charAt(0).toUpperCase() + goal.trading_goal.status.slice(1)}
-                          </Badge>
-                          
-                          <Badge variant="outline">
-                            {goal.target_asset}
-                          </Badge>
-                          
-                          <Badge variant="outline" className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            <span>{formatDate(goal.created_at)}</span>
-                          </Badge>
-                        </div>
-                      </div>
-                      
-                      <div className="mt-4 space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <div className="flex items-center gap-1">
-                            <Target className="h-3.5 w-3.5 text-primary" />
-                            <span>
-                              {goal.current_amount} / {goal.target_amount} {goal.target_asset}
-                            </span>
-                          </div>
-                          
-                          <span>
-                            {goal.trading_goal.progress?.percentage?.toFixed(2) || '0.00'}%
-                          </span>
-                        </div>
-                        
-                        <Progress 
-                          value={goal.trading_goal.progress?.percentage || 0} 
-                          className="h-2 w-full"
-                        />
-                      </div>
-                      
-                      <div className="mt-4 pt-3 border-t flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Bot className="h-3 w-3" />
-                            <span>
-                              {(goal.execution_parameters?.selectedAgentIds?.length || 0) > 0
-                                ? `${goal.execution_parameters.selectedAgentIds.length} agents assigned`
-                                : 'No agents assigned'}
-                            </span>
-                          </div>
-                        </div>
-                        
                         <div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 rounded-full"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
+                          <h3 className="font-medium">{goal.trading_goal.name}</h3>
+                          <p className="text-sm text-muted-foreground line-clamp-1">
+                            {goal.trading_goal.description || `Acquire ${goal.target_amount} ${goal.target_asset}`}
+                          </p>
                         </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-2 sm:mt-0">
+                        <Badge variant={getStatusBadgeVariant(goal.trading_goal.status) as "default" | "destructive" | "secondary" | "outline" | undefined}>
+                          {goal.trading_goal.status.charAt(0).toUpperCase() + goal.trading_goal.status.slice(1)}
+                        </Badge>
+                        <Badge variant="outline">{goal.target_asset}</Badge>
+                        <Badge variant="outline" className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          <span>{formatDate(goal.created_at)}</span>
+                        </Badge>
                       </div>
                     </div>
-                  </Link>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center border rounded-lg py-16">
-                  <Target className="h-12 w-12 text-muted-foreground mb-3" />
-                  <h3 className="text-lg font-medium">No goals found</h3>
-                  <p className="text-sm text-muted-foreground mt-1 mb-6">
-                    {goals.length > 0 
-                      ? 'Try adjusting your filters to see more results.' 
-                      : 'Create your first trading goal to get started.'}
-                  </p>
-                  {goals.length === 0 && (
-                    <Link href="/goals/create">
-                      <Button className="flex items-center gap-2">
-                        <PlusCircle className="h-4 w-4" />
-                        <span>Create Goal</span>
-                      </Button>
-                    </Link>
-                  )}
+                    <div className="mt-4 space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <div className="flex items-center gap-1">
+                          <Target className="h-3.5 w-3.5 text-primary" />
+                          <span>
+                            {goal.current_amount} / {goal.target_amount} {goal.target_asset}
+                          </span>
+                        </div>
+                      </div>
+                      <Progress value={goal.trading_goal.progress?.percentage || 0} className="h-2 w-full mt-2" />
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 p-0"
+                          onClick={e => { e.stopPropagation(); handleEditGoal(goal); }}
+                          title="Edit"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536M9 13h3l8-8a2.828 2.828 0 00-4-4l-8 8v3zm0 0v3h3" /></svg>
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-7 w-7 p-0"
+                          onClick={e => { e.stopPropagation(); handlePauseResumeGoal(goal); }}
+                          title={goal.trading_goal.status === 'paused' ? 'Resume' : 'Pause'}
+                        >
+                          {goal.trading_goal.status === 'paused' ? (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7" /></svg>
+                          ) : (
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M10 9v6m4-6v6" /></svg>
+                          )}
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="icon"
+                          className="h-7 w-7 p-0"
+                          onClick={e => { e.stopPropagation(); handleDeleteGoal(goal); }}
+                          title="Delete"
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              )}
-            </div>
-          </ScrollArea>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center border rounded-lg py-16">
+                <Target className="h-12 w-12 text-muted-foreground mb-3" />
+                <h3 className="text-lg font-medium">No goals found</h3>
+                <p className="text-sm text-muted-foreground mt-1 mb-6">
+                  {goals.length > 0 
+                    ? 'Try adjusting your filters to see more results.' 
+                    : 'Create your first trading goal to get started.'}
+                </p>
+                <Link href="/goals/create">
+                  <Button className="flex items-center gap-2">
+                    <PlusCircle className="h-4 w-4" />
+                    <span>Create Goal</span>
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </CardContent>
     </Card>

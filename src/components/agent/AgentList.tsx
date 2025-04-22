@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Table,
   TableBody,
@@ -10,77 +10,112 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { AgentDetails } from "./AgentDetails";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { LineIcon } from 'lineicons-react';
 
-interface Agent {
-  id: string;
+import { Database } from "../../types/database.types";
+import { createBrowserClient } from "@/utils/supabase/client"; // Import Supabase client
+
+type Agent = Database['public']['Tables']['agents']['Row'];
+
+type AgentMetadata = {
   name: string;
-  type: string;
-  status: "online" | "offline" | "error" | "maintenance";
-  farm: string | null;
-  strategy: string | null;
-  performance: number;
-  lastActive: string;
+  performance?: string;
+  [key: string]: any; 
+};
+
+interface AgentListProps {
+  farmId: string; 
 }
 
-const mockAgents: Agent[] = [
-  {
-    id: "1",
-    name: "Alpha Trader",
-    type: "Momentum",
-    status: "online",
-    farm: "High Frequency Farm",
-    strategy: "RSI Momentum",
-    performance: 12.5,
-    lastActive: "2024-03-20T10:30:00Z",
-  },
-  {
-    id: "2",
-    name: "Beta Scanner",
-    type: "Mean Reversion",
-    status: "offline",
-    farm: null,
-    strategy: "Bollinger Bands",
-    performance: -2.3,
-    lastActive: "2024-03-19T15:45:00Z",
-  },
-  {
-    id: "3",
-    name: "Delta Hedge",
-    type: "Options",
-    status: "error",
-    farm: "Options Farm",
-    strategy: "Iron Condor",
-    performance: 8.7,
-    lastActive: "2024-03-20T09:15:00Z",
-  },
-];
+export function AgentList({ farmId }: AgentListProps) {
+  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null); 
+  const [agents, setAgents] = useState<Agent[]>([]); 
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-export function AgentList() {
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  // Wrap loadAgents in useCallback
+  const loadAgents = useCallback(async () => {
+    if (!farmId) {
+      setIsLoading(false);
+      setAgents([]);
+      console.log('AgentList: No farmId provided.');
+      return;
+    }
 
-  const getStatusColor = (status: Agent["status"]) => {
-    switch (status) {
-      case "online":
+    setIsLoading(true);
+    setError(null);
+    console.log(`AgentList: Fetching agents for farm ID: ${farmId}`);
+    try {
+      // Create Supabase client
+      const supabase = createBrowserClient();
+
+      // Fetch agents for the specific farm
+      const { data, error: dbError } = await supabase
+        .from('agents')
+        .select('*')
+        .eq('farm_id', farmId);
+
+      if (dbError) {
+        throw dbError;
+      }
+
+      setAgents(data || []);
+      console.log(`AgentList: Fetched ${data?.length || 0} agents for farm ID: ${farmId}`);
+
+    } catch (err) {
+      console.error("Error loading agents:", err); // Log the actual error
+      setError(err instanceof Error ? `Database Error: ${err.message}` : 'An unexpected error occurred');
+      setAgents([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [farmId]); // Dependency array includes farmId
+
+  useEffect(() => {
+    loadAgents(); // Call the memoized loadAgents function
+  }, [loadAgents]); // useEffect dependency is now the stable loadAgents function
+
+  const getStatusColor = (status: string) => { 
+    switch (status.toLowerCase()) { 
+      case "active":
         return "bg-green-500";
-      case "offline":
+      case "idle":
         return "bg-gray-500";
       case "error":
         return "bg-red-500";
-      case "maintenance":
-        return "bg-yellow-500";
       default:
         return "bg-gray-500";
     }
   };
 
-  const formatPerformance = (value: number) => {
-    const color = value >= 0 ? "text-green-600" : "text-red-600";
-    return <span className={color}>{value >= 0 ? "+" : ""}{value}%</span>;
+  const formatTimestamp = (dateString: string | null) => {
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch (e) {
+      return "Invalid Date";
+    }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
-  };
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center p-10">
+        <LineIcon name="spinner" className="h-8 w-8 animate-spin text-muted-foreground" />
+        <span className="ml-2">Loading agents...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <LineIcon name="terminal" className="h-4 w-4" />
+        <AlertTitle>Error Loading Agents</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -91,47 +126,47 @@ export function AgentList() {
               <TableHead>Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Farm</TableHead>
-              <TableHead>Strategy</TableHead>
               <TableHead>Performance</TableHead>
               <TableHead>Last Active</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockAgents.map((agent) => (
+            {agents.length > 0 ? agents.map((agent) => ( 
               <TableRow key={agent.id}>
-                <TableCell>{agent.name}</TableCell>
-                <TableCell>{agent.type}</TableCell>
+                <TableCell>{(agent.metadata as AgentMetadata)?.name ?? 'N/A'}</TableCell>
+                <TableCell>{agent.agent_type}</TableCell>
                 <TableCell>
-                  <Badge className={getStatusColor(agent.status)}>
+                  <Badge className={`${getStatusColor(agent.status)} text-white`}>
                     {agent.status}
                   </Badge>
                 </TableCell>
-                <TableCell>{agent.farm || "—"}</TableCell>
-                <TableCell>{agent.strategy || "—"}</TableCell>
-                <TableCell>{formatPerformance(agent.performance)}</TableCell>
-                <TableCell>{formatDate(agent.lastActive)}</TableCell>
-                <TableCell>
-                  <Button
-                    variant="outline"
-                    size="sm"
+                <TableCell>{(agent.metadata as AgentMetadata)?.performance ?? 'N/A'}</TableCell>
+                <TableCell>{formatTimestamp(agent.last_heartbeat_at)}</TableCell>
+                <TableCell className="text-right">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
                     onClick={() => setSelectedAgent(agent)}
                   >
-                    Details
+                    View Details
                   </Button>
                 </TableCell>
               </TableRow>
-            ))}
+            )) : (
+              <TableRow>
+                <TableCell colSpan={6} className="text-center text-muted-foreground">No agents found for this farm.</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
 
-      <AgentDetails
-        agent={selectedAgent}
-        open={!!selectedAgent}
-        onOpenChange={(open) => !open && setSelectedAgent(null)}
+      <AgentDetails 
+        agent={selectedAgent} 
+        onClose={() => setSelectedAgent(null)} 
+        onAgentUpdate={loadAgents} // Pass loadAgents as onAgentUpdate
       />
     </div>
   );
-} 
+}

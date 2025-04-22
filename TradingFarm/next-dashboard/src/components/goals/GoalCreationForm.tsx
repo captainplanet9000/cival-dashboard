@@ -437,7 +437,7 @@ export function GoalCreationForm({ farmId, onGoalCreated }: GoalCreationFormProp
                       <SelectValue placeholder="Select a strategy" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">No Specific Strategy</SelectItem>
+                      <SelectItem value="no-strategy">No Specific Strategy</SelectItem>
                       {strategies.map((strategy) => (
                         <SelectItem key={strategy.id} value={strategy.id}>
                           {strategy.name}

@@ -418,7 +418,7 @@ export default function PositionsTableAdvanced() {
                       <SelectValue placeholder="Any side" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Any side</SelectItem>
+                      <SelectItem value="any-side">Any side</SelectItem>
                       <SelectItem value="long">Long only</SelectItem>
                       <SelectItem value="short">Short only</SelectItem>
                     </SelectContent>

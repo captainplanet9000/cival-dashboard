@@ -291,7 +291,7 @@ export function StrategyExecutionForm({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">None</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
                           {agents.map((agent) => (
                             <SelectItem key={agent.id} value={agent.id.toString()}>
                               {agent.name}

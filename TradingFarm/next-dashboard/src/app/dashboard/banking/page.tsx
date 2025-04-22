@@ -350,9 +350,11 @@ export default function BankingPage() {
 
       {/* Funding Modal */}
       {showFundingModal && (
-        <FundingModal 
-          onClose={() => setShowFundingModal(false)} 
+        <FundingModalWithWallet
+          isOpen={showFundingModal}
+          onClose={() => setShowFundingModal(false)}
           userId={userId}
+          farmId={farmId}
         />
       )}
     </div>

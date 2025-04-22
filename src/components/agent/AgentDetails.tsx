@@ -10,23 +10,22 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Database } from "@/types/database.types";
+import { createBrowserClient } from "@/utils/supabase/client";
 
-interface Agent {
-  id: string;
+type Agent = Database['public']['Tables']['agents']['Row'];
+
+type AgentMetadata = {
   name: string;
-  type: string;
-  status: "active" | "paused" | "error";
-  farm: string | null;
-  strategy: string;
-  performance: number;
-  lastActive: string;
-  description: string;
-  maxPositions: number;
-  riskLevel: "Low" | "Medium" | "High";
-  tradingPairs: string[];
-  positions: Position[];
-  performanceHistory: PerformanceData[];
-}
+  description?: string;
+  farm?: string | null;
+  strategy?: string;
+  performance?: number | string;
+  maxPositions?: number;
+  riskLevel?: "Low" | "Medium" | "High";
+  tradingPairs?: string[];
+  [key: string]: any;
+};
 
 interface Position {
   pair: string;
@@ -45,8 +44,8 @@ interface PerformanceData {
 
 interface AgentDetailsProps {
   agent: Agent | null;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onClose: () => void;
+  onAgentUpdate: () => Promise<void>;
 }
 
 const mockPerformanceHistory: PerformanceData[] = [
@@ -80,43 +79,116 @@ const mockPositions: Position[] = [
   },
 ];
 
-export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
+export function AgentDetails({ agent, onClose, onAgentUpdate }: AgentDetailsProps) {
   const [activeTab, setActiveTab] = useState("overview");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  const open = !!agent;
 
   if (!agent) return null;
 
+  const metadata = (agent.metadata ?? {}) as AgentMetadata;
+
   const getStatusColor = (status: string) => {
-    switch (status) {
+    switch (status?.toLowerCase()) {
       case "active":
+      case "running":
         return "bg-green-500";
       case "paused":
+      case "idle":
         return "bg-yellow-500";
       case "error":
+      case "failed":
         return "bg-red-500";
       default:
         return "bg-gray-500";
     }
   };
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | undefined | null) => {
+    if (value === undefined || value === null) return "N/A";
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
     }).format(value);
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toLocaleString();
+    } catch (e) {
+      return "Invalid Date";
+    }
+  };
+
+  const handleToggleAgentStatus = async () => {
+    if (!agent) return;
+
+    setIsUpdating(true);
+    const newStatus = agent.status === 'active' ? 'paused' : 'active'; // Determine new status
+    const supabase = createBrowserClient();
+
+    try {
+      const { error } = await supabase
+        .from('agents')
+        .update({ status: newStatus })
+        .eq('id', agent.id);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(`Agent ${agent.id} status updated to ${newStatus}`);
+      await onAgentUpdate(); // Refetch the agent list
+      // Optionally close the modal after update:
+      // onClose();
+    } catch (error) {
+      console.error('Error updating agent status:', error);
+      // TODO: Show error message to user (e.g., using a toast notification)
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleResetAgent = async () => {
+    if (!agent) return;
+
+    // Optional: Add a confirmation dialog here
+    // if (!confirm("Are you sure you want to reset this agent?")) {
+    //   return;
+    // }
+
+    setIsUpdating(true);
+    const supabase = createBrowserClient();
+
+    try {
+      const { error } = await supabase.rpc('reset_agent', { agent_id: agent.id });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log(`Agent ${agent.id} reset request sent.`);
+      await onAgentUpdate(); // Refetch the agent list
+      // Optionally close the modal after reset:
+      // onClose();
+    } catch (error) {
+      console.error('Error resetting agent:', error);
+      // TODO: Show error message to user (e.g., using a toast notification)
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen: boolean) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-[800px]">
         <DialogHeader>
           <DialogTitle className="flex items-center justify-between">
-            <span>{agent.name}</span>
+            <span>{metadata.name ?? agent.id}</span>
             <Badge className={getStatusColor(agent.status)}>
-              {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
+              {agent.status ? agent.status.charAt(0).toUpperCase() + agent.status.slice(1) : 'Unknown'}
             </Badge>
           </DialogTitle>
         </DialogHeader>
@@ -139,19 +211,23 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                   <dl className="space-y-2">
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Type</dt>
-                      <dd>{agent.type}</dd>
+                      <dd>{agent.agent_type ?? 'N/A'}</dd>
                     </div>
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Farm</dt>
-                      <dd>{agent.farm || "Not assigned"}</dd>
+                      <dd>{metadata.farm || "N/A"}</dd>
                     </div>
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Strategy</dt>
-                      <dd>{agent.strategy}</dd>
+                      <dd>{metadata.strategy || "N/A"}</dd>
                     </div>
                     <div>
-                      <dt className="text-sm font-medium text-gray-500">Risk Level</dt>
-                      <dd>{agent.riskLevel}</dd>
+                      <dt className="text-sm font-medium text-gray-500">Performance</dt>
+                      <dd>{metadata.performance ?? 'N/A'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-sm font-medium text-gray-500">Last Active</dt>
+                      <dd>{formatDate(agent.last_heartbeat_at)}</dd>
                     </div>
                   </dl>
                 </CardContent>
@@ -165,17 +241,9 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                   <dl className="space-y-2">
                     <div>
                       <dt className="text-sm font-medium text-gray-500">Current Performance</dt>
-                      <dd className={agent.performance >= 0 ? "text-green-600" : "text-red-600"}>
-                        {agent.performance}%
+                      <dd className="text-2xl font-semibold">
+                        {metadata.performance ?? 'N/A'}
                       </dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Last Active</dt>
-                      <dd>{formatDate(agent.lastActive)}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-sm font-medium text-gray-500">Trading Pairs</dt>
-                      <dd>{agent.tradingPairs.join(", ")}</dd>
                     </div>
                   </dl>
                 </CardContent>
@@ -187,7 +255,9 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                 <CardTitle>Description</CardTitle>
               </CardHeader>
               <CardContent>
-                <p>{agent.description}</p>
+                <p className="text-sm text-gray-600">
+                  {metadata.description || "No description available."}
+                </p>
               </CardContent>
             </Card>
           </TabsContent>
@@ -205,7 +275,7 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                         <div className="flex justify-between items-center">
                           <div>
                             <h4 className="font-medium">{position.pair}</h4>
-                            <Badge variant={position.side === "long" ? "default" : "destructive"}>
+                            <Badge className={position.side === "long" ? "bg-green-500" : "bg-red-500"}>
                               {position.side.toUpperCase()}
                             </Badge>
                           </div>
@@ -268,15 +338,17 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                     <div className="flex space-x-2">
                       <Button
                         variant={agent.status === "active" ? "destructive" : "default"}
-                        onClick={() => console.log("Toggle agent status")}
+                        onClick={handleToggleAgentStatus}
+                        disabled={isUpdating}
                       >
-                        {agent.status === "active" ? "Pause Agent" : "Start Agent"}
+                        {isUpdating ? 'Updating...' : (agent.status === "active" ? "Pause Agent" : "Start Agent")}
                       </Button>
                       <Button
                         variant="outline"
-                        onClick={() => console.log("Reset agent")}
+                        onClick={handleResetAgent}
+                        disabled={isUpdating}
                       >
-                        Reset Agent
+                        {isUpdating ? 'Resetting...' : 'Reset Agent'}
                       </Button>
                     </div>
                   </div>
@@ -286,15 +358,15 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
                     <dl className="space-y-2">
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Max Positions</dt>
-                        <dd>{agent.maxPositions}</dd>
+                        <dd>{metadata.maxPositions ?? 'N/A'}</dd>
                       </div>
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Risk Level</dt>
-                        <dd>{agent.riskLevel}</dd>
+                        <dd>{metadata.riskLevel ?? 'N/A'}</dd>
                       </div>
                       <div>
                         <dt className="text-sm font-medium text-gray-500">Trading Pairs</dt>
-                        <dd>{agent.tradingPairs.join(", ")}</dd>
+                        <dd>{metadata.tradingPairs?.join(", ") ?? 'N/A'}</dd>
                       </div>
                     </dl>
                   </div>
@@ -306,4 +378,4 @@ export function AgentDetails({ agent, open, onOpenChange }: AgentDetailsProps) {
       </DialogContent>
     </Dialog>
   );
-} 
+}

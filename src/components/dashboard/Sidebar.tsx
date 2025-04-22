@@ -21,29 +21,14 @@ import { useDashboard } from '@/contexts/DashboardContext';
 
 const navigation = [
   {
-    name: 'Dashboard',
+    name: 'Overview',
     href: '/dashboard',
     icon: LayoutDashboard,
-  },
-  {
-    name: 'Portfolio',
-    href: '/dashboard/portfolio',
-    icon: Briefcase,
-  },
-  {
-    name: 'Strategies',
-    href: '/dashboard/strategies',
-    icon: Network,
   },
   {
     name: 'Farms',
     href: '/dashboard/farms',
     icon: Building,
-  },
-  {
-    name: 'Agents',
-    href: '/dashboard/agents',
-    icon: Brain,
   },
   {
     name: 'Vault',
@@ -56,24 +41,9 @@ const navigation = [
     icon: BarChart3,
   },
   {
-    name: 'Risk',
-    href: '/dashboard/risk',
-    icon: AlertTriangle,
-  },
-  {
-    name: 'Memory',
-    href: '/dashboard/memory',
-    icon: Layers,
-  },
-  {
-    name: 'Performance',
-    href: '/dashboard/performance',
-    icon: LineChart,
-  },
-  {
-    name: 'History',
-    href: '/dashboard/history',
-    icon: History,
+    name: 'Settings',
+    href: '/dashboard/settings',
+    icon: Settings,
   },
 ];
 

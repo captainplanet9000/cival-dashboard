@@ -261,6 +261,15 @@ export default function AgentListPage() {
             <Button variant="outline" size="sm" onClick={() => setBulkDialogOpen(true)}>
               <Users className="mr-2 h-4 w-4" /> Bulk Assign
             </Button>
+            {/* Agent Orchestration Modal Trigger */}
+            {typeof window !== 'undefined' && (
+              <React.Suspense fallback={null}>
+                {(() => {
+                  const AgentOrchestrationModal = require('@/components/agents/AgentOrchestrationModal').AgentOrchestrationModal;
+                  return <AgentOrchestrationModal farmId={undefined} />;
+                })()}
+              </React.Suspense>
+            )}
             <Link href="/dashboard/agents/create" passHref>
                <Button size="sm">
                   <PlusCircle className="mr-2 h-4 w-4" /> Create New Agent

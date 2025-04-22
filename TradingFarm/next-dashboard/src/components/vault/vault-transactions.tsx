@@ -235,7 +235,7 @@ export default function VaultTransactions({
                         <SelectValue placeholder="All types" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All types</SelectItem>
+                        <SelectItem value="all-types">All types</SelectItem>
                         <SelectItem value="deposit">Deposits</SelectItem>
                         <SelectItem value="withdrawal">Withdrawals</SelectItem>
                         <SelectItem value="transfer">Transfers</SelectItem>
@@ -253,7 +253,7 @@ export default function VaultTransactions({
                         <SelectValue placeholder="Any status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Any status</SelectItem>
+                        <SelectItem value="any-status">Any status</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="failed">Failed</SelectItem>
@@ -271,7 +271,7 @@ export default function VaultTransactions({
                         <SelectValue placeholder="Any approval status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Any status</SelectItem>
+                        <SelectItem value="any-status">Any status</SelectItem>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="approved">Approved</SelectItem>
                         <SelectItem value="rejected">Rejected</SelectItem>

@@ -4,6 +4,7 @@ import React from "react";
 import { goalService, Goal } from "@/services/goal-service";
 import { farmService, Farm } from "@/services/farm-service";
 import { createBrowserClient } from "@/utils/supabase/client";
+import { useAuth } from "@/hooks/use-auth";
 import Link from "next/link";
 import { 
   Target, 
@@ -52,8 +53,10 @@ export default function GoalsPage() {
   const [priorityFilter, setPriorityFilter] = React.useState<string>("all");
   const [farmFilter, setFarmFilter] = React.useState<string>("all");
   const [searchQuery, setSearchQuery] = React.useState<string>("");
+  const [isAuthError, setIsAuthError] = React.useState<boolean>(false);
   const { toast } = useToast();
   const supabase = createBrowserClient();
+  const { refreshSession } = useAuth();
 
   // Setup real-time subscription for goal updates
   React.useEffect(() => {
@@ -85,12 +88,21 @@ export default function GoalsPage() {
   const fetchGoals = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+    setIsAuthError(false);
     
     try {
       // Fetch goals from goalService
       const goalsResponse = await goalService.getGoals();
       
       if (goalsResponse.error) {
+        // Check for JWT authentication errors
+        if (typeof goalsResponse.error === 'string' && 
+            (goalsResponse.error.includes('JWSInvalidSignature') || 
+             goalsResponse.error.includes('JWT') || 
+             goalsResponse.error.includes('401'))) {
+          setIsAuthError(true);
+          console.error('JWT Authentication error:', goalsResponse.error);
+        }
         setError(goalsResponse.error);
       } else if (goalsResponse.data) {
         // Get farms data to map farm names to goals
@@ -119,9 +131,19 @@ export default function GoalsPage() {
       if (farmsResponse.data) {
         setFarms(farmsResponse.data);
       }
-    } catch (error) {
-      console.error('Error fetching goals:', error);
-      setError('Failed to load goals. Please try again later.');
+    } catch (err: any) {
+      console.error("Error fetching goals:", err);
+      
+      // Check for JWT/auth errors in the caught exception
+      if (err.message && 
+          (err.message.includes('JWSInvalidSignature') || 
+           err.message.includes('JWT') || 
+           err.message.includes('401'))) {
+        setIsAuthError(true);
+        console.error('JWT Authentication error in exception:', err.message);
+      }
+      
+      setError(err.message || "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -342,15 +364,51 @@ export default function GoalsPage() {
   if (error) {
     return (
       <div className="container mx-auto p-6">
-        <div className="flex flex-col items-center justify-center p-6 bg-red-50 rounded-lg border border-red-200">
-          <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-          <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Goals</h3>
-          <p className="text-red-600 mb-4">{error}</p>
-          <Button variant="outline" onClick={fetchGoals}>
-            <RefreshCcw className="h-4 w-4 mr-2" />
-            Try Again
-          </Button>
-        </div>
+        {error && (
+          <div className="flex flex-col items-center justify-center p-6 bg-red-50 rounded-lg border border-red-200">
+            <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
+            <h3 className="text-lg font-semibold text-red-800 mb-2">Error Loading Goals</h3>
+            <p className="text-red-600 mb-4">{error}</p>
+            {isAuthError ? (
+              <div className="flex flex-col gap-2 items-center">
+                <p className="text-sm text-red-600 mb-2">Your session might have expired. Please refresh your authentication.</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={fetchGoals}>
+                    <RefreshCcw className="h-4 w-4 mr-2" />
+                    Try Again
+                  </Button>
+                  <Button 
+                    onClick={async () => {
+                      try {
+                        await refreshSession();
+                        toast({
+                          title: "Session refreshed",
+                          description: "Authentication has been renewed. Retrying..."
+                        });
+                        fetchGoals();
+                      } catch (err) {
+                        console.error("Failed to refresh session:", err);
+                        toast({
+                          title: "Authentication error",
+                          description: "Could not refresh your session. Please try logging out and in again.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    <RefreshCcw className="h-4 w-4 mr-2" />
+                    Refresh Session
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button onClick={fetchGoals}>
+                <RefreshCcw className="h-4 w-4 mr-2" />
+                Try Again
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     );
   }

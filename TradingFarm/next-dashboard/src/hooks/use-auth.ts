@@ -133,6 +133,35 @@ export function useAuth() {
     }
   };
 
+  // Refresh session to fix JWT issues
+  const refreshSession = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const supabase = createBrowserClient();
+      const { data, error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) {
+        throw refreshError;
+      }
+      
+      // Update session and user if refresh was successful
+      if (data.session) {
+        setSession(data.session);
+        setUser(data.session.user);
+      }
+      
+      return { success: true, data };
+    } catch (err: any) {
+      console.error('Error refreshing session:', err);
+      setError(err.message || 'Failed to refresh session');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     user,
     session,
@@ -141,6 +170,7 @@ export function useAuth() {
     signInWithPassword,
     signUp,
     signOut,
+    refreshSession,
     isAuthenticated: !!user
   };
-} 
+}

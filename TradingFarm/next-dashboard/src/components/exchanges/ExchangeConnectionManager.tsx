@@ -80,7 +80,7 @@ export function ExchangeConnectionManager() {
     loadConnections();
 
     // Subscribe to connection status updates
-    const unsubscribe = websocketService.subscribeToTopic(
+    const unsubscribe = websocketService.subscribe(
       WebSocketTopic.SYSTEM,
       handleConnectionUpdate
     );

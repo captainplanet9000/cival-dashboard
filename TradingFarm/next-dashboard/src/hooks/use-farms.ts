@@ -8,6 +8,7 @@ import { PostgrestError } from '@supabase/supabase-js';
 import { CreateFarmInput, UpdateFarmInput } from '@/schemas/farm-schemas';
 import { toast } from "@/components/ui/use-toast";
 import { useAuth } from './use-auth';
+import { refreshSupabaseSession, validateSession } from '@/utils/NavigationService';
 
 // Query keys for farms
 export const farmKeys = {
@@ -51,21 +52,65 @@ const fetchFarm = async (farmId: number): Promise<Farm | null> => {
 
 // Create farm
 const createFarm = async (farmData: CreateFarmInput, ownerId: string): Promise<Farm> => {
+  // Validate session before creating farm
+  const isSessionValid = await validateSession();
+  if (!isSessionValid) {
+    throw new Error("Authentication session invalid. Please sign in again.");
+  }
+  
   const supabase = createBrowserClient();
-  const { data, error } = await supabase
-    .from('farms')
-    // Ensure owner_id is included
-    .insert({ ...farmData, owner_id: ownerId })
-    .select()
-    .single();
-  if (error) {
-      console.error("Error creating farm:", error);
-      throw error;
+  try {
+    const { data, error } = await supabase
+      .from('farms')
+      // Ensure owner_id is included
+      .insert({ ...farmData, owner_id: ownerId })
+      .select()
+      .single();
+      
+    if (error) {
+      // If we get a JWT error, try to refresh the session and retry once
+      if (error.message?.includes('jwt') || error.message?.includes('JWS')) {
+        await refreshSupabaseSession();
+        
+        // Retry the operation with a new client after session refresh
+        const refreshedClient = createBrowserClient();
+        const { data: retryData, error: retryError } = await refreshedClient
+          .from('farms')
+          .insert({ ...farmData, owner_id: ownerId })
+          .select()
+          .single();
+          
+        if (retryError) {
+          console.error("Error creating farm after session refresh:", retryError);
+          throw retryError;
+        }
+        
+        if (!retryData) {
+          throw new Error("Farm created successfully, but no data returned from Supabase.");
+        }
+        
+        return retryData as Farm;
+      } else {
+        console.error("Error creating farm:", error);
+        throw error;
+      }
+    }
+    
+    if (!data) {
+      throw new Error("Farm created successfully, but no data returned from Supabase.");
+    }
+    
+    return data as Farm;
+  } catch (err: any) {
+    if (err.message?.includes('jwt') || err.message?.includes('JWS')) {
+      toast({ 
+        title: "Authentication Error", 
+        description: "Your session has expired. Please sign in again.", 
+        variant: "destructive" 
+      });
+    }
+    throw err;
   }
-  if (!data) {
-    throw new Error("Farm created successfully, but no data returned from Supabase.");
-  }
-  return data as Farm;
 };
 
 // Update farm
@@ -149,6 +194,23 @@ export function useCreateFarm() {
         toast({ title: "Authentication Error", description: "You must be logged in to create a farm.", variant: "destructive" });
         throw new Error("User not authenticated"); 
       }
+      
+      // Validate session before attempting to create farm
+      try {
+        const isSessionValid = await validateSession();
+        if (!isSessionValid) {
+          toast({ 
+            title: "Session Expired", 
+            description: "Your session has expired. Please sign in again.", 
+            variant: "destructive" 
+          });
+          throw new Error("Session expired, please login again");
+        }
+      } catch (error) {
+        console.error("Session validation failed:", error);
+        throw new Error("Authentication error, please try again");
+      }
+      
       return createFarm(farmData, user.id);
     },
     onSuccess: (newFarm) => {
@@ -159,8 +221,22 @@ export function useCreateFarm() {
       toast({ title: "Farm Created", description: `Farm '${newFarm.name}' created successfully.` });
     },
     onError: (error) => {
-       // Toast is handled here, no need to throw again
-      toast({ title: "Error Creating Farm", description: error.message || "An unexpected error occurred.", variant: "destructive" });
+      // Special handling for JWT errors
+      if (error.message?.includes('jwt') || error.message?.includes('JWS') || 
+          error.message?.includes('session') || error.message?.includes('authentication')) {
+        toast({ 
+          title: "Authentication Error", 
+          description: "Your session has expired. Please sign in again.", 
+          variant: "destructive" 
+        });
+      } else {
+        // General error handling
+        toast({ 
+          title: "Error Creating Farm", 
+          description: error.message || "An unexpected error occurred.", 
+          variant: "destructive" 
+        });
+      }
     },
   });
 }
@@ -188,20 +264,41 @@ export function useUpdateFarm(farmId: number) {
 }
 
 /**
+ * Fetch agents for a specific farm
+ */
+const fetchAgents = async (farmId: number) => {
+  const supabase = createBrowserClient();
+  
+  try {
+    // Validate session before fetching
+    await validateSession();
+    
+    const { data, error } = await supabase
+      .from('agents')
+      .select('*')
+      .eq('farm_id', farmId);
+      
+    if (error) {
+      console.error(`Error fetching agents for farm ${farmId}:`, error);
+      throw error;
+    }
+    
+    return data || [];
+  } catch (err) {
+    console.error('Error in fetchAgents:', err);
+    throw err;
+  }
+};
+
+/**
  * Hook to fetch all agents for a farm
  */
 export function useFarmAgents(farmId: number) {
   return useQuery({
     queryKey: farmKeys.agents(farmId),
-    queryFn: async () => {
-      const { data, error } = await enhancedFarmService.getAgents(farmId);
-      
-      if (error) {
-        throw new Error(error);
-      }
-      
-      return data || [];
-    },
+    queryFn: () => fetchAgents(farmId),
     enabled: !!farmId, // Only run the query if we have a farmId
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 }

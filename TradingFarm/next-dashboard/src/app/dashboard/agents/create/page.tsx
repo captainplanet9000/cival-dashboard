@@ -130,7 +130,7 @@ export default function CreateAgentPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">-- No Farm --</SelectItem> 
+                        <SelectItem value="no-farm">-- No Farm --</SelectItem> 
                         {farms?.map((farm) => (
                           <SelectItem key={farm.id} value={farm.id.toString()}>
                             {farm.name} (ID: {farm.id})

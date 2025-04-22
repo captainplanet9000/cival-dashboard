@@ -1,6 +1,10 @@
 "use client";
 
-import React from "react";
+import * as React from "react";
+// Fix default import issue by using dynamic import
+const CreateFarmModal = React.lazy(() => import('@/components/farms/CreateFarmModal'));
+import { FarmForm } from '@/components/farms/farm-form';
+import { FarmAgentAssignment } from '@/components/farms/farm-agent-assignment';
 import Link from "next/link";
 import { useFarms, Farm } from "@/hooks/use-farms";
 import { Button } from "@/components/ui/button";
@@ -15,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, PlusCircle, ArrowRight, CheckCircle, XCircle } from "lucide-react";
+import { AlertCircle, PlusCircle, ArrowRight, CheckCircle, XCircle, Users } from "lucide-react";
 import { formatDistanceToNow } from 'date-fns';
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -30,7 +34,18 @@ const FarmStatusBadge = ({ isActive }: { isActive: boolean }) => (
   </Badge>
 );
 
-export default function FarmListPage() {
+export default function FarmsPage() {
+  // Create a fallback for Suspense
+  const CreateFarmModalWithFallback = React.useMemo(() => {
+    return React.forwardRef((props: any, ref) => (
+      <React.Suspense fallback={<div className="p-4">Loading...</div>}>
+        <CreateFarmModal {...props} />
+      </React.Suspense>
+    ));
+  }, []);
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  const [editFarm, setEditFarm] = React.useState<any>(null);
+  const [assignFarmId, setAssignFarmId] = React.useState<string | null>(null);
   // Fetch farms owned by the current user using the hook
   const { data: allFarms = [], isLoading, error, refetch } = useFarms(true);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -81,6 +96,7 @@ export default function FarmListPage() {
         {error?.message || "Could not load your farms. Please try refreshing the page."}
       </AlertDescription>
       <Button variant="outline" size="sm" onClick={() => refetch()} className="mt-2">Retry</Button>
+      <Button className="ml-auto" onClick={() => setShowCreateModal(true)}>Create Farm</Button>
     </Alert>
   );
 
@@ -104,7 +120,7 @@ export default function FarmListPage() {
                 {farm.description || '-'}
               </TableCell>
               <TableCell>
-                <FarmStatusBadge isActive={farm.is_active} />
+                <FarmStatusBadge isActive={farm.status === 'active'} />
               </TableCell>
               <TableCell className="text-xs">
                 {farm.created_at ? formatDistanceToNow(new Date(farm.created_at), { addSuffix: true }) : '-'}
@@ -115,9 +131,12 @@ export default function FarmListPage() {
                     <ArrowRight className="mr-1 h-3.5 w-3.5" /> View
                   </Button>
                 </Link>
-                <Link href={`/dashboard/farms/${farm.id}/edit`} passHref>
-                  <Button variant="outline" size="sm">Edit</Button>
-                </Link>
+                <Button variant="outline" size="sm" onClick={() => setEditFarm(farm)}>
+                  Edit
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setAssignFarmId(farm.id)}>
+                  <Users className="mr-1 h-3.5 w-3.5" /> Agents
+                </Button>
               </TableCell>
             </TableRow>
           ))}
@@ -137,11 +156,9 @@ export default function FarmListPage() {
                Oversee and configure your trading farms.
              </CardDescription>
           </div>
-          <Link href="/dashboard/farms/create" passHref>
-            <Button size="sm">
-              <PlusCircle className="mr-2 h-4 w-4" /> Create Farm
-            </Button>
-          </Link>
+          <Button size="sm" onClick={() => setShowCreateModal(true)}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Create Farm
+          </Button>
         </CardHeader>
         
         <CardContent>
@@ -168,11 +185,9 @@ export default function FarmListPage() {
           {!isLoading && !error && allFarms.length === 0 && (
             <div className="text-center py-12 text-gray-500 border border-dashed rounded-md">
               <p className="mb-2">You haven't created any farms yet.</p>
-              <Link href="/dashboard/farms/create" passHref>
-                <Button size="sm">
-                  <PlusCircle className="mr-2 h-4 w-4" /> Create Your First Farm
-                </Button>
-              </Link>
+              <Button size="sm" onClick={() => setShowCreateModal(true)}>
+                <PlusCircle className="mr-2 h-4 w-4" /> Create Your First Farm
+              </Button>
             </div>
           )}
            {!isLoading && !error && allFarms.length > 0 && filteredFarms.length === 0 && (
@@ -183,9 +198,44 @@ export default function FarmListPage() {
           {!isLoading && !error && filteredFarms.length > 0 && renderFarmTable()}
         </CardContent>
       </Card>
+      {/* Create Farm Modal */}
+      {showCreateModal && (
+        <CreateFarmModalWithFallback
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSuccess={() => {
+            setShowCreateModal(false);
+            refetch();
+          }}
+        />
+      )}
+      {/* Edit Farm Modal (reuse FarmForm) */}
+      {editFarm && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-30">
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-lg shadow-lg">
+            <FarmForm initialData={editFarm} isEditMode />
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={() => setEditFarm(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Agent Assignment UI */}
+      {assignFarmId && (
+        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-30">
+          <div className="bg-white dark:bg-zinc-900 rounded-lg p-6 w-full max-w-2xl shadow-lg">
+            <h2 className="text-lg font-semibold mb-4">Assign Agents to Farm</h2>
+            <FarmAgentAssignment farmId={assignFarmId} onAgentsUpdated={() => setAssignFarmId(null)} />
+            <div className="flex justify-end mt-4">
+              <Button variant="outline" onClick={() => setAssignFarmId(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // Helper function to calculate farm health percentage (demo only)
 function calculateFarmHealth(farm: Farm): number {

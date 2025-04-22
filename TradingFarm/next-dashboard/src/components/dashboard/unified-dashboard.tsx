@@ -3,6 +3,7 @@
 import React from 'react';
 import { DndContext, useSensor, useSensors, PointerSensor, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
+import ElizaDeFiConsoleWidget from '@/components/dashboard/widgets/ElizaDeFiConsoleWidget';
 import { WidgetContainer } from '@/components/dashboard/widget-container';
 import { useSocket } from '@/providers/socket-provider';
 import { useTheme } from 'next-themes';
@@ -45,6 +46,7 @@ type WidgetType =
   | 'risk_metrics'
   | 'balance_overview'
   | 'elizaos_console'
+  | 'elizaos_defi_console'
   | 'recent_orders'
   | 'open_positions'
   | 'news_feed';
@@ -327,6 +329,7 @@ export default function UnifiedDashboard({
       risk_metrics: 'Risk Metrics',
       balance_overview: 'Balance',
       elizaos_console: 'ElizaOS Console',
+      elizaos_defi_console: 'ElizaOS DeFi Console',
       recent_orders: 'Recent Orders',
       open_positions: 'Open Positions',
       news_feed: 'News Feed',
@@ -346,6 +349,7 @@ export default function UnifiedDashboard({
       risk_metrics: { width: 2, height: 1 },
       balance_overview: { width: 1, height: 1 },
       elizaos_console: { width: 3, height: 2 },
+      elizaos_defi_console: { width: 3, height: 2 },
       recent_orders: { width: 2, height: 1 },
       open_positions: { width: 2, height: 2 },
       news_feed: { width: 2, height: 1 },
@@ -375,6 +379,8 @@ export default function UnifiedDashboard({
         return <Wallet className="h-5 w-5" />;
       case 'elizaos_console':
         return <Brain className="h-5 w-5" />;
+      case 'elizaos_defi_console':
+        return <Bank className="h-5 w-5" />;
       case 'recent_orders':
         return <BookOpen className="h-5 w-5" />;
       case 'open_positions':
@@ -398,6 +404,7 @@ export default function UnifiedDashboard({
       risk_metrics: 'Key risk indicators and metrics',
       balance_overview: 'Account balance and asset allocation',
       elizaos_console: 'AI-powered trading assistant console',
+      elizaos_defi_console: 'AI-powered DeFi lending, strategy, and risk console',
       recent_orders: 'Recently placed and executed orders',
       open_positions: 'Currently open trading positions',
       news_feed: 'Market news and event feed',
@@ -446,6 +453,8 @@ export default function UnifiedDashboard({
         return <div>Balance Overview Widget</div>;
       case 'elizaos_console':
         return <CommandConsole farmId={farmId} />;
+      case 'elizaos_defi_console':
+        return <ElizaDeFiConsoleWidget />;
       case 'recent_orders':
         return <div>Recent Orders Widget</div>;
       case 'open_positions':

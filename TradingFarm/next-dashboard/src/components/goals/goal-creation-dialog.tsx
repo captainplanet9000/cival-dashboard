@@ -67,6 +67,7 @@ const goalFormSchema = z.object({
   farm_id: z.string({
     required_error: "Please select a farm",
   }),
+  assigned_agent_ids: z.array(z.string()).optional(),
   target_value: z.number().min(0, {
     message: 'Target value must be a positive number.'
   }),
@@ -82,6 +83,8 @@ interface GoalCreationDialogProps {
   className?: string;
   preselectedFarmId?: string;
 }
+
+import { useAgents } from '@/hooks/use-agents';
 
 export function GoalCreationDialog({
   onSuccess,
@@ -141,6 +144,9 @@ export function GoalCreationDialog({
 
     fetchFarms();
   }, [preselectedFarmId, form, toast]);
+
+  // Fetch agents for the selected farm
+  const { agents: farmAgents, loading: loadingAgents } = useAgents({ farmId: form.watch('farm_id') });
 
   // Handle form submission
   async function onSubmit(values: GoalFormValues) {
@@ -326,6 +332,41 @@ export function GoalCreationDialog({
                   </Select>
                   <FormDescription>
                     The farm this goal is associated with.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="assigned_agent_ids"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Assign Agents</FormLabel>
+                  <Select
+                    multiple
+                    value={field.value || []}
+                    onValueChange={field.onChange}
+                    disabled={loadingAgents}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={loadingAgents ? 'Loading agents...' : 'Select agents'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {farmAgents && farmAgents.length > 0 ? (
+                        farmAgents.map(agent => (
+                          <SelectItem key={agent.id} value={agent.id.toString()}>
+                            {agent.name}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <div className="px-4 py-2 text-muted-foreground text-sm">No agents available for this farm.</div>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Assign one or more agents to this goal.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
