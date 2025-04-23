@@ -2,15 +2,20 @@
  * Type definitions for trading agents
  */
 
+export type AgentStatus = 'active' | 'paused' | 'stopped' | 'learning' | 'inactive' | 'error';
+
 export interface Agent {
-  id: number;
+  id: string;
   name: string;
   role: string;
-  status: 'active' | 'paused' | 'stopped' | 'learning';
-  farm_id: number | null;
-  strategy_id: number | null;
+  type: string;
+  status: AgentStatus;
+  farm_id: string;
+  strategy_id: string | null;
   performance: number;
   created_at: string;
+  updated_at?: string;
+  created_by?: string;
 }
 
 export interface AgentDetail extends Agent {

@@ -3,7 +3,7 @@
 import * as React from 'react';
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import z from "zod";
+import * as z from "zod";
 import { createBrowserClient } from "@/utils/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -73,6 +73,10 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
   const { farms, loading: isLoadingFarms, error: farmsError } = useFarms();
   const { strategies, loading: isLoadingStrategies, error: strategiesError } = useStrategies({ farmId });
   const { data: assignments = [], isLoading: isLoadingAssignments, error: assignmentsError } = useAgentAssignments();
+  const { data: agentEvents = [], isLoading: isLoadingEvents } = useAgentEvents(farmId, 20);
+  
+  // Agent status state
+  const [agentStatuses, setAgentStatuses] = React.useState<Record<string, { status: string, lastActive: Date }>>({});
   const createAssignment = useCreateAgentAssignment();
   const deleteAssignment = useDeleteAgentAssignment();
   
@@ -117,11 +121,84 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
   // Handle agent selection for team creation
   const handleAgentToggle = (id: string): void => {
     if (selectedAgents.includes(id)) {
-      setSelectedAgents(selectedAgents.filter(agentId => agentId !== id));
-      teamForm.setValue('agent_ids', selectedAgents.filter(agentId => agentId !== id));
+      setSelectedAgents(selectedAgents.filter((agentId: string) => agentId !== id));
+      teamForm.setValue('agent_ids', selectedAgents.filter((agentId: string) => agentId !== id));
     } else {
       setSelectedAgents([...selectedAgents, id]);
       teamForm.setValue('agent_ids', [...selectedAgents, id]);
+    }
+  };
+  
+  // Handle toggling agent active status
+  const handleToggleAgentStatus = async (agentId: string, currentStatus: boolean) => {
+    try {
+      const newStatus = !currentStatus;
+      
+      // Update agent status in database
+      const { error } = await supabase
+        .from('agents')
+        .update({ 
+          is_active: newStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', agentId);
+      
+      if (error) throw error;
+      
+      // Log the agent status change as an event
+      await supabase
+        .from('agent_events')
+        .insert({
+          agent_id: agentId,
+          event_type: newStatus ? 'activated' : 'deactivated',
+          event_data: { status_change: { from: currentStatus, to: newStatus } },
+          created_at: new Date().toISOString(),
+          farm_id: farmId
+        });
+      
+      // Refresh the agents data
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      
+      toast({
+        title: newStatus ? "Agent Activated" : "Agent Deactivated",
+        description: `Agent status has been ${newStatus ? 'activated' : 'deactivated'} successfully`,
+      });
+    } catch (error: any) {
+      console.error('Error toggling agent status:', error);
+      toast({
+        title: "Status Update Failed",
+        description: error.message || "Could not update agent status",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Get the latest agent statuses from the database
+  const refreshAgentStatuses = async () => {
+    try {
+      // Fetch agent health/status data
+      const { data, error } = await supabase
+        .from('agent_health')
+        .select('agent_id, status, last_active, memory_usage, cpu_usage')
+        .in('agent_id', agents.map((a: any) => a.id));
+      
+      if (error) throw error;
+      
+      if (data) {
+        // Update agent statuses
+        const statusMap: Record<string, { status: string, lastActive: Date }> = {};
+        
+        data.forEach((health: any) => {
+          statusMap[health.agent_id] = {
+            status: health.status,
+            lastActive: new Date(health.last_active)
+          };
+        });
+        
+        setAgentStatuses(statusMap);
+      }
+    } catch (error) {
+      console.error('Error refreshing agent statuses:', error);
     }
   };
 
@@ -176,7 +253,29 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
     setIsSubmitting(true);
     
     try {
-      await createAssignment.mutateAsync({
+      // Get agent details for the logging
+      const agent = agents.find(a => a.id === values.agent_id);
+      const farm = farms.find(f => f.id === values.farm_id);
+      const strategy = strategies.find(s => s.id === values.strategy_id);
+      
+      // Check if agent is active
+      if (agent && !agent.is_active) {
+        // Auto-activate the agent when assigning a task
+        await supabase
+          .from('agents')
+          .update({ is_active: true })
+          .eq('id', agent.id);
+          
+        queryClient.invalidateQueries({ queryKey: ['agents'] });
+        
+        toast({
+          title: "Agent Activated",
+          description: `${agent.name} was inactive and has been automatically activated for this assignment.`,
+        });
+      }
+      
+      // Create the assignment
+      const assignment = await createAssignment.mutateAsync({
         agent_id: values.agent_id,
         farm_id: values.farm_id || null,
         strategy_id: values.strategy_id || null,
@@ -187,16 +286,38 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
         status: "assigned"
       });
 
+      // Log the assignment event
+      await supabase
+        .from('agent_events')
+        .insert({
+          agent_id: values.agent_id,
+          event_type: 'assignment_created',
+          event_data: {
+            assignment_id: assignment.id,
+            task_type: values.task_type,
+            farm: farm?.name || null,
+            strategy: strategy?.name || null,
+            priority: values.priority
+          },
+          created_at: new Date().toISOString(),
+          farm_id: values.farm_id || farmId || null
+        });
+
       toast({
         title: "Agent Assigned",
-        description: "Agent has been assigned successfully",
+        description: `${agent?.name || 'Agent'} has been assigned to ${values.task_type} task successfully`,
       });
 
       // Reset form and close modal
       assignmentForm.reset();
       if (onSuccess) onSuccess();
       handleClose();
+      
+      // Refresh assignments data
+      queryClient.invalidateQueries({ queryKey: ['agent_assignments'] });
+      queryClient.invalidateQueries({ queryKey: ['agent_events'] });
     } catch (error: any) {
+      console.error('Error assigning agent:', error);
       toast({
         title: "Error Assigning Agent",
         description: error.message || "Failed to assign agent. Please try again.",
@@ -215,6 +336,13 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
   React.useEffect(() => {
     setOpen(isOpen);
   }, [isOpen]);
+  
+  // Fetch agent statuses when the modal opens or when the tab changes to monitor
+  React.useEffect(() => {
+    if (open && activeTab === 'monitor') {
+      refreshAgentStatuses();
+    }
+  }, [open, activeTab, agents]);
 
   // Handle refresh session
   const handleRefreshSession = async () => {
@@ -242,7 +370,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
   };
 
   return (
-    <Dialog open={open} onOpenChange={(value) => setOpen(value)}>
+    <Dialog open={open} onOpenChange={(value: boolean) => setOpen(value)}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Agent Orchestration</DialogTitle>
@@ -351,7 +479,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="">No specific farm</SelectItem>
-                            {farms.map((farm) => (
+                            {farms.map((farm: any) => (
                               <SelectItem key={farm.id} value={farm.id}>
                                 {farm.name}
                               </SelectItem>
@@ -553,7 +681,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="">No specific farm</SelectItem>
-                            {farms.map((farm) => (
+                            {farms.map((farm: any) => (
                               <SelectItem key={farm.id} value={farm.id}>
                                 {farm.name}
                               </SelectItem>
@@ -645,6 +773,15 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
                 <h3 className="text-lg font-medium">Agent Status</h3>
                 <Button variant="outline" size="sm" onClick={() => {
                   queryClient.invalidateQueries({ queryKey: ['agents'] });
+                  queryClient.invalidateQueries({ queryKey: ['agent_events'] });
+                  
+                  // Refresh agent statuses from the database
+                  refreshAgentStatuses();
+                  
+                  toast({
+                    title: "Refreshed",
+                    description: "Agent status data has been updated",
+                  });
                 }}>
                   <RefreshCw className="h-4 w-4 mr-2" />
                   Refresh
@@ -666,28 +803,122 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
                       </div>
                     ) : (
                       <>
-                        {agents.map((agent) => (
-                          <div key={agent.id} className="flex justify-between items-center border-b pb-2">
-                            <div>
-                              <div className="font-medium">{agent.name}</div>
-                              <div className="text-sm text-muted-foreground">{agent.type}</div>
+                        {agents.map((agent) => {
+                          const agentStatus = agentStatuses[agent.id] || { status: agent.is_active ? "idle" : "offline", lastActive: new Date() };
+                          const statusVariant = {
+                            active: "success",
+                            running: "success",
+                            idle: "default",
+                            paused: "warning",
+                            error: "destructive",
+                            offline: "secondary"
+                          }[agentStatus.status] || "default";
+                          
+                          const activeAssignments = assignments.filter(a => a.agent_id === agent.id && a.status !== 'completed');
+                          
+                          return (
+                            <div key={agent.id} className="border rounded-md p-3 mb-2">
+                              <div className="flex justify-between items-center">
+                                <div>
+                                  <div className="font-medium">{agent.name}</div>
+                                  <div className="text-sm text-muted-foreground flex items-center">
+                                    <span className="capitalize mr-2">{agent.type}</span>
+                                    {agent.capabilities && (
+                                      <Badge variant="outline" className="font-mono text-xs">
+                                        {Array.isArray(agent.capabilities) 
+                                          ? agent.capabilities.join(', ')
+                                          : typeof agent.capabilities === 'string' 
+                                            ? agent.capabilities
+                                            : 'Standard'}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant={statusVariant}>
+                                    {agentStatus.status.charAt(0).toUpperCase() + agentStatus.status.slice(1)}
+                                  </Badge>
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    onClick={() => handleToggleAgentStatus(agent.id, agent.is_active)}
+                                  >
+                                    {agent.is_active ? "Deactivate" : "Activate"}
+                                  </Button>
+                                </div>
+                              </div>
+                              
+                              {activeAssignments.length > 0 && (
+                                <div className="mt-2 pt-2 border-t">
+                                  <div className="text-xs font-medium mb-1">Current Assignments:</div>
+                                  <div className="space-y-1">
+                                    {activeAssignments.map((assignment: any) => (
+                                      <div key={assignment.id} className="flex justify-between text-xs">
+                                        <span className="capitalize">{assignment.task_type}</span>
+                                        <Badge variant="outline" className="text-xs capitalize">{assignment.priority}</Badge>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <Badge variant={agent.is_active ? "default" : "secondary"}>
-                                {agent.is_active ? "Active" : "Inactive"}
-                              </Badge>
-                              <Button variant="ghost" size="sm">Details</Button>
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </>
                     )}
                   </div>
                 </CardContent>
               </Card>
               
-              <div className="text-sm text-muted-foreground text-center">
-                <p>Advanced monitoring features will be available in the next update</p>
+              <div className="mt-4">
+                <h3 className="text-lg font-medium mb-2">Recent Activity</h3>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="max-h-48 overflow-y-auto">
+                      {isLoadingEvents ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                          <span>Loading events...</span>
+                        </div>
+                      ) : agentEvents.length === 0 ? (
+                        <div className="text-center p-4 text-muted-foreground">
+                          <Info className="h-5 w-5 mx-auto mb-2" />
+                          <p>No recent agent activity recorded</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {agentEvents.map((event: any) => {
+                            const agent = agents.find((a: any) => a.id === event.agent_id);
+                            return (
+                              <div key={event.id} className="flex items-start border-b pb-2">
+                                <div className="mr-2 mt-1 flex-shrink-0">
+                                  <Badge variant="outline" className="h-6 w-6 rounded-full p-0 flex items-center justify-center">
+                                    {event.event_type === 'error' ? '!' : 'i'}
+                                  </Badge>
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex justify-between">
+                                    <p className="text-sm font-medium truncate">
+                                      {agent?.name || 'Unknown Agent'}
+                                    </p>
+                                    <span className="text-xs text-muted-foreground">
+                                      {new Date(event.created_at).toLocaleTimeString()}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {event.event_data && typeof event.event_data === 'object' 
+                                      ? JSON.stringify(event.event_data)
+                                      : event.event_data || event.event_type}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </div>
             

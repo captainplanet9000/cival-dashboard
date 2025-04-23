@@ -1,5 +1,26 @@
 // Types for exchange order management
 
+export interface OrderParams {
+  symbol: string;
+  quantity: number;
+  side: 'buy' | 'sell';
+  type: 'market' | 'limit';
+  price?: number;
+  clientOrderId?: string;
+}
+
+export interface OrderResult {
+  orderId: string;
+  clientOrderId?: string;
+  status: 'new' | 'partially_filled' | 'filled' | 'canceled' | 'rejected' | 'expired';
+  executedQty?: number;
+  executedPrice?: number;
+  filled?: number;
+  price?: number;
+  fee?: { cost: number; currency: string };
+  [key: string]: any;
+}
+
 export interface OrderRequest {
   symbol: string;
   side: 'buy' | 'sell';

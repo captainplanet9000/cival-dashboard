@@ -2,6 +2,8 @@
 
 import * as React from 'react';
 import { createBrowserClient } from "@/utils/supabase/client";
+// Enable synthetic default imports for compatibility
+// @ts-ignore - This is needed for module compatibility
 import { WidgetContainer } from '@/components/dashboard/widget-container';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +37,8 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { v4 as uuidv4 } from 'uuid';
+import { handleSupabaseError, handleApiError, ErrorSource, ErrorCategory } from '@/utils/error-handling';
+import { cardStyles, widgetStyles, statusBadgeStyles, tableStyles } from '@/components/ui/component-styles';
 
 interface Message {
   id: string;
@@ -169,35 +173,42 @@ export default function ElizaDeFiConsoleWidget({
     endOfMessagesRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
   
-  // Test connection on mount
+  // Test connection to backend/API and initialize connection status
   React.useEffect(() => {
     const testConnection = async () => {
       try {
-        const { error } = await supabaseRef.current
-          .from('health_check')
-          .select('*')
-          .limit(1);
+        const supabase = createBrowserClient();
+        const { data, error } = await supabase
+          .from('system_health')
+          .select('status')
+          .maybeSingle();
         
         if (error) {
-          console.warn('API connection issue, switching to offline mode', error);
+          handleSupabaseError(error, 'Connection to ElizaOS API failed', {
+            showToast: true,
+            contextData: { component: 'ElizaDeFiConsoleWidget', action: 'testConnection' }
+          });
           setIsOfflineMode(true);
-          
-          // Try to recreate the client
-          supabaseRef.current = createBrowserClient();
-        } else {
-          setIsOfflineMode(false);
+          return false;
         }
+        
+        setIsOfflineMode(false);
+        return true;
       } catch (err) {
-        console.error('Connection test failed, switching to offline mode', err);
+        handleApiError(err, 'Unable to connect to ElizaOS services', {
+          showToast: true,
+          contextData: { component: 'ElizaDeFiConsoleWidget', action: 'testConnection' }
+        });
         setIsOfflineMode(true);
         
         // Try to recreate the client
         supabaseRef.current = createBrowserClient();
+        return false;
       }
     };
     
     testConnection();
-  }, []);
+  }, [toast]);
   
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -226,23 +237,96 @@ export default function ElizaDeFiConsoleWidget({
     // Add thinking message
     setMessages((prev: Message[]) => [...prev, thinkingMessage]);
     
-    // Process command in offline mode (since we don't have backend)
-    setTimeout(() => {
-      const botResponse = processCommand(input.toLowerCase().trim());
+    try {
+      // Try processing with backend if available
+      if (!isOfflineMode) {
+        try {
+          // Store message in supabase
+          const { error } = await supabaseRef.current
+            .from('elizaos_defi_messages')
+            .insert([{
+              farm_id: farmId,
+              content: input,
+              role: 'user',
+              session_id: id
+            }]);
+            
+          if (error) {
+            console.error('Failed to save message:', error);
+            // Silently continue - don't interrupt the user experience
+          }
+          
+          // Try to get response from backend
+          const { data, error: responseError } = await supabaseRef.current
+            .rpc('get_defi_analysis', { 
+              query_text: input.toLowerCase().trim(),
+              p_farm_id: farmId
+            });
+            
+          if (responseError || !data) {
+            throw new Error('Backend processing failed');
+          }
+          
+          // Remove thinking message and add real response
+          setMessages((prev: Message[]) => prev.filter((msg: Message) => msg.id !== thinkingMessage.id));
+          
+          const assistantMessage: Message = {
+            id: uuidv4(),
+            role: "assistant",
+            content: data.response || processCommand(input.toLowerCase().trim()),
+            timestamp: new Date(),
+          };
+          
+          setMessages((prev: Message[]) => [...prev, assistantMessage]);
+          setIsProcessing(false);
+          return;
+        } catch (err) {
+          console.error('Backend processing failed, falling back to offline mode:', err);
+          // Fall through to offline processing
+        }
+      }
       
-      // Remove thinking message and add real response
+      // Process command in offline mode
+      setTimeout(() => {
+        const botResponse = processCommand(input.toLowerCase().trim());
+        
+        // Remove thinking message and add real response
+        setMessages((prev: Message[]) => prev.filter((msg: Message) => msg.id !== thinkingMessage.id));
+        
+        const assistantMessage: Message = {
+          id: uuidv4(),
+          role: "assistant",
+          content: botResponse,
+          timestamp: new Date(),
+        };
+        
+        setMessages((prev: Message[]) => [...prev, assistantMessage]);
+        setIsProcessing(false);
+      }, 2000);
+    } catch (error) {
+      // Handle any unexpected errors
+      console.error('Error in message processing:', error);
+      
+      // Remove thinking message and add error response
       setMessages((prev: Message[]) => prev.filter((msg: Message) => msg.id !== thinkingMessage.id));
       
-      const assistantMessage: Message = {
+      const errorMessage: Message = {
         id: uuidv4(),
         role: "assistant",
-        content: botResponse,
+        content: "I'm sorry, I encountered an error processing your request. Please try again.",
         timestamp: new Date(),
+        status: "error"
       };
       
-      setMessages((prev: Message[]) => [...prev, assistantMessage]);
+      setMessages((prev: Message[]) => [...prev, errorMessage]);
       setIsProcessing(false);
-    }, 2000);
+      
+      toast({
+        title: "Processing Error",
+        description: "Failed to process your request",
+        variant: "destructive"
+      });
+    }
   };
   
   const processCommand = (command: string): string => {
@@ -252,19 +336,19 @@ export default function ElizaDeFiConsoleWidget({
     }
     
     if (command.includes("protocols") || command.includes("platforms")) {
-      return `Available DeFi Protocols:\n${protocols.map(p => `- ${p.name} (${p.type}): ${p.status === 'active' ? 'Available' : 'Unavailable'}`).join('\n')}`;
+      return `Available DeFi Protocols:\n${protocols.map((p: DeFiProtocol) => `- ${p.name} (${p.type}): ${p.status === 'active' ? 'Available' : 'Unavailable'}`).join('\n')}`;
     }
     
     if (command.includes("apy") || command.includes("yield")) {
       const yieldData = protocols
-        .filter(p => p.apy !== undefined)
-        .sort((a, b) => (b.apy || 0) - (a.apy || 0));
+        .filter((p: DeFiProtocol) => p.apy !== undefined)
+        .sort((a: DeFiProtocol, b: DeFiProtocol) => (b.apy || 0) - (a.apy || 0));
       
-      return `Current Yield Opportunities:\n${yieldData.map(p => `- ${p.name}: ${p.apy}% APY (${p.riskLevel} risk)`).join('\n')}`;
+      return `Current Yield Opportunities:\n${yieldData.map((p: DeFiProtocol) => `- ${p.name}: ${p.apy}% APY (${p.riskLevel} risk)`).join('\n')}`;
     }
     
     if (command.includes("positions") || command.includes("portfolio")) {
-      return `Your Active Positions:\n${positions.map(p => `- ${p.protocol} - ${p.amount} ${p.asset}: $${p.value.toLocaleString()} (${p.apy ? p.apy + '% APY' : 'Variable yield'})`).join('\n')}\nTotal Value: $${totalValue.toLocaleString()}`;
+      return `Your Active Positions:\n${positions.map((p: PositionData) => `- ${p.protocol} - ${p.amount} ${p.asset}: $${p.value.toLocaleString()} (${p.apy ? p.apy + '% APY' : 'Variable yield'})`).join('\n')}\nTotal Value: $${totalValue.toLocaleString()}`;
     }
     
     if (command.includes("optimize") || command.includes("suggest")) {
@@ -290,30 +374,96 @@ export default function ElizaDeFiConsoleWidget({
     }
   };
   
-  const handleRefreshData = () => {
+  const handleRefreshData = async () => {
     setIsLoading(true);
-    setTimeout(() => {
-      // Simulate updated data
-      const updatedPositions = [...positions];
-      updatedPositions.forEach(pos => {
-        // Add small random fluctuation to values
-        const changePercent = (Math.random() * 3) - 1.5; // -1.5% to +1.5%
-        pos.value = pos.value * (1 + (changePercent / 100));
-      });
-      
-      setPositions(updatedPositions);
-      setIsLoading(false);
-      
-      // Show toast
-      toast({
-        title: "Data refreshed",
-        description: "DeFi market data has been updated.",
-      });
-    }, 1500);
     
-    // Call parent refresh if provided
-    if (onRefresh) {
-      onRefresh(id);
+    try {
+      // Try to fetch real data if not in offline mode
+      if (!isOfflineMode && farmId) {
+        try {
+          const { data, error } = await supabaseRef.current
+            .from('defi_positions')
+            .select('*')
+            .eq('farm_id', farmId);
+          
+          if (error) {
+            handleSupabaseError(error, 'Failed to fetch DeFi positions', {
+              showToast: true,
+              contextData: { component: 'ElizaDeFiConsoleWidget', farmId }
+            });
+            throw error;
+          }
+          
+          if (data && data.length > 0) {
+            // Transform to PositionData format
+            const positionData = data.map((pos: any) => ({
+              id: pos.id,
+              protocol: pos.protocol_name,
+              asset: pos.asset_symbol,
+              type: pos.position_type as "deposit" | "loan" | "stake" | "lp",
+              amount: parseFloat(pos.amount),
+              value: parseFloat(pos.usd_value),
+              apy: pos.apy ? parseFloat(pos.apy) : undefined,
+              startDate: new Date(pos.start_date),
+              endDate: pos.end_date ? new Date(pos.end_date) : undefined
+            }));
+            
+            setPositions(positionData);
+            setIsLoading(false);
+            
+            toast({
+              title: "Data refreshed",
+              description: "Latest DeFi positions loaded successfully."
+            });
+            
+            if (onRefresh) {
+              onRefresh(id);
+            }
+            
+            return;
+          }
+        } catch (err) {
+          handleApiError(err, 'Error fetching positions', {
+            showToast: false, // Don't show toast for fallback to offline mode
+            logToConsole: true,
+            contextData: { component: 'ElizaDeFiConsoleWidget', action: 'handleRefreshData' }
+          });
+          // Fall through to offline data
+        }
+      }
+      
+      // Use mock data if we can't fetch from backend or no positions were found
+      setTimeout(() => {
+        // Simulate updated data
+        const updatedPositions = [...positions];
+        updatedPositions.forEach((pos: PositionData) => {
+          // Add small random fluctuation to values
+          const changePercent = (Math.random() * 3) - 1.5; // -1.5% to +1.5%
+          pos.value = pos.value * (1 + (changePercent / 100));
+        });
+        
+        setPositions(updatedPositions);
+        setIsLoading(false);
+        
+        // Show toast
+        toast({
+          title: "Data refreshed",
+          description: isOfflineMode 
+            ? "Mock DeFi market data has been updated." 
+            : "Could not fetch live data. Using simulation instead."
+        });
+        
+        // Call parent refresh if provided
+        if (onRefresh) {
+          onRefresh(id);
+        }
+      }, 1000);
+    } catch (error) {
+      handleApiError(error, 'Failed to refresh DeFi data', {
+        showToast: true,
+        contextData: { component: 'ElizaDeFiConsoleWidget', action: 'handleRefreshData' }
+      });
+      setIsLoading(false);
     }
   };
   

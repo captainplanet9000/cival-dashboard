@@ -129,6 +129,7 @@ export const NAVIGATION: NavigationGroup[] = [
     roles: ['user', 'admin'],
     items: [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, roles: ['user', 'admin'], breadcrumb: 'Dashboard', tab: true },
+      { name: 'Risk', href: '/dashboard/risk', icon: Shield, roles: ['user', 'admin'], breadcrumb: 'Risk', tab: true },
     ],
   },
   {
@@ -138,6 +139,14 @@ export const NAVIGATION: NavigationGroup[] = [
     items: [
       { name: 'Farms Overview', href: '/dashboard/farms', icon: Factory, roles: ['user', 'admin'], breadcrumb: 'Farms', tab: true },
       { name: 'Active Farm', href: '/dashboard/farms/active', icon: Database, roles: ['user', 'admin'], breadcrumb: 'Active Farm', tab: true },
+    ],
+  },
+  {
+    group: 'wallet',
+    label: 'Wallet & Trading',
+    roles: ['user', 'admin'],
+    items: [
+      { name: 'Wallet', href: '/dashboard/wallet', icon: Wallet, roles: ['user', 'admin'], breadcrumb: 'Wallet', tab: false },
     ],
   },
   {
@@ -157,6 +166,7 @@ export const NAVIGATION: NavigationGroup[] = [
     roles: ['user', 'admin'],
     items: [
       { name: 'Performance', href: '/dashboard/analytics/performance', icon: LineChart, roles: ['user', 'admin'], breadcrumb: 'Performance', tab: true },
+      { name: 'Compliance', href: '/dashboard/compliance', icon: Shield, roles: ['user', 'admin'], breadcrumb: 'Compliance & Reporting', tab: true },
       { name: 'Risk Analysis', href: '/dashboard/analytics/risk', icon: Shield, roles: ['admin'], breadcrumb: 'Risk Analysis', tab: false },
       { name: 'Market Insights', href: '/dashboard/analytics/market', icon: BarChart, roles: ['user', 'admin'], breadcrumb: 'Market Insights', tab: false },
     ],
@@ -172,6 +182,17 @@ export const NAVIGATION: NavigationGroup[] = [
     ],
   },
   {
+    group: 'markets',
+    label: 'Markets',
+    roles: ['user', 'admin'],
+    items: [
+      { name: 'Market Dashboard', href: '/dashboard/market', icon: LineChart, roles: ['user', 'admin'], breadcrumb: 'Market Dashboard', tab: true },
+      { name: 'Agent Trading', href: '/dashboard/market/agent-trading', icon: BrainCircuit, roles: ['user', 'admin'], breadcrumb: 'Agent Trading', tab: true, badge: 'New' },
+      { name: 'Trade History', href: '/dashboard/market/history', icon: History, roles: ['user', 'admin'], breadcrumb: 'Trade History', tab: true },
+    ],
+  },
+
+  {
     group: 'ai',
     label: 'AI Center',
     roles: ['user', 'admin'],
@@ -181,6 +202,14 @@ export const NAVIGATION: NavigationGroup[] = [
       { name: 'Knowledge Base', href: '/dashboard/guides', icon: BookOpenCheck, roles: ['user', 'admin'], breadcrumb: 'Knowledge Base', tab: false },
       { name: 'ElizaOS Hub', href: '/elizaos/agents', icon: Brain, roles: ['admin'], breadcrumb: 'ElizaOS Hub', tab: false },
       { name: 'AI Advisor', href: '/dashboard/ai-advisor', icon: Zap, roles: ['user', 'admin'], breadcrumb: 'AI Advisor', tab: false },
+    ],
+  },
+  {
+    group: 'monitoring',
+    label: 'Monitoring & Compliance',
+    roles: ['user', 'admin'],
+    items: [
+      { name: 'Monitoring Dashboard', href: '/dashboard/monitoring', icon: Activity, roles: ['user', 'admin'], breadcrumb: 'Monitoring', tab: false },
     ],
   },
   {
