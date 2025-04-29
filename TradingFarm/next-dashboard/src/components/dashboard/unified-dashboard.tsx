@@ -31,8 +31,10 @@ import {
   Bell,
   Zap,
   BookOpen,
-  SlidersHorizontal
+  SlidersHorizontal,
+  CircleDollarSign
 } from 'lucide-react';
+import { DashboardActionBar } from '@/components/ui/dashboard-action-bar';
 import { Database } from '@/types/database.types';
 import { cn } from '@/utils/cn';
 
@@ -170,7 +172,7 @@ export default function UnifiedDashboard({
       
       if (data && data.length > 0) {
         // Convert database Json type to Widget[] type
-        const typedLayouts = data.map((layout) => ({
+        const typedLayouts = data.map((layout: any) => ({
           ...layout,
           widgets: layout.widgets as unknown as Widget[]
         })) as DashboardLayoutConfig[];
@@ -380,7 +382,7 @@ export default function UnifiedDashboard({
       case 'elizaos_console':
         return <Brain className="h-5 w-5" />;
       case 'elizaos_defi_console':
-        return <Bank className="h-5 w-5" />;
+        return <CircleDollarSign className="h-5 w-5" />;
       case 'recent_orders':
         return <BookOpen className="h-5 w-5" />;
       case 'open_positions':
@@ -454,7 +456,7 @@ export default function UnifiedDashboard({
       case 'elizaos_console':
         return <CommandConsole farmId={farmId} />;
       case 'elizaos_defi_console':
-        return <ElizaDeFiConsoleWidget />;
+        return <ElizaDeFiConsoleWidget id="eliza-defi-console" />;
       case 'recent_orders':
         return <div>Recent Orders Widget</div>;
       case 'open_positions':
@@ -588,6 +590,62 @@ export default function UnifiedDashboard({
           <span className="text-sm text-muted-foreground">Last updated: {currentTime}</span>
         </div>
       </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">Trading Farm Dashboard</h1>
+          <p className="text-muted-foreground">
+            Overview of your trading activities, market data, and agent insights
+          </p>
+        </div>
+        
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+          
+          <Button variant="outline" size="sm" onClick={() => {
+            toast({
+              description: `Refreshing dashboard data...`
+            });
+            // Refresh data
+            loadLayouts();
+          }}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Refresh
+          </Button>
+          
+          <Button variant="outline" size="sm" onClick={() => setIsEditMode(!isEditMode)}>
+            <LayoutGrid className="h-4 w-4 mr-2" />
+            {isEditMode ? 'Done' : 'Edit Layout'}
+          </Button>
+          
+          {isEditMode && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setShowAddWidget(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Widget
+              </Button>
+              
+              <Button variant="default" size="sm" onClick={saveLayout} disabled={isSaving}>
+                <Save className="h-4 w-4 mr-2" />
+                {isSaving ? 'Saving...' : 'Save Layout'}
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+      
+      {/* Standardized Modal Action Bar - Uses the modal controller pattern */}
+      <DashboardActionBar 
+        farmId={farmId}
+        showAgents={true}
+        showExchanges={true}
+        showFunding={true}
+        showStrategies={true}
+        showGoals={true}
+        className="pb-2"
+      />
 
       <Tabs 
         defaultValue="overview" 

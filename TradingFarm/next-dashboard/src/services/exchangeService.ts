@@ -187,11 +187,16 @@ export class ExchangeService {
       switch (this.exchange) {
         case 'coinbase':
           const cbData = await this.authenticatedRequest('GET', '/accounts');
-          const balances = cbData.map((account: any) => ({
-            symbol: account.currency,
-            amount: parseFloat(account.balance),
-            value: parseFloat(account.balance) * await this.getMarketPrice(`${account.currency}/USD`)
-          }));
+          // Process balances sequentially to properly handle async calls
+          const balances = [];
+          for (const account of cbData) {
+            const price = await this.getMarketPrice(`${account.currency}/USD`);
+            balances.push({
+              symbol: account.currency,
+              amount: parseFloat(account.balance),
+              value: parseFloat(account.balance) * price
+            });
+          }
           return {
             balances,
             totalValue: balances.reduce((acc, balance) => acc + balance.value, 0)
@@ -199,11 +204,17 @@ export class ExchangeService {
           
         case 'bybit':
           const bybitData = await this.authenticatedRequest('GET', '/v5/account/balances');
-          const bybitBalances = bybitData.result.list.filter((balance: any) => balance.type === 'spot').map((balance: any) => ({
-            symbol: balance.coin,
-            amount: parseFloat(balance.free),
-            value: parseFloat(balance.free) * await this.getMarketPrice(`${balance.coin}/USDT`)
-          }));
+          // Process bybit balances sequentially to properly handle async calls
+          const spotBalances = bybitData.result.list.filter((balance: any) => balance.type === 'spot');
+          const bybitBalances = [];
+          for (const balance of spotBalances) {
+            const price = await this.getMarketPrice(`${balance.coin}/USDT`);
+            bybitBalances.push({
+              symbol: balance.coin,
+              amount: parseFloat(balance.free),
+              value: parseFloat(balance.free) * price
+            });
+          }
           return {
             balances: bybitBalances,
             totalValue: bybitBalances.reduce((acc, balance) => acc + balance.value, 0)

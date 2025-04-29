@@ -5,19 +5,19 @@
  * exchange connections for live trading
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { ExchangeFactory } from '@/services/exchange/exchange-factory';
 import { checkAuth } from '@/lib/auth/check-auth';
 
 /**
  * GET: List all exchange connections for the current user
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, errorResponse } = await checkAuth();
+    if (!user) {
+      return errorResponse;
     }
     
     // Get the exchange factory instance
@@ -53,12 +53,12 @@ export async function GET(request: NextRequest) {
 /**
  * POST: Create a new exchange connection
  */
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, errorResponse } = await checkAuth();
+    if (!user) {
+      return errorResponse;
     }
     
     // Parse request body

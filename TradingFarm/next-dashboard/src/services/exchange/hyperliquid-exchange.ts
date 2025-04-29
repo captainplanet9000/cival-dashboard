@@ -8,7 +8,7 @@
 import { ExchangeBase, OrderType, OrderSide, TimeInForce, OrderStatus, MarketData, 
          Orderbook, Ticker, ExchangeCredentials, OrderRequest, Order, Position,
          BalanceResponse, AccountInfo, WebSocketSubscription, WebSocketMessage } from './exchange-base';
-import WebSocket from 'isomorphic-ws';
+import WebSocket from '@/lib/stubs/isomorphic-ws';
 import { ethers } from 'ethers';
 
 export interface HyperliquidCredentials extends ExchangeCredentials {

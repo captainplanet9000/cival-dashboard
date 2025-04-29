@@ -5,7 +5,8 @@
  * Uses CCXT library to handle API interactions.
  */
 
-import ccxt from 'ccxt';
+// Use mock CCXT implementation during build
+import ccxt from '@/utils/mock-ccxt';
 import { 
   ApiCredentials, 
   ExchangeConfig, 

@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 import logging
 from .db import get_supabase_client, get_db_connection
-from .routers import agents, positions, trades, strategies, farms, wallets, bridge, tools, commands, elizaos
+from .routers import agents, positions, trades, strategies, farms, wallets, bridge, tools, commands, elizaos, trading
 from .config import settings
 
 # Configure logging
@@ -49,6 +49,7 @@ app.include_router(bridge.router, prefix="/bridge", tags=["bridge"])
 app.include_router(tools.router, prefix="/tools", tags=["tools"])
 app.include_router(commands.router, prefix="/commands", tags=["commands"])
 app.include_router(elizaos.router, prefix="/elizaos", tags=["elizaos"])
+app.include_router(trading.router, tags=["trading"])
 
 @app.get("/health", tags=["health"])
 async def health_check():

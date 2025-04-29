@@ -4,17 +4,22 @@
  */
 import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
+import { SupabaseClient } from '@supabase/supabase-js'; // Import SupabaseClient type
+import type { Database } from '@/types/database.types'; // Import Database type
 
 // Define the Goal interface (matching the Supabase schema)
 export interface Goal {
   id: string;
-  title: string;
+  title: string; // Changed from 'name' in the page component
   description?: string;
   farm_id: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' | 'waiting';
   target_value: number;
   current_value: number;
-  progress: number;
+  progress: number; // Exists but was missing in ExtendedGoal apparently
+  type?: string; // Added field
+  priority?: 'low' | 'medium' | 'high'; // Added field
+  deadline?: string; // Added field
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -107,7 +112,8 @@ export const goalService = {
     callback: (goals: Goal[]) => void,
     farmId?: number
   ): () => void {
-    const supabase = createBrowserClient();
+    // Explicitly type the client, assuming real-time is only used with a real client
+    const supabase = createBrowserClient() as SupabaseClient<Database>; 
     
     // Create the base channel
     let channel = supabase.channel('goals-changes');
@@ -153,6 +159,7 @@ export const goalService = {
     
     // Return an unsubscribe function
     return () => {
+      // Type assertion ensures removeChannel exists
       supabase.removeChannel(channel);
     };
   },
@@ -322,7 +329,7 @@ export const goalService = {
       
       if (!response.ok) {
         // Use Supabase as fallback
-        const supabase = createBrowserClient();
+        const supabase = createBrowserClient() as SupabaseClient<Database>;
         const { error } = await supabase
           .from('goals')
           .delete()
@@ -339,7 +346,7 @@ export const goalService = {
       
       // Try using Supabase as fallback
       try {
-        const supabase = createBrowserClient();
+        const supabase = createBrowserClient() as SupabaseClient<Database>;
         const { error } = await supabase
           .from('goals')
           .delete()
@@ -435,7 +442,7 @@ export const goalService = {
       
       if (!response.ok) {
         // Try using Supabase as fallback
-        const supabase = createBrowserClient();
+        const supabase = createBrowserClient() as SupabaseClient<Database>;
         
         // Get regular agents
         const { data: agents } = await supabase
@@ -749,7 +756,7 @@ export const goalService = {
     goalId: string
   ): Promise<ApiResponse<Goal[]>> {
     try {
-      const supabase = createBrowserClient();
+      const supabase = createBrowserClient() as SupabaseClient<Database>;
       
       const { data, error } = await supabase
         .from('goals')

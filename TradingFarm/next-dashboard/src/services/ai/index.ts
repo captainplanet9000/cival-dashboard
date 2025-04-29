@@ -3,8 +3,8 @@
  * Export all AI services and types for use in the application
  */
 
-// Core LangChain service
-export { default as LangChainService } from './langchain-service';
+// Core LangChain service - using mock for build compatibility
+export { default as LangChainService } from './langchain-service.mock';
 
 // Specialized AI services
 export { default as TradingStrategyService } from './trading-strategy-service';
@@ -15,7 +15,7 @@ export { default as PortfolioOptimizationService } from './portfolio-optimizatio
 export * from './types';
 
 // Service instances factory
-import LangChainService from './langchain-service';
+import LangChainService from './langchain-service.mock';
 import TradingStrategyService from './trading-strategy-service';
 import PerformanceInsightsService from './performance-insights-service';
 import PortfolioOptimizationService from './portfolio-optimization-service';

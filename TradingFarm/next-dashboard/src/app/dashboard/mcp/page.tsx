@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { InfoIcon, ActivityIcon, RefreshCwwIcon, ServerIcon, BarChart2Icon, LineChartIcon, ArrowRightIcon } from 'lucide-react';
+import { InfoIcon, ActivityIcon, RefreshCw as RefreshCwwIcon, ServerIcon, BarChart2Icon, LineChartIcon, ArrowRightIcon } from 'lucide-react';
 import { DashboardHeader } from '@/components/header';
 import { DashboardShell } from '@/components/shell';
 import { MarketAnalysisCard } from '@/components/mcp/MarketAnalysisCard';

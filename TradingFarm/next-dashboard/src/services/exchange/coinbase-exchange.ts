@@ -9,7 +9,7 @@ import { ExchangeBase, OrderType, OrderSide, TimeInForce, OrderStatus, MarketDat
          Orderbook, Ticker, ExchangeCredentials, OrderRequest, Order, Position,
          BalanceResponse, AccountInfo, WebSocketSubscription, WebSocketMessage } from './exchange-base';
 import crypto from 'crypto';
-import WebSocket from 'isomorphic-ws';
+import WebSocket from '@/lib/stubs/isomorphic-ws';
 
 export interface CoinbaseCredentials extends ExchangeCredentials {
   apiKey: string;

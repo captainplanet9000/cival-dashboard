@@ -54,8 +54,13 @@ interface AgentOrchestrationModalProps {
   onSuccess?: () => void;
 }
 
+/**
+ * Agent Orchestration Modal
+ * Allows users to create agent teams, assign agents to strategies, and monitor agent activities
+ * @param {AgentOrchestrationModalProps} props - Component props
+ */
 export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, farmId, onSuccess }: AgentOrchestrationModalProps) {
-  const [open, setOpen] = React.useState(isOpen);
+  // Use the isOpen prop directly without internal state
   const [activeTab, setActiveTab] = React.useState<string>("assign");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [selectedAgents, setSelectedAgents] = React.useState<string[]>([]);
@@ -77,6 +82,11 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
   
   // Agent status state
   const [agentStatuses, setAgentStatuses] = React.useState<Record<string, { status: string, lastActive: Date }>>({});
+
+  // Handle closing the modal
+  const handleClose = () => {
+    onClose();
+  };
   const createAssignment = useCreateAgentAssignment();
   const deleteAssignment = useDeleteAgentAssignment();
   
@@ -236,7 +246,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
       teamForm.reset();
       setSelectedAgents([]);
       if (onSuccess) onSuccess();
-      handleClose();
+      onClose();
     } catch (error: any) {
       toast({
         title: "Error Creating Team",
@@ -311,7 +321,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
       // Reset form and close modal
       assignmentForm.reset();
       if (onSuccess) onSuccess();
-      handleClose();
+      onClose();
       
       // Refresh assignments data
       queryClient.invalidateQueries({ queryKey: ['agent_assignments'] });
@@ -327,22 +337,6 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
       setIsSubmitting(false);
     }
   };
-
-  const handleClose = () => {
-    setOpen(false);
-    onClose();
-  };
-
-  React.useEffect(() => {
-    setOpen(isOpen);
-  }, [isOpen]);
-  
-  // Fetch agent statuses when the modal opens or when the tab changes to monitor
-  React.useEffect(() => {
-    if (open && activeTab === 'monitor') {
-      refreshAgentStatuses();
-    }
-  }, [open, activeTab, agents]);
 
   // Handle refresh session
   const handleRefreshSession = async () => {
@@ -369,8 +363,23 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
     }
   };
 
+  // Custom Dialog component wrapper to fix TypeScript issues with Dialog props
+  const DialogWrapper = ({ 
+    open, 
+    onOpenChange, 
+    children 
+  }: { 
+    open: boolean; 
+    onOpenChange: (open: boolean) => void; 
+    children: React.ReactNode 
+  }) => {
+    return React.createElement(Dialog, { open, onOpenChange }, children);
+  };
+  
   return (
-    <Dialog open={open} onOpenChange={(value: boolean) => setOpen(value)}>
+    <DialogWrapper open={isOpen} onOpenChange={(newOpen) => {
+      if (!newOpen) onClose();
+    }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Agent Orchestration</DialogTitle>
@@ -928,7 +937,7 @@ export function AgentOrchestrationModal({ isOpen = false, onClose = () => {}, fa
           </TabsContent>
         </Tabs>
       </DialogContent>
-    </Dialog>
+    </DialogWrapper>
   );
 }
 

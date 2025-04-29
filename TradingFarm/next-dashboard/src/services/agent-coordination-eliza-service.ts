@@ -14,6 +14,7 @@ import { goalAcquisitionService } from './goal-acquisition-service';
  * This service handles the coordination of agents via ElizaOS for goal acquisition
  */
 export const agentCoordinationElizaService = {
+
   /**
    * Initialize ElizaOS agents for goal acquisition
    */
@@ -27,6 +28,9 @@ export const agentCoordinationElizaService = {
       
       if (goalError || !goal) {
         return { error: goalError || 'Goal not found' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Initialize ElizaOS agents with goal knowledge
@@ -66,9 +70,15 @@ export const agentCoordinationElizaService = {
       }
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error initializing ElizaOS agents for goal:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -101,6 +111,9 @@ export const agentCoordinationElizaService = {
         },
         volatility: 'MEDIUM'
       };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       
       // Send analysis command to ElizaOS
       const response = await elizaGoalConnector.requestMarketAnalysis(
@@ -112,6 +125,9 @@ export const agentCoordinationElizaService = {
       
       if (!response.success) {
         return { error: response.message };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Update the coordination state
@@ -136,9 +152,15 @@ export const agentCoordinationElizaService = {
       );
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error sending ElizaOS analysis command:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -156,6 +178,9 @@ export const agentCoordinationElizaService = {
       
       if (goalError || !goal) {
         return { error: goalError || 'Goal not found' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Store analysis as a memory
@@ -193,6 +218,9 @@ export const agentCoordinationElizaService = {
     } catch (error) {
       console.error('Error processing ElizaOS market analysis:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -216,6 +244,9 @@ export const agentCoordinationElizaService = {
       
       if (!response.success) {
         return { error: response.message };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Update the coordination state
@@ -240,9 +271,15 @@ export const agentCoordinationElizaService = {
       );
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error requesting ElizaOS strategy proposal:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -260,6 +297,9 @@ export const agentCoordinationElizaService = {
       
       if (goalError || !goal) {
         return { error: goalError || 'Goal not found' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Format the proposal for storage
@@ -272,12 +312,18 @@ export const agentCoordinationElizaService = {
         is_active: false,
         proposed_at: new Date().toISOString()
       };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       
       // Store the proposal in the database
       const { data: strategy, error: strategyError } = await goalAcquisitionService.createStrategy(formattedProposal);
       
       if (strategyError) {
         return { error: strategyError };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Store the proposal as a memory
@@ -307,9 +353,15 @@ export const agentCoordinationElizaService = {
       );
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error processing ElizaOS strategy proposal:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -327,6 +379,9 @@ export const agentCoordinationElizaService = {
       
       if (goalError || !goal) {
         return { error: goalError || 'Goal not found' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Send execution command to ElizaOS
@@ -338,6 +393,9 @@ export const agentCoordinationElizaService = {
       
       if (!response.success) {
         return { error: response.message };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Update the coordination state
@@ -364,9 +422,15 @@ export const agentCoordinationElizaService = {
       );
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error sending ElizaOS execution command:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -398,12 +462,18 @@ export const agentCoordinationElizaService = {
           exchange_rate: result.exchange_rate
         }
       };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       
       // Store the transaction in the database
       const { data: transaction, error: transactionError } = await goalAcquisitionService.recordTransaction(formattedTransaction);
       
       if (transactionError) {
         return { error: transactionError };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Store the execution result as a memory
@@ -438,9 +508,15 @@ export const agentCoordinationElizaService = {
       );
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error processing ElizaOS execution result:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -457,6 +533,9 @@ export const agentCoordinationElizaService = {
       
       if (goalError || !goal) {
         return { error: goalError || 'Goal not found' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Send monitoring command to ElizaOS
@@ -470,6 +549,9 @@ export const agentCoordinationElizaService = {
       
       if (!response.success) {
         return { error: response.message };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       // Update the coordination state
@@ -483,9 +565,15 @@ export const agentCoordinationElizaService = {
       }
       
       return { data: null };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error requesting ElizaOS monitoring update:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   },
   
@@ -507,12 +595,24 @@ export const agentCoordinationElizaService = {
       
       if (!response.success) {
         return { error: response.message };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
       }
       
       return { data: response.data };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     } catch (error) {
       console.error('Error getting goal acquisition memories:', error);
       return { error: error instanceof Error ? error.message : 'Unknown error occurred' };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;
     }
   }
 };
+
+// Export as agentCoordinationService to match the import in route.ts
+export const agentCoordinationService = agentCoordinationElizaService;

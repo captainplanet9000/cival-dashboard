@@ -10,13 +10,21 @@ import {
   Subscription,
   WebSocketMessage,
   MessageType,
-  MessageDirection,
   OrderBookData,
   TradeData,
   TickerData,
   CandleData,
   ParsedMessage
 } from './websocket-types';
+
+// Import MessageDirection directly as it's exported as a type
+import type { MessageDirection } from './websocket-types';
+
+// Define direction values as constants since MessageDirection is a type
+const MESSAGE_DIRECTION = {
+  inbound: 'inbound' as MessageDirection,
+  outbound: 'outbound' as MessageDirection
+};
 
 /**
  * Create connection options for HyperLiquid WebSocket
@@ -169,7 +177,7 @@ export function parseHyperliquidMessage(data: any): WebSocketMessage {
     exchange: 'hyperliquid',
     timestamp,
     type: messageType,
-    direction: MessageDirection.inbound,
+    direction: MESSAGE_DIRECTION.inbound,
     channel,
     symbols,
     data: parsedData,

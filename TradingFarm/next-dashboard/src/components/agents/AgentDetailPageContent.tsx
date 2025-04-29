@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * ElizaOS Agent Detail Page Content
  */

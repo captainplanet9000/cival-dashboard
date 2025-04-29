@@ -121,10 +121,40 @@ function SimpleBreadcrumb({
   );
 }
 
+// BreadcrumbPage component for page layout with breadcrumb
+const BreadcrumbPage: React.FC<{
+  children: React.ReactNode;
+  breadcrumbs: Array<{ label: string; href: string }>;
+  title?: string;
+  actions?: React.ReactNode;
+}> = ({ children, breadcrumbs, title, actions }) => {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <SimpleBreadcrumb>
+            {breadcrumbs.map((item, index) => (
+              <BreadcrumbItem key={index}>
+                <BreadcrumbLink asChild>
+                  <Link href={item.href}>{item.label}</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+            ))}
+          </SimpleBreadcrumb>
+          {title && <h1 className="text-2xl font-bold mt-2">{title}</h1>}
+        </div>
+        {actions && <div className="flex space-x-2">{actions}</div>}
+      </div>
+      <div>{children}</div>
+    </div>
+  );
+};
+
 // Export all components
 export {
   Breadcrumb,
   BreadcrumbList,
+  BreadcrumbPage,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbSeparator,

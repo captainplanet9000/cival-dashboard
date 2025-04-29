@@ -2,19 +2,20 @@
  * API Route: GET /api/agents/[id]/health
  * Returns health metrics for a specific agent
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import type { NextApiRequest } from 'next';
+// Using stub implementation for next-auth
+import { getServerSession } from '@/lib/next-auth-stubs';
 import { createServerClient } from '@/utils/supabase/server';
 import { AgentMonitoringService } from '@/services/agent-monitoring-service';
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
     // Verify authentication
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

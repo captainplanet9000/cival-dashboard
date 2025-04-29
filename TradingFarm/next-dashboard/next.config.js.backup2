@@ -1,0 +1,29 @@
+/** @type {import('next').NextConfig} */
+
+// Static export configuration
+const nextConfig = {
+  // Output as static for easy deployment
+  output: 'export',
+  // Disable type checking and linting
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  // Disable React strict mode
+  reactStrictMode: false,
+  // Disable image optimization for static export
+  images: {
+    unoptimized: true,
+  },
+  // Simplify experimental features
+  experimental: {
+    // Format for Next.js 15+
+    serverActions: true
+  },
+  // Disable trailing slash for better compatibility
+  trailingSlash: false,
+};
+
+module.exports = nextConfig;

@@ -6,7 +6,7 @@
  * and provide context-enhanced responses.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server';
 import { getAgentLlmService } from '@/services/api/agent-llm-service';
 import { AgentContextType, AgentMessageCategory } from '@/services/api/agent-llm-service';
@@ -17,7 +17,7 @@ import { AgentContextType, AgentMessageCategory } from '@/services/api/agent-llm
  * Returns the LLM configuration for the specified agent
  */
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -30,8 +30,8 @@ export async function GET(
       );
     }
     
-    // Get supabase client for server
-    const supabase = createServerClient();
+    // Create Supabase client
+    const supabase = await createServerClient();
     
     // Verify agent exists and user has access
     const { data: agent, error: agentError } = await supabase
@@ -90,7 +90,7 @@ export async function GET(
  * Processes a message for the agent using its LLM configuration
  */
 export async function POST(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -122,8 +122,8 @@ export async function POST(
       );
     }
     
-    // Get supabase client for server
-    const supabase = createServerClient();
+    // Create Supabase client
+    const supabase = await createServerClient();
     
     // Verify agent exists and user has access
     const { data: agent, error: agentError } = await supabase
@@ -192,8 +192,8 @@ export async function POST(
  * 
  * Returns the message history for the specified agent
  */
-export async function GET(
-  request: NextRequest,
+export async function GET_history(
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   try {
@@ -207,12 +207,13 @@ export async function GET(
     }
     
     // Get query parameters
-    const searchParams = request.nextUrl.searchParams;
+    const url = new URL(request.url);
+    const searchParams = url.searchParams;
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     
-    // Get supabase client for server
-    const supabase = createServerClient();
+    // Create Supabase client
+    const supabase = await createServerClient();
     
     // Verify agent exists and user has access
     const { data: agent, error: agentError } = await supabase

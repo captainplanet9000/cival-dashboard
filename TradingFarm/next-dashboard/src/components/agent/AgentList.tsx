@@ -674,3 +674,6 @@ export function AgentList({
     </div>
   );
 }
+
+// Add default export to fix the build error
+export default AgentList;

@@ -372,5 +372,7 @@ export class TradeApiClient extends ApiClient {
 export const dashboardApi = new DashboardApiClient();
 export const farmApi = new FarmApiClient();
 export const agentApi = new AgentApiClient();
+// Generic API client instance
+export const api = new ApiClient();
 export const orderApi = new OrderApiClient();
 export const tradeApi = new TradeApiClient();

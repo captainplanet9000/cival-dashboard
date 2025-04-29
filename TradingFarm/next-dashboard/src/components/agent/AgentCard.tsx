@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import * as React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,7 +22,12 @@ import {
   XCircle,
   Gauge,
   BellRing,
-  LayoutList
+  LayoutList,
+  BarChart2,
+  LineChart,
+  ExternalLink,
+  Settings,
+  Info
 } from 'lucide-react';
 import { Agent } from '@/types/agent';
 import { 
@@ -32,6 +37,7 @@ import {
 } from '@/components/ui/collapsible';
 import { AgentHealthData, HealthStatus } from '@/lib/agents/health-monitor';
 import { useToast } from '@/components/ui/use-toast';
+import { useModal } from '@/components/ui/modal-controller';
 
 export interface AgentCardProps {
   agent: Agent;
@@ -62,9 +68,14 @@ export function AgentCard({
     return formatDistanceToNow(date, { addSuffix: true });
   };
 
+  const { showModal } = useModal();
+  
   const handleViewDetails = () => {
     if (onViewDetails) {
       onViewDetails(agent.id);
+    } else {
+      // Use the modal system instead
+      showModal('agentHealth', { agentId: agent.id });
     }
   };
 
@@ -113,7 +124,7 @@ export function AgentCard({
         return <AlertTriangle className="h-4 w-4 text-amber-500" />;
       case 'critical':
         return <XCircle className="h-4 w-4 text-red-500" />;
-      case 'unknown':
+      case 'inactive':
       default:
         return <Activity className="h-4 w-4 text-gray-400" />;
     }
@@ -188,7 +199,7 @@ export function AgentCard({
         <div className="text-sm text-muted-foreground space-y-2">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
-            <span>Last active: {health ? formatLastActive(health.lastChecked) : 'Unknown'}</span>
+            <span>Last active: {health ? formatLastActive(health.health_check_timestamp ? new Date(health.health_check_timestamp) : null) : 'Unknown'}</span>
           </div>
           
           {health && (
@@ -202,17 +213,17 @@ export function AgentCard({
                           <CpuIcon className="h-3 w-3" />
                           <span>CPU</span>
                         </div>
-                        <span>{Math.round(health.metrics.cpu)}%</span>
+                        <span>{health.cpu_usage}%</span>
                       </div>
                       <Progress 
-                        value={health.metrics.cpu} 
+                        value={health.cpu_usage} 
                         className="h-1.5" 
-                        indicatorClassName={health.metrics.cpu > 90 ? "bg-red-500" : health.metrics.cpu > 70 ? "bg-amber-500" : "bg-green-500"}
+                        indicatorClassName={health.cpu_usage > 90 ? "bg-red-500" : health.cpu_usage > 70 ? "bg-amber-500" : "bg-green-500"}
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p>CPU Usage: {Math.round(health.metrics.cpu)}%</p>
+                    <p>CPU Usage: {health.cpu_usage}%</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -226,17 +237,17 @@ export function AgentCard({
                           <MemoryStick className="h-3 w-3" />
                           <span>Memory</span>
                         </div>
-                        <span>{Math.round(health.metrics.memory)}%</span>
+                        <span>{health.memory_usage}%</span>
                       </div>
                       <Progress 
-                        value={health.metrics.memory} 
+                        value={health.memory_usage} 
                         className="h-1.5" 
-                        indicatorClassName={health.metrics.memory > 90 ? "bg-red-500" : health.metrics.memory > 70 ? "bg-amber-500" : "bg-green-500"}
+                        indicatorClassName={health.memory_usage > 90 ? "bg-red-500" : health.memory_usage > 70 ? "bg-amber-500" : "bg-green-500"}
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p>Memory Usage: {Math.round(health.metrics.memory)}%</p>
+                    <p>Memory Usage: {health.memory_usage}%</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -248,19 +259,19 @@ export function AgentCard({
                       <div className="flex justify-between items-center mb-1 text-xs">
                         <div className="flex items-center gap-1">
                           <Gauge className="h-3 w-3" />
-                          <span>Latency</span>
+                          <span>Response</span>
                         </div>
-                        <span>{Math.round(health.metrics.latency)}ms</span>
+                        <span>{health.response_time}ms</span>
                       </div>
                       <Progress 
-                        value={Math.min(100, health.metrics.latency / 3)} 
+                        value={Math.min(100, (health.response_time || 0) / 3)} 
                         className="h-1.5" 
-                        indicatorClassName={health.metrics.latency > 200 ? "bg-red-500" : health.metrics.latency > 100 ? "bg-amber-500" : "bg-green-500"}
+                        indicatorClassName={(health.response_time || 0) > 200 ? "bg-red-500" : (health.response_time || 0) > 100 ? "bg-amber-500" : "bg-green-500"}
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p>Response Latency: {Math.round(health.metrics.latency)}ms</p>
+                    <p>Response Time: {health.response_time}ms</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -274,17 +285,17 @@ export function AgentCard({
                           <BellRing className="h-3 w-3" />
                           <span>Errors</span>
                         </div>
-                        <span>{health.metrics.errorRate.toFixed(1)}%</span>
+                        <span>{health.error_count}</span>
                       </div>
                       <Progress 
-                        value={Math.min(100, health.metrics.errorRate * 5)} 
+                        value={Math.min(100, health.error_count * 10)} 
                         className="h-1.5" 
-                        indicatorClassName={health.metrics.errorRate > 20 ? "bg-red-500" : health.metrics.errorRate > 5 ? "bg-amber-500" : "bg-green-500"}
+                        indicatorClassName={health.error_count > 10 ? "bg-red-500" : health.error_count > 0 ? "bg-amber-500" : "bg-green-500"}
                       />
                     </div>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
-                    <p>Error Rate: {health.metrics.errorRate.toFixed(1)}%</p>
+                    <p>Errors: {health.error_count} | Warnings: {health.warning_count}</p>
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
@@ -295,20 +306,29 @@ export function AgentCard({
       
       <CollapsibleContent>
         <CardContent className="pt-0 border-t">
-          {health && health.issues.length > 0 ? (
+          {health && (health.error_count > 0 || health.warning_count > 0) ? (
             <div className="space-y-2">
               <div className="flex items-center gap-1 text-sm font-medium">
                 <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <span>Issues ({health.issues.length})</span>
+                <span>Issues ({health.error_count + health.warning_count})</span>
               </div>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {health.issues.map((issue, index) => (
-                  <li key={index} className="flex items-start gap-2">
-                    <span className="min-w-4">•</span>
-                    <span>{issue}</span>
-                  </li>
-                ))}
-              </ul>
+              <div className="space-y-1.5 text-sm text-muted-foreground">
+                {health.error_count > 0 && (
+                  <div className="flex items-start gap-2">
+                    <XCircle className="h-4 w-4 text-red-500 mt-0.5" />
+                    <span>{health.error_count} error{health.error_count !== 1 ? 's' : ''} detected</span>
+                  </div>
+                )}
+                {health.warning_count > 0 && (
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5" />
+                    <span>{health.warning_count} warning{health.warning_count !== 1 ? 's' : ''} detected</span>
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground mt-1">
+                  View details for more information
+                </div>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -349,7 +369,7 @@ export function AgentCard({
               <div className="space-y-1 text-xs text-muted-foreground">
                 <div className="grid grid-cols-3 gap-1">
                   <span className="font-medium">Uptime:</span>
-                  <span className="col-span-2">{health ? `${health.metrics.uptime.toFixed(1)}%` : 'Unknown'}</span>
+                  <span className="col-span-2">{health ? `${(health.uptime_percentage || 99.9).toFixed(1)}%` : 'Unknown'}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-1">
                   <span className="font-medium">Status:</span>
@@ -358,7 +378,7 @@ export function AgentCard({
                 <div className="grid grid-cols-3 gap-1">
                   <span className="font-medium">Last check:</span>
                   <span className="col-span-2">
-                    {health ? formatLastActive(health.lastChecked) : 'Never'}
+                    {health ? formatLastActive(health.health_check_timestamp ? new Date(health.health_check_timestamp) : null) : 'Never'}
                   </span>
                 </div>
               </div>

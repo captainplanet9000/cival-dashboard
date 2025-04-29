@@ -10,10 +10,14 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 // Import Wallet Provider
 import { WalletProvider } from '@/contexts/WalletContext';
+import { AuthBypassProvider } from '@/utils/security/auth-bypass';
+import { MockDataProvider } from '@/utils/mock-data-provider';
+import { DevAutoConnector } from '@/utils/dev-auto-connector';
 
 // Import UI components
-import { Sidebar } from "@/components/dashboard/sidebar";
+import { FixedSidebar } from "@/components/dashboard/fixed-sidebar";
 import { Toaster } from "@/components/ui/toaster";
+import { ModalProvider } from "@/components/ui/modal-controller";
 
 // Import performance monitoring tools
 import { useReportWebVitals } from 'next/web-vitals';
@@ -97,19 +101,23 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <WalletProvider>
-        <div className="h-screen bg-background overflow-hidden">
+      <AuthBypassProvider>
+        <MockDataProvider>
+          <DevAutoConnector>
+            <WalletProvider>
+        <ModalProvider>
+          <div className="h-screen bg-background overflow-hidden">
           {/* Performance monitoring */}
           {reportWebVitals()}
           
           {/* Performance and analytics enhancements */}
           <ClientComponents />
           
-          {/* Sidebar is now fixed position in its component */}
-          <Sidebar farmId={farmId} />
+          {/* Improved fixed sidebar with shadcn/ui components */}
+          <FixedSidebar />
 
-          {/* Main content area - add margin to account for fixed sidebar */}
-          <div className="ml-64 flex-1 flex flex-col overflow-hidden h-screen">
+          {/* Main content area with proper margin for fixed sidebar */}
+          <div className="ml-64 flex-1 flex flex-col overflow-hidden h-screen bg-background">
             {/* Main content */}
             <main className="flex-1 overflow-auto">
               {children}
@@ -124,13 +132,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             </div>
           </div>
-          
-          {/* Add Toaster here, outside the main content flow */}
+          </div>
           <Toaster />
-        </div>
+        </ModalProvider>
       </WalletProvider>
-      {/* Optional React Query Devtools */}
-      <ReactQueryDevtools initialIsOpen={false} />
+          </DevAutoConnector>
+        </MockDataProvider>
+      </AuthBypassProvider>
+      {process.env.NODE_ENV !== 'production' && <ReactQueryDevtools />}
     </QueryClientProvider>
   );
 }

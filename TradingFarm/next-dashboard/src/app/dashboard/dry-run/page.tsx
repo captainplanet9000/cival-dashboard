@@ -1,3 +1,5 @@
+'use client';
+
 import { Suspense } from 'react';
 import DryRunTradingPanel from '@/components/dry-run-trading-panel';
 import SimulationSettingsPanel from '@/components/simulation/simulation-settings-panel';
@@ -8,10 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useEffect, useState } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
-export const metadata = {
-  title: 'Dry Run Trading - Trading Farm',
-  description: 'Test your trading strategies in a risk-free environment',
-};
+// Metadata moved to layout.tsx or parent component
+// Client components cannot export metadata
 
 function TradeHistoryLoading() {
   return (

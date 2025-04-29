@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Goal Details Page Component
  * Displays comprehensive information about a trading goal and its progress

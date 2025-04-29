@@ -173,7 +173,7 @@ export default function AgentMonitoringWidget({ farmId, className }: AgentMonito
       let online = 0;
       let offline = 0;
       let warning = 0;
-      let error = 0;
+      let errorCount = 0;
       
       data?.forEach(item => {
         const count = parseInt(item.count);
@@ -192,7 +192,7 @@ export default function AgentMonitoringWidget({ farmId, className }: AgentMonito
             warning += count;
             break;
           case 'error':
-            error += count;
+            errorCount += count;
             break;
         }
       });
@@ -202,7 +202,7 @@ export default function AgentMonitoringWidget({ farmId, className }: AgentMonito
         online,
         offline,
         warning,
-        error,
+        error: errorCount,
       });
       
     } catch (err) {

@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabase } from '../../../../../lib/supabase-client';
+import { NextResponse } from 'next/server';
+import { createServerClient } from '@/utils/supabase/server';
 
 export async function GET(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   const farmId = parseInt(params.id, 10);
@@ -16,6 +16,7 @@ export async function GET(
   
   try {
     // Get farm from database
+    const supabase = await createServerClient();
     const { data: farm, error: farmError } = await supabase
       .from('farms')
       .select('*')
@@ -69,7 +70,7 @@ export async function GET(
 }
 
 export async function PUT(
-  request: NextRequest,
+  request: Request,
   { params }: { params: { id: string } }
 ) {
   const farmId = parseInt(params.id, 10);
@@ -92,6 +93,7 @@ export async function PUT(
     }
     
     // Update farm risk profile
+    const supabase = await createServerClient();
     const { error: updateError } = await supabase
       .from('farms')
       .update({

@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { PageHeader } from '@/components/page-header';
 import { goalService, Goal } from "@/services/goal-service";
 import { farmService, Farm } from "@/services/farm-service";
 import { createBrowserClient } from "@/utils/supabase/client";
@@ -57,32 +58,6 @@ export default function GoalsPage() {
   const { toast } = useToast();
   const supabase = createBrowserClient();
   const { refreshSession } = useAuth();
-
-  // Setup real-time subscription for goal updates
-  React.useEffect(() => {
-    const setupRealtimeSubscription = async () => {
-      try {
-        const subscription = supabase
-          .channel('goals-channel')
-          .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'goals' 
-          }, (payload) => {
-            fetchGoals();
-          })
-          .subscribe();
-
-        return () => {
-          supabase.removeChannel(subscription);
-        };
-      } catch (error) {
-        console.error('Error setting up realtime subscription:', error);
-      }
-    };
-
-    setupRealtimeSubscription();
-  }, [supabase]);
 
   // Fetch goals and farms
   const fetchGoals = React.useCallback(async () => {
@@ -184,7 +159,7 @@ export default function GoalsPage() {
     if (searchQuery.trim() !== "") {
       const query = searchQuery.toLowerCase();
       result = result.filter((goal: ExtendedGoal) => 
-        goal.name.toLowerCase().includes(query) || 
+        goal.title.toLowerCase().includes(query) || 
         (goal.description && goal.description.toLowerCase().includes(query))
       );
     }
@@ -202,7 +177,7 @@ export default function GoalsPage() {
     setGoals((prev: ExtendedGoal[]) => [extendedGoal, ...prev]);
     toast({
       title: "Goal Created",
-      description: `${newGoal.name} has been created successfully`,
+      description: `${newGoal.title} has been created successfully`,
     });
   };
 
@@ -414,20 +389,20 @@ export default function GoalsPage() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Trading Goals</h1>
-          <p className="text-muted-foreground">
-            Manage and track progress of your trading farm goals
-          </p>
-        </div>
+    <div className="container mx-auto py-8 px-4 md:px-6">
+      <PageHeader 
+        title="Goals" 
+        description="Define, track, and manage your trading and performance goals."
+      >
         <GoalCreationDialog onSuccess={handleGoalCreated} />
-      </div>
+      </PageHeader>
 
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col md:flex-row gap-4 mb-2">
+      <div className="mt-8"> 
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Filters & Search</CardTitle>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
@@ -490,8 +465,7 @@ export default function GoalsPage() {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          
+          </CardContent>
           <Button 
             variant="outline" 
             size="sm" 
@@ -507,163 +481,163 @@ export default function GoalsPage() {
             <FilterX className="h-4 w-4 mr-2" />
             Reset Filters
           </Button>
-        </CardContent>
-      </Card>
+        </Card>
 
-      {filteredGoals.length === 0 ? (
-        <div className="flex flex-col items-center justify-center p-12 bg-muted/50 rounded-lg border border-dashed">
-          <Target className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Goals Found</h3>
-          <p className="text-muted-foreground text-center mb-4">
-            {goals.length > 0 
-              ? "No goals match your current filter criteria."
-              : "You haven't created any trading goals yet. Create your first goal to get started."}
-          </p>
-          {goals.length > 0 ? (
-            <Button variant="outline" onClick={() => {
-              setStatusFilter("all");
-              setTypeFilter("all");
-              setPriorityFilter("all");
-              setFarmFilter("all");
-              setSearchQuery("");
-            }}>
-              Clear Filters
-            </Button>
-          ) : (
-            <GoalCreationDialog />
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {filteredGoals.map((goal: ExtendedGoal) => (
-            <Card key={goal.id} className="overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex flex-col md:flex-row justify-between gap-4">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 p-2 rounded-full">
-                      <Target className="h-6 w-6 text-primary" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-lg font-medium">{goal.name}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {goal.description || "No description provided."}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <Badge variant="outline" className={getStatusClass(goal.status)}>
-                          {getStatusIcon(goal.status)}
-                          <span className="ml-1">
-                            {goal.status === 'in_progress' ? 'In Progress' : 
-                             goal.status === 'completed' ? 'Completed' : 
-                             'Not Started'}
-                          </span>
-                        </Badge>
-                        <Badge variant="outline" className={getPriorityClass(goal.priority)}>
-                          {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)} Priority
-                        </Badge>
-                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100">
-                          <Building className="h-3 w-3 mr-1" />
-                          {goal.farm_name || `Farm #${goal.farm_id}`}
-                        </Badge>
+        {filteredGoals.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 bg-muted/50 rounded-lg border border-dashed">
+            <Target className="h-12 w-12 text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Goals Found</h3>
+            <p className="text-muted-foreground text-center mb-4">
+              {goals.length > 0 
+                ? "No goals match your current filter criteria."
+                : "You haven't created any trading goals yet. Create your first goal to get started."}
+            </p>
+            {goals.length > 0 ? (
+              <Button variant="outline" onClick={() => {
+                setStatusFilter("all");
+                setTypeFilter("all");
+                setPriorityFilter("all");
+                setFarmFilter("all");
+                setSearchQuery("");
+              }}>
+                Clear Filters
+              </Button>
+            ) : (
+              <GoalCreationDialog />
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredGoals.map((goal: ExtendedGoal) => (
+              <Card key={goal.id} className="overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex flex-col md:flex-row justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="bg-primary/10 p-2 rounded-full">
+                        <Target className="h-6 w-6 text-primary" />
                       </div>
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-medium">{goal.title}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {goal.description || "No description provided."}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <Badge variant="outline" className={getStatusClass(goal.status)}>
+                            {getStatusIcon(goal.status)}
+                            <span className="ml-1">
+                              {goal.status === 'in_progress' ? 'In Progress' : 
+                               goal.status === 'completed' ? 'Completed' : 
+                               'Not Started'}
+                            </span>
+                          </Badge>
+                          <Badge variant="outline" className={getPriorityClass(goal.priority)}>
+                            {goal.priority.charAt(0).toUpperCase() + goal.priority.slice(1)} Priority
+                          </Badge>
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-100">
+                            <Building className="h-3 w-3 mr-1" />
+                            {goal.farm_name || `Farm #${goal.farm_id}`}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col items-end gap-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            Actions
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          {goal.status !== 'in_progress' && (
+                            <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'in_progress')}>
+                              <Clock className="h-4 w-4 mr-2" />
+                              Mark as In Progress
+                            </DropdownMenuItem>
+                          )}
+                          {goal.status !== 'completed' && (
+                            <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'completed')}>
+                              <Check className="h-4 w-4 mr-2" />
+                              Mark as Completed
+                            </DropdownMenuItem>
+                          )}
+                          {goal.status !== 'not_started' && (
+                            <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'not_started')}>
+                              <Target className="h-4 w-4 mr-2" />
+                              Reset to Not Started
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem asChild>
+                            <Link href={`/dashboard/goals/${goal.id}/edit`}>
+                              <Edit className="h-4 w-4 mr-2" />
+                              Edit Goal
+                            </Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            className="text-red-600"
+                            onClick={() => handleDeleteGoal(goal.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Goal
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      
+                      <Link href={`/dashboard/goals/${goal.id}`} passHref className="text-sm text-primary hover:underline">
+                        View Details
+                      </Link>
                     </div>
                   </div>
                   
-                  <div className="flex flex-col items-end gap-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          Actions
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        {goal.status !== 'in_progress' && (
-                          <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'in_progress')}>
-                            <Clock className="h-4 w-4 mr-2" />
-                            Mark as In Progress
-                          </DropdownMenuItem>
-                        )}
-                        {goal.status !== 'completed' && (
-                          <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'completed')}>
-                            <Check className="h-4 w-4 mr-2" />
-                            Mark as Completed
-                          </DropdownMenuItem>
-                        )}
-                        {goal.status !== 'not_started' && (
-                          <DropdownMenuItem onClick={() => handleStatusChange(goal.id, 'not_started')}>
-                            <Target className="h-4 w-4 mr-2" />
-                            Reset to Not Started
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem asChild>
-                          <Link href={`/dashboard/goals/${goal.id}/edit`}>
-                            <Edit className="h-4 w-4 mr-2" />
-                            Edit Goal
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          className="text-red-600"
-                          onClick={() => handleDeleteGoal(goal.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Goal
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    
-                    <Link href={`/dashboard/goals/${goal.id}`} passHref className="text-sm text-primary hover:underline">
-                      View Details
-                    </Link>
-                  </div>
-                </div>
-                
-                <div className="mt-4">
-                  <div className="flex justify-between text-sm text-muted-foreground mb-1">
-                    <span>Progress ({goal.progress !== null ? Math.round(goal.progress * 100) : 0}%)</span>
-                    <span>{goal.current_value} / {goal.target_value}</span>
-                  </div>
-                  <div className="h-2 w-full rounded-full bg-muted">
-                    <div 
-                      className={`h-2 rounded-full ${getProgressColor(goal.progress !== null ? goal.progress : 0)}`} 
-                      style={{ width: `${Math.min((goal.progress !== null ? goal.progress : 0) * 100, 100)}%` }} 
-                    />
-                  </div>
-                </div>
-                
-                <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Goal Type:</span>
-                    <div className="font-medium">
-                      {goal.type.charAt(0).toUpperCase() + goal.type.slice(1)}
+                  <div className="mt-4">
+                    <div className="flex justify-between text-sm text-muted-foreground mb-1">
+                      <span>Progress ({goal.progress !== null ? Math.round(goal.progress * 100) : 0}%)</span>
+                      <span>{goal.current_value} / {goal.target_value}</span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted">
+                      <div 
+                        className={`h-2 rounded-full ${getProgressColor(goal.progress !== null ? goal.progress : 0)}`} 
+                        style={{ width: `${Math.min((goal.progress !== null ? goal.progress : 0) * 100, 100)}%` }} 
+                      />
                     </div>
                   </div>
-                  <div>
-                    <span className="text-muted-foreground">Created:</span>
-                    <div className="font-medium">
-                      {formatDate(goal.created_at)}
-                    </div>
-                  </div>
-                  {goal.deadline && (
+                  
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                     <div>
-                      <span className="text-muted-foreground">Deadline:</span>
+                      <span className="text-muted-foreground">Goal Type:</span>
                       <div className="font-medium">
-                        {formatDate(goal.deadline)}
+                        {goal.type.charAt(0).toUpperCase() + goal.type.slice(1)}
                       </div>
                     </div>
-                  )}
-                  {goal.completed_at && (
                     <div>
-                      <span className="text-muted-foreground">Completed:</span>
+                      <span className="text-muted-foreground">Created:</span>
                       <div className="font-medium">
-                        {formatDate(goal.completed_at)}
+                        {formatDate(goal.created_at)}
                       </div>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                    {goal.deadline && (
+                      <div>
+                        <span className="text-muted-foreground">Deadline:</span>
+                        <div className="font-medium">
+                          {formatDate(goal.deadline)}
+                        </div>
+                      </div>
+                    )}
+                    {goal.completed_at && (
+                      <div>
+                        <span className="text-muted-foreground">Completed:</span>
+                        <div className="font-medium">
+                          {formatDate(goal.completed_at)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

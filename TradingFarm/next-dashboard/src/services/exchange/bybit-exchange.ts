@@ -1,5 +1,5 @@
 import { BaseExchange, ExchangeOptions, MarketData, OrderParams, Order, AccountBalance, Position, ExchangeApiError, ExchangeAuthError, ExchangeRateLimitError } from './exchange-base';
-import WebSocket from 'isomorphic-ws';
+import WebSocket from '@/lib/stubs/isomorphic-ws';
 import crypto from 'crypto';
 
 /**

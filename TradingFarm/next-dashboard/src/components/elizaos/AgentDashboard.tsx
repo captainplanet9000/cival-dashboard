@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { Button } from '@/components/ui/button';

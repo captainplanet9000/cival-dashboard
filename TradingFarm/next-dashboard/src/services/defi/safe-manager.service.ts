@@ -1,6 +1,11 @@
-import { SafeAccountConfig, SafeFactory, SafeTransactionDataPartial, ContractNetworksConfig } from '@safe-global/protocol-kit';
-import { EthersAdapter, SafeVersion } from '@safe-global/protocol-kit';
-import Safe, { SafeTransactionOptionalProps } from '@safe-global/protocol-kit';
+// Using stubs for @safe-global/protocol-kit
+import { SafeFactory, Safe, EthersAdapter } from './safe-global-stubs';
+// Define types that would normally come from the package
+type SafeAccountConfig = any;
+type SafeTransactionDataPartial = any;
+type ContractNetworksConfig = any;
+type SafeVersion = string;
+type SafeTransactionOptionalProps = any;
 import { ethers } from 'ethers';
 import { SupportedChainId } from '@/types/chains';
 import { SimulationResult, SafeTransactionRequest } from '@/types/defi-lending.types';

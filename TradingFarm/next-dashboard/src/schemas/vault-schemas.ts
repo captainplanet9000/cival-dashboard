@@ -5,16 +5,29 @@ import { z } from 'zod';
  */
 
 // Basic type schemas
-export const assetTypeSchema = z.enum(['fiat', 'crypto', 'stable']);
-export const accountTypeSchema = z.enum(['trading', 'operational', 'reserve', 'fee', 'investment', 'custody']);
-export const transactionTypeSchema = z.enum([
-  'deposit', 'withdrawal', 'transfer', 'trade', 'fee', 'interest', 'allocation', 'reward'
-]);
+export const assetTypeSchema = z.enum(['crypto', 'fiat', 'stock', 'commodity', 'other']);
+export type AssetType = z.infer<typeof assetTypeSchema>;
+
+export const accountTypeSchema = z.enum(['trading', 'investment', 'savings', 'funding', 'operational']);
+export type AccountType = z.infer<typeof accountTypeSchema>;
+
+export const transactionTypeSchema = z.enum(['deposit', 'withdrawal', 'transfer', 'fee', 'interest', 'reward']);
+export type TransactionType = z.infer<typeof transactionTypeSchema>;
+
 export const transactionStatusSchema = z.enum(['pending', 'approved', 'completed', 'failed', 'cancelled']);
+export type TransactionStatus = z.infer<typeof transactionStatusSchema>;
+
 export const approvalStatusSchema = z.enum(['not_required', 'pending', 'approved', 'rejected']);
+export type ApprovalStatus = z.infer<typeof approvalStatusSchema>;
+
 export const vaultStatusSchema = z.enum(['active', 'frozen', 'closed', 'pending']);
+export type VaultStatus = z.infer<typeof vaultStatusSchema>;
+
 export const approverRoleSchema = z.enum(['admin', 'approver', 'viewer']);
+export type ApproverRole = z.infer<typeof approverRoleSchema>;
+
 export const timePeriodSchema = z.enum(['daily', 'weekly', 'monthly', 'quarterly', 'yearly']);
+export type TimePeriod = z.infer<typeof timePeriodSchema>;
 
 // Currency schema
 export const vaultCurrencySchema = z.object({
@@ -274,12 +287,28 @@ export type VaultCurrency = z.infer<typeof vaultCurrencySchema>;
 export type VaultMaster = z.infer<typeof vaultMasterSchema>;
 export type VaultAccount = z.infer<typeof vaultAccountSchema>;
 export type VaultTransaction = z.infer<typeof vaultTransactionSchema>;
-export type VaultBalanceHistory = z.infer<typeof vaultBalanceHistorySchema>;
-export type VaultApprover = z.infer<typeof vaultApproverSchema>;
-export type VaultApprovalLog = z.infer<typeof vaultApprovalLogSchema>;
-export type VaultSettings = z.infer<typeof vaultSettingsSchema>;
-export type CreateVaultRequest = z.infer<typeof createVaultRequestSchema>;
-export type CreateVaultAccountRequest = z.infer<typeof createVaultAccountRequestSchema>;
-export type CreateVaultTransactionRequest = z.infer<typeof createVaultTransactionRequestSchema>;
-export type TransactionApprovalRequest = z.infer<typeof transactionApprovalRequestSchema>;
-export type VaultTransferRequest = z.infer<typeof vaultTransferRequestSchema>;
+
+// The schemas have already been defined above
+
+// Export vault input types with proper export declarations
+// Using direct export to ensure these types are available for importing
+export interface CreateVaultMasterInput extends z.infer<typeof createVaultRequestSchema> {}
+export interface UpdateVaultMasterInput extends Omit<z.infer<typeof vaultMasterSchema>, 'id'> { id: number }
+export interface CreateVaultAccountInput extends z.infer<typeof createVaultAccountRequestSchema> {}
+export interface UpdateVaultAccountInput extends Omit<z.infer<typeof vaultAccountSchema>, 'id'> { id: number }
+export interface CreateVaultTransactionInput extends z.infer<typeof createVaultTransactionRequestSchema> {}
+export interface VaultBalanceHistory extends z.infer<typeof vaultBalanceHistorySchema> {}
+export interface VaultApprover extends z.infer<typeof vaultApproverSchema> {}
+export interface VaultApprovalLog extends z.infer<typeof vaultApprovalLogSchema> {}
+export interface VaultSettings extends z.infer<typeof vaultSettingsSchema> {}
+export interface CreateVaultRequest extends z.infer<typeof createVaultRequestSchema> {}
+export interface CreateVaultAccountRequest extends z.infer<typeof createVaultAccountRequestSchema> {}
+export interface CreateVaultTransactionRequest extends z.infer<typeof createVaultTransactionRequestSchema> {}
+export interface TransactionApprovalRequest extends z.infer<typeof transactionApprovalRequestSchema> {}
+export interface VaultTransferRequest extends z.infer<typeof vaultTransferRequestSchema> {}
+
+// Exporting Schema objects for external use
+export const VaultMasterSchema = vaultMasterSchema;
+export const VaultAccountSchema = vaultAccountSchema;
+export const VaultTransactionSchema = vaultTransactionSchema;
+export const VaultSettingsSchema = vaultSettingsSchema;

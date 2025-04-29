@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Goals Dashboard Component
  * Displays and manages all trading goals

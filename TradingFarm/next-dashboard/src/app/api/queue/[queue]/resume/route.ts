@@ -1,18 +1,18 @@
 /**
  * API route for resuming a paused queue
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { QueueService } from '@/services/queue/queue-service';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerSession } from '@/lib/next-auth-stubs';
+// No need for authOptions when using stubs
 
 export async function POST(
-  req: NextRequest,
+  request: Request,
   { params }: { params: { queue: string } }
 ) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

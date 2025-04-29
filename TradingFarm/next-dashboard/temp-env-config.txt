@@ -1,0 +1,50 @@
+# Trading Farm Dashboard Environment Configuration
+# Copy the contents of this file to .env
+
+# Supabase Configuration (Local Development)
+NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU
+
+# Development Flags
+NEXT_PUBLIC_USE_MOCK_DATA=true
+NEXT_PUBLIC_MOCK_API_ENABLED=true
+NEXT_PUBLIC_FORCE_MOCK_MODE=true
+
+# Application Settings
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_APP_NAME=Trading Farm Dashboard
+
+# ElizaOS Configuration
+NEXT_PUBLIC_ELIZAOS_API_URL=https://elizaos-api.tradingfarm.io/api
+NEXT_PUBLIC_ELIZAOS_AGENT_PREFIX=eliza_trading_agent_
+
+# Trading Farm Backend
+NEXT_PUBLIC_TRADING_FARM_API_URL=https://api.tradingfarm.io/api
+
+# Memory Systems (Using placeholder values)
+NEXT_PUBLIC_COGNEE_API_KEY=placeholder-cognee-api-key
+NEXT_PUBLIC_GRAPHITI_API_KEY=placeholder-graphiti-api-key
+
+# MCP Services
+NEXT_PUBLIC_MCP_NEON_ENDPOINT=https://neon-mcp.tradingfarm.io
+NEXT_PUBLIC_MCP_NEON_API_KEY=placeholder-neon-api-key
+NEXT_PUBLIC_MCP_BROWSERBASE_ENDPOINT=https://browserbase-mcp.tradingfarm.io
+NEXT_PUBLIC_MCP_HYPERLIQUID_ENDPOINT=https://hyperliquid-mcp.tradingfarm.io
+
+# GraphQL Endpoint
+NEXT_PUBLIC_GRAPHQL_API_URL=https://graphql.tradingfarm.io/v1/graphql
+NEXT_PUBLIC_GRAPHQL_WS_URL=wss://graphql.tradingfarm.io/v1/graphql
+
+# Dashboard Settings
+NEXT_PUBLIC_AUTO_REFRESH_INTERVAL=30000
+NEXT_PUBLIC_DEFAULT_CURRENCY=USD 
+
+# Market Data Providers (Using placeholder values)
+COINAPI_KEY=placeholder-coinapi-key
+MARKETSTACK_API_KEY=placeholder-marketstack-api-key
+SERP_API_KEY=placeholder-serp-api-key
+
+# AI Model Access (Using placeholder values)
+OPENAI_API_KEY=placeholder-openai-api-key
+OPENROUTER_API_KEY=placeholder-openrouter-api-key

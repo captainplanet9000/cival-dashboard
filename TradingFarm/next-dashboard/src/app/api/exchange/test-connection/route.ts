@@ -2,48 +2,133 @@
  * API endpoint to test exchange connectivity
  * 
  * This endpoint is used by the Exchange Credential Manager component
- * to test API connections before saving credentials
+ * to test API connections before saving credentials or to validate
+ * existing stored credentials.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { ExchangeFactory } from '@/services/exchange/exchange-factory';
-import { checkAuth } from '@/lib/auth/check-auth';
+import { NextResponse } from 'next/server';
+import { createServerClient } from '@/utils/supabase/server';
+import { createExchangeConnector } from '@/lib/exchange/connector-factory';
+import { exchangeCredentialsService, ExchangeCredential } from '@/utils/supabase/exchange-credentials';
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
+    // Create a Supabase client
+    const supabase = await createServerClient();
+    
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
     
     // Parse request body
     const body = await request.json();
-    const { exchangeId, isTestnet, credentials } = body;
+    const { exchange, credentialId } = body;
     
-    if (!exchangeId || typeof isTestnet !== 'boolean' || !credentials) {
-      return NextResponse.json({ error: 'Invalid request parameters' }, { status: 400 });
+    if (!exchange) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Exchange name is required' 
+      }, { status: 400 });
     }
     
-    // Get the exchange factory instance
-    const factory = ExchangeFactory.getInstance();
-    
-    // Test the connection
-    const success = await factory.testConnection(exchangeId, isTestnet, credentials);
-    
-    if (success) {
-      return NextResponse.json({ status: 'ok', message: 'Connection successful' });
+    // If a specific credentialId is provided, get it from the database
+    if (credentialId) {
+      const { data: credential, error } = await exchangeCredentialsService.getById(
+        supabase,
+        session.user.id,
+        credentialId
+      );
+      
+      if (error || !credential) {
+        return NextResponse.json({ 
+          success: false, 
+          message: 'Credential not found' 
+        }, { status: 404 });
+      }
+      
+      // Create an exchange connector instance
+      const connector = createExchangeConnector(exchange, {
+        useTestnet: credential.is_testnet
+      });
+      
+      // Test the connection
+      try {
+        const connected = await connector.connect({
+          apiKey: credential.api_key,
+          secretKey: credential.api_secret,
+          passphrase: credential.api_passphrase || undefined
+        });
+        
+        if (connected) {
+          return NextResponse.json({ 
+            success: true, 
+            message: `Successfully connected to ${exchange.toUpperCase()}` 
+          });
+        } else {
+          return NextResponse.json({ 
+            success: false, 
+            message: `Failed to connect to ${exchange.toUpperCase()}. Please check your credentials.` 
+          });
+        }
+      } catch (connError) {
+        console.error(`Connection error for ${exchange}:`, connError);
+        return NextResponse.json({ 
+          success: false, 
+          message: connError instanceof Error ? 
+            `Connection error: ${connError.message}` : 
+            `Failed to connect to ${exchange.toUpperCase()}` 
+        });
+      }
     } else {
-      return NextResponse.json({ 
-        status: 'error', 
-        error: 'Failed to connect to exchange. Please check your credentials and try again.' 
-      }, { status: 400 });
+      // No credentialId provided, testing with provided credentials in request body
+      const { apiKey, secretKey, passphrase, useTestnet = false } = body;
+      
+      if (!apiKey || !secretKey) {
+        return NextResponse.json({ 
+          success: false, 
+          message: 'API key and secret are required' 
+        }, { status: 400 });
+      }
+      
+      // Create an exchange connector instance
+      const connector = createExchangeConnector(exchange, { useTestnet });
+      
+      // Test the connection
+      try {
+        const connected = await connector.connect({
+          apiKey,
+          secretKey,
+          passphrase
+        });
+        
+        if (connected) {
+          return NextResponse.json({ 
+            success: true, 
+            message: `Successfully connected to ${exchange.toUpperCase()}` 
+          });
+        } else {
+          return NextResponse.json({ 
+            success: false, 
+            message: `Failed to connect to ${exchange.toUpperCase()}. Please check your credentials.` 
+          });
+        }
+      } catch (connError) {
+        console.error(`Connection error for ${exchange}:`, connError);
+        return NextResponse.json({ 
+          success: false, 
+          message: connError instanceof Error ? 
+            `Connection error: ${connError.message}` : 
+            `Failed to connect to ${exchange.toUpperCase()}` 
+        });
+      }
     }
   } catch (error) {
     console.error('Error testing exchange connection:', error);
     return NextResponse.json({ 
-      status: 'error', 
-      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+      success: false, 
+      message: error instanceof Error ? error.message : 'Unknown error occurred' 
     }, { status: 500 });
   }
 }

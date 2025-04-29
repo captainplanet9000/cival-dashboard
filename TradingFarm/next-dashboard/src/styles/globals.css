@@ -2,287 +2,160 @@
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-
-    --secondary: 160 84% 39%;
-    --secondary-foreground: 210 40% 98%;
-
-    --accent: 262.1 83.3% 57.8%;
-    --accent-foreground: 210 40% 98%;
-
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-
-    --success: 142.1 76.2% 45.3%;
-    --success-foreground: 210 40% 98%;
-
-    --warning: 35.5 91.7% 50%;
-    --warning-foreground: 210 40% 98%;
-
-    --danger: 0 84.2% 60.2%;
-    --danger-foreground: 210 40% 98%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-
-    --secondary: 156.4 71.6% 26.5%;
-    --secondary-foreground: 210 40% 98%;
-
-    --accent: 262.1 83.3% 57.8%;
-    --accent-foreground: 210 40% 98%;
-
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-
-    --success: 142.1 70.6% 45.3%;
-    --success-foreground: 210 40% 98%;
-
-    --warning: 35.5 91.7% 50%;
-    --warning-foreground: 210 40% 98%;
-
-    --danger: 0 84.2% 60.2%;
-    --danger-foreground: 210 40% 98%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-  }
+:root {
+  --background: 0 0% 100%;
+  --foreground: 224 71.4% 4.1%;
+  --card: 0 0% 100%;
+  --card-foreground: 224 71.4% 4.1%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 71.4% 4.1%;
+  --primary: 262.1 83.3% 57.8%;
+  --primary-foreground: 210 20% 98%;
+  --secondary: 220 14.3% 95.9%;
+  --secondary-foreground: 220.9 39.3% 11%;
+  --muted: 220 14.3% 95.9%;
+  --muted-foreground: 220 8.9% 46.1%;
+  --accent: 220 14.3% 95.9%;
+  --accent-foreground: 220.9 39.3% 11%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 20% 98%;
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 262.1 83.3% 57.8%;
+  --radius: 0.5rem;
 }
 
-@layer base {
-  * {
-    @apply border-border;
-  }
-  body {
-    @apply bg-background text-foreground;
-  }
+.dark {
+  --background: 224 71.4% 4.1%;
+  --foreground: 210 20% 98%;
+  --card: 224 71.4% 4.1%;
+  --card-foreground: 210 20% 98%;
+  --popover: 224 71.4% 4.1%;
+  --popover-foreground: 210 20% 98%;
+  --primary: 263.4 70% 50.4%;
+  --primary-foreground: 210 20% 98%;
+  --secondary: 215 27.9% 16.9%;
+  --secondary-foreground: 210 20% 98%;
+  --muted: 215 27.9% 16.9%;
+  --muted-foreground: 217.9 10.6% 64.9%;
+  --accent: 215 27.9% 16.9%;
+  --accent-foreground: 210 20% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 20% 98%;
+  --border: 215 27.9% 16.9%;
+  --input: 215 27.9% 16.9%;
+  --ring: 263.4 70% 50.4%;
 }
 
-/* Custom scrollbar styles */
-::-webkit-scrollbar {
-  @apply w-2;
+* {
+  border-color: hsl(var(--border));
 }
 
-::-webkit-scrollbar-track {
-  @apply bg-muted/30 rounded-full;
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-muted-foreground/30 rounded-full hover:bg-muted-foreground/50;
-}
-
-/* Dashboard Components */
+/* Additional Trading Farm Styles */
 .dashboard-card {
-  @apply bg-card border border-border rounded-lg p-6 shadow-sm;
+  border-radius: 0.5rem;
+  border-width: 1px;
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
 }
 
-/* Button Variants */
+.dashboard-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1.5rem;
+}
+
+.dashboard-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.025em;
+}
+
+.dashboard-description {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.dashboard-content {
+  padding: 1.5rem;
+  padding-top: 0;
+}
+
+.dashboard-footer {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem;
+  padding-top: 0;
+}
+
+/* Button Styles */
 .btn-primary {
-  @apply bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium transition-colors;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-primary:hover {
+  background-color: hsl(var(--primary) / 0.9);
 }
 
 .btn-secondary {
-  @apply bg-secondary text-secondary-foreground hover:bg-secondary/90 px-4 py-2 rounded-md font-medium transition-colors;
+  background-color: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
 }
 
-.btn-ghost {
-  @apply bg-transparent hover:bg-muted text-foreground px-4 py-2 rounded-md font-medium transition-colors;
+.btn-secondary:hover {
+  background-color: hsl(var(--secondary) / 0.9);
 }
 
 .btn-outline {
-  @apply bg-transparent border border-border hover:bg-muted text-foreground px-4 py-2 rounded-md font-medium transition-colors;
+  border: 1px solid hsl(var(--input));
+  background-color: hsl(var(--background));
 }
 
-.btn-danger {
-  @apply bg-destructive text-destructive-foreground hover:bg-destructive/90 px-4 py-2 rounded-md font-medium transition-colors;
+.btn-outline:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
 }
 
-.btn-warning {
-  @apply bg-amber-500 text-white hover:bg-amber-600 px-4 py-2 rounded-md font-medium transition-colors;
+/* Status indicators */
+.status-indicator {
+  display: inline-block;
+  height: 0.5rem;
+  width: 0.5rem;
+  border-radius: 9999px;
 }
 
-.btn-success {
-  @apply bg-success text-success-foreground hover:bg-success/90 px-4 py-2 rounded-md font-medium transition-colors;
+.status-active {
+  background-color: #10b981;
 }
 
-/* Small Button Variants */
-.btn-primary-sm {
-  @apply bg-primary text-primary-foreground hover:bg-primary/90 px-2 py-1 text-sm rounded-md font-medium transition-colors;
+.status-pending {
+  background-color: #f59e0b;
 }
 
-.btn-secondary-sm {
-  @apply bg-secondary text-secondary-foreground hover:bg-secondary/90 px-2 py-1 text-sm rounded-md font-medium transition-colors;
+.status-inactive {
+  background-color: #9ca3af;
 }
 
-.btn-ghost-sm {
-  @apply bg-transparent hover:bg-muted text-foreground px-2 py-1 text-sm rounded-md font-medium transition-colors;
-}
-
-.btn-outline-sm {
-  @apply bg-transparent border border-border hover:bg-muted text-foreground px-2 py-1 text-sm rounded-md font-medium transition-colors;
-}
-
-.btn-danger-sm {
-  @apply bg-destructive text-destructive-foreground hover:bg-destructive/90 px-2 py-1 text-sm rounded-md font-medium transition-colors;
-}
-
-.btn-warning-sm {
-  @apply bg-amber-500 text-white hover:bg-amber-600 px-2 py-1 text-sm rounded-md font-medium transition-colors;
-}
-
-.btn-success-sm {
-  @apply bg-success text-success-foreground hover:bg-success/90 px-2 py-1 text-sm rounded-md font-medium transition-colors;
-}
-
-/* Form Elements */
-.form-input {
-  @apply w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
-}
-
-.form-select {
-  @apply w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors appearance-none;
-}
-
-.form-checkbox {
-  @apply h-4 w-4 rounded border-border text-primary focus:ring-primary/20;
-}
-
-.form-radio {
-  @apply h-4 w-4 border-border text-primary focus:ring-primary/20;
-}
-
-/* Table Styles */
-.table-container {
-  @apply w-full overflow-x-auto;
-}
-
-.data-table {
-  @apply w-full border-collapse;
-}
-
-.data-table th {
-  @apply px-4 py-2 text-left text-sm font-medium text-muted-foreground bg-muted border-b border-border;
-}
-
-.data-table td {
-  @apply px-4 py-3 text-sm border-b border-border;
-}
-
-.data-table tr:hover {
-  @apply bg-muted/30;
-}
-
-/* Status Colors */
-.text-success {
-  @apply text-green-600 dark:text-green-500;
-}
-
-.text-warning {
-  @apply text-amber-600 dark:text-amber-500;
-}
-
-.text-danger {
-  @apply text-red-600 dark:text-red-500;
-}
-
-.bg-success {
-  @apply bg-green-600 dark:bg-green-500;
-}
-
-.bg-warning {
-  @apply bg-amber-600 dark:bg-amber-500;
-}
-
-.bg-danger {
-  @apply bg-red-600 dark:bg-red-500;
-}
-
-/* Chat Interface Styles */
-.chat-container {
-  @apply w-full h-80 border border-border rounded-md flex flex-col;
-}
-
-.chat-messages {
-  @apply flex-1 overflow-y-auto p-4 space-y-4;
-}
-
-.chat-message-user {
-  @apply bg-primary text-primary-foreground p-3 rounded-lg ml-auto max-w-[80%] break-words;
-}
-
-.chat-message-ai {
-  @apply bg-muted text-foreground p-3 rounded-lg mr-auto max-w-[80%] break-words;
-}
-
-.chat-message-system {
-  @apply bg-muted/50 text-muted-foreground p-2 rounded-lg text-sm text-center mx-auto max-w-[90%];
-}
-
-.chat-input {
-  @apply flex items-center p-2 border-t border-border;
-}
-
-.chat-input input {
-  @apply flex-1 px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors;
-}
-
-.chat-input button {
-  @apply ml-2 p-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors;
-}
-
-/* Goal Progress Bar */
+/* Progress bar */
 .progress-bar {
-  @apply w-full bg-muted rounded-full h-2.5 overflow-hidden;
+  width: 100%;
+  background-color: hsl(var(--secondary));
+  border-radius: 9999px;
+  height: 0.625rem;
 }
 
 .progress-value {
-  @apply h-2.5 rounded-full transition-all duration-500;
-}
-
-/* Extra spacing utilities */
-.custom-space-y-0\.5 > * + * {
-  margin-top: 0.125rem;
-}
-
-.custom-space-y-1\.5 > * + * {
-  margin-top: 0.375rem;
-}
-
-.custom-space-y-2\.5 > * + * {
-  margin-top: 0.625rem;
+  height: 100%;
+  background-color: hsl(var(--primary));
+  border-radius: 9999px;
 }

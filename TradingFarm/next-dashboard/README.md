@@ -1,6 +1,6 @@
 # Trading Farm Dashboard
 
-A modern dashboard for managing blockchain trading farms and agents.
+A modern, high-performance dashboard for managing blockchain trading farms and agents with enterprise-grade reliability and security.
 
 ## Overview
 
@@ -8,31 +8,45 @@ Trading Farm Dashboard is a comprehensive platform for crypto trading operations
 
 - Monitor and manage trading farms
 - Configure and control trading agents
-- Track orders and trades
-- Analyze performance metrics
-- Visualize trading data
+- Track orders and trades in real-time
+- Analyze performance metrics with interactive visualizations
+- Visualize trading data with advanced charting
+- Manage vault banking integration
 - **Leverage AI-powered DeFi analytics and strategy recommendations via the ElizaOS DeFi Console**
 
-Built with Next.js 14, TypeScript, Tailwind CSS, and leveraging a Supabase database.
+Built with Next.js 14, TypeScript, Tailwind CSS, shadcn/ui components, and leveraging a Supabase database for secure data management.
 
 ## Architecture
 
-The application follows a clean architecture pattern:
+The application follows a clean architecture pattern with optimized code splitting and performance:
 
 ```
 src/
 ├── app/               # Next.js App Router
-│   ├── api/           # API Routes
-│   ├── dashboard/     # Dashboard Pages
+│   ├── api/           # API Routes with optimized performance
+│   ├── dashboard/     # Dashboard Pages with code splitting
 │   └── auth/          # Authentication Pages
 ├── components/        # React Components
 │   ├── ai/            # AI-powered panels (ElizaOS DeFi Command Panel, etc)
-│   └── dashboard/     # Dashboard widgets (ElizaDeFiConsoleWidget, etc)
-├── data-access/       # Data Access Layer
-│   ├── models/        # Data Models
-│   ├── repositories/  # Data Repositories
-│   └── services/      # Business Logic (elizaos-defi-service, strategy-engine, etc)
+│   ├── dashboard/     # Dashboard widgets (ElizaDeFiConsoleWidget, etc)
+│   ├── ui/            # Reusable UI components (shadcn/ui)
+│   ├── vault/         # Vault Banking related components
+│   └── widgets/       # Performance-optimized widgets
+├── hooks/             # Custom React hooks
+├── services/          # Business Logic and API services
+│   ├── agent-management-service.ts
+│   ├── vault-banking-service.ts
+│   ├── enhanced-vault-service.ts
+│   ├── live-trading-service.ts
+│   └── elizaos-agent-service.ts
 ├── lib/               # Utilities
+│   ├── environment.ts         # Environment detection
+│   ├── react-query-config.ts  # Optimized data fetching
+│   ├── type-utils.ts          # Type utilities
+│   └── utils.ts               # General utilities
+├── tests/             # Comprehensive test suite
+│   ├── components/    # Component tests
+│   └── integration/   # Integration tests
 └── types/             # TypeScript Types
 ```
 
@@ -47,14 +61,16 @@ src/
 | Orders Management         | ✅ Complete | Order tracking and cancellation                     |
 | Trade History             | ✅ Complete | View and filter trade execution history             |
 | Analytics                 | ✅ Complete | Trade metrics and performance analysis              |
+| Vault Banking             | ✅ Complete | Integrated vault management system                  |
 | API Implementation        | ✅ Complete | RESTful endpoints for all resources                 |
 | FARMDOCS Ingestion        | ✅ Complete | Documentation ingestion and vector search           |
+| Performance Optimization   | ✅ Complete | Code splitting, virtualized lists, optimized bundles|
+| Production Deployment      | ✅ Complete | Railway deployment configuration                    |
 | Authentication            | 🔄 Planned  | User authentication and authorization               |
 | Real-time Updates         | 🔄 Planned  | WebSockets for live data updates                    |
 | Strategy Builder          | 🔄 Planned  | Visual interface for building trading strategies    |
 | Multi-Agent Coordination  | 🔄 Planned  | Agent-to-agent communication and coordination       |
 | Advanced Analytics        | 🔄 Planned  | AI-powered performance analysis and predictions     |
-| Vault Banking Integration | 🔄 Planned  | Secure vault banking and transaction management     |
 | AI Strategy Optimization  | 🔄 Planned  | AI-assisted strategy development and optimization   |
 
 ## API Implementation
@@ -122,11 +138,11 @@ Once the app is running, you will find the **ElizaOS DeFi Console** as a dedicat
 - Get real-time analytics, risk assessments, and actionable recommendations
 - Interact with the Aave lending module and strategy engine through a unified AI interface
 
-### Installation
+### Local Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/trading-farm-dashboard.git
+git clone https://github.com/tradingfarm/next-dashboard.git
 
 # Navigate to the project directory
 cd trading-farm-dashboard

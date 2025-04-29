@@ -1,6 +1,7 @@
 "use client";
 import React, { useState } from "react";
-import { useAccount, useSendTransaction, usePrepareSendTransaction, useBalance } from "wagmi";
+import { useAccount, useSendTransaction, useBalance } from "wagmi";
+import { usePrepareSendTransaction } from "@/lib/wagmi-mocks";
 import { parseEther } from "viem";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";

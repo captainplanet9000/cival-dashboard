@@ -5,7 +5,7 @@
  * individual exchange connections
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { ExchangeFactory } from '@/services/exchange/exchange-factory';
 import { checkAuth } from '@/lib/auth/check-auth';
 
@@ -18,12 +18,12 @@ interface RouteParams {
 /**
  * GET: Fetch a specific exchange connection
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: Request, { params }: RouteParams) {
   try {
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, errorResponse } = await checkAuth();
+    if (!user) {
+      return errorResponse;
     }
     
     const connectionId = parseInt(params.id);
@@ -69,12 +69,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 /**
  * PATCH: Update a specific exchange connection
  */
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
+export async function PATCH(request: Request, { params }: RouteParams) {
   try {
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, errorResponse } = await checkAuth();
+    if (!user) {
+      return errorResponse;
     }
     
     const connectionId = parseInt(params.id);
@@ -125,12 +125,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 /**
  * DELETE: Delete a specific exchange connection
  */
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: Request, { params }: RouteParams) {
   try {
     // Check authentication
-    const authResult = await checkAuth(request);
-    if (!authResult.success) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const { user, errorResponse } = await checkAuth();
+    if (!user) {
+      return errorResponse;
     }
     
     const connectionId = parseInt(params.id);

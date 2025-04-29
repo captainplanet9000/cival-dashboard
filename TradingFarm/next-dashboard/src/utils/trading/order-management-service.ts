@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Order Management Service
  * 

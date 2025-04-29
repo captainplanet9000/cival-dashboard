@@ -8,7 +8,8 @@ import { FARM_NAVIGATION } from '@/config/navigation';
 import { 
   Terminal, Bot, Lightbulb, Target, BarChart, LayoutDashboard, LineChart, 
   Wallet, Shield, Settings, Brain, Database, Briefcase, Factory, ChevronDown, ChevronRight,
-  ArrowRightLeft, PiggyBank, CreditCard, BarChart2
+  ArrowRightLeft, PiggyBank, CreditCard, BarChart2, PieChart, RefreshCw, Calendar, Cpu, Zap,
+  Smartphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import MetaMaskConnector from '@/components/wallet/metamask-connector';
 import { Badge } from '@/components/ui/badge';
+
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: React.ElementType;
+  roles: string[];
+  badge?: string | number;
+}
 
 interface SidebarProps {
   farmId?: string;
@@ -281,6 +290,43 @@ export function Sidebar({ farmId: propFarmId, userRole = 'user' }: SidebarProps)
             </ul>
           </div>
           
+          {/* Portfolio Management */}
+          <div>
+            <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+              Portfolio
+            </h3>
+            <ul className="space-y-1">
+              <NavItem 
+                item={{
+                  name: 'Dashboard',
+                  href: '/dashboard/portfolio',
+                  icon: PieChart,
+                  roles: ['user', 'admin']
+                }}
+                isActive={isActive}
+              />
+              <NavItem 
+                item={{
+                  name: 'Maintenance',
+                  href: '/dashboard/portfolio/maintenance',
+                  icon: RefreshCw,
+                  roles: ['user', 'admin'],
+                  badge: 'New'
+                }}
+                isActive={isActive}
+              />
+              <NavItem 
+                item={{
+                  name: 'Performance',
+                  href: '/dashboard/portfolio/performance',
+                  icon: LineChart,
+                  roles: ['user', 'admin']
+                }}
+                isActive={isActive}
+              />
+            </ul>
+          </div>
+          
           {/* Analytics & Tools */}
           <div>
             <h3 className="px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -311,6 +357,26 @@ export function Sidebar({ farmId: propFarmId, userRole = 'user' }: SidebarProps)
                   href: '/dashboard/analytics/performance',
                   icon: BarChart2,
                   roles: ['user', 'admin']
+                }}
+                isActive={isActive}
+              />
+              <NavItem 
+                item={{
+                  name: 'AI Trading',
+                  href: '/dashboard/ai-trading',
+                  icon: Brain,
+                  roles: ['user', 'admin'],
+                  badge: 'NEW'
+                }}
+                isActive={isActive}
+              />
+              <NavItem 
+                item={{
+                  name: 'Responsive Trading',
+                  href: '/dashboard/responsive-trading',
+                  icon: Smartphone,
+                  roles: ['user', 'admin'],
+                  badge: 'NEW'
                 }}
                 isActive={isActive}
               />

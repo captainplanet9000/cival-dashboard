@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { ArrowUpIcon, ArrowDownIcon, TrendingUpIcon, TrendingDownIcon, RefreshCwIcon, ZapIcon } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchMarketAnalysis } from '@/services/queries';
 
 // Types for market analysis data
 type SentimentData = {
@@ -47,19 +49,18 @@ type MarketAnalysisData = {
   lastUpdated: string;
 };
 
-// Real data fetcher using TanStack Query
-import { useQuery } from '@tanstack/react-query';
-import { fetchMarketAnalysis } from '@/services/queries';
+// Function to generate mock data for testing
+const generateMockData = (symbolName: string): MarketAnalysisData => {
   const isPositive = Math.random() > 0.4;
   const changePercent = +(isPositive ? Math.random() * 5 : -Math.random() * 5).toFixed(2);
-  const basePrice = symbol === 'BTC' ? 40000 : symbol === 'ETH' ? 2500 : symbol === 'SOL' ? 120 : 30;
+  const basePrice = symbolName === 'BTC' ? 40000 : symbolName === 'ETH' ? 2500 : symbolName === 'SOL' ? 120 : 30;
   const price = +(basePrice * (1 + Math.random() * 0.1 - 0.05)).toFixed(2);
   const change = +(price * changePercent / 100).toFixed(2);
   
   const sentimentScore = +(Math.random() * 2 - 1).toFixed(2);
   
   return {
-    symbol,
+    symbol: symbolName,
     price: {
       price,
       change24h: change,
@@ -67,7 +68,7 @@ import { fetchMarketAnalysis } from '@/services/queries';
       high24h: +(price * 1.03).toFixed(2),
       low24h: +(price * 0.97).toFixed(2),
       volume24h: +(Math.random() * 1000000000).toFixed(0),
-      marketCap: +(price * (symbol === 'BTC' ? 19000000 : symbol === 'ETH' ? 120000000 : 400000000)).toFixed(0)
+      marketCap: +(price * (symbolName === 'BTC' ? 19000000 : symbolName === 'ETH' ? 120000000 : 400000000)).toFixed(0)
     },
     sentiment: {
       score: sentimentScore,

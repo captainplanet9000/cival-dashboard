@@ -913,11 +913,11 @@ export function useOrders(exchange: ExchangeType, symbol?: string) {
  * Hook for getting exchange symbols
  */
 export function useExchangeSymbols(exchange: ExchangeType) {
-  const [symbols, setSymbols] = useState<any[]>([]);
+  const [symbols, setSymbols] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  // Fetch symbols
   const fetchSymbols = useCallback(async () => {
     setIsLoading(true);
     setError(null);
@@ -929,34 +929,32 @@ export function useExchangeSymbols(exchange: ExchangeType) {
         throw new Error(`Failed to fetch symbols: ${response.statusText}`);
       }
       
-      const result = await response.json();
-      setSymbols(result.symbols || []);
+      const data = await response.json();
+      setSymbols(data.symbols || []);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
-      console.error('Error fetching symbols:', errorMessage);
+      toast({
+        title: 'Error fetching symbols',
+        description: errorMessage,
+        variant: 'destructive',
+      });
     } finally {
       setIsLoading(false);
     }
-  }, [exchange]);
+  }, [exchange, toast]);
 
-  // Fetch symbols on mount
   useEffect(() => {
-    fetchSymbols();
-  }, [fetchSymbols]);
+    if (exchange) {
+      fetchSymbols();
+    }
+  }, [exchange, fetchSymbols]);
 
-  // Search symbols
-  const searchSymbols = useCallback((query: string) => {
-    if (!query) return symbols;
-    
-    const lowerQuery = query.toLowerCase();
-    
-    return symbols.filter(symbol =>
-      symbol.symbol.toLowerCase().includes(lowerQuery) ||
-      (symbol.baseAsset && symbol.baseAsset.toLowerCase().includes(lowerQuery)) ||
-      (symbol.quoteAsset && symbol.quoteAsset.toLowerCase().includes(lowerQuery))
-    );
-  }, [symbols]);
+  const refreshSymbols = useCallback(() => {
+    if (exchange) {
+      fetchSymbols();
+    }
+  }, [exchange, fetchSymbols]);
 
   return {
     symbols,

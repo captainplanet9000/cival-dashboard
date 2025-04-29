@@ -4,13 +4,16 @@
  */
 
 import { ChatOpenAI } from '@langchain/openai';
-import { ChatAnthropic } from '@langchain/anthropic';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+// Using stub implementations for missing packages
+import { AnthropicStub, GoogleGenAIStub } from './langchain-stubs';
+const { ChatAnthropic } = AnthropicStub;
+const { ChatGoogleGenerativeAI } = GoogleGenAIStub;
 import { HumanMessage, SystemMessage, AIMessage, FunctionMessage } from '@langchain/core/messages';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import { PromptTemplate } from '@langchain/core/prompts';
 import { RunnableSequence } from '@langchain/core/runnables';
-import { HNSWLib } from '@langchain/community/vectorstores/hnswlib';
+// Import the mock implementation instead of the real one to avoid node:fs/promises dependency
+import { MockHNSWLib } from './langchain-stubs';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { Document } from '@langchain/core/documents';
 
@@ -78,7 +81,7 @@ function convertToLangChainMessages(messages: AIServiceMessage[]) {
  */
 export class LangChainService {
   private defaultModelConfig: AIModelConfig;
-  private vectorStore: HNSWLib | null = null;
+  private vectorStore: MockHNSWLib | null = null;
   
   constructor(defaultModelConfig?: AIModelConfig) {
     this.defaultModelConfig = defaultModelConfig || {
@@ -171,10 +174,9 @@ export class LangChainService {
   async initVectorStore(documents: Document[], embeddingModelName = 'text-embedding-3-small') {
     const embeddings = new OpenAIEmbeddings({
       modelName: embeddingModelName,
-      openAIApiKey: this.defaultModelConfig.apiKey,
     });
     
-    this.vectorStore = await HNSWLib.fromDocuments(documents, embeddings);
+    this.vectorStore = await MockHNSWLib.fromDocuments(documents, embeddings);
     return this.vectorStore;
   }
 

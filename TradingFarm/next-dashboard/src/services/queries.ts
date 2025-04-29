@@ -34,3 +34,11 @@ export async function fetchStrategyComparison() {
   if (error) throw error;
   return data;
 }
+
+// Mock implementation for the fetchFarm function
+export async function fetchFarm(farmId: number) {
+  const supabase = createBrowserClient();
+  const { data, error } = await supabase.from('farms').select('*').eq('id', farmId).single();
+  if (error) throw error;
+  return data;
+}

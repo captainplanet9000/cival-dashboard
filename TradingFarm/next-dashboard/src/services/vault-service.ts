@@ -3,32 +3,28 @@
  * Handles transactions, balances, and banking operations for the Trading Farm platform
  */
 
-import { createBrowserClient } from '@/utils/supabase/client';
 import { createServerClient } from '@/utils/supabase/server';
+import { VaultApprovalLog, VaultApprovalResponse } from '@/types/vault-approval-types';
+
+import { createBrowserClient } from '@/utils/supabase/client';
 import { 
   VaultMaster,
   VaultAccount,
-  VaultTransaction,
-  VaultBalanceHistory,
-  VaultApprover,
-  VaultApprovalLog,
-  VaultSettings,
   VaultCurrency,
-  CreateVaultRequest,
-  CreateVaultAccountRequest, 
-  CreateVaultTransactionRequest,
-  TransactionApprovalRequest,
-  VaultTransferRequest,
-  PaginatedResponse,
+  VaultTransaction,
+  VaultBalance,
   VaultBalanceSummary,
-  VaultTransactionSummary,
+  CreateVaultRequest,
+  CreateVaultAccountRequest,
   VaultTransactionFilter,
-  VaultAccountFilter,
-  WalletMigrationItem,
+  VaultTransferRequest,
+  TransactionApprovalRequest,
+  DepositAddressInfo,
   MigrationResult,
+  WalletMigrationItem,
   MigrationOptions,
-  ApiResponse,
-  DepositAddressInfo
+  PaginatedResponse,
+  ApiResponse
 } from '@/types/vault-types';
 
 // Legacy type for backward compatibility
@@ -1562,9 +1558,167 @@ export async function migrateWalletsToVaults(
   return results;
 }
 
-// Example for line 1082/1083 if it was in a reduce like this:
-// const someValue = someArray.reduce((accumulator: SomeType, a: ElementType) => { /* logic */ }, initialValue);
 
-// Note: The specific fix for 1082/1083 depends on the actual code there.
-// Assuming it might be within migrateWalletsToVaults or a similar function using reduce.
-// If those lines are elsewhere, please provide the context.
+
+/**
+ * Retrieves pending vault transaction approvals for the current user
+ * @param userId - The ID of the user (approver) to get pending approvals for
+ * @returns An array of pending approval records
+ */
+export async function getVaultPendingApprovals(userId: string): Promise<VaultApprovalLog[]> {
+  try {
+    const supabase = createServerClient();
+    const { data, error } = await supabase
+      .from('vault_approval_log')
+      .select('*')
+      .eq('status', 'pending')
+      .eq('approver_id', userId);
+    
+    if (error) {
+      console.error('Error fetching vault pending approvals:', error);
+      return [];
+    }
+    
+    return data as VaultApprovalLog[];
+  } catch (err) {
+    console.error('Exception in getVaultPendingApprovals:', err);
+    return [];
+  }
+}
+
+/**
+ * Approves a pending vault transaction
+ * @param userId - The ID of the user (approver) approving the transaction
+ * @param approvalId - The ID of the approval record to update
+ * @param reason - Optional reason for approval
+ * @returns Response with status and any error message
+ */
+export async function approveVaultTransaction(
+  userId: string,
+  approvalId: string,
+  reason?: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const supabase = createServerClient();
+    
+    // First verify this user is the approver
+    const { data: approval, error: fetchError } = await supabase
+      .from('vault_approval_log')
+      .select('*')
+      .eq('id', approvalId)
+      .eq('approver_id', userId)
+      .eq('status', 'pending')
+      .single();
+    
+    if (fetchError || !approval) {
+      return { 
+        success: false, 
+        message: fetchError?.message || 'Approval not found or not pending' 
+      };
+    }
+    
+    // Update the approval status
+    const { error } = await supabase
+      .from('vault_approval_log')
+      .update({ 
+        status: 'approved',
+        metadata: { 
+          ...approval.metadata,
+          approved_at: new Date().toISOString(),
+          approval_reason: reason
+        }
+      })
+      .eq('id', approvalId);
+    
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'An error occurred' };
+  }
+}
+
+/**
+ * Rejects a pending vault transaction
+ * @param userId - The ID of the user (approver) rejecting the transaction
+ * @param approvalId - The ID of the approval record to update
+ * @param reason - Reason for rejection
+ * @returns Response with status and any error message
+ */
+export async function rejectVaultTransaction(
+  userId: string,
+  approvalId: string,
+  reason: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const supabase = createServerClient();
+    
+    // First verify this user is the approver
+    const { data: approval, error: fetchError } = await supabase
+      .from('vault_approval_log')
+      .select('*')
+      .eq('id', approvalId)
+      .eq('approver_id', userId)
+      .eq('status', 'pending')
+      .single();
+    
+    if (fetchError || !approval) {
+      return { 
+        success: false, 
+        message: fetchError?.message || 'Approval not found or not pending' 
+      };
+    }
+    
+    // Update the approval status
+    const { error } = await supabase
+      .from('vault_approval_log')
+      .update({ 
+        status: 'rejected',
+        metadata: { 
+          ...approval.metadata,
+          rejected_at: new Date().toISOString(),
+          rejection_reason: reason
+        }
+      })
+      .eq('id', approvalId);
+    
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, message: err.message || 'An error occurred' };
+  }
+}
+
+// Combine all vault functions into a single exportable service object
+export const vaultService = {
+  isConsolidatedVaultSystemAvailable,
+  getVaultPendingApprovals,
+  approveVaultTransaction,
+  rejectVaultTransaction,
+  getVaultBalances,
+  getConsolidatedVaultBalances,
+  getTransactionHistory,
+  getDepositAddress,
+  createDepositAddress,
+  createWithdrawal,
+  createConsolidatedWithdrawal,
+  getVaultCurrencies,
+  getUserVaults,
+  getVaultById,
+  createVault,
+  updateVault,
+  createVaultAccount,
+  updateVaultAccount,
+  getVaultTransactions,
+  createDeposit,
+  createTransfer,
+  approveTransaction,
+  getVaultBalanceSummary,
+  migrateToVaultSystem,
+  migrateWalletsToVaults
+};

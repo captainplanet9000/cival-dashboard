@@ -1,3 +1,5 @@
+'use client';
+
 import { Workflows, WorkflowStatus } from "@/types/workflows";
 import { 
   ColumnDef,

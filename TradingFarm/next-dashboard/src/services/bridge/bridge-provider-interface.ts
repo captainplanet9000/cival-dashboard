@@ -41,7 +41,7 @@ export interface BridgeQuote {
   };
   estimatedTimeMinutes: number;
   provider: string;
-  providerType: 'layerzero' | 'wormhole' | 'sonic_gateway' | 'custom';
+  providerType: 'layerzero' | 'wormhole' | 'sonic_gateway' | 'debridge' | 'axelar' | 'custom';
   validUntil: number; // Unix timestamp
 }
 
@@ -60,7 +60,7 @@ export interface IBridgeProvider {
   /**
    * Get the provider type
    */
-  readonly providerType: 'layerzero' | 'wormhole' | 'sonic_gateway' | 'custom';
+  readonly providerType: 'layerzero' | 'wormhole' | 'sonic_gateway' | 'debridge' | 'axelar' | 'custom';
   
   /**
    * Get supported source chains

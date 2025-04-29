@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Goal Creation Form Component
  * Allows users to create new trading goals for ElizaOS agents

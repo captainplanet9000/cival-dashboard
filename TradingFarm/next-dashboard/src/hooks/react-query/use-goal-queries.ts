@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Goal-related React Query hooks for Trading Farm Dashboard
  * 

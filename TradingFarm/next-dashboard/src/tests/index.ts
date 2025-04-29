@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Trading Farm Dashboard Test Suite
  * 

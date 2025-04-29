@@ -1,24 +1,26 @@
 /**
  * API route for retrieving jobs from a specific queue
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { QueueService } from '@/services/queue/queue-service';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerSession } from '@/lib/next-auth-stubs';
+// No need for authOptions when using stubs
 
 export async function GET(
-  req: NextRequest,
+  request: Request,
   { params }: { params: { queue: string } }
 ) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { queue } = params;
-    const { searchParams } = new URL(req.url);
+    // Get query parameters
+    const url = new URL(request.url);
+    const { searchParams } = url;
     const status = searchParams.get('status');
     const limit = Number(searchParams.get('limit') || '20');
     

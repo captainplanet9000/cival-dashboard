@@ -24,7 +24,7 @@ export const cardStyles = cva(
   {
     variants: {
       variant: {
-        default: "border-border",
+        default: "border-gray-200 dark:border-gray-800",
         primary: "border-primary/20 shadow-md",
         outline: "border-2",
         ghost: "border-transparent shadow-none bg-transparent",
@@ -72,7 +72,7 @@ export const widgetContainerStyles = cva(
         lg: "p-6",
       },
       variant: {
-        default: "border-border",
+        default: "border-gray-200 dark:border-gray-800",
         primary: "border-primary/20 shadow-md",
         secondary: "border-secondary/20",
         destructive: "border-destructive/20",

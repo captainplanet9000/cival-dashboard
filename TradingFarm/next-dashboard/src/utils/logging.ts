@@ -314,6 +314,43 @@ async function persistToDB(entry: LogEntry): Promise<void> {
 /**
  * Create a logger instance with predefined context
  */
+/**
+ * Log an analytics event
+ */
+export function logEvent(event: {
+  category: string;
+  action: string;
+  label?: string;
+  value?: number;
+  metadata?: Record<string, any>;
+}): void {
+  // Log to console in development
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`[EVENT] ${event.category}:${event.action}${event.label ? `:${event.label}` : ''}${event.value !== undefined ? ` (${event.value})` : ''}`);
+  }
+  
+  // In production, send to analytics system or database
+  if (process.env.NODE_ENV === 'production') {
+    // For now, just log to database
+    persistToDB({
+      level: LogLevel.INFO,
+      category: LogCategory.USER_ACTION,
+      message: `Analytics event: ${event.category}:${event.action}`,
+      timestamp: new Date(),
+      context: {
+        ...event.metadata,
+        eventCategory: event.category,
+        eventAction: event.action,
+        eventLabel: event.label,
+        eventValue: event.value
+      },
+      tags: ['analytics', event.category]
+    }).catch(err => {
+      console.error('Failed to persist analytics event:', err);
+    });
+  }
+}
+
 export function createLogger(defaults: {
   source_component: string;
   category?: LogCategory;

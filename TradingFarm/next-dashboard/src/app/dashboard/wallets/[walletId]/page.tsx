@@ -1,5 +1,6 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
+const { useState, useEffect } = React;
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,11 +10,12 @@ import { toast } from "@/components/ui/use-toast";
 import { KeyRound, Users, Send, ShieldCheck, Copy, QrCode } from "lucide-react";
 import { MetaMaskConnect } from "../MetaMaskConnect";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { VaultMembersModal } from "./VaultMembersModal";
-import QRCode from "qrcode.react";
-import { MetaMaskTransfer } from "./MetaMaskTransfer";
-import { FundTransferModal } from "./FundTransferModal";
-import { AssignWalletModal } from "./AssignWalletModal";
+import { VaultMembersModal } from "../VaultMembersModal";
+import { QRCodeSVG as QRCode } from "qrcode.react";
+import { MetaMaskTransfer } from "../MetaMaskTransfer";
+import { FundTransferModal } from "../FundTransferModal";
+import { AssignWalletModal } from "../AssignWalletModal";
+import { TransactionHistory } from "../TransactionHistory";
 
 async function fetchWallet(walletId: string) {
   const res = await fetch(`/api/wallets?wallet_id=${walletId}`);

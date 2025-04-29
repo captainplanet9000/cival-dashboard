@@ -120,4 +120,5 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  DialogPrimitive as DialogClose,
 }

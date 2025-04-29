@@ -4,7 +4,7 @@
  */
 
 export type BridgeTransactionStatus = 'initiated' | 'pending' | 'completed' | 'failed' | 'cancelled';
-export type BridgeProviderType = 'layerzero' | 'wormhole' | 'sonic_gateway' | 'custom';
+export type BridgeProviderType = 'layerzero' | 'wormhole' | 'sonic_gateway' | 'debridge' | 'axelar' | 'custom';
 
 export interface BridgeTransaction {
   id: string;

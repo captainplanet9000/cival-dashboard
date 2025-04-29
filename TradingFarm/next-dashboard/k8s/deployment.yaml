@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trading-farm-dashboard
+  labels:
+    app: trading-farm-dashboard
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: trading-farm-dashboard
+  template:
+    metadata:
+      labels:
+        app: trading-farm-dashboard
+    spec:
+      containers:
+      - name: trading-farm-dashboard
+        image: trading-farm-dashboard:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_SUPABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: trading-farm-secrets
+              key: supabase-url
+        - name: NEXT_PUBLIC_SUPABASE_ANON_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trading-farm-secrets
+              key: supabase-anon-key
+        - name: ENCRYPTION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: trading-farm-secrets
+              key: encryption-secret
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+        livenessProbe:
+          httpGet:
+            path: /api/monitoring/health
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/monitoring/ready
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 5

@@ -4,17 +4,20 @@ import * as React from 'react';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, Briefcase, Settings, Play, PauseCircle, BarChart4, AlertCircle } from 'lucide-react';
+import { Plus, Briefcase, Settings, Play, PauseCircle, BarChart4, AlertCircle, Coins, TrendingUp, Repeat } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStrategies } from '@/hooks/use-strategies';
+import { useYieldStrategies } from '@/hooks/use-yield-strategies';
+import { YieldStrategiesList } from '@/components/yield/yield-strategies-list';
 import CreateStrategyModal from '@/components/strategies/CreateStrategyModal';
 
 export default function FarmStrategiesPage() {
   const params = useParams();
   const farmId = params.id as string;
   
+  // Traditional trading strategies
   const { 
     strategies, 
     activeStrategies, 
@@ -25,9 +28,18 @@ export default function FarmStrategiesPage() {
     refresh 
   } = useStrategies({ farmId });
   
-  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  // Cross-chain yield optimization strategies
+  const {
+    strategies: yieldStrategies,
+    loading: yieldLoading,
+    error: yieldError,
+    refresh: refreshYield
+  } = useYieldStrategies(parseInt(farmId));
   
-  if (loading) {
+  const [showCreateModal, setShowCreateModal] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState('trading');
+  
+  if (loading || yieldLoading) {
     return (
       <div className="space-y-4">
         <Card>
@@ -62,7 +74,7 @@ export default function FarmStrategiesPage() {
     );
   }
   
-  if (error) {
+  if (error || yieldError) {
     return (
       <div className="rounded-md bg-destructive/15 p-4">
         <div className="flex items-center">
@@ -82,32 +94,32 @@ export default function FarmStrategiesPage() {
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle>Trading Strategies</CardTitle>
+            <CardTitle>Strategies</CardTitle>
             <Button onClick={() => setShowCreateModal(true)}>
               <Plus className="mr-2 h-4 w-4" /> New Strategy
             </Button>
           </div>
           <CardDescription>
-            Manage and optimize trading strategies for this farm.
+            Manage and optimize trading and yield strategies for this farm.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xl">{counts.total}</CardTitle>
+                <CardTitle className="text-xl">{counts.total + yieldStrategies.length}</CardTitle>
                 <CardDescription>Total Strategies</CardDescription>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xl">{counts.active}</CardTitle>
+                <CardTitle className="text-xl">{counts.active + yieldStrategies.filter((s: { isActive: boolean }) => s.isActive).length}</CardTitle>
                 <CardDescription>Active Strategies</CardDescription>
               </CardHeader>
             </Card>
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-xl">{counts.inactive}</CardTitle>
+                <CardTitle className="text-xl">{counts.inactive + yieldStrategies.filter((s: { isActive: boolean }) => !s.isActive).length}</CardTitle>
                 <CardDescription>Inactive Strategies</CardDescription>
               </CardHeader>
             </Card>
@@ -117,23 +129,55 @@ export default function FarmStrategiesPage() {
       
       <Card>
         <CardHeader>
-          <Tabs defaultValue="all" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList>
-              <TabsTrigger value="all">All Strategies ({counts.total})</TabsTrigger>
-              <TabsTrigger value="active">Active ({counts.active})</TabsTrigger>
-              <TabsTrigger value="inactive">Inactive ({counts.inactive})</TabsTrigger>
+              <TabsTrigger value="trading">
+                <Briefcase className="mr-2 h-4 w-4" />
+                Trading Strategies
+              </TabsTrigger>
+              <TabsTrigger value="yield">
+                <Coins className="mr-2 h-4 w-4" />
+                Yield Optimization
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </CardHeader>
         <CardContent>
-          <TabsContent value="all" className="mt-0">
-            <StrategyList strategies={strategies} farmId={farmId} onRefresh={refresh} />
+          <TabsContent value="trading" className="mt-0">
+            <Tabs defaultValue="all" className="w-full">
+              <TabsList>
+                <TabsTrigger value="all">All Strategies ({counts.total})</TabsTrigger>
+                <TabsTrigger value="active">Active ({counts.active})</TabsTrigger>
+                <TabsTrigger value="inactive">Inactive ({counts.inactive})</TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="all" className="mt-4">
+                <StrategyList strategies={strategies} farmId={farmId} onRefresh={refresh} />
+              </TabsContent>
+              <TabsContent value="active" className="mt-4">
+                <StrategyList strategies={activeStrategies} farmId={farmId} onRefresh={refresh} />
+              </TabsContent>
+              <TabsContent value="inactive" className="mt-4">
+                <StrategyList strategies={inactiveStrategies} farmId={farmId} onRefresh={refresh} />
+              </TabsContent>
+            </Tabs>
           </TabsContent>
-          <TabsContent value="active" className="mt-0">
-            <StrategyList strategies={activeStrategies} farmId={farmId} onRefresh={refresh} />
-          </TabsContent>
-          <TabsContent value="inactive" className="mt-0">
-            <StrategyList strategies={inactiveStrategies} farmId={farmId} onRefresh={refresh} />
+          
+          <TabsContent value="yield" className="mt-0">
+            <div className="mb-4">
+              <div className="flex items-center gap-2 mb-6">
+                <TrendingUp className="h-5 w-5 text-primary" />
+                <h3 className="text-lg font-medium">Cross-Chain Yield Optimization</h3>
+              </div>
+              <p className="text-muted-foreground">
+                Maximize returns by optimizing yield across multiple chains and protocols. Our advanced strategies automatically allocate funds to the highest-yielding opportunities while managing risk.
+              </p>
+            </div>
+            
+            <YieldStrategiesList 
+              strategies={yieldStrategies} 
+              farmId={farmId} 
+            />
           </TabsContent>
         </CardContent>
       </Card>
@@ -143,7 +187,10 @@ export default function FarmStrategiesPage() {
         isOpen={showCreateModal} 
         onClose={() => setShowCreateModal(false)} 
         farmId={farmId} 
-        onSuccess={refresh}
+        onSuccess={() => {
+          refresh();
+          refreshYield();
+        }}
       />
     </div>
   );

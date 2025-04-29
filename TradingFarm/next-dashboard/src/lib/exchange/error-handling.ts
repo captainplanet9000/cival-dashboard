@@ -266,6 +266,12 @@ export function createExchangeError(
 }
 
 /**
+ * Alias for withExchangeErrorHandling to maintain backward compatibility
+ * with existing code that uses handleExchangeError
+ */
+export const handleExchangeError = withExchangeErrorHandling;
+
+/**
  * Exchange operation wrapper with error handling
  * 
  * This function wraps exchange operations with proper error handling

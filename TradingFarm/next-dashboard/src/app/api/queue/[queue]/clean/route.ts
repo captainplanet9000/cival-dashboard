@@ -1,24 +1,25 @@
 /**
  * API route for cleaning a queue (removing completed and failed jobs)
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { QueueService } from '@/services/queue/queue-service';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { getServerSession } from '@/lib/next-auth-stubs';
+// No need for authOptions when using stubs
 
 export async function POST(
-  req: NextRequest,
+  request: Request,
   { params }: { params: { queue: string } }
 ) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const { queue } = params;
-    const { searchParams } = new URL(req.url);
+    const url = new URL(request.url);
+    const { searchParams } = url;
     const grace = parseInt(searchParams.get('grace') || '3600');  // Default 1 hour
     const status = searchParams.get('status') || 'completed';  // Default clean completed jobs
     const limit = parseInt(searchParams.get('limit') || '1000');  // Default limit

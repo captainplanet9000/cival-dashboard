@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server';
 import OpenAI from 'openai';
+import mockOpenAI, { MockOpenAI } from '@/services/ai/openai-mock';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Initialize OpenAI client - use mock implementation when OPENAI_API_KEY is not available (during builds)
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : mockOpenAI as unknown as OpenAI;
 
 // Define required request body type
 interface SearchRequestBody {

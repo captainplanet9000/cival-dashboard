@@ -2,20 +2,22 @@
  * Monitoring Dashboard
  * 
  * Comprehensive operations dashboard with real-time monitoring, alerts,
- * performance metrics, audit logs, and WebSocket connection management.
+ * performance metrics, audit logs, exchange connections, and WebSocket management.
  */
 
-import { useState, useEffect } from 'react';
+import * as React from 'react';
+const { useState, useEffect } = React;
 import { useToast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { monitoringService } from '@/utils/trading/monitoring-service';
 import AlertsPanel from './AlertsPanel';
 import PerformanceMetricsPanel from './PerformanceMetricsPanel';
-import AuditLogPanel from './AuditLogPanel';
+import { AuditLogViewer } from './AuditLogViewer';
+import { ConnectionHealthDashboard } from './ConnectionHealthDashboard';
 import NotificationSettingsPanel from './NotificationSettingsPanel';
 import { WebSocketStatusPanel } from './WebSocketStatusPanel';
-import { Loader2, Bell, Activity, BarChart, FileText, Settings, Link } from 'lucide-react';
+import { Loader2, Bell, Activity, BarChart, FileText, Settings, Link, Shield } from 'lucide-react';
 import { createBrowserClient } from '@/utils/supabase/client';
 import { WebSocketManager } from '@/utils/websocket/websocket-manager';
 
@@ -106,11 +108,15 @@ export function MonitoringDashboard({ userId }: MonitoringDashboardProps) {
           </TabsTrigger>
           <TabsTrigger value="audit" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
-            <span>Audit Log</span>
+            <span>Trading Audit</span>
           </TabsTrigger>
           <TabsTrigger value="connections" className="flex items-center gap-2">
             <Link className="h-4 w-4" />
-            <span>Connections</span>
+            <span>Exchange Health</span>
+          </TabsTrigger>
+          <TabsTrigger value="websockets" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            <span>WebSockets</span>
           </TabsTrigger>
           <TabsTrigger value="settings" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
@@ -127,10 +133,14 @@ export function MonitoringDashboard({ userId }: MonitoringDashboardProps) {
         </TabsContent>
 
         <TabsContent value="audit" className="space-y-4">
-          <AuditLogPanel userId={currentUserId} />
+          <AuditLogViewer farmId={undefined} limit={15} />
         </TabsContent>
 
         <TabsContent value="connections" className="space-y-4">
+          <ConnectionHealthDashboard />
+        </TabsContent>
+        
+        <TabsContent value="websockets" className="space-y-4">
           {webSocketManager && (
             <WebSocketStatusPanel webSocketPool={webSocketManager.getPool()} />
           )}

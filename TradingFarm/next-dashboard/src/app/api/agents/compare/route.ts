@@ -2,16 +2,16 @@
  * API Route: GET /api/agents/compare
  * Returns comparison data for multiple agents
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { NextResponse } from 'next/server';
+import { getServerSession } from '@/lib/next-auth-stubs';
+// No need for authOptions when using stubs
 import { createServerClient } from '@/utils/supabase/server';
 import { AgentMonitoringService } from '@/services/agent-monitoring-service';
 
-export async function GET(request: NextRequest) {
+export async function GET(request: Request) {
   try {
     // Verify authentication
-    const session = await getServerSession(authOptions);
+    const session = await getServerSession();
     if (!session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

@@ -9,6 +9,8 @@ import { BridgeTransaction, ChainAssetMapping } from '@/types/bridge.types';
 import { LayerZeroBridgeProvider } from './layerzero-bridge-provider';
 import { WormholeBridgeProvider } from './wormhole-bridge-provider';
 import { SonicGatewayBridgeProvider } from './sonic-gateway-bridge-provider';
+import { DeBridgeBridgeProvider } from './debridge-bridge-provider';
+import { AxelarBridgeProvider } from './axelar-bridge-provider';
 
 interface BridgeRouteOptions {
   sourceChain: string;
@@ -37,13 +39,12 @@ export class BridgeService {
   private assetMappings: Map<string, ChainAssetMapping[]> = new Map();
   
   constructor() {
-    // Initialize bridge providers
-    this.registerProvider(new LayerZeroBridgeProvider());
-    this.registerProvider(new WormholeBridgeProvider());
-    this.registerProvider(new SonicGatewayBridgeProvider());
+    // Register default providers
+    this.registerProvider(new DeBridgeBridgeProvider());
+    this.registerProvider(new AxelarBridgeProvider());
     
-    // Load asset mappings from database
-    this.loadAssetMappings();
+    // Load other providers from configuration
+    this.loadProviderConfigurations();
   }
   
   /**

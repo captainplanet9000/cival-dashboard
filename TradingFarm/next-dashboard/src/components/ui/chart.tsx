@@ -22,6 +22,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { cn } from '@/utils/cn';
 import { useTheme } from 'next-themes';
 
+// Will export components at the end of the file
+
 // Color palette that works well in both light and dark modes
 const CHART_COLORS = {
   light: [

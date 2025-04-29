@@ -56,6 +56,15 @@ export abstract class BaseExchangeConnector implements IExchangeConnector {
   }
   
   /**
+   * Fetch available markets
+   * @returns Promise<MarketData[]> Array of market data objects
+   */
+  getMarkets(): Promise<MarketData[]> {
+    // Default implementation
+    throw new Error('Method not implemented');
+  }
+  
+  /**
    * Get current market data for a symbol
    */
   async getMarketData(symbol: string): Promise<MarketData> {

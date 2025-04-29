@@ -1,4 +1,5 @@
 import '@/styles/globals.css'
+import '@/styles/dashboard-theme.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ThemeProvider } from '@/components/theme-provider'
@@ -24,8 +25,8 @@ export default function RootLayout({
         <QueryProvider>
           <ThemeProvider
             attribute="class"
-            defaultTheme="system"
-            enableSystem
+            defaultTheme="light"
+            enableSystem={false}
             disableTransitionOnChange
           >
             <SocketProvider enableLogging={process.env.NODE_ENV === 'development'}>
