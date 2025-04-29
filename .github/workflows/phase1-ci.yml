@@ -1,0 +1,66 @@
+name: Trading Farm CI / CD (Phase-1)
+
+# Minimal pipeline that fulfils Phase-1 Infrastructure & DevOps goals.
+# ‑ Lint ➜ Unit-tests ➜ Supabase migrations ➜ type-gen ➜ Next.js build
+# Runs on pushes / PRs to main and the new v1-launch branch.
+
+on:
+  push:
+    branches: [ main, v1-launch ]
+  pull_request:
+    branches: [ main, v1-launch ]
+
+jobs:
+  build-test:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+
+    # Ephemeral Postgres service so Supabase CLI can apply migrations.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tradingfarm_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: ⬇️ Checkout source
+        uses: actions/checkout@v3
+
+      - name: 🛠️  Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔧 Install Supabase CLI
+        run: npm install -g supabase
+
+      # 1️⃣  Run Supabase migrations
+      - name: 🗄️  Run database migrations
+        run: supabase migration up --db-url "postgres://postgres:postgres@localhost:5432/tradingfarm_ci"
+
+      # 2️⃣  Generate updated TS types
+      - name: 📝  Generate DB types
+        run: supabase gen types typescript --local > src/types/database.types.ts
+
+      # 3️⃣  Lint, tests, build
+      - name: 🔍 Run ESLint
+        run: npm run lint --if-present
+
+      - name: 🧪 Run unit tests
+        run: npm test --if-present
+
+      - name: 🛠️  Build dashboard
+        run: npm run build
