@@ -1,6 +1,7 @@
 'use client';
 
 import * as React from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +10,12 @@ import { TrendingUp, Activity, ChevronRight, ArrowUpRight, ArrowDownRight, Refre
 import AgentsTab from '@/components/agents-tab';
 
 export default function DashboardPage() {
+  const router = useRouter();
+  
+  // Redirect to overview page when dashboard root is accessed
+  React.useEffect(() => {
+    router.replace('/dashboard/overview');
+  }, [router]);
   return (
     <div className="flex flex-col space-y-6 p-8 bg-[#f8fafc]">
       {/* Header with action buttons */}

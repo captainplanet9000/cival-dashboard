@@ -17,6 +17,7 @@ import { createBrowserClient } from "@/utils/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { ExtendedAgent, agentService } from "@/services/agent-service";
 import { useSocket } from "@/providers/socket-provider";
+import { ElizaTerminal } from "@/components/eliza/ElizaTerminal";
 
 interface SystemStatus {
   llmIntegration: boolean;
@@ -222,6 +223,24 @@ export default function OverviewPage() {
               icon={<Zap className="h-5 w-5" />}
               description="Real-time data and order updates"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ElizaOS Terminal Section */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Bot className="mr-2 h-5 w-5" />
+            ElizaOS Terminal
+          </CardTitle>
+          <CardDescription>
+            Direct command-line interface to ElizaOS.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[500px] flex flex-col rounded-lg border bg-card text-card-foreground shadow-sm overflow-hidden">
+            <ElizaTerminal />
           </div>
         </CardContent>
       </Card>
