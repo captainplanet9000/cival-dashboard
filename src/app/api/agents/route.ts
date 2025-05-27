@@ -1,353 +1,319 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
+import { createServerClient, type SupabaseClient } from '@/utils/supabase/server';
+import { type Database } from '@/types/database.types';
+import { 
+  performTransfer,
+  WalletNotFoundError,
+  ForbiddenError,
+  InactiveWalletError,
+  InsufficientFundsError,
+  CurrencyMismatchError,
+  OperationFailedError
+} from '@/lib/services/vaultService'; // Ensure this path is correct
 
-// Google ADK and A2A Protocol integration types
-interface AgentCard {
-  id: string;
+type TradingAgentInsert = Database['public']['Tables']['trading_agents']['Insert'];
+type TradingAgent = Database['public']['Tables']['trading_agents']['Row'];
+type WalletInsert = Database['public']['Tables']['wallets']['Insert'];
+type Wallet = Database['public']['Tables']['wallets']['Row'];
+
+// Basic UUID validation regex
+const UUID_REGEX = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+interface CreateAgentRequestBody {
   name: string;
-  description: string;
-  version: string;
-  capabilities: string[];
-  endpoint: string;
-  authentication?: {
-    type: 'bearer' | 'api-key' | 'oauth2';
-    credentials?: any;
-  };
-  metadata: {
-    framework: 'ADK' | 'CrewAI' | 'LangGraph' | 'LlamaIndex';
-    model: string;
-    specialization: string[];
-    created_at: string;
-    last_active: string;
-  };
+  strategy_id: string; // UUID
+  configuration_parameters: object; // JSON object
+  initial_capital: number;
+  funding_currency: string; 
 }
 
-interface AgentConfig {
-  name: string;
-  type: 'llm' | 'workflow' | 'sequential' | 'parallel' | 'loop' | 'custom';
-  model: 'gemini-pro' | 'gemini-flash' | 'claude-3-sonnet' | 'gpt-4';
-  specialization: string[];
-  tools: string[];
-  memory_type: 'session' | 'persistent' | 'distributed';
-  capabilities: string[];
-  security_settings: {
-    authentication_required: boolean;
-    rate_limiting: boolean;
-    access_control: string[];
-  };
+async function cleanupAgent(supabase: SupabaseClient<Database>, agentId: string) {
+  console.warn(`Attempting cleanup for agent_id: ${agentId}`);
+  const { error } = await supabase.from('trading_agents').delete().eq('agent_id', agentId);
+  if (error) console.error(`Cleanup failed for agent_id ${agentId}: ${error.message}`);
+  else console.log(`Cleanup successful for agent_id ${agentId}`);
 }
 
-// Mock agent storage (in production, this would be a database)
-let registeredAgents: Map<string, AgentCard> = new Map();
+async function cleanupAgentAndWallet(supabase: SupabaseClient<Database>, agentId: string, agentWalletId: string) {
+  console.warn(`Attempting cleanup for agent_id: ${agentId} and wallet_id: ${agentWalletId}`);
+  // It's generally safer to delete the agent first if there's a FK constraint from agent to wallet (agent.wallet_id)
+  // that is NOT SET NULL ON DELETE. If it is SET NULL, order is less critical.
+  // Assuming trading_agents.wallet_id is nullable.
+  
+  // 1. Attempt to nullify wallet_id in trading_agents to remove FK constraint before deleting wallet
+  const { error: updateAgentError } = await supabase
+    .from('trading_agents')
+    .update({ wallet_id: null })
+    .eq('agent_id', agentId);
 
-// Initialize with some sample agents for the trading farm
-if (registeredAgents.size === 0) {
-  const sampleAgents: AgentCard[] = [
-    {
-      id: 'trading-coordinator-001',
-      name: 'Trading Coordinator Agent',
-      description: 'Coordinates all trading operations and strategy execution',
-      version: '1.2.0',
-      capabilities: ['order_management', 'strategy_coordination', 'risk_control', 'portfolio_optimization'],
-      endpoint: 'http://localhost:8001/api/agents/trading-coordinator',
-      authentication: { type: 'bearer' },
-      metadata: {
-        framework: 'ADK',
-        model: 'gemini-pro',
-        specialization: ['trading', 'coordination', 'risk_management'],
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    },
-    {
-      id: 'market-analyst-002',
-      name: 'Market Analysis Agent',
-      description: 'Advanced market analysis and sentiment evaluation',
-      version: '1.1.0',
-      capabilities: ['market_analysis', 'sentiment_analysis', 'technical_indicators', 'news_processing'],
-      endpoint: 'http://localhost:8002/api/agents/market-analyst',
-      authentication: { type: 'api-key' },
-      metadata: {
-        framework: 'ADK',
-        model: 'gemini-flash',
-        specialization: ['analysis', 'market_data', 'forecasting'],
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    },
-    {
-      id: 'risk-monitor-003',
-      name: 'Risk Monitoring Agent',
-      description: 'Real-time risk assessment and alert generation',
-      version: '1.0.5',
-      capabilities: ['var_calculation', 'stress_testing', 'alert_generation', 'compliance_monitoring'],
-      endpoint: 'http://localhost:8003/api/agents/risk-monitor',
-      authentication: { type: 'bearer' },
-      metadata: {
-        framework: 'ADK',
-        model: 'gemini-pro',
-        specialization: ['risk_management', 'monitoring', 'compliance'],
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    },
-    {
-      id: 'vault-manager-004',
-      name: 'Vault Banking Agent',
-      description: 'Manages vault operations and DeFi integrations',
-      version: '2.0.1',
-      capabilities: ['fund_transfers', 'defi_integration', 'compliance_checks', 'multi_account_management'],
-      endpoint: 'http://localhost:8004/api/agents/vault-manager',
-      authentication: { type: 'oauth2' },
-      metadata: {
-        framework: 'ADK',
-        model: 'gemini-pro',
-        specialization: ['banking', 'defi', 'vault_management'],
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    },
-    {
-      id: 'strategy-optimizer-005',
-      name: 'Strategy Optimization Agent',
-      description: 'Optimizes trading strategies using ML and backtesting',
-      version: '1.3.2',
-      capabilities: ['strategy_optimization', 'backtesting', 'ml_analysis', 'parameter_tuning'],
-      endpoint: 'http://localhost:8005/api/agents/strategy-optimizer',
-      authentication: { type: 'bearer' },
-      metadata: {
-        framework: 'ADK',
-        model: 'gemini-pro',
-        specialization: ['optimization', 'machine_learning', 'backtesting'],
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    }
-  ];
+  if (updateAgentError) {
+    console.error(`Cleanup: Failed to nullify wallet_id for agent ${agentId}: ${updateAgentError.message}. Proceeding with wallet deletion attempt.`);
+  }
 
-  sampleAgents.forEach(agent => {
-    registeredAgents.set(agent.id, agent);
-  });
+  // 2. Delete the wallet
+  const { error: walletError } = await supabase.from('wallets').delete().eq('wallet_id', agentWalletId);
+  if (walletError) console.error(`Cleanup: Failed to delete agent wallet ${agentWalletId}: ${walletError.message}`);
+  else console.log(`Cleanup: Successfully deleted agent wallet ${agentWalletId}`);
+  
+  // 3. Delete the agent
+  await cleanupAgent(supabase, agentId); 
 }
 
-// GET - List all agents or get specific agent
+// Define the combined type for an agent with its wallet details
+export type TradingAgentWithWallet = TradingAgent & {
+  wallets: Wallet | null; // Or Wallet if it's guaranteed to exist and non-nullable via FK
+};
+
 export async function GET(request: NextRequest) {
+  const supabase = createServerClient();
+
+  // 1. Authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    console.error('GET /api/agents: Authentication error', authError);
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
-    const { searchParams } = new URL(request.url);
-    const agentId = searchParams.get('id');
+    // 2. Fetch Trading Agents with their Wallets
+    // The foreign key relationship is from trading_agents.wallet_id to wallets.wallet_id
+    // So, when querying trading_agents, wallets(*) will fetch the related wallet.
+    const { data: agents, error: fetchError } = await supabase
+      .from('trading_agents')
+      .select('*, wallets(*)') // Embeds the wallet record linked by trading_agents.wallet_id
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-    if (agentId) {
-      const agent = registeredAgents.get(agentId);
-      if (!agent) {
-        return NextResponse.json(
-          { error: 'Agent not found' },
-          { status: 404 }
-        );
-      }
-      return NextResponse.json({ agent });
+    if (fetchError) {
+      console.error('GET /api/agents: Error fetching trading agents', fetchError);
+      return NextResponse.json({ error: 'Failed to fetch trading agents', details: fetchError.message }, { status: 500 });
     }
 
-    // Return all agents with filtering options
-    const framework = searchParams.get('framework');
-    const specialization = searchParams.get('specialization');
-    const capabilities = searchParams.get('capabilities');
+    // 3. Response
+    return NextResponse.json(agents as TradingAgentWithWallet[] || [], { status: 200 });
 
-    let agents = Array.from(registeredAgents.values());
-
-    // Apply filters
-    if (framework) {
-      agents = agents.filter(agent => agent.metadata.framework === framework);
-    }
-    if (specialization) {
-      agents = agents.filter(agent => 
-        agent.metadata.specialization.includes(specialization)
-      );
-    }
-    if (capabilities) {
-      agents = agents.filter(agent => 
-        agent.capabilities.includes(capabilities)
-      );
-    }
-
-    return NextResponse.json({
-      agents,
-      total: agents.length,
-      frameworks: ['ADK', 'CrewAI', 'LangGraph', 'LlamaIndex'],
-      available_capabilities: [
-        'order_management', 'strategy_coordination', 'risk_control',
-        'market_analysis', 'sentiment_analysis', 'technical_indicators',
-        'var_calculation', 'stress_testing', 'alert_generation',
-        'fund_transfers', 'defi_integration', 'compliance_checks',
-        'strategy_optimization', 'backtesting', 'ml_analysis'
-      ]
-    });
-
-  } catch (error) {
-    console.error('Error fetching agents:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch agents' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('GET /api/agents: Unhandled error', error);
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }
 
-// POST - Create new agent using Google ADK
+
 export async function POST(request: NextRequest) {
-  try {
-    const config: AgentConfig = await request.json();
+  const supabase = createServerClient();
 
-    // Validate required fields
-    if (!config.name || !config.type || !config.model) {
-      return NextResponse.json(
-        { error: 'Missing required fields: name, type, model' },
-        { status: 400 }
-      );
+  // 1. Authentication
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // 2. Request Body Validation
+  let requestData: CreateAgentRequestBody;
+  try {
+    requestData = await request.json();
+  } catch (error) {
+    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+  }
+
+  const { name, strategy_id, configuration_parameters, initial_capital, funding_currency } = requestData;
+
+  if (!name || typeof name !== 'string' || name.trim() === '') {
+    return NextResponse.json({ error: 'Agent name is required' }, { status: 400 });
+  }
+  if (!strategy_id || !UUID_REGEX.test(strategy_id)) {
+    return NextResponse.json({ error: 'Valid strategy_id is required' }, { status: 400 });
+  }
+  if (typeof configuration_parameters !== 'object' || configuration_parameters === null) {
+    return NextResponse.json({ error: 'configuration_parameters must be an object' }, { status: 400 });
+  }
+  if (typeof initial_capital !== 'number' || initial_capital <= 0) {
+    return NextResponse.json({ error: 'initial_capital must be a positive number' }, { status: 400 });
+  }
+  if (!funding_currency || typeof funding_currency !== 'string' || funding_currency.trim() === '') {
+    return NextResponse.json({ error: 'funding_currency is required' }, { status: 400 });
+  }
+
+  let userFundingWallet: Wallet | null = null;
+  let tempAgentId: string | null = null; // Used for cleanup in case of partial failure
+  let tempAgentWalletId: string | null = null; // Used for cleanup
+
+  try {
+    // 3. Fetch User's Funding Wallet & Strategy Verification
+    const { data: vaultUser, error: vaultUserError } = await supabase
+      .from('vault_users')
+      .select('primary_vault_wallet_id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (vaultUserError || !vaultUser || !vaultUser.primary_vault_wallet_id) {
+      console.error('POST /api/agents: User primary funding wallet not found or query failed.', vaultUserError);
+      return NextResponse.json({ error: 'Primary funding wallet not set up or query failed.' }, { status: 400 });
     }
 
-    // Generate unique agent ID
-    const agentId = `${config.name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`;
+    const { data: walletData, error: walletError } = await supabase
+      .from('wallets')
+      .select('*')
+      .eq('wallet_id', vaultUser.primary_vault_wallet_id)
+      .single();
     
-    // Generate port number (in production, this would be managed by orchestration)
-    const port = 8000 + Math.floor(Math.random() * 1000);
+    if (walletError || !walletData) {
+        console.error(`POST /api/agents: User funding wallet (${vaultUser.primary_vault_wallet_id}) not found.`, walletError);
+      return NextResponse.json({ error: `User funding wallet not found.` }, { status: 400 });
+    }
+    userFundingWallet = walletData; 
 
-    // Create AgentCard following A2A protocol
-    const agentCard: AgentCard = {
-      id: agentId,
-      name: config.name,
-      description: `${config.type} agent specialized in ${config.specialization.join(', ')}`,
-      version: '1.0.0',
-      capabilities: config.capabilities,
-      endpoint: `http://localhost:${port}/api/agents/${agentId}`,
-      authentication: {
-        type: config.security_settings.authentication_required ? 'bearer' : 'bearer',
-        credentials: config.security_settings.authentication_required ? 
-          { token: `adk_${agentId}_${Date.now()}` } : undefined
-      },
-      metadata: {
-        framework: 'ADK',
-        model: config.model,
-        specialization: config.specialization,
-        created_at: new Date().toISOString(),
-        last_active: new Date().toISOString()
-      }
-    };
-
-    // In production, this would call Google ADK to actually create the agent
-    const adkResult = await simulateADKAgentCreation(config, agentCard);
-
-    if (!adkResult.success) {
-      return NextResponse.json(
-        { error: `Failed to create agent: ${adkResult.error}` },
-        { status: 500 }
-      );
+    if (userFundingWallet.status !== 'active') {
+      return NextResponse.json({ error: `User funding wallet is not active. Status: ${userFundingWallet.status}` }, { status: 400 });
+    }
+    if (userFundingWallet.owner_id !== user.id || userFundingWallet.owner_type !== 'user') {
+      return NextResponse.json({ error: 'User funding wallet ownership mismatch.' }, { status: 403 });
+    }
+    if (userFundingWallet.currency !== funding_currency) {
+      return NextResponse.json({ error: `User funding wallet currency (${userFundingWallet.currency}) does not match requested funding_currency (${funding_currency}).` }, { status: 400 });
+    }
+    const userCurrentBalance = typeof userFundingWallet.balance === 'string' ? parseFloat(userFundingWallet.balance) : userFundingWallet.balance;
+    if (userCurrentBalance < initial_capital) {
+      return NextResponse.json({ error: `Insufficient funds in user funding wallet. Balance: ${userCurrentBalance}, Required: ${initial_capital}` }, { status: 400 });
     }
 
-    // Register agent in our system
-    registeredAgents.set(agentId, agentCard);
+    const { data: strategy, error: strategyError } = await supabase
+      .from('trading_strategies')
+      .select('strategy_id')
+      .eq('strategy_id', strategy_id)
+      .maybeSingle(); 
 
-    return NextResponse.json({
-      message: 'Agent created successfully',
-      agent: agentCard,
-      adk_response: adkResult
-    }, { status: 201 });
+    if (strategyError) {
+        console.error('POST /api/agents: Error verifying strategy', strategyError);
+        return NextResponse.json({ error: `Error verifying strategy: ${strategyError.message}` }, { status: 500 });
+    }
+    if (!strategy) {
+      return NextResponse.json({ error: 'Invalid strategy_id: Strategy not found.' }, { status: 400 });
+    }
 
-  } catch (error) {
-    console.error('Error creating agent:', error);
-    return NextResponse.json(
-      { error: 'Failed to create agent' },
-      { status: 500 }
+    // 4. Transaction-like Sequence
+    // A. Create Trading Agent Record (without wallet_id yet)
+    const agentInsertData: TradingAgentInsert = {
+      user_id: user.id,
+      name,
+      assigned_strategy_id: strategy_id,
+      configuration_parameters,
+      status: 'inactive', 
+    };
+    const { data: createdAgentPartial, error: agentInsertError } = await supabase
+      .from('trading_agents')
+      .insert(agentInsertData)
+      .select('agent_id') 
+      .single();
+
+    if (agentInsertError || !createdAgentPartial) {
+      console.error('POST /api/agents: Error creating trading agent', agentInsertError);
+      return NextResponse.json({ error: 'Failed to create trading agent', details: agentInsertError?.message }, { status: 500 });
+    }
+    tempAgentId = createdAgentPartial.agent_id; 
+
+    // B. Create Agent's Wallet
+    const agentWalletInsertData: WalletInsert = {
+      owner_id: tempAgentId,
+      owner_type: 'agent',
+      currency: funding_currency,
+      balance: 0, 
+      status: 'active',
+    };
+    const { data: createdAgentWalletPartial, error: agentWalletInsertError } = await supabase
+      .from('wallets')
+      .insert(agentWalletInsertData)
+      .select('wallet_id') 
+      .single();
+
+    if (agentWalletInsertError || !createdAgentWalletPartial) {
+      console.error('POST /api/agents: Error creating agent wallet', agentWalletInsertError);
+      if (tempAgentId) await cleanupAgent(supabase, tempAgentId); 
+      return NextResponse.json({ error: 'Failed to create agent wallet', details: agentWalletInsertError?.message }, { status: 500 });
+    }
+    tempAgentWalletId = createdAgentWalletPartial.wallet_id;
+
+    // C. Link Agent to Wallet & Activate Agent
+    // Set status to 'pending_funding' before attempting to fund.
+    const { error: agentUpdateError } = await supabase
+      .from('trading_agents')
+      .update({ wallet_id: tempAgentWalletId, status: 'pending_funding' }) 
+      .eq('agent_id', tempAgentId);
+
+    if (agentUpdateError) {
+      console.error('POST /api/agents: Error linking agent to wallet', agentUpdateError);
+      if (tempAgentId && tempAgentWalletId) await cleanupAgentAndWallet(supabase, tempAgentId, tempAgentWalletId); 
+      return NextResponse.json({ error: 'Failed to link agent to wallet', details: agentUpdateError.message }, { status: 500 });
+    }
+
+    // D. Fund Agent's Wallet
+    await performTransfer(
+      supabase,
+      user.id, 
+      userFundingWallet.wallet_id, 
+      tempAgentWalletId, 
+      initial_capital,
+      `Initial funding for agent ${name}`
     );
-  }
-}
+    // performTransfer will throw an error if funding fails. If it succeeds, update agent status.
 
-// DELETE - Remove agent
-export async function DELETE(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url);
-    const agentId = searchParams.get('id');
-
-    if (!agentId) {
-      return NextResponse.json(
-        { error: 'Agent ID is required' },
-        { status: 400 }
-      );
+    // E. Update Agent Status to 'active' after successful funding
+    const { error: finalStatusUpdateError } = await supabase
+      .from('trading_agents')
+      .update({ status: 'active' })
+      .eq('agent_id', tempAgentId);
+    
+    if (finalStatusUpdateError) {
+      // Funding succeeded, but final status update failed. Agent is funded but 'pending_funding'.
+      // This is not ideal but not critical enough to roll back the funding. Log and proceed.
+      console.warn(`POST /api/agents: Agent ${tempAgentId} funded, but failed to update status to 'active'. Current status: 'pending_funding'. Error: ${finalStatusUpdateError.message}`);
     }
 
-    const agent = registeredAgents.get(agentId);
-    if (!agent) {
-      return NextResponse.json(
-        { error: 'Agent not found' },
-        { status: 404 }
-      );
+
+    // Fetch the complete agent record to return
+    const { data: finalAgentData, error: finalAgentError } = await supabase
+        .from('trading_agents')
+        .select('*')
+        .eq('agent_id', tempAgentId)
+        .single();
+
+    if (finalAgentError || !finalAgentData) {
+        console.error('POST /api/agents: Failed to fetch final agent details after creation and funding.', finalAgentError);
+        return NextResponse.json({ 
+            message: 'Agent created and funded, but failed to retrieve final agent details.', 
+            agent_id: tempAgentId, 
+            wallet_id: tempAgentWalletId 
+        }, { status: 207 }); // 207 Multi-Status
+    }
+    
+    // 5. Response
+    return NextResponse.json(finalAgentData as TradingAgent, { status: 201 });
+
+  } catch (error: any) {
+    console.error('POST /api/agents: Error during agent creation/funding process', error);
+    
+    if (error instanceof WalletNotFoundError || 
+        error instanceof ForbiddenError || 
+        error instanceof InactiveWalletError || 
+        error instanceof InsufficientFundsError || 
+        error instanceof CurrencyMismatchError ||
+        error instanceof OperationFailedError) {
+      
+      // These errors are from performTransfer (funding step D).
+      // Agent, wallet created and linked. Agent status is 'pending_funding'.
+      // Requirement: "if funding fails, return 500 but the agent/wallet will exist."
+      console.warn(`POST /api/agents: Funding failed for agent ${tempAgentId} (wallet: ${tempAgentWalletId}). Error: ${error.message}`);
+      return NextResponse.json({ 
+        error: 'Agent and wallet created, but funding failed.', 
+        details: error.message,
+        agent_id: tempAgentId,
+        agent_wallet_id: tempAgentWalletId 
+      }, { status: 500 });
     }
 
-    // In production, this would call Google ADK to destroy the agent
-    await simulateADKAgentDestruction(agentId);
-
-    // Remove from registry
-    registeredAgents.delete(agentId);
-
-    return NextResponse.json({
-      message: 'Agent deleted successfully',
-      agent_id: agentId
-    });
-
-  } catch (error) {
-    console.error('Error deleting agent:', error);
-    return NextResponse.json(
-      { error: 'Failed to delete agent' },
-      { status: 500 }
-    );
+    // General error during earlier steps (A, B, C)
+    // Cleanup would have been attempted in those specific blocks if IDs were available.
+    return NextResponse.json({ error: 'Internal Server Error during agent creation.', details: error.message }, { status: 500 });
   }
 }
-
-// Simulate Google ADK agent creation
-async function simulateADKAgentCreation(config: AgentConfig, agentCard: AgentCard): Promise<{
-  success: boolean;
-  agent_id?: string;
-  endpoint?: string;
-  status?: string;
-  deployment?: {
-    container_id: string;
-    memory_allocated: string;
-    cpu_allocated: string;
-    health_check_url: string;
-  };
-  error?: string;
-}> {
-  try {
-    // Simulate creation time
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // Simulate occasional failures for realism
-    if (Math.random() < 0.05) { // 5% failure rate
-      return {
-        success: false,
-        error: 'Simulated ADK deployment failure'
-      };
-    }
-
-    return {
-      success: true,
-      agent_id: agentCard.id,
-      endpoint: agentCard.endpoint,
-      status: 'running',
-      deployment: {
-        container_id: `adk_${agentCard.id}`,
-        memory_allocated: '512MB',
-        cpu_allocated: '0.5 vCPU',
-        health_check_url: `${agentCard.endpoint}/health`
-      }
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: `ADK creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-    };
-  }
-}
-
-// Simulate Google ADK agent destruction
-async function simulateADKAgentDestruction(agentId: string) {
-  await new Promise(resolve => setTimeout(resolve, 500)); // Simulate cleanup time
-  return { success: true, agent_id: agentId };
-} 
