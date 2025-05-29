@@ -22,3 +22,23 @@ try:
 except ImportError:
     # Handle case where agent_task_models might not exist (should not happen here)
     pass
+
+# Export models from api_models.py
+try:
+    from .api_models import CrewRunRequest, CrewRunResponse
+    if '__all__' in globals():
+        __all__.extend(['CrewRunRequest', 'CrewRunResponse'])
+    else:
+        __all__ = ['CrewRunRequest', 'CrewRunResponse']
+except ImportError:
+    pass
+
+# Export models from agent_config_models.py
+try:
+    from .agent_config_models import CrewAgentConfig
+    if '__all__' in globals():
+        __all__.append('CrewAgentConfig') # Use append for single item
+    else:
+        __all__ = ['CrewAgentConfig']
+except ImportError:
+    pass

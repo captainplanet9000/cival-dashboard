@@ -39,3 +39,4 @@ ag-ui-protocol
 crewai>=0.28.0
 crewai-tools>=0.1.0
 datamodel-code-generator>=0.25.2
+langchain-google-genai>=0.1.0

@@ -22,6 +22,7 @@ export interface TradeSignalInterface {
   action: TradeAction;
   confidence: number; // Should be between 0.0 and 1.0
   timestamp: string; // Assuming ISO date string from Python's datetime
+  execution_price?: number | null; // Ensure this line is present/added
   rationale: string;
   metadata?: Record<string, any> | null;
 }

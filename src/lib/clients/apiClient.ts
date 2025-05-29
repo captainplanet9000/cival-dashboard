@@ -1,5 +1,6 @@
 // src/lib/clients/apiClient.ts
 import { type Database } from '@/types/database.types'; // Assuming this path is correct
+import { type AgentTask } from '@/lib/types/task'; // Import AgentTask
 
 // Re-export or define types for convenience. Using re-export from database.types for accuracy.
 export type Wallet = Database['public']['Tables']['wallets']['Row'];
@@ -61,6 +62,7 @@ export async function getWalletTransactions(
 
 import { type WalletTransactionPayload, type TransferPayload } from '@/lib/types/vault'; 
 import { type CreateAgentPayload } from '@/lib/types/agent'; // For createTradingAgent payload
+import { type TriggerCrewRunPayload, type TriggerCrewRunResponse } from '@/lib/types/crew'; // For Crew Runs
 
 // Placeholder for CreateWalletPayload if needed by a create wallet function later
 // import { type CreateWalletPayload } from '@/lib/types/vault'; 
@@ -82,6 +84,22 @@ export async function depositToWallet(payload: WalletTransactionPayload): Promis
     body: JSON.stringify(payload),
   });
   return handleResponse<WalletTransaction>(response);
+}
+
+// Task & Crew Related API Client Functions
+export async function getAgentTask(taskId: string): Promise<AgentTask> {
+  if (!taskId) throw new Error('Task ID is required.');
+  const response = await fetch(`${BASE_URL}/tasks/${taskId}`);
+  return handleResponse<AgentTask>(response);
+}
+
+export async function triggerCrewRun(payload: TriggerCrewRunPayload): Promise<TriggerCrewRunResponse> {
+  const response = await fetch(`${BASE_URL}/crew/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse<TriggerCrewRunResponse>(response);
 }
 
 

@@ -20,8 +20,9 @@ class TradeSignal(BaseModel):
     action: str 
     confidence: float 
     timestamp: datetime
+    execution_price: Optional[float] = None # Price at which the signal is considered valid
     rationale: str
-    metadata: Optional[Dict[str, Any]] = None # Changed from any to Any
+    metadata: Optional[Dict[str, Any]] = None 
 
     @field_validator('action')
     @classmethod

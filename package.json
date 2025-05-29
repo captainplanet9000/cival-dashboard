@@ -36,7 +36,7 @@
     "ai:test": "cd python-ai-services && python -m pytest",
     "dev:full": "concurrently \"npm run ai:dev\" \"npm run dev\"",
     "setup:ai": "cd ./python-ai-services && python -m venv venv && ./venv/bin/pip install -r requirements.txt",
-    "generate-types": "cd ./python-ai-services && ./venv/bin/python -m datamodel_code_generator --input models/base_models.py --input-file-type pydantic --output ../src/types/generated/py_models.ts --output-file-type typescript --class-name \"{class_name}Interface\" --use-annotated --use-double-quotes --use-subclass_enum --use_generic_container_types --target-python-version 3.11 --use-pydantic-fields --use-field-description --allow-extra-fields"
+    "generate-types": "cd ./python-ai-services && ./venv/bin/python -m datamodel_code_generator --input models --input-file-type pydantic --output ../src/types/generated/py_models.ts --output-file-type typescript --class-name \"{class_name}Interface\" --use-annotated --use-double-quotes --use-subclass_enum --use_generic_container_types --target-python-version 3.11 --use-pydantic-fields --use-field-description --allow-extra-fields"
   },
   "dependencies": {
     "@ag-ui/client": "^0.0.28",
