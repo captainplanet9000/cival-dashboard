@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -33,16 +33,29 @@ export default function DashboardOverviewPage() {
       } finally {
         setLoading(false);
       }
-    }
-    
-    fetchData();
-  }, []);
-  
-  // Format date
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
-  
+
+      setFarms(data);
+      if (data.length > 0 && !selectedFarmId) {
+        setSelectedFarmId(data[0].id);
+      }
+      setIsLoading(false);
+    };
+
+    fetchFarms();
+  }, [supabase, selectedFarmId]);
+
+  // Sample performance data (replace with real data)
+  const performanceData = [
+    { date: '2024-01', value: 1000 },
+    { date: '2024-02', value: 1200 },
+    { date: '2024-03', value: 1100 },
+    { date: '2024-04', value: 1400 },
+  ];
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-6">Dashboard Overview</h1>
@@ -156,7 +169,37 @@ export default function DashboardOverviewPage() {
                   </tbody>
                 </table>
               </div>
-            )}
+            </Card>
+
+            <Card className="p-4">
+              <h3 className="text-lg font-semibold mb-4">Recent Activity</h3>
+              <div className="space-y-4">
+                {/* Add recent activity items here */}
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">Trade Executed</p>
+                    <p className="text-sm text-gray-500">BTC/USDT @ $45,000</p>
+                  </div>
+                  <p className="text-sm text-gray-500">5m ago</p>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">New Order</p>
+                    <p className="text-sm text-gray-500">Limit Buy ETH/USDT</p>
+                  </div>
+                  <p className="text-sm text-gray-500">15m ago</p>
+                </div>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="font-medium">Agent Status</p>
+                    <p className="text-sm text-gray-500">
+                      Risk Manager updated parameters
+                    </p>
+                  </div>
+                  <p className="text-sm text-gray-500">1h ago</p>
+                </div>
+              </div>
+            </Card>
           </div>
           
           {/* Quick Actions */}

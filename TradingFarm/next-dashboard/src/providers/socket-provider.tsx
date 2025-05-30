@@ -6,28 +6,23 @@ import io from 'socket.io-client';
 interface SocketContextType {
   socket: any | null;
   isConnected: boolean;
-  latestMessages: {
-    [key: string]: any;
-  };
-  messages: any[];
-  send: (event: string, data: any) => void;
-  subscribe: (room: string) => void;
-  unsubscribe: (room: string) => void;
+  sendMessage: (message: any) => void;
+  lastMessage: any;
+  connect: () => void;
+  disconnect: () => void;
 }
 
-const SocketContext = React.createContext<SocketContextType>({
-  socket: null,
+const SocketContext = createContext<SocketContextType>({
   isConnected: false,
-  latestMessages: {},
-  messages: [],
-  send: () => {},
-  subscribe: () => {},
-  unsubscribe: () => {}
+  sendMessage: () => { },
+  lastMessage: null,
+  connect: () => { },
+  disconnect: () => { }
 });
 
-export const useSocket = () => React.useContext(SocketContext);
+export const useSocket = () => useContext(SocketContext);
 
-export interface SocketProviderProps {
+interface SocketProviderProps {
   children: React.ReactNode;
   farmId?: string;
   userId?: string;

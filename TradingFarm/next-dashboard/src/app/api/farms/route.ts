@@ -77,7 +77,11 @@ export async function POST(request: NextRequest) {
     // Create farm
     const { data, error } = await supabase
       .from('farms')
-      .insert(farmData)
+      .insert({
+        name,
+        description,
+        user_id
+      })
       .select()
       .single();
 

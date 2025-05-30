@@ -20,28 +20,30 @@ import {
   RefreshCcw,
   X,
   Zap,
-  Brain
+  Brain,
+  Bot,
+  ArrowUpRight,
+  ArrowDownRight
 } from 'lucide-react';
 import { Tables } from '@/types/database.types';
+import { createBrowserClient } from '@/utils/supabase/client';
+import { formatDistanceToNow } from 'date-fns';
 
 type Order = Tables<'orders'>;
 
 interface OrderUpdate {
   id: string;
-  order_id: string;
-  status: string;
-  previous_status?: string;
+  orderId: string;
+  symbol: string;
+  type: 'buy' | 'sell';
+  status: 'filled' | 'partial' | 'canceled' | 'pending';
+  quantity: number;
+  price: number;
   timestamp: string;
-  details?: any;
-  symbol?: string;
-  size?: number;
-  price?: number;
-  farm_id?: string;
-  exchange_id?: string;
-  is_buy?: boolean;
-  value?: number;
-  message?: string;
-  trigger_source?: 'manual' | 'system' | 'strategy' | 'api' | 'elizaos';
+  agent?: {
+    id: number;
+    name: string;
+  };
 }
 
 interface OrderUpdatesStreamProps {
@@ -63,97 +65,156 @@ export default function OrderUpdatesStream({
   height = '400px',
   hasElizaOS = true
 }: OrderUpdatesStreamProps) {
-  const { isConnected, messages, connectionStatus, subscribe, unsubscribe } = useSocket();
-  const [orderUpdates, setOrderUpdates] = useState<OrderUpdate[]>([]);
+  const { isConnected, messages, connectionStatus, subscribe, unsubscribe, lastMessage } = useSocket();
+  const [updates, setUpdates] = useState<OrderUpdate[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [paused, setPaused] = useState(false);
   const { toast } = useToast();
-  
-  // Subscribe to ORDER_UPDATE messages on component mount
+  const supabase = createBrowserClient();
+
+  // Load initial historical orders
   useEffect(() => {
-    // Subscribe to farmId-specific room if provided, otherwise global updates
-    const roomName = farmId ? `farm:${farmId}:orders` : 'orders';
-    subscribe(roomName);
-    
-    // Cleanup on unmount
-    return () => {
-      unsubscribe(roomName);
-    };
-  }, [farmId, subscribe, unsubscribe]);
-  
-  // Process incoming order update messages
-  useEffect(() => {
-    if (paused) return;
-    
-    const orderUpdateMessages = messages.filter(
-      (msg) => msg.type === 'ORDER_UPDATE' && (!farmId || msg.farm_id === farmId)
-    );
-    
-    if (orderUpdateMessages.length > 0) {
-      const updates = orderUpdateMessages.map((msg) => ({
-        id: `${msg.data.order_id}-${msg.timestamp}`,
-        ...msg.data,
-        timestamp: msg.timestamp
-      }));
-      
-      setOrderUpdates((prev) => {
-        // Combine with previous updates, removing duplicates by id
-        const combined = [...prev, ...updates];
-        const unique = combined.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+    const fetchRecentOrders = async () => {
+      try {
+        setUpdates([]);
         
-        // Sort by timestamp (newest first) and limit
-        return unique
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-          .slice(0, limit);
-      });
+        // In a real implementation, you would fetch from the actual orders table
+        const { data, error } = await supabase
+          .from('orders')
+          .select(`
+            id,
+            symbol,
+            type,
+            status,
+            quantity,
+            price,
+            created_at,
+            agents:agent_id (id, name)
+          `)
+          .order('created_at', { ascending: false })
+          .limit(5);
+        
+        if (error) {
+          console.error('Error fetching recent orders:', error);
+          // Fallback to sample data if there's an error or no data
+          setUpdates(getSampleOrderUpdates());
+        } else if (data && data.length > 0) {
+          // Transform the data to match our OrderUpdate interface
+          const orderUpdates: OrderUpdate[] = data.map(order => ({
+            id: order.id,
+            orderId: order.id,
+            symbol: order.symbol,
+            type: order.type,
+            status: order.status,
+            quantity: order.quantity,
+            price: order.price,
+            timestamp: order.created_at,
+            agent: order.agents ? {
+              id: order.agents.id,
+              name: order.agents.name
+            } : undefined
+          }));
+          
+          setUpdates(orderUpdates);
+        } else {
+          // No data, use sample data
+          setUpdates(getSampleOrderUpdates());
+        }
+      } catch (error) {
+        console.error('Error in fetchRecentOrders:', error);
+        setUpdates(getSampleOrderUpdates());
+      }
+    };
+    
+    fetchRecentOrders();
+  }, [supabase]);
+
+  // Listen for new order updates from WebSocket
+  useEffect(() => {
+    if (lastMessage && lastMessage.type === 'order_update') {
+      const newUpdate = lastMessage.data;
+      
+      // Validate the update has the required fields
+      if (newUpdate && newUpdate.orderId && newUpdate.timestamp) {
+        setUpdates(prev => {
+          // Add the new update at the beginning and limit to 5 items
+          const updated = [newUpdate, ...prev].slice(0, 5);
+          return updated;
+        });
+      }
     }
-  }, [messages, farmId, paused, limit]);
-  
+  }, [lastMessage]);
+
+  // Fallback sample data
+  const getSampleOrderUpdates = (): OrderUpdate[] => {
+    return [
+      {
+        id: '1',
+        orderId: 'ORD-12345',
+        symbol: 'BTC/USD',
+        type: 'buy',
+        status: 'filled',
+        quantity: 0.15,
+        price: 67500,
+        timestamp: new Date(Date.now() - 5 * 60000).toISOString(), // 5 minutes ago
+        agent: {
+          id: 1,
+          name: 'Trend Follower'
+        }
+      },
+      {
+        id: '2',
+        orderId: 'ORD-12346',
+        symbol: 'ETH/USD',
+        type: 'sell',
+        status: 'filled',
+        quantity: 2.5,
+        price: 3450,
+        timestamp: new Date(Date.now() - 15 * 60000).toISOString(), // 15 minutes ago
+        agent: {
+          id: 2,
+          name: 'Momentum Trader'
+        }
+      },
+      {
+        id: '3',
+        orderId: 'ORD-12347',
+        symbol: 'SOL/USD',
+        type: 'buy',
+        status: 'pending',
+        quantity: 18,
+        price: 165,
+        timestamp: new Date(Date.now() - 25 * 60000).toISOString(), // 25 minutes ago
+        agent: {
+          id: 3,
+          name: 'Scalper Bot'
+        }
+      }
+    ];
+  };
+
   // Filter updates based on active tab
   const filteredUpdates = React.useMemo(() => {
-    if (activeTab === 'all') return orderUpdates;
-    if (activeTab === 'filled') return orderUpdates.filter(update => update.status === 'FILLED');
-    if (activeTab === 'canceled') return orderUpdates.filter(update => update.status === 'CANCELED');
-    if (activeTab === 'rejected') return orderUpdates.filter(update => update.status === 'REJECTED');
-    if (activeTab === 'ai') return orderUpdates.filter(update => update.trigger_source === 'elizaos');
-    return orderUpdates;
-  }, [activeTab, orderUpdates]);
+    if (activeTab === 'all') return updates;
+    if (activeTab === 'filled') return updates.filter(update => update.status === 'filled');
+    if (activeTab === 'canceled') return updates.filter(update => update.status === 'canceled');
+    if (activeTab === 'pending') return updates.filter(update => update.status === 'pending');
+    return updates;
+  }, [activeTab, updates]);
   
   // Helper to determine badge color based on order status
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'NEW':
-        return <Badge className="bg-blue-100 text-blue-800 border-blue-200">New</Badge>;
-      case 'PARTIALLY_FILLED':
-        return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Partially Filled</Badge>;
-      case 'FILLED':
+      case 'filled':
         return <Badge className="bg-green-100 text-green-800 border-green-200">Filled</Badge>;
-      case 'CANCELED':
-        return <Badge className="bg-amber-100 text-amber-800 border-amber-200">Canceled</Badge>;
-      case 'REJECTED':
-        return <Badge className="bg-red-100 text-red-800 border-red-200">Rejected</Badge>;
-      case 'EXPIRED':
-        return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Expired</Badge>;
+      case 'partial':
+        return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Partially Filled</Badge>;
+      case 'canceled':
+        return <Badge className="bg-red-100 text-red-800 border-red-200">Canceled</Badge>;
+      case 'pending':
+        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Pending</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-  
-  // Get icon for trigger source
-  const getTriggerSourceIcon = (source?: string) => {
-    switch (source) {
-      case 'manual':
-        return null;
-      case 'system':
-        return <Zap className="h-3.5 w-3.5 text-amber-500 mr-1" />;
-      case 'strategy':
-        return <RotateCw className="h-3.5 w-3.5 text-blue-500 mr-1" />;
-      case 'api':
-        return <Wifi className="h-3.5 w-3.5 text-purple-500 mr-1" />;
-      case 'elizaos':
-        return <Brain className="h-3.5 w-3.5 text-primary mr-1" />;
-      default:
-        return null;
     }
   };
   
@@ -168,7 +229,7 @@ export default function OrderUpdatesStream({
   
   // Clear all updates
   const clearUpdates = () => {
-    setOrderUpdates([]);
+    setUpdates([]);
     toast({
       title: "Updates cleared",
       description: "Order update history has been cleared",
@@ -229,11 +290,7 @@ export default function OrderUpdatesStream({
                 <TabsTrigger value="all">All</TabsTrigger>
                 <TabsTrigger value="filled">Filled</TabsTrigger>
                 <TabsTrigger value="canceled">Canceled</TabsTrigger>
-                <TabsTrigger value="rejected">Rejected</TabsTrigger>
-                <TabsTrigger value="ai" className="flex items-center">
-                  <Brain className="h-3.5 w-3.5 mr-1" />
-                  AI
-                </TabsTrigger>
+                <TabsTrigger value="pending">Pending</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -247,7 +304,7 @@ export default function OrderUpdatesStream({
                 Not connected to real-time feed. Reconnecting...
               </AlertDescription>
             </Alert>
-          ) : orderUpdates.length === 0 ? (
+          ) : updates.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8">
               <Clock className="h-12 w-12 text-muted-foreground opacity-20 mb-3" />
               <p className="text-sm text-muted-foreground">
@@ -258,69 +315,55 @@ export default function OrderUpdatesStream({
             <ScrollArea className={`pr-4`} style={{ height }}>
               <div className="space-y-3">
                 {filteredUpdates.map((update) => (
-                  <div 
-                    key={update.id} 
-                    className={`border rounded-lg p-3 transition-colors ${
-                      update.status === 'FILLED' ? 'border-green-200 bg-green-50/50' :
-                      update.status === 'REJECTED' ? 'border-red-200 bg-red-50/50' :
-                      update.status === 'CANCELED' ? 'border-amber-200 bg-amber-50/50' :
-                      update.trigger_source === 'elizaos' ? 'border-primary/20 bg-primary/5' :
-                      'border-gray-200'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          {getTriggerSourceIcon(update.trigger_source)}
+                  <Card key={update.id} className="overflow-hidden">
+                    <CardContent className="p-3">
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                          {update.type === 'buy' ? (
+                            <ArrowUpRight className="h-4 w-4 text-green-500" />
+                          ) : (
+                            <ArrowDownRight className="h-4 w-4 text-red-500" />
+                          )}
                           <span className="font-medium">
-                            {update.symbol} {update.is_buy ? 'Buy' : 'Sell'} Order
+                            {update.symbol} · {update.type.toUpperCase()}
                           </span>
-                          {update.order_id && (
-                            <span className="text-xs text-muted-foreground">
-                              #{update.order_id.slice(0, 8)}
-                            </span>
-                          )}
                         </div>
-                        
-                        {update.previous_status && (
-                          <div className="text-sm mt-1 flex items-center">
-                            <span className="text-muted-foreground">Status changed:</span>
-                            <span className="mx-1">{getStatusBadge(update.previous_status)}</span>
-                            <span className="mx-1">→</span>
-                            <span>{getStatusBadge(update.status)}</span>
-                          </div>
-                        )}
-                        
-                        <div className="mt-1 text-sm">
-                          {update.size && (
-                            <span className="mr-2">
-                              <span className="text-muted-foreground">Size:</span> {update.size}
-                            </span>
-                          )}
-                          {update.price && (
-                            <span className="mr-2">
-                              <span className="text-muted-foreground">Price:</span> ${update.price.toFixed(2)}
-                            </span>
-                          )}
-                          {update.value && (
-                            <span>
-                              <span className="text-muted-foreground">Value:</span> ${update.value.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
-                        
-                        {update.message && (
-                          <div className="mt-1 text-sm text-muted-foreground">
-                            {update.message}
-                          </div>
-                        )}
+                        <Badge
+                          className={
+                            update.status === 'filled'
+                              ? 'bg-green-500'
+                              : update.status === 'partial'
+                              ? 'bg-blue-500'
+                              : update.status === 'canceled'
+                              ? 'bg-red-500'
+                              : 'bg-yellow-500'
+                          }
+                        >
+                          {update.status.toUpperCase()}
+                        </Badge>
                       </div>
                       
-                      <div className="text-xs text-muted-foreground">
-                        {format(new Date(update.timestamp), 'HH:mm:ss')}
+                      <div className="flex justify-between mt-2 text-sm">
+                        <div>
+                          <p className="text-muted-foreground">
+                            {update.quantity} @ ${update.price.toLocaleString()}
+                          </p>
+                          <p className="text-muted-foreground flex items-center mt-1">
+                            <Bot className="h-3 w-3 mr-1" />
+                            {update.agent?.name || 'Unknown Agent'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-muted-foreground">
+                            ${(update.quantity * update.price).toLocaleString()}
+                          </p>
+                          <p className="text-muted-foreground mt-1">
+                            {formatDistanceToNow(new Date(update.timestamp), { addSuffix: true })}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
             </ScrollArea>

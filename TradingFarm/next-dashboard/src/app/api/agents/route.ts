@@ -215,7 +215,10 @@ export async function GET(request: NextRequest) {
 
     query = query.range(offset, offset + limit - 1);
     
-    const { data: agents, error, count } = await query;
+    // Order by created_at descending (newest first)
+    query = query.order('created_at', { ascending: false });
+    
+    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching agents:', error);
@@ -241,13 +244,31 @@ export async function GET(request: NextRequest) {
       });
     }
     
-    return NextResponse.json({
-      agents,
-      total: count || (agents ? agents.length : 0),
-      limit,
-      offset,
-      hasMore: count ? offset + limit < count : false
+    // Process the data to extract useful properties
+    const processedData = data.map(agent => {
+      // Extract configuration properties
+      const configObj = agent.configuration || {};
+      const performanceMetrics = configObj.performance_metrics || {};
+      
+      return {
+        ...agent,
+        // Extract these fields from configuration if they exist
+        description: configObj.description || '',
+        strategy_type: configObj.strategy_type || '',
+        risk_level: configObj.risk_level || '',
+        target_markets: Array.isArray(configObj.target_markets) ? configObj.target_markets : [],
+        performance_metrics: {
+          win_rate: performanceMetrics.win_rate || 0,
+          profit_loss: performanceMetrics.profit_loss || 0,
+          total_trades: performanceMetrics.total_trades || 0,
+          average_trade_duration: performanceMetrics.average_trade_duration || 0
+        },
+        farm_name: agent.farms?.name || `Farm ${agent.farm_id}`,
+        is_active: agent.status === 'active'
+      };
     });
+    
+    return NextResponse.json({ data: processedData });
   } catch (error) {
     console.error('Error fetching agents:', error);
     const limit = 10;
@@ -263,6 +284,10 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * POST /api/agents
+ * Create a new agent
+ */
 export async function POST(request: NextRequest) {
   try {
     const requestData = await request.json();
