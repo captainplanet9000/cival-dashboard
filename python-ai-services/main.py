@@ -4,15 +4,17 @@ Complements existing Google SDK and A2A systems
 """
 import asyncio
 import os
+import json # Added for JSON serialization/deserialization
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request # Added Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 import uvicorn
 from loguru import logger
+import redis.asyncio as aioredis
 
 # Import our enhanced AI services
 from services.trading_coordinator import TradingCoordinator
@@ -27,11 +29,42 @@ from types.trading_types import *
 # Global services registry
 services: Dict[str, Any] = {}
 
+# Pydantic Models for API responses
+class CrewBlueprint(BaseModel):
+    id: str = Field(..., example="crew_bp_1")
+    name: str = Field(..., example="Trading Analysis Crew")
+    description: str = Field(..., example="A crew specialized in analyzing market data and proposing trades.")
+
+class LLMParameter(BaseModel):
+    temperature: Optional[float] = Field(None, example=0.7, description="Controls randomness in generation.")
+    max_tokens: Optional[int] = Field(None, example=1000, description="Maximum number of tokens to generate.")
+    top_p: Optional[float] = Field(None, example=0.9, description="Nucleus sampling parameter.")
+    top_k: Optional[int] = Field(None, example=40, description="Top-k sampling parameter.")
+    frequency_penalty: Optional[float] = Field(None, example=0.0, description="Penalizes new tokens based on their existing frequency.")
+    presence_penalty: Optional[float] = Field(None, example=0.0, description="Penalizes new tokens based on whether they appear in the text so far.")
+
+class LLMConfig(BaseModel):
+    id: str = Field(..., example="llm_cfg_1")
+    model_name: str = Field(..., example="gemini-1.5-pro")
+    api_key_env_var: Optional[str] = Field(None, example="GEMINI_API_KEY", description="Environment variable for the API key.")
+    parameters: LLMParameter = Field(..., description="Specific parameters for the LLM.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize and cleanup AI services"""
     logger.info("🚀 Starting PydanticAI Enhanced Services")
-    
+    app.state.redis_cache_client = None  # Initialize with None
+    try:
+        # Initialize Redis Cache Client
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        app.state.redis_cache_client = await aioredis.from_url(redis_url)
+        await app.state.redis_cache_client.ping()  # Check connection
+        logger.info(f"Successfully connected to Redis at {redis_url} for caching.")
+    except Exception as e:
+        logger.error(f"Failed to connect to Redis for caching: {e}. Application will continue without caching.")
+        app.state.redis_cache_client = None # Ensure it's None if connection failed
+
     # Initialize Google SDK Bridge
     google_bridge = GoogleSDKBridge(
         project_id=os.getenv("GOOGLE_CLOUD_PROJECT_ID", "cival-dashboard-dev"),
@@ -68,6 +101,13 @@ async def lifespan(app: FastAPI):
     
     # Cleanup
     logger.info("🛑 Shutting down PydanticAI services")
+    if app.state.redis_cache_client:
+        try:
+            await app.state.redis_cache_client.close()
+            logger.info("Redis cache client closed successfully.")
+        except Exception as e:
+            logger.error(f"Error closing Redis cache client: {e}")
+
     for service in services.values():
         if hasattr(service, 'cleanup'):
             await service.cleanup()
@@ -201,6 +241,88 @@ async def list_a2a_agents():
         raise HTTPException(status_code=503, detail="A2A protocol not available")
     
     return await a2a.list_registered_agents()
+
+# Cache constants
+CACHE_KEY_CREW_BLUEPRINTS = "crew-blueprints-cache"
+CACHE_KEY_CONFIG_LLMS = "config-llms-cache" # New cache key
+CACHE_EXPIRATION_SECONDS = 3600  # 1 hour (reused for both)
+
+# Crew Blueprints Endpoint
+@app.get("/crew-blueprints", response_model=List[CrewBlueprint])
+async def get_crew_blueprints(request: Request):
+    """Returns a list of crew blueprints, with caching."""
+    redis_client = request.app.state.redis_cache_client
+
+    if redis_client:
+        try:
+            cached_data = await redis_client.get(CACHE_KEY_CREW_BLUEPRINTS)
+            if cached_data:
+                logger.info("Cache hit for /crew-blueprints")
+                return json.loads(cached_data)
+            else:
+                logger.info("Cache miss for /crew-blueprints")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error when getting cache for /crew-blueprints: {e}. Serving fresh data.")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for cached /crew-blueprints: {e}. Serving fresh data.")
+
+
+    # Original data generation (cache miss or Redis error)
+    fresh_data = [
+        {"id": "crew_bp_1", "name": "Trading Analysis Crew", "description": "A crew specialized in analyzing market data and proposing trades."},
+        {"id": "crew_bp_2", "name": "Risk Assessment Crew", "description": "A crew focused on identifying and mitigating risks."},
+        {"id": "crew_bp_3", "name": "DeFi Strategy Crew", "description": "A crew for developing and managing DeFi strategies."}
+    ]
+
+    if redis_client:
+        try:
+            serialized_data = json.dumps(fresh_data)
+            await redis_client.set(CACHE_KEY_CREW_BLUEPRINTS, serialized_data, ex=CACHE_EXPIRATION_SECONDS)
+            logger.info("Successfully cached data for /crew-blueprints")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error when setting cache for /crew-blueprints: {e}")
+        except json.JSONEncodeError as e: # Should not happen with this data structure
+            logger.error(f"JSON encode error when caching /crew-blueprints: {e}")
+
+    return fresh_data
+
+# LLM Configurations Endpoint
+@app.get("/config/llms", response_model=List[LLMConfig])
+async def get_llm_configurations(request: Request):
+    """Returns a list of LLM configurations, with caching."""
+    redis_client = request.app.state.redis_cache_client
+
+    if redis_client:
+        try:
+            cached_data = await redis_client.get(CACHE_KEY_CONFIG_LLMS)
+            if cached_data:
+                logger.info("Cache hit for /config/llms")
+                return json.loads(cached_data)
+            else:
+                logger.info("Cache miss for /config/llms")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error when getting cache for /config/llms: {e}. Serving fresh data.")
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for cached /config/llms: {e}. Serving fresh data.")
+
+    # Original data generation (cache miss or Redis error)
+    fresh_data = [
+        {"id": "llm_cfg_1", "model_name": "gemini-1.5-pro", "api_key_env_var": "GEMINI_API_KEY", "parameters": {"temperature": 0.7, "max_tokens": 1000}},
+        {"id": "llm_cfg_2", "model_name": "claude-3-opus", "api_key_env_var": "ANTHROPIC_API_KEY", "parameters": {"temperature": 0.8, "max_tokens": 1500}},
+        {"id": "llm_cfg_3", "model_name": "gpt-4-turbo", "api_key_env_var": "OPENAI_API_KEY", "parameters": {"temperature": 0.75, "max_tokens": 1200}}
+    ]
+
+    if redis_client:
+        try:
+            serialized_data = json.dumps(fresh_data)
+            await redis_client.set(CACHE_KEY_CONFIG_LLMS, serialized_data, ex=CACHE_EXPIRATION_SECONDS)
+            logger.info("Successfully cached data for /config/llms")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error when setting cache for /config/llms: {e}")
+        except json.JSONEncodeError as e: # Should not happen with this data structure
+            logger.error(f"JSON encode error when caching /config/llms: {e}")
+
+    return fresh_data
 
 # Google SDK Integration
 @app.get("/api/google-sdk/status")
