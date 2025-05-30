@@ -70,13 +70,14 @@ trade_advising_task = Task(
         "If the analysis is inconclusive or doesn't present a strong signal, recommend HOLD."
     ),
     expected_output=(
-        "A JSON string representing the trading advice. The JSON object should conform to the TradeSignal model, "
+        "A JSON string representing a PROPOSED trading signal. The JSON object should conform to the ProposedTradeSignal model, "
         "containing the following fields: "
+        "'signal_id' (string, a new UUID for this proposal, e.g., '123e4567-e89b-12d3-a456-426614174000'), "
         "'symbol' (string, e.g., 'BTC/USD'), "
         "'action' (string: 'BUY', 'SELL', or 'HOLD'), "
         "'confidence' (float, 0.0 to 1.0), "
-        "'timestamp' (string, ISO 8601 datetime format, e.g., '2023-10-27T10:30:00Z'), "
-        "'execution_price' (float, optional, the price at which the signal is based), "
+        "'timestamp' (string, ISO 8601 datetime format for when the signal was generated, e.g., '2023-10-27T10:30:00Z'), "
+        "'execution_price' (float, optional, the price at which the signal is based, or current market price if applicable), "
         "'rationale' (string, 1-2 sentences explaining the advice)."
         # Optional: "'metadata' (object, optional, for any extra info)."
     ),

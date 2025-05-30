@@ -40,3 +40,12 @@ crewai>=0.28.0
 crewai-tools>=0.1.0
 datamodel-code-generator>=0.25.2
 langchain-google-genai>=0.1.0
+
+# MemGPT for agent memory
+pymemgpt[postgres,pgvector]~=0.3.5 
+# If the above doesn't pull these, they might be needed explicitly:
+# psycopg2-binary # For PostgreSQL connection
+# pgvector # For vector similarity search in PostgreSQL
+
+# For SharedKnowledgeService embedding generation
+sentence-transformers>=2.2.0

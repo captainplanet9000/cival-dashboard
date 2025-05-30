@@ -3,7 +3,14 @@ from typing import Optional, Dict, Any, Literal
 from datetime import datetime, timezone # Ensure timezone is imported
 import uuid
 
-AgentTaskStatus = Literal["PENDING", "RUNNING", "COMPLETED", "FAILED", "CANCELLED"]
+AgentTaskStatus = Literal[
+    "PENDING", 
+    "RUNNING", 
+    "COMPLETED", 
+    "FAILED", 
+    "CANCELLED", 
+    "AWAITING_APPROVAL" # Added new status
+]
 
 class AgentTask(BaseModel):
     task_id: uuid.UUID = Field(default_factory=uuid.uuid4)

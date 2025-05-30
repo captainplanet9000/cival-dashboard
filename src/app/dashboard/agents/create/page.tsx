@@ -7,9 +7,10 @@ import { AgentCreationForm } from '@/components/agent/AgentCreationForm';
 import { 
   getStrategies, 
   getUserWallets, 
+  getAvailableLlms, // Added
   type TradingStrategy, 
   type Wallet,
-  type TradingAgentWithWallet
+  type TradingAgentDetailsInterface // Changed from TradingAgentWithWallet
 } from '@/lib/clients/apiClient';
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -19,6 +20,7 @@ export default function CreateAgentPage() {
   const router = useRouter();
   const [strategies, setStrategies] = useState<TradingStrategy[]>([]);
   const [userWallets, setUserWallets] = useState<Wallet[]>([]);
+  const [availableLlms, setAvailableLlms] = useState<string[]>([]); // Added state for LLMs
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,12 +29,14 @@ export default function CreateAgentPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [fetchedStrategies, fetchedWallets] = await Promise.all([
+        const [fetchedStrategies, fetchedWallets, fetchedLlms] = await Promise.all([
           getStrategies(),
           getUserWallets(),
+          getAvailableLlms(), // Fetch LLMs
         ]);
         setStrategies(fetchedStrategies);
         setUserWallets(fetchedWallets);
+        setAvailableLlms(fetchedLlms); // Set LLMs
       } catch (err: any) {
         console.error("Failed to load initial data for agent creation:", err);
         setError(err.message || 'An unexpected error occurred while loading data.');
@@ -43,7 +47,7 @@ export default function CreateAgentPage() {
     loadInitialData();
   }, []);
 
-  const handleSuccess = (createdAgent: TradingAgentWithWallet) => {
+  const handleSuccess = (createdAgent: TradingAgentDetailsInterface) => { // Changed type
     // Redirect to the main agents dashboard or a specific agent's page
     router.push('/dashboard/agents'); 
   };
@@ -115,6 +119,7 @@ export default function CreateAgentPage() {
         <AgentCreationForm 
           strategies={strategies} 
           userWallets={userWallets}
+          availableLlms={availableLlms} // Pass LLMs to form
           onSuccess={handleSuccess} 
         />
       </div>

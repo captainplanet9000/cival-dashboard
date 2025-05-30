@@ -3,10 +3,9 @@ import uuid
 from typing import Optional, Dict, Any
 
 class CrewRunRequest(BaseModel):
-    symbol: str
+    blueprint_id: uuid.UUID # ID of the CrewBlueprint to run
     user_id: str # Received from Next.js backend, which has authenticated user
-    # Add other necessary inputs for the crew, e.g., market_data_summary if needed directly
-    market_data_summary: Optional[str] = "Default market summary: Price is stable." # Example
+    inputs: Dict[str, Any] # Generic inputs, validated against blueprint's input_schema
 
 class CrewRunResponse(BaseModel):
     task_id: uuid.UUID
@@ -48,3 +47,10 @@ class TradingAgentDetailsResponse(BaseModel):
     # wallet: Optional[Dict[str, Any]] = None # Simplified wallet representation
     # Include strategy details if they are to be embedded
     # trading_strategy: Optional[Dict[str, Any]] = None # Simplified strategy representation
+
+# Response model for agent memory entries
+class AgentMemoryResponseItem(BaseModel):
+    retrieved_memory_content: str
+    # Potentially add other fields like 'timestamp', 'score', 'id' if they become available
+    # from MemoryService.list_memories in a structured way.
+    # For now, this matches the current output of list_memories which wraps strings.

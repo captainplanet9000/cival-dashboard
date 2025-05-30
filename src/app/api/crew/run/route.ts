@@ -1,8 +1,8 @@
-import { type NextRequest, NextResponse } from 'next/server'; // Ensure NextRequest is imported if specific features are used, else Request is fine
+import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/utils/supabase/server'; 
-import type { TriggerCrewRunPayload, TriggerCrewRunResponse } from '@/lib/types/crew'; 
+import type { TriggerCrewRunClientPayload, TriggerCrewRunResponse } from '@/lib/types/crew'; // Updated type
 
-export async function POST(request: NextRequest) { // Using NextRequest for consistency
+export async function POST(request: NextRequest) {
     const supabase = createServerClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -10,31 +10,39 @@ export async function POST(request: NextRequest) { // Using NextRequest for cons
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    let payload: TriggerCrewRunPayload;
+    let payload: TriggerCrewRunClientPayload;
     try {
         payload = await request.json();
     } catch (e) {
         return NextResponse.json({ error: 'Invalid request body: Malformed JSON' }, { status: 400 });
     }
 
-    const { symbol, market_data_summary } = payload;
+    const { blueprint_id, inputs } = payload;
 
-    if (!symbol || typeof symbol !== 'string' || symbol.trim() === '') { // Added more robust check
-        return NextResponse.json({ error: 'Symbol is required and must be a non-empty string' }, { status: 400 });
+    // Basic validation for blueprint_id and inputs
+    if (!blueprint_id || typeof blueprint_id !== 'string' || blueprint_id.trim() === '') {
+        return NextResponse.json({ error: 'blueprint_id is required and must be a non-empty string' }, { status: 400 });
     }
-    if (market_data_summary !== undefined && (typeof market_data_summary !== 'string')) { // market_data_summary is optional
-        return NextResponse.json({ error: 'market_data_summary must be a string if provided' }, { status: 400 });
+    // Basic check for inputs being an object. More specific schema validation could be added if needed here,
+    // or rely on Python backend's Pydantic validation based on blueprint's input_schema.
+    if (inputs === undefined || typeof inputs !== 'object' || inputs === null) { 
+        return NextResponse.json({ error: 'inputs are required and must be an object' }, { status: 400 });
+    }
+    // Example: Check for UUID format for blueprint_id if desired (simple regex)
+    if (!/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(blueprint_id)) {
+        return NextResponse.json({ error: 'Invalid blueprint_id format. Must be a UUID.' }, { status: 400 });
     }
 
 
     const pythonApiBaseUrl = process.env.PYTHON_API_BASE_URL || 'http://localhost:8000';
-    const pythonEndpoint = `${pythonApiBaseUrl}/crew/run_trading_analysis`;
+    const pythonEndpoint = `${pythonApiBaseUrl}/crew/run_trading_analysis`; // This endpoint path in Python main.py was also updated
 
     try {
+        // Construct payload for Python backend
         const pythonPayload = {
-            symbol: symbol,
+            blueprint_id: blueprint_id,
             user_id: user.id, 
-            market_data_summary: market_data_summary || `Market summary for ${symbol} not provided.` 
+            inputs: inputs 
         };
 
         const response = await fetch(pythonEndpoint, {

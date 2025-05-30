@@ -1,9 +1,10 @@
 import os
+import asyncio # Added import
 from dotenv import load_dotenv
 from services.strategy_executor import StrategyExecutor
 from services.market_data_service import MarketDataService 
 
-def run_example():
+async def run_example(): # Made async
     load_dotenv() 
 
     supabase_url = os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
@@ -87,7 +88,7 @@ def run_example():
                     print(f"Error fetching historical OHLCV data: {e_ohlcv}")
 
             print(f"\nRunning strategy cycle...")
-            result = executor.run_cycle(market_data_service=market_service) 
+            result = await executor.run_cycle(market_data_service=market_service)  # Added await
             print(f"Cycle Result: {result}")
         else:
             print(f"Failed to load agent {test_agent_id}. Check if it exists and has a strategy assigned.")
@@ -98,4 +99,4 @@ def run_example():
         print(f"An unexpected error occurred: {e}")
 
 if __name__ == "__main__":
-    run_example()
+    asyncio.run(run_example()) # Changed to asyncio.run

@@ -32,35 +32,55 @@ import { Loader2 } from "lucide-react";
 import { 
     type Wallet, 
     type TradingStrategy, 
-    type TradingAgentWithWallet,
-    createTradingAgent
+    // type TradingAgentWithWallet, // This type might need to be TradingAgentDetailsInterface now
+    createTradingAgent,
+    TradingAgentDetailsInterface // Assuming this is the return type from createTradingAgent now
 } from '@/lib/clients/apiClient';
-import { type CreateAgentPayload } from '@/lib/types/agent';
+// Assuming CreateAgentClientPayload is what createTradingAgent expects now
+import { type CreateAgentClientPayload, type CrewAgentConfigInterface } from '@/types/generated/py_models'; 
+import { CrewAgentConfigFormFields } from './CrewAgentConfigFormFields'; // Import the new component
 
-const agentCreationFormSchema = z.object({
-  name: z.string().min(1, { message: "Agent name is required." }).max(100, { message: "Agent name can be at most 100 characters." }),
-  strategy_id: z.string().uuid({ message: "Please select a valid trading strategy." }),
-  configuration_parameters: z.string().refine((val) => {
+// Zod schema for the CrewAgentConfig part of the form
+const crewAgentConfigSchemaForForm = z.object({
+  role: z.string().min(3, "Role must be at least 3 characters."),
+  goal: z.string().min(10, "Goal must be at least 10 characters."),
+  backstory: z.string().min(10, "Backstory must be at least 10 characters."),
+  llm_identifier: z.string().optional().nullable().transform(val => val === "" ? null : val), // Allow empty string to mean null
+  allow_delegation: z.boolean().default(false),
+  verbose: z.boolean().default(true),
+  // strategy_specific_params is a JSON string in the form, validated then parsed
+  strategy_specific_params: z.string().refine((val) => {
+    if (val.trim() === "") return true; // Allow empty string (will become empty object)
     try {
       JSON.parse(val);
       return true;
     } catch (e) {
       return false;
     }
-  }, { message: "Configuration parameters must be a valid JSON string." }),
+  }, { message: "Must be a valid JSON string if provided, or empty." }).default("{}"),
+  tools: z.array(z.any()).optional().nullable(), // Assuming tools are not directly editable in this form for now
+});
+
+
+const agentCreationFormSchema = z.object({
+  agent_name: z.string().min(1, { message: "Agent name is required." }).max(100, { message: "Agent name can be at most 100 characters." }),
+  assigned_strategy_id: z.string().uuid({ message: "Please select a valid trading strategy." }),
+  configuration_parameters: crewAgentConfigSchemaForForm, // Use the nested schema
   initial_capital: z.coerce.number().positive({ message: "Initial capital must be a positive number." }),
   funding_currency: z.string().min(1, { message: "Please select a funding currency." }),
+  description: z.string().optional().nullable(),
 });
 
 type AgentCreationFormValues = z.infer<typeof agentCreationFormSchema>;
 
 interface AgentCreationFormProps {
   strategies: TradingStrategy[];
-  userWallets: Wallet[]; // Used to derive available funding currencies
-  onSuccess?: (createdAgent: TradingAgentWithWallet) => void;
+  userWallets: Wallet[]; 
+  availableLlms: string[]; // Added prop
+  onSuccess?: (createdAgent: TradingAgentDetailsInterface) => void;
 }
 
-export function AgentCreationForm({ strategies, userWallets, onSuccess }: AgentCreationFormProps) {
+export function AgentCreationForm({ strategies, userWallets, availableLlms, onSuccess }: AgentCreationFormProps) {
   const { toast } = useToast();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,36 +93,59 @@ export function AgentCreationForm({ strategies, userWallets, onSuccess }: AgentC
   const form = useForm<AgentCreationFormValues>({
     resolver: zodResolver(agentCreationFormSchema),
     defaultValues: {
-      name: '',
-      strategy_id: strategies?.[0]?.strategy_id || '',
-      configuration_parameters: '{}', // Default to empty JSON object string
-      initial_capital: 0,
+      agent_name: '',
+      assigned_strategy_id: strategies?.[0]?.strategy_id || '',
+      configuration_parameters: { // Default values for the nested form
+        role: '',
+        goal: '',
+        backstory: '',
+        llm_identifier: null, // Default to null (which means crew default)
+        allow_delegation: false,
+        verbose: true,
+        strategy_specific_params: '{}', // Default to empty JSON string
+        tools: null, // Default tools to null
+      },
+      initial_capital: 1000, // Sensible default
       funding_currency: availableCurrencies?.[0] || '',
+      description: '',
     },
   });
 
   async function onSubmit(values: AgentCreationFormValues) {
     setIsSubmitting(true);
-    let parsedConfigParams;
-    try {
-      parsedConfigParams = JSON.parse(values.configuration_parameters);
-    } catch (error) {
-      // This should ideally be caught by Zod, but as a safeguard:
-      toast({ title: "Validation Error", description: "Configuration parameters are not valid JSON.", variant: "destructive" });
-      setIsSubmitting(false);
-      return;
+    
+    let strategyParamsObject: Record<string, any> = {};
+    if (values.configuration_parameters.strategy_specific_params && values.configuration_parameters.strategy_specific_params.trim() !== "") {
+        try {
+            strategyParamsObject = JSON.parse(values.configuration_parameters.strategy_specific_params);
+        } catch (e) {
+            form.setError("configuration_parameters.strategy_specific_params", {
+                type: "manual",
+                message: "Strategy Specific Parameters must be a valid JSON string or empty.",
+            });
+            setIsSubmitting(false);
+            return;
+        }
     }
 
+    const apiPayload: CreateAgentClientPayload = {
+      agent_name: values.agent_name,
+      assigned_strategy_id: values.assigned_strategy_id,
+      configuration_parameters: {
+        ...values.configuration_parameters,
+        // Ensure llm_identifier is null if empty string was selected, Zod transform handles this
+        llm_identifier: values.configuration_parameters.llm_identifier || null,
+        strategy_specific_params: strategyParamsObject,
+        // tools are not directly in form, default to null or omit if Pydantic handles default
+        tools: values.configuration_parameters.tools || null, 
+      },
+      initial_capital: values.initial_capital,
+      funding_currency: values.funding_currency,
+      description: values.description || null,
+    };
+
     try {
-      const payload: CreateAgentPayload = {
-        name: values.name,
-        strategy_id: values.strategy_id,
-        configuration_parameters: parsedConfigParams,
-        initial_capital: values.initial_capital,
-        funding_currency: values.funding_currency,
-      };
-      
-      const createdAgent = await createTradingAgent(payload);
+      const createdAgent = await createTradingAgent(apiPayload);
       
       toast({
         title: "Agent Creation Successful",
@@ -156,7 +199,7 @@ export function AgentCreationForm({ strategies, userWallets, onSuccess }: AgentC
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         <FormField
           control={form.control}
-          name="name"
+          name="agent_name"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Agent Name</FormLabel>
@@ -171,7 +214,7 @@ export function AgentCreationForm({ strategies, userWallets, onSuccess }: AgentC
 
         <FormField
           control={form.control}
-          name="strategy_id"
+          name="assigned_strategy_id"
           render={({ field }) => (
             <FormItem>
               <FormLabel>Trading Strategy</FormLabel>
@@ -196,19 +239,26 @@ export function AgentCreationForm({ strategies, userWallets, onSuccess }: AgentC
         />
         
         <FormField
+          // Removed old Textarea for configuration_parameters
+        />
+
+        {/* New Structured Configuration Fields */}
+        <CrewAgentConfigFormFields form={form} availableLlms={availableLlms} />
+        
+        <FormField
           control={form.control}
-          name="configuration_parameters"
+          name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Configuration Parameters (JSON)</FormLabel>
+              <FormLabel>Description (Optional)</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder='{ "param1": "value1", "param2": 123 }'
-                  className="min-h-[100px] font-mono"
+                  placeholder="Briefly describe this agent's purpose or any specific notes."
                   {...field}
+                  value={field.value ?? ''} // Handle null value for textarea
                 />
               </FormControl>
-              <FormDescription>Strategy-specific parameters in JSON format.</FormDescription>
+              <FormDescription>An optional description for this agent.</FormDescription>
               <FormMessage />
             </FormItem>
           )}
