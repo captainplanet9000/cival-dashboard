@@ -2,18 +2,14 @@
 
 import { useState, useEffect } from 'react'
 import { 
-  Database, 
+  Command, 
+  Play, 
+  Pause, 
   Plus, 
-  Trash2, 
-  Edit, 
-  ArrowUpDown, 
-  AlertOctagon, 
-  CheckCircle2, 
-  Activity,
-  Users,
-  RefreshCw,
-  BarChart2,
-  DollarSign,
+  Database, 
+  Brain, 
+  MessageSquare, 
+  Activity, 
   ChevronRight,
   ChevronDown,
   Search
@@ -110,35 +106,137 @@ const farmData: Farm[] = [
 
 // Farm Status Card Component
 const FarmStatusCard = () => {
+  const { farmData, stats = { 
+    farms: { 
+      activeFarms: 0, 
+      totalFarms: 0,
+      pausedFarms: 0,
+      errorFarms: 0
+    },
+    messageBus: {
+      load: 0,
+      successRate: 0,
+      messagesProcessed24h: 0
+    },
+    strategyDocuments: {
+      totalCount: 0,
+      byType: {}
+    },
+    infrastructure: {
+      cpuUtilization: 0,
+      memoryUtilization: 0,
+      networkUtilization: 0
+    }
+  }} = useFarmManagement();
+  
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-primary/10 mr-4">
-          <Database className="h-6 w-6 text-primary" />
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      {/* Farm Status Card */}
+      <div className="border rounded-lg p-4 shadow-sm">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Active Farms</h3>
+            <div className="mt-2 flex items-center">
+              <span className="text-2xl font-bold">{stats?.farms?.activeFarms || 0}</span>
+              <span className="text-sm text-muted-foreground ml-2">/ {stats?.farms?.totalFarms || 0}</span>
+            </div>
+          </div>
+          <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+            <Database className="h-5 w-5 text-green-500 dark:text-green-400" />
+          </div>
         </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Active Farms</p>
-          <p className="text-2xl font-bold">2</p>
+        <div className="mt-2">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+            <div 
+              className="bg-green-500 h-2.5 rounded-full" 
+              style={{ 
+                width: `${stats?.farms?.totalFarms > 0 ? (stats?.farms?.activeFarms / stats?.farms?.totalFarms) * 100 : 0}%` 
+              }}
+            ></div>
+          </div>
+        </div>
+        <div className="mt-2 flex justify-between items-center text-xs text-muted-foreground">
+          <div>{stats?.farms?.pausedFarms || 0} Paused</div>
+          <div>{stats?.farms?.errorFarms || 0} Error</div>
         </div>
       </div>
       
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-success/10 mr-4">
-          <DollarSign className="h-6 w-6 text-success" />
-        </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Total Capital</p>
-          <p className="text-2xl font-bold">$100,000</p>
+      {/* Paused Farms Card */}
+      <div className="border rounded-lg p-4 shadow-sm">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Paused Farms</h3>
+            <div className="mt-2 flex items-center">
+              <span className="text-2xl font-bold">{stats?.farms?.pausedFarms || 0}</span>
+              <span className="text-sm text-muted-foreground ml-2">/ {stats?.farms?.totalFarms || 0}</span>
+            </div>
+          </div>
+          <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+            <Pause className="h-5 w-5 text-yellow-500 dark:text-yellow-400" />
+          </div>
         </div>
       </div>
       
-      <div className="dashboard-card flex items-center">
-        <div className="p-3 rounded-full bg-accent/10 mr-4">
-          <Users className="h-6 w-6 text-accent" />
+      {/* Message Bus Card */}
+      <div className="border rounded-lg p-4 shadow-sm">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Message Bus</h3>
+            <div className="mt-2 flex items-center">
+              <span className="text-2xl font-bold">{stats?.messageBus?.load || 0}%</span>
+              <span className="text-sm text-muted-foreground ml-2">Throughput</span>
+            </div>
+          </div>
+          <div className="p-2 bg-purple-100 dark:bg-purple-900 rounded-lg">
+            <MessageSquare className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+          </div>
         </div>
-        <div>
-          <p className="text-muted-foreground text-sm">Total Agents</p>
-          <p className="text-2xl font-bold">11</p>
+        <div className="mt-2">
+          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+            <div 
+              className={`h-2.5 rounded-full ${
+                stats?.messageBus?.load > 80 ? 'bg-red-500' : 
+                stats?.messageBus?.load > 60 ? 'bg-yellow-500' : 
+                'bg-purple-500'
+              }`} 
+              style={{ width: `${stats?.messageBus?.load}%` }}
+            ></div>
+          </div>
+        </div>
+        <div className="mt-2 text-xs text-muted-foreground">
+          <div>Last sync: {new Date().toLocaleTimeString()}</div>
+        </div>
+      </div>
+      
+      {/* Strategy Documents Card */}
+      <div className="border rounded-lg p-4 shadow-sm">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="text-sm font-medium text-muted-foreground">Knowledge Base</h3>
+            <div className="mt-2 flex items-center">
+              <span className="text-2xl font-bold">{stats?.strategyDocuments?.totalCount || 0}</span>
+              <span className="text-sm text-muted-foreground ml-2">Documents</span>
+            </div>
+          </div>
+          <div className="p-2 bg-amber-100 dark:bg-amber-900 rounded-lg">
+            <FileText className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+          </div>
+        </div>
+        <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="h-1.5 bg-green-200 dark:bg-green-900 rounded-full">
+            <div className="bg-green-500 h-1.5 rounded-full w-[65%]"></div>
+          </div>
+          <div className="h-1.5 bg-blue-200 dark:bg-blue-900 rounded-full">
+            <div className="bg-blue-500 h-1.5 rounded-full w-[42%]"></div>
+          </div>
+          <div className="h-1.5 bg-purple-200 dark:bg-purple-900 rounded-full">
+            <div className="bg-purple-500 h-1.5 rounded-full w-[78%]"></div>
+          </div>
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+          <div className="text-muted-foreground">Strategy</div>
+          <div className="text-muted-foreground">Market</div>
+          <div className="text-muted-foreground">Trading</div>
         </div>
       </div>
     </div>
@@ -383,5 +481,5 @@ export default function FarmManagementPage() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

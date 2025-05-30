@@ -130,6 +130,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <div className="text-xs text-muted-foreground">
                 Trading Farm v1.5.2
               </div>
+
+              {/* ElizaOS Console Container */}
+              <ElizaConsoleContainer agents={agents} onAgentChange={handleAgentChange} />
             </div>
           </div>
           </div>
