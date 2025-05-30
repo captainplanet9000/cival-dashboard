@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElizaOS Trading Farm - Alchemy Enhanced</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2ecc71;
+            --dark-color: #1e293b;
+            --light-color: #f8fafc;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
+            --success-color: #2ecc71;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            color: #333;
+        }
+        
+        .navbar {
+            background-color: var(--dark-color);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .navbar-brand {
+            font-weight: bold;
+            color: white;
+        }
+        
+        .card {
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            margin-bottom: 20px;
+            border: none;
+        }
+        
+        .card-header {
+            background-color: white;
+            border-bottom: 1px solid #eee;
+            font-weight: bold;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0 !important;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+        
+        .btn-success {
+            background-color: var(--secondary-color);
+            border-color: var(--secondary-color);
+        }
+        
+        .nav-pills .nav-link.active {
+            background-color: var(--primary-color);
+        }
+        
+        .badge-primary {
+            background-color: var(--primary-color);
+        }
+        
+        .badge-success {
+            background-color: var(--secondary-color);
+        }
+        
+        .badge-warning {
+            background-color: var(--warning-color);
+            color: white;
+        }
+        
+        .badge-danger {
+            background-color: var(--danger-color);
+        }
+        
+        .network-badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 5px;
+        }
+        
+        .network-ethereum {
+            background-color: #627eea;
+            color: white;
+        }
+        
+        .network-polygon {
+            background-color: #8247e5;
+            color: white;
+        }
+        
+        .network-arbitrum {
+            background-color: #28a0f0;
+            color: white;
+        }
+        
+        .network-optimism {
+            background-color: #ff0420;
+            color: white;
+        }
+        
+        .network-base {
+            background-color: #0052ff;
+            color: white;
+        }
+        
+        .chain-switch {
+            cursor: pointer;
+            padding: 5px 15px;
+            border-radius: 20px;
+            margin: 0 5px;
+            background-color: #f8f9fa;
+            color: #333;
+            border: 1px solid #dee2e6;
+            transition: all 0.2s;
+        }
+        
+        .chain-switch:hover, .chain-switch.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        
+        .toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+        
+        /* Loading spinner */
+        .spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            visibility: hidden;
+        }
+        
+        .spinner-container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Spinner -->
+    <div class="spinner-overlay" id="loadingSpinner">
+        <div class="spinner-container">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <div class="mt-3" id="loadingMessage">Loading...</div>
+        </div>
+    </div>
+
+    <!-- Notification Area -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-robot me-2"></i>ElizaOS Trading Farm
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-bs-toggle="tab" data-bs-target="#dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#wallets">
+                            <i class="fas fa-wallet me-1"></i>Wallets
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#bossman">
+                            <i class="fas fa-user-tie me-1"></i>Bossman
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="tab" data-bs-target="#blockchain">
+                            <i class="fas fa-cubes me-1"></i>Blockchain
+                        </a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center">
+                    <div class="chain-switches me-3">
+                        <span class="chain-switch active" data-network="ethereum" title="Ethereum">
+                            <i class="fab fa-ethereum"></i>
+                        </span>
+                        <span class="chain-switch" data-network="polygon" title="Polygon">
+                            <i class="fas fa-octagon"></i>
+                        </span>
+                        <span class="chain-switch" data-network="arbitrum" title="Arbitrum">
+                            <i class="fas fa-prism"></i>
+                        </span>
+                    </div>
+                    <button class="btn btn-sm btn-outline-light" id="connectButton">
+                        <i class="fas fa-plug me-1"></i>Connect
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid py-4">
+        <div class="tab-content">
+            <!-- Dashboard Tab -->
+            <div class="tab-pane fade show active" id="dashboard">
+                <div class="row">
+                    <div class="col-md-12 mb-4">
+                        <div class="card">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <div>
+                                    <i class="fas fa-tachometer-alt me-2"></i>
+                                    Trading Farm Overview
+                                </div>
+                                <button class="btn btn-sm btn-primary" id="refreshDashboard">
+                                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6>Active Agents</h6>
+                                                <h2 id="activeAgentsCount">0</h2>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6>Wallets</h6>
+                                                <h2 id="walletsCount">0</h2>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6>Total Assets</h6>
+                                                <h2 id="totalAssets">0.00 ETH</h2>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6>Networks</h6>
+                                                <h2 id="networksCount">0</h2>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Individual Dashboard sections will be loaded here -->
+                <div id="dashboardWalletsSection"></div>
+                <div id="dashboardBossmanSection"></div>
+                <div id="dashboardBlockchainSection"></div>
+            </div>
+            
+            <!-- Wallet Tab -->
+            <div class="tab-pane fade" id="wallets">
+                <!-- Wallet Management section will be loaded here -->
+                <div id="walletManagementSection"></div>
+            </div>
+            
+            <!-- Bossman Tab -->
+            <div class="tab-pane fade" id="bossman">
+                <!-- Bossman Controller section will be loaded here -->
+                <div id="bossmanControllerSection"></div>
+            </div>
+            
+            <!-- Blockchain Tab -->
+            <div class="tab-pane fade" id="blockchain">
+                <!-- Blockchain Monitoring section will be loaded here -->
+                <div id="blockchainMonitoringSection"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Main Application Logic -->
+    <script>
+        // Base API URL
+        const API_BASE_URL = window.location.origin;
+        
+        // Current network
+        let currentNetwork = 'ethereum';
+        
+        // Show loading spinner
+        function showLoading(message = 'Loading...') {
+            document.getElementById('loadingMessage').textContent = message;
+            document.getElementById('loadingSpinner').style.visibility = 'visible';
+        }
+        
+        // Hide loading spinner
+        function hideLoading() {
+            document.getElementById('loadingSpinner').style.visibility = 'hidden';
+        }
+        
+        // Show notification toast
+        function showToast(message, type = 'success') {
+            const toastContainer = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.classList.add('toast', 'show');
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', 'assertive');
+            toast.setAttribute('aria-atomic', 'true');
+            
+            let bgColor = 'bg-success';
+            let icon = 'fas fa-check-circle';
+            
+            if (type === 'error') {
+                bgColor = 'bg-danger';
+                icon = 'fas fa-exclamation-circle';
+            } else if (type === 'warning') {
+                bgColor = 'bg-warning';
+                icon = 'fas fa-exclamation-triangle';
+            } else if (type === 'info') {
+                bgColor = 'bg-info';
+                icon = 'fas fa-info-circle';
+            }
+            
+            toast.innerHTML = `
+                <div class="toast-header ${bgColor} text-white">
+                    <i class="${icon} me-2"></i>
+                    <strong class="me-auto">ElizaOS</strong>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                </div>
+                <div class="toast-body">
+                    ${message}
+                </div>
+            `;
+            
+            toastContainer.appendChild(toast);
+            
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    toastContainer.removeChild(toast);
+                }, 500);
+            }, 5000);
+        }
+        
+        // Fetch data from API
+        async function fetchAPI(endpoint, method = 'GET', data = null) {
+            showLoading();
+            
+            try {
+                const options = {
+                    method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+                
+                if (data && (method === 'POST' || method === 'PUT')) {
+                    options.body = JSON.stringify(data);
+                }
+                
+                const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+                const responseData = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(responseData.detail || 'An error occurred');
+                }
+                
+                return responseData;
+            } catch (error) {
+                showToast(error.message, 'error');
+                console.error('API Error:', error);
+                return null;
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Initialize the application
+        async function initializeApp() {
+            // Set up network switching
+            document.querySelectorAll('.chain-switch').forEach(switch => {
+                switch.addEventListener('click', function() {
+                    const network = this.getAttribute('data-network');
+                    document.querySelectorAll('.chain-switch').forEach(s => s.classList.remove('active'));
+                    this.classList.add('active');
+                    currentNetwork = network;
+                    showToast(`Switched to ${network.charAt(0).toUpperCase() + network.slice(1)} network`, 'info');
+                    refreshDashboard();
+                });
+            });
+            
+            // Set up refresh button
+            document.getElementById('refreshDashboard').addEventListener('click', refreshDashboard);
+            
+            // Initial dashboard refresh
+            refreshDashboard();
+            
+            // Load component sections
+            loadComponents();
+        }
+        
+        // Refresh dashboard data
+        async function refreshDashboard() {
+            showLoading('Refreshing dashboard...');
+            
+            try {
+                // Fetch wallet count
+                const walletsResponse = await fetchAPI('/alchemy/wallets');
+                if (walletsResponse && walletsResponse.success) {
+                    document.getElementById('walletsCount').textContent = walletsResponse.wallets.length;
+                    
+                    // Calculate total assets
+                    let totalAssets = 0;
+                    walletsResponse.wallets.forEach(wallet => {
+                        if (wallet.network === currentNetwork && wallet.balance) {
+                            totalAssets += wallet.balance;
+                        }
+                    });
+                    
+                    document.getElementById('totalAssets').textContent = `${totalAssets.toFixed(4)} ${currentNetwork === 'ethereum' ? 'ETH' : 'MATIC'}`;
+                }
+                
+                // Fetch Bossman status for agent count
+                const bossmanResponse = await fetchAPI('/bossman/status');
+                if (bossmanResponse && bossmanResponse.success) {
+                    document.getElementById('activeAgentsCount').textContent = bossmanResponse.status.metrics.agents_monitored || 0;
+                    document.getElementById('networksCount').textContent = (bossmanResponse.status.metrics.chains_monitored || []).length;
+                }
+                
+                showToast('Dashboard refreshed successfully', 'success');
+            } catch (error) {
+                showToast('Error refreshing dashboard', 'error');
+                console.error('Dashboard refresh error:', error);
+            } finally {
+                hideLoading();
+            }
+        }
+        
+        // Load component sections
+        function loadComponents() {
+            // Load HTML sections via fetch
+            loadComponent('walletManagementSection', '/alchemy_wallet_section.html');
+            loadComponent('bossmanControllerSection', '/alchemy_bossman_section.html');
+            loadComponent('blockchainMonitoringSection', '/alchemy_blockchain_section.html');
+            
+            // Also load dashboard sections
+            loadComponent('dashboardWalletsSection', '/alchemy_dashboard_wallets.html');
+            loadComponent('dashboardBossmanSection', '/alchemy_dashboard_bossman.html');
+            loadComponent('dashboardBlockchainSection', '/alchemy_dashboard_blockchain.html');
+        }
+        
+        // Load component section
+        async function loadComponent(elementId, htmlPath) {
+            try {
+                const response = await fetch(htmlPath);
+                if (response.ok) {
+                    const html = await response.text();
+                    document.getElementById(elementId).innerHTML = html;
+                } else {
+                    console.warn(`Failed to load component: ${htmlPath}`);
+                    document.getElementById(elementId).innerHTML = `<div class="alert alert-warning">Failed to load component</div>`;
+                }
+            } catch (error) {
+                console.error(`Error loading component ${htmlPath}:`, error);
+                document.getElementById(elementId).innerHTML = `<div class="alert alert-danger">Error loading component</div>`;
+            }
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializeApp);
+    </script>
+</body>
+</html>

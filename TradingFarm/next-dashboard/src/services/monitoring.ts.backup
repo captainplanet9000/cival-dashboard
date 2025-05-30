@@ -1,0 +1,251 @@
+
+import { createClient } from '@supabase/supabase-js';
+import type { Redis } from '@upstash/redis';
+import { Client, Counter, Registry } from 'prometheus-client';
+import cron from 'node-cron';
+
+// Monitoring metrics
+const registry = new Registry();
+const apiCallCounter = new Counter({
+  name: 'trading_farm_api_calls_total',
+  help: 'Total number of API calls',
+  labelNames: ['endpoint', 'status']
+});
+const exchangeCallCounter = new Counter({
+  name: 'trading_farm_exchange_calls_total',
+  help: 'Total number of exchange API calls',
+  labelNames: ['exchange', 'status']
+});
+const tradingOperationCounter = new Counter({
+  name: 'trading_farm_trading_operations_total',
+  help: 'Total number of trading operations',
+  labelNames: ['operation', 'status']
+});
+const errorCounter = new Counter({
+  name: 'trading_farm_errors_total',
+  help: 'Total number of errors',
+  labelNames: ['type', 'component']
+});
+
+registry.registerMetric(apiCallCounter);
+registry.registerMetric(exchangeCallCounter);
+registry.registerMetric(tradingOperationCounter);
+registry.registerMetric(errorCounter);
+
+export class MonitoringService {
+  private supabase;
+  private redis: Redis | null = null;
+  private static instance: MonitoringService;
+  
+  private constructor() {
+    // Initialize Supabase client
+    this.supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    );
+    
+    // Initialize Redis client if URL is provided
+    if (process.env.REDIS_URL) {
+      import('@upstash/redis').then(({ Redis }) => {
+        this.redis = new Redis({
+          url: process.env.REDIS_URL || '',
+          token: process.env.REDIS_TOKEN || '',
+        });
+      }).catch(err => {
+        console.error('Failed to initialize Redis:', err);
+      });
+    }
+    
+    // Schedule health checks
+    this.scheduleHealthChecks();
+  }
+  
+  public static getInstance(): MonitoringService {
+    if (!MonitoringService.instance) {
+      MonitoringService.instance = new MonitoringService();
+    }
+    return MonitoringService.instance;
+  }
+  
+  /**
+   * Track API call
+   */
+  public trackApiCall(endpoint: string, status: number): void {
+    apiCallCounter.inc({ endpoint, status: status.toString() });
+    
+    // Log to Supabase for long-term storage
+    this.logEvent('api_call', {
+      endpoint,
+      status,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('Failed to log API call:', err));
+  }
+  
+  /**
+   * Track exchange API call
+   */
+  public trackExchangeCall(exchange: string, status: number): void {
+    exchangeCallCounter.inc({ exchange, status: status.toString() });
+    
+    // Log to Supabase for long-term storage
+    this.logEvent('exchange_call', {
+      exchange,
+      status,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('Failed to log exchange call:', err));
+  }
+  
+  /**
+   * Track trading operation
+   */
+  public trackTradingOperation(operation: string, status: string): void {
+    tradingOperationCounter.inc({ operation, status });
+    
+    // Log to Supabase for long-term storage
+    this.logEvent('trading_operation', {
+      operation,
+      status,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('Failed to log trading operation:', err));
+  }
+  
+  /**
+   * Track error
+   */
+  public trackError(type: string, component: string, error: Error): void {
+    errorCounter.inc({ type, component });
+    
+    // Log to Supabase for long-term storage
+    this.logEvent('error', {
+      type,
+      component,
+      message: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    }).catch(err => console.error('Failed to log error:', err));
+  }
+  
+  /**
+   * Log event to Supabase
+   */
+  private async logEvent(eventType: string, data: any): Promise<void> {
+    try {
+      const { error } = await this.supabase
+        .from('monitoring_events')
+        .insert([{
+          event_type: eventType,
+          data
+        }]);
+      
+      if (error) {
+        throw error;
+      }
+    } catch (err) {
+      console.error('Failed to log event to Supabase:', err);
+      // Fallback to Redis if available
+      if (this.redis) {
+        const key = `monitoring:${eventType}:${Date.now()}`;
+        await this.redis.set(key, JSON.stringify(data));
+        await this.redis.expire(key, 60 * 60 * 24 * 7); // 7 days TTL
+      }
+    }
+  }
+  
+  /**
+   * Check database health
+   */
+  private async checkDatabaseHealth(): Promise<boolean> {
+    try {
+      const startTime = Date.now();
+      const { data, error } = await this.supabase.from('health_check').select('*').limit(1);
+      const responseTime = Date.now() - startTime;
+      
+      if (error) {
+        this.trackError('database', 'health_check', new Error(error.message));
+        return false;
+      }
+      
+      // Log response time to Redis for performance tracking
+      if (this.redis) {
+        await this.redis.lpush('db_response_times', responseTime);
+        await this.redis.ltrim('db_response_times', 0, 999); // Keep last 1000 measurements
+      }
+      
+      return true;
+    } catch (err) {
+      this.trackError('database', 'health_check', err instanceof Error ? err : new Error(String(err)));
+      return false;
+    }
+  }
+  
+  /**
+   * Schedule periodic health checks
+   */
+  private scheduleHealthChecks(): void {
+    // Check database health every 5 minutes
+    cron.schedule('*/5 * * * *', async () => {
+      const isHealthy = await this.checkDatabaseHealth();
+      console.log(`Database health check: ${isHealthy ? 'HEALTHY' : 'UNHEALTHY'}`);
+      
+      if (!isHealthy) {
+        // Alert on database health issues
+        this.triggerAlert('Database health check failed', 'HIGH');
+      }
+    });
+    
+    // Check Redis health if available
+    if (this.redis) {
+      cron.schedule('*/10 * * * *', async () => {
+        try {
+          const startTime = Date.now();
+          await this.redis?.ping();
+          const responseTime = Date.now() - startTime;
+          
+          // Log response time
+          await this.redis?.lpush('redis_response_times', responseTime);
+          await this.redis?.ltrim('redis_response_times', 0, 999);
+          
+          console.log('Redis health check: HEALTHY');
+        } catch (err) {
+          console.log('Redis health check: UNHEALTHY');
+          this.trackError('redis', 'health_check', err instanceof Error ? err : new Error(String(err)));
+          this.triggerAlert('Redis health check failed', 'HIGH');
+        }
+      });
+    }
+  }
+  
+  /**
+   * Trigger alert for critical issues
+   */
+  private async triggerAlert(message: string, severity: 'LOW' | 'MEDIUM' | 'HIGH'): Promise<void> {
+    try {
+      // Log alert to database
+      const { error } = await this.supabase
+        .from('system_alerts')
+        .insert([{
+          message,
+          severity,
+          resolved: false,
+          timestamp: new Date().toISOString()
+        }]);
+      
+      if (error) {
+        console.error('Failed to log alert:', error);
+      }
+      
+      // Additional alert channels can be integrated here (email, SMS, etc.)
+    } catch (err) {
+      console.error('Failed to trigger alert:', err);
+    }
+  }
+  
+  /**
+   * Get metrics in Prometheus format
+   */
+  public getMetrics(): string {
+    return registry.metrics();
+  }
+}
+
+export default MonitoringService.getInstance();

@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: 'ElizaOS AI Trading Dashboard'
+    orgId: 1
+    folder: 'ElizaOS'
+    folderUid: ''
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false

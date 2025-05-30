@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Farm API Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        button {
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Trading Farm API Test</h1>
+    
+    <div>
+        <h2>API Endpoints</h2>
+        <button onclick="testFarms()">Get Farms</button>
+        <button onclick="testStatus()">Get API Status</button>
+        <button onclick="testFarmAgents('1')">Get Farm Agents</button>
+        <button onclick="testFarmVaultBalances('1')">Get Vault Balances</button>
+    </div>
+
+    <div>
+        <h2>Create Test Data</h2>
+        <button onclick="createTestFarm()">Create Farm</button>
+        <button onclick="createTestAgent()">Create Agent</button>
+    </div>
+    
+    <div>
+        <h2>Response:</h2>
+        <pre id="response">Click a button to test an API endpoint...</pre>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000';
+        const responseElement = document.getElementById('response');
+        
+        function displayResponse(data) {
+            responseElement.textContent = JSON.stringify(data, null, 2);
+        }
+        
+        function displayError(error) {
+            responseElement.textContent = `Error: ${error.message}`;
+            console.error('API Error:', error);
+        }
+        
+        async function testFarms() {
+            try {
+                const response = await fetch(`${API_URL}/farms`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+        
+        async function testStatus() {
+            try {
+                const response = await fetch(`${API_URL}/status`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+        
+        async function testFarmAgents(farmId) {
+            try {
+                const response = await fetch(`${API_URL}/farms/${farmId}/agents`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+        
+        async function testFarmVaultBalances(farmId) {
+            try {
+                const response = await fetch(`${API_URL}/farms/${farmId}/vault/balances`);
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+
+        async function createTestFarm() {
+            try {
+                const response = await fetch(`${API_URL}/farms`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: "Test Farm " + new Date().toISOString(),
+                        description: "A test farm created from the API test page",
+                        owner_id: "test-user-123",
+                        settings: {
+                            riskLevel: "medium",
+                            autoRebalance: true
+                        }
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+
+        async function createTestAgent() {
+            try {
+                // First get a farm ID from existing farms
+                const farmsResponse = await fetch(`${API_URL}/farms`);
+                const farms = await farmsResponse.json();
+                
+                if (farms.length === 0) {
+                    displayResponse({ error: "No farms found. Create a farm first!" });
+                    return;
+                }
+                
+                const farmId = farms[0].id;
+                
+                const response = await fetch(`${API_URL}/agents`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: "Test Agent " + new Date().toISOString(),
+                        description: "A test agent created from the API test page",
+                        farm_id: farmId,
+                        type: "standard",
+                        capabilities: ["trading", "monitoring"],
+                        eliza_config: {},
+                        metadata: {}
+                    })
+                });
+                const data = await response.json();
+                displayResponse(data);
+            } catch (error) {
+                displayError(error);
+            }
+        }
+    </script>
+</body>
+</html> 

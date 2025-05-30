@@ -1,0 +1,35 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_VERSION = "9"
+
+# Production context
+[context.production]
+  command = "npm run build"
+
+# Deploy Preview context
+[context.deploy-preview]
+  command = "npm run build"
+
+# Branch Deploy context
+[context.branch-deploy]
+  command = "npm run build"
+
+# Define redirects
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Define headers
+[[headers]]
+  for = "/*"
+    [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "same-origin"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openrouter.ai https://*.openai.com https://*.anthropic.com https://*.googleapis.com;"
