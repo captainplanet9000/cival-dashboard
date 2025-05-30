@@ -26,7 +26,8 @@ from services.vault_manager import VaultManager
 from services.strategy_optimizer import StrategyOptimizer
 from utils.google_sdk_bridge import GoogleSDKBridge
 from utils.a2a_protocol import A2AProtocol
-from types.trading_types import *
+from types.trading_types import * # Assuming TradingDecision is in here
+from crews.trading_crew_service import TradingCrewService, TradingCrewRequest # Added
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -97,6 +98,16 @@ async def lifespan(app: FastAPI):
     for agent_name, agent in services.items():
         if hasattr(agent, 'register_with_a2a'):
             await agent.register_with_a2a()
+
+    # Initialize TradingCrewService
+    try:
+        trading_crew_service = TradingCrewService()
+        services["trading_crew_service"] = trading_crew_service
+        logger.info("TradingCrewService initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize TradingCrewService: {e}. Crew AI endpoints may not function.")
+        # Decide if this is fatal or if app can run without it
+        # For now, allow app to run, but log error.
     
     logger.info("✅ All PydanticAI services initialized")
     yield
@@ -210,11 +221,66 @@ async def deep_health_check(request: Request):
     # http_status_code = 503
     # dependencies.append({"name": "supabase", "status": "disconnected", "error": "reason"})
 
+    # 3. Check TradingCrewService (conceptual, if it had its own checkable dependencies)
+    if services.get("trading_crew_service"):
+        # Placeholder: In a real scenario, TradingCrewService might have a health_check method
+        # e.g., if it pre-loads models or connects to other specific resources.
+        # For now, just acknowledge its presence if initialized.
+        dependencies.append({"name": "trading_crew_service", "status": "initialized_or_not_checked"})
+        logger.info("Deep health check: TradingCrewService is registered (further checks would be internal to service).")
+    else:
+        dependencies.append({"name": "trading_crew_service", "status": "not_initialized"})
+        logger.warning("Deep health check: TradingCrewService not initialized.")
+        # Depending on criticality, this might set overall_status to unhealthy
+        # overall_status = "unhealthy"
+        # http_status_code = 503
+
 
     return JSONResponse(
         status_code=http_status_code,
         content={"overall_status": overall_status, "dependencies": dependencies}
     )
+
+# --- Crew AI Endpoints ---
+
+@app.post("/api/v1/crews/trading/analyze", response_model=TradingDecision, summary="Run Trading Analysis Crew", tags=["Crew AI Workflows"])
+async def run_trading_crew_analysis(request_data: TradingCrewRequest):
+    """
+    Initiates a trading analysis using a predefined CrewAI workflow.
+    This involves multiple AI agents collaborating to produce a trading decision.
+
+    Requires:
+    - `symbol`: The financial instrument to analyze (e.g., "BTC/USD").
+    - `timeframe`: The timeframe for analysis (e.g., "1h", "4h").
+    - `strategy_name`: Name of the strategy to consider (used to inform tasks).
+    - `llm_config_id`: Identifier for the LLM configuration to be used by the crew agents.
+    """
+    logger.info(f"Received request for trading crew analysis: {request_data.dict()}")
+    trading_crew_service = services.get("trading_crew_service")
+    if not trading_crew_service:
+        logger.error("Trading Crew Service not available at endpoint call.")
+        raise HTTPException(status_code=503, detail="Trading Crew Service not available.")
+
+    try:
+        # The TradingCrewService.run_analysis method is defined to take the TradingCrewRequest directly
+        trade_signal = await trading_crew_service.run_analysis(request_data)
+
+        if trade_signal is None:
+            logger.error(f"Trading crew analysis for {request_data.symbol} resulted in an empty signal.")
+            raise HTTPException(status_code=500, detail="Crew analysis resulted in an unexpected empty signal.")
+
+        return trade_signal
+    except ValueError as ve:
+        logger.error(f"Input validation error during trading crew analysis for {request_data.symbol}: {ve}")
+        raise HTTPException(status_code=400, detail=str(ve)) # Bad request for value errors
+    except NotImplementedError as nie:
+        logger.error(f"Feature not implemented during trading crew analysis for {request_data.symbol}: {nie}")
+        raise HTTPException(status_code=501, detail=str(nie)) # Not Implemented
+    except Exception as e:
+        # This log provides specific context before the global handler takes over
+        logger.error(f"Unexpected error during trading crew analysis for {request_data.symbol}: {e}")
+        raise # Re-raise for the global exception handler to process
+
 
 # Enhanced AI Agent Endpoints
 @app.post("/api/agents/trading-coordinator/analyze")
