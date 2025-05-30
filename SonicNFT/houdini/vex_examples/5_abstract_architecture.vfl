@@ -1,0 +1,127 @@
+// Abstract Architecture Generator
+// Node setup:
+// 1. Box SOP for base geometry
+// 2. Point Wrangle (this code) for architectural elements
+// 3. PolyExtrude for creating volumes
+// 4. Subdivide for smooth surfaces
+// 5. Material SOP for rendering
+
+// Parameters to expose in UI
+// float seed = ch("seed");                    // Global seed
+// float building_height = chf("height");      // Overall height
+// float complexity = chf("complexity");       // Building complexity
+// float symmetry = chf("symmetry");          // Symmetry amount
+// vector primary_color = chv("color1");      // Primary building color
+// vector accent_color = chv("color2");       // Accent color
+// float window_density = chf("windows");     // Density of windows
+
+// Initialize position and seed
+vector pos = @P;
+float seed = ch("seed") + @ptnum;
+
+// Create base building structure
+float height_factor = fit(@P.y, 0, 1, 0, ch("building_height"));
+vector building_pos = pos;
+
+// Apply vertical segmentation
+float segment_height = 0.1;
+float segment = floor(pos.y / segment_height);
+float segment_offset = noise(set(segment, 0, seed)) * ch("complexity");
+
+// Create architectural features
+float feature_mask = 0;
+
+// Main structure displacement
+feature_mask += noise(pos * 2.0 + seed);
+feature_mask += noise(pos * 4.0 + seed + 123.4) * 0.5;
+feature_mask += noise(pos * 8.0 + seed + 456.7) * 0.25;
+
+// Apply symmetry if enabled
+if(ch("symmetry") > 0) {
+    // Mirror across X axis
+    vector mirror_pos = set(-pos.x, pos.y, pos.z);
+    float mirror_mask = noise(mirror_pos * 2.0 + seed);
+    feature_mask = mix(feature_mask, mirror_mask, ch("symmetry"));
+    
+    // Optional: Mirror across Z axis
+    if(ch("symmetry_z") > 0) {
+        mirror_pos = set(pos.x, pos.y, -pos.z);
+        mirror_mask = noise(mirror_pos * 2.0 + seed);
+        feature_mask = mix(feature_mask, mirror_mask, ch("symmetry_z"));
+    }
+}
+
+// Generate windows
+float window_pattern = 0;
+if(ch("enable_windows") > 0) {
+    // Create grid pattern for windows
+    float window_size = ch("window_size");
+    vector window_pos = pos * (1.0 / window_size);
+    window_pos = set(floor(window_pos.x), floor(window_pos.y), floor(window_pos.z));
+    
+    // Window probability based on position
+    float window_prob = noise(window_pos + seed);
+    if(window_prob > 1.0 - ch("window_density")) {
+        window_pattern = 1;
+        
+        // Window frame detail
+        float frame_detail = noise(pos * 20.0 + seed);
+        window_pattern *= smoothstep(0.0, 0.1, frame_detail);
+    }
+}
+
+// Apply architectural details
+vector offset = {0,0,0};
+
+// Main structure displacement
+offset += @N * feature_mask * ch("displacement");
+
+// Add geometric details
+if(ch("enable_details") > 0) {
+    // Create columnar structures
+    float column_pattern = sin(pos.x * 10.0) * sin(pos.y * 5.0) * sin(pos.z * 10.0);
+    offset += @N * column_pattern * ch("detail_amount");
+    
+    // Add decorative elements
+    float decoration = noise(pos * 15.0 + seed);
+    if(decoration > 0.7) {
+        offset += @N * smoothstep(0.7, 1.0, decoration) * ch("decoration_amount");
+    }
+}
+
+// Apply final position offset
+@P += offset;
+
+// Generate color
+vector base_color = chv("color1");
+vector accent_color = chv("color2");
+
+// Mix colors based on height and features
+float color_mix = fit(feature_mask, -1, 1, 0, 1);
+@Cd = mix(base_color, accent_color, color_mix);
+
+// Add window color
+if(window_pattern > 0) {
+    vector window_color = chv("window_color");
+    @Cd = mix(@Cd, window_color, window_pattern);
+}
+
+// Add edge highlighting
+float edge = 1.0 - abs(dot(@N, normalize(@P)));
+@Cd += edge * 0.2;
+
+// Store attributes for materials
+f@metallic = ch("enable_metallic") > 0 ? 0.8 : 0.0;
+f@roughness = fit(abs(feature_mask), 0, 1, 0.2, 0.8);
+
+// Optional: Add weathering effects
+if(ch("enable_weathering") > 0) {
+    float weathering = noise(pos * chf("weathering_scale") + seed);
+    @Cd *= 1.0 - weathering * ch("weathering_amount");
+    f@roughness = mix(f@roughness, 1.0, weathering);
+}
+
+// Store additional attributes
+f@height = height_factor;
+f@feature = feature_mask;
+i@window = window_pattern > 0 ? 1 : 0; 
