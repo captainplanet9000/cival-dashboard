@@ -1,0 +1,24 @@
+# Trading Farm - Vault Banking Service Dependencies
+
+# Web Framework
+Flask==2.2.3
+Flask-Cors==3.0.10
+
+# Database
+psycopg2-binary==2.9.5
+SQLAlchemy==2.0.7
+
+# Security
+cryptography==39.0.2
+PyJWT==2.6.0
+
+# Utilities
+python-dotenv==1.0.0
+requests==2.28.2
+pydantic==1.10.7
+
+# Logging
+structlog==23.1.0
+
+# API Integration
+ccxt==3.1.54
