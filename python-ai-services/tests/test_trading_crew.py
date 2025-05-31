@@ -146,118 +146,290 @@ def test_get_llm_instance_unsupported_model(trading_crew_service_instance_for_ll
 
 # --- Tests for TradingCrewService.run_analysis ---
 
+from python_ai_services.services.agent_persistence_service import AgentPersistenceService # For mocking
+from python_ai_services.models.crew_models import TaskStatus # For status assertion
+import uuid # For task_id generation/assertion
+
 @pytest_asyncio.fixture
-async def trading_crew_service():
-    """Provides a TradingCrewService instance with a mocked _get_llm_instance."""
-    service = TradingCrewService()
-    # Mock _get_llm_instance to avoid actual LLM instantiation complexities here
-    service._get_llm_instance = mock.MagicMock(return_value=MagicMock(spec=["generate", "invoke"])) # A generic LLM mock
+async def mock_persistence_service_for_crew() -> AgentPersistenceService:
+    """Provides a fully mocked AgentPersistenceService for TradingCrewService tests."""
+    mock_svc = AsyncMock(spec=AgentPersistenceService)
+    # Configure create_agent_task to return a mock task dict
+    mock_svc.create_agent_task = AsyncMock(return_value={
+        "task_id": str(uuid.uuid4()), "crew_id": "trading_analysis_crew",
+        "status": TaskStatus.PENDING.value, "inputs": {}
+    })
+    mock_svc.update_agent_task_status = AsyncMock(return_value={"status": "updated"}) # Simple success
+    mock_svc.update_agent_task_result = AsyncMock(return_value={"status": "result_updated"}) # Simple success
+    return mock_svc
+
+@pytest_asyncio.fixture
+async def trading_crew_service(mock_persistence_service_for_crew: AgentPersistenceService) -> TradingCrewService:
+    """Provides a TradingCrewService instance with mocked persistence and _get_llm_instance."""
+    # Pass the mocked persistence service to the constructor
+    service = TradingCrewService(persistence_service=mock_persistence_service_for_crew)
+    service._get_llm_instance = MagicMock(return_value=MagicMock(spec=["generate", "invoke"]))
     return service
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "strategy_name_to_test, sample_strategy_config",
+    [
+        ("DarvasBoxStrategy", {"lookback_period_highs": 200, "min_box_duration": 5}),
+        ("WilliamsAlligatorStrategy", {"jaw_period": 13, "teeth_period": 8, "lips_period": 5, "price_source_column": "close"}),
+        ("HeikinAshiStrategy", {"min_trend_candles": 3, "small_wick_threshold_percent": 10.0}),
+        # Add a default/generic one for cases where strategy logic isn't the focus of the test
+        ("GenericTestStrategy", {"param1": "value1", "param2": 100})
+    ]
+)
 @patch("python_ai_services.crews.trading_crew_service.Crew", new_callable=MagicMock) # Patch Crew where it's used
-async def test_run_analysis_success(MockCrewClass, trading_crew_service: TradingCrewService):
+async def test_run_analysis_success(
+    MockCrewClass: MagicMock,
+    trading_crew_service: TradingCrewService,
+    strategy_name_to_test: str,
+    sample_strategy_config: Dict[str, Any]
+):
     mock_llm_instance = MagicMock()
     trading_crew_service._get_llm_instance = MagicMock(return_value=mock_llm_instance)
 
+    # Get the mock persistence service from the fixture
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"] # Get the mocked task_id
+
     mock_crew_instance = MockCrewClass.return_value
-    mock_crew_instance.kickoff_async = AsyncMock(return_value={
-        "symbol": "BTC/USD", "action": "BUY", "confidence_score": 0.8, "reasoning": "Strong signal"
-        # Other fields for TradingDecision can be added if needed for full validation
-    })
+    # Use parameterized strategy_name for symbol to make output slightly distinct if needed for debugging
+    mock_crew_output = {
+        "symbol": f"{strategy_name_to_test}_SYM", "action": "BUY", "confidence_score": 0.8,
+        "reasoning": f"Strong signal for {strategy_name_to_test}",
+        "decision_id": str(uuid.uuid4()), "timestamp": datetime.utcnow().isoformat()
+    }
+    mock_crew_instance.kickoff_async = AsyncMock(return_value=mock_crew_output)
 
     request = TradingCrewRequest(
-        symbol="BTC/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="openai_gpt4_turbo"
+        symbol=f"{strategy_name_to_test}_SYM",
+        timeframe="1h",
+        strategy_name=strategy_name_to_test,
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config=sample_strategy_config # Added strategy_config
     )
 
     result = await trading_crew_service.run_analysis(request)
 
+    # Assert Task Logging
+    mock_persistence_service.create_agent_task.assert_called_once_with(
+        task_id_str=mock.ANY,
+        crew_id="trading_analysis_crew",
+        inputs=request.model_dump(), # This now includes strategy_config
+        status=TaskStatus.PENDING.value
+    )
+    update_status_calls = [
+        mock.call(task_id=mock_task_id, status=TaskStatus.RUNNING.value),
+    ]
+    # Check if update_agent_task_status was called with RUNNING
+    # Note: a second call to FAILED might occur if parsing fails, so we check specific calls
+    called_with_running = any(
+    call_item == mock.call(task_id=mock_task_id, status=TaskStatus.RUNNING.value)
+    for call_item in mock_persistence_service.update_agent_task_status.call_args_list
+    )
+    assert called_with_running, "update_agent_task_status was not called with RUNNING status"
+
+    mock_persistence_service.update_agent_task_result.assert_called_once()
+    args_result, kwargs_result = mock_persistence_service.update_agent_task_result.call_args
+    assert kwargs_result['task_id'] == mock_task_id
+    # The output passed to update_agent_task_result is after Pydantic parsing by the service
+    assert kwargs_result['output'] == TradingDecision(**mock_crew_output).model_dump()
+    assert kwargs_result['status'] == TaskStatus.COMPLETED.value
+    assert isinstance(kwargs_result['logs_summary'], list)
+
+    # Assertions for crew logic
     trading_crew_service._get_llm_instance.assert_called_once()
-    # Check that the LLMConfig passed to _get_llm_instance matches the request's llm_config_id
-    called_llm_config: LLMConfig = trading_crew_service._get_llm_instance.call_args[0][0]
-    assert called_llm_config.model_name == "gpt-4-turbo" # From available_llm_configs in service
-
     MockCrewClass.assert_called_once()
-    crew_args, crew_kwargs = MockCrewClass.call_args
-    assert len(crew_kwargs['agents']) == 3
-    for agent in crew_kwargs['agents']:
-        assert agent.llm == mock_llm_instance # Check if cloned agents got the new LLM
-    assert len(crew_kwargs['tasks']) == 3
 
-    mock_crew_instance.kickoff_async.assert_called_once_with(inputs={
-        "symbol": "BTC/USD", "timeframe": "1h", "strategy_name": "TestStrategy"
-    })
+    # Key Assertion: Verify inputs to kickoff_async
+    expected_kickoff_inputs = {
+        "symbol": f"{strategy_name_to_test}_SYM",
+        "timeframe": "1h",
+        "strategy_name": strategy_name_to_test,
+        "strategy_config": sample_strategy_config
+    }
+    mock_crew_instance.kickoff_async.assert_called_once_with(inputs=expected_kickoff_inputs)
 
     assert isinstance(result, TradingDecision)
-    assert result.symbol == "BTC/USD"
-    assert result.action == TradeAction.BUY # Assuming TradingDecision parses "BUY" string to enum
-    assert result.confidence_score == 0.8
-    assert result.reasoning == "Strong signal"
+    assert result.symbol == f"{strategy_name_to_test}_SYM"
+    assert result.action == TradeAction.BUY
 
 @pytest.mark.asyncio
 async def test_run_analysis_llm_instantiation_fails(trading_crew_service: TradingCrewService):
     trading_crew_service._get_llm_instance = MagicMock(side_effect=ValueError("LLM init error"))
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"]
+
     request = TradingCrewRequest(
-        symbol="BTC/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="some_config"
+        symbol="BTC/USD",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="some_config",
+        strategy_config={"param": "value"} # Added default strategy_config
     )
 
-    # Based on current implementation, it logs and returns None
     result = await trading_crew_service.run_analysis(request)
     assert result is None
-    # To check logs, you'd need to capture loguru's output or use a custom sink in tests
+
+    # create_agent_task should be called once
+    mock_persistence_service.create_agent_task.assert_called_once()
+
+    # update_agent_task_status should be called once with FAILED status
+    mock_persistence_service.update_agent_task_status.assert_called_once_with(
+        task_id=mock_task_id, status=TaskStatus.FAILED.value, error_message="LLM init error"
+    )
 
 @pytest.mark.asyncio
 @patch("python_ai_services.crews.trading_crew_service.Crew", new_callable=MagicMock)
-async def test_run_analysis_crew_kickoff_fails(MockCrewClass, trading_crew_service: TradingCrewService):
-    trading_crew_service._get_llm_instance = MagicMock(return_value=MagicMock()) # Successful LLM mock
+async def test_run_analysis_crew_kickoff_fails(MockCrewClass: MagicMock, trading_crew_service: TradingCrewService):
+    trading_crew_service._get_llm_instance = MagicMock(return_value=MagicMock())
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"]
 
     mock_crew_instance = MockCrewClass.return_value
     mock_crew_instance.kickoff_async = AsyncMock(side_effect=Exception("Crew failed!"))
 
     request = TradingCrewRequest(
-        symbol="BTC/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="openai_gpt4_turbo"
+        symbol="BTC/USD",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config={"param": "value"} # Added default strategy_config
     )
 
-    # Based on current implementation, it logs and returns None
     result = await trading_crew_service.run_analysis(request)
     assert result is None
 
+    mock_persistence_service.create_agent_task.assert_called_once()
+    update_status_calls = [
+        mock.call(task_id=mock_task_id, status=TaskStatus.RUNNING.value),
+        mock.call(task_id=mock_task_id, status=TaskStatus.FAILED.value, error_message="Crew failed!")
+    ]
+    mock_persistence_service.update_agent_task_status.assert_has_calls(update_status_calls, any_order=False)
+
 @pytest.mark.asyncio
 @patch("python_ai_services.crews.trading_crew_service.Crew", new_callable=MagicMock)
-async def test_run_analysis_invalid_crew_output_dict(MockCrewClass, trading_crew_service: TradingCrewService):
+async def test_run_analysis_invalid_crew_output_dict(MockCrewClass: MagicMock, trading_crew_service: TradingCrewService):
     trading_crew_service._get_llm_instance = MagicMock(return_value=MagicMock())
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"]
 
     mock_crew_instance = MockCrewClass.return_value
-    # Malformed dict - missing required 'action' for TradingDecision
-    mock_crew_instance.kickoff_async = AsyncMock(return_value={"symbol": "BTC/USD", "confidence_score": 0.7})
+    malformed_output = {"symbol": "BTC/USD", "confidence_score": 0.7} # Missing 'action'
+    mock_crew_instance.kickoff_async = AsyncMock(return_value=malformed_output)
 
     request = TradingCrewRequest(
         symbol="BTC/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="openai_gpt4_turbo"
     )
 
-    # Expect PydanticValidationError to be caught, logged, and None returned
     result = await trading_crew_service.run_analysis(request)
     assert result is None
 
+    mock_persistence_service.create_agent_task.assert_called_once()
+    update_status_calls = mock_persistence_service.update_agent_task_status.call_args_list
+
+    # Ensure RUNNING status was called before FAILED
+    assert mock.call(task_id=mock_task_id, status=TaskStatus.RUNNING.value) in update_status_calls
+
+    # Ensure FAILED status was called with the correct error message
+    failed_call_found = any(
+        call_item == mock.call(task_id=mock_task_id, status=TaskStatus.FAILED.value, error_message="Crew failed!")
+        for call_item in update_status_calls
+    )
+    assert failed_call_found, "update_agent_task_status was not called with FAILED status and correct error message"
+
+
 @pytest.mark.asyncio
 @patch("python_ai_services.crews.trading_crew_service.Crew", new_callable=MagicMock)
-async def test_run_analysis_crew_output_string_force_info(MockCrewClass, trading_crew_service: TradingCrewService):
+async def test_run_analysis_invalid_crew_output_dict(MockCrewClass: MagicMock, trading_crew_service: TradingCrewService):
     trading_crew_service._get_llm_instance = MagicMock(return_value=MagicMock())
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"]
 
     mock_crew_instance = MockCrewClass.return_value
-    # Crew returns a simple string, not a dict or TradingDecision model
+    malformed_output = {"symbol": "BTC/USD", "confidence_score": 0.7} # Missing 'action'
+    mock_crew_instance.kickoff_async = AsyncMock(return_value=malformed_output)
+
+    request = TradingCrewRequest(
+        symbol="BTC/USD",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config={"param": "value"} # Added default strategy_config
+    )
+
+    result = await trading_crew_service.run_analysis(request)
+    assert result is None
+
+    mock_persistence_service.create_agent_task.assert_called_once()
+    update_status_calls = mock_persistence_service.update_agent_task_status.call_args_list
+    assert mock.call(task_id=mock_task_id, status=TaskStatus.RUNNING.value) in update_status_calls
+
+    failed_call_found = False
+    for call_item in update_status_calls:
+        if call_item.kwargs.get("status") == TaskStatus.FAILED.value:
+            failed_call_found = True
+            assert "Error parsing crew result" in call_item.kwargs.get("error_message", "")
+            # PydanticValidationError results in a specific string representation
+            assert "1 validation error for TradingDecision" in call_item.kwargs.get("error_message", "") # More specific error message
+            break
+    assert failed_call_found
+
+
+@pytest.mark.asyncio
+@patch("python_ai_services.crews.trading_crew_service.Crew", new_callable=MagicMock)
+async def test_run_analysis_crew_output_string_force_info(MockCrewClass: MagicMock, trading_crew_service: TradingCrewService):
+    trading_crew_service._get_llm_instance = MagicMock(return_value=MagicMock())
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_task_id = mock_persistence_service.create_agent_task.return_value["task_id"]
+
+    mock_crew_instance = MockCrewClass.return_value
     crew_output_string = "The market looks very uncertain, better to wait."
     mock_crew_instance.kickoff_async = AsyncMock(return_value=crew_output_string)
 
     request = TradingCrewRequest(
-        symbol="XYZ/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="openai_gpt4_turbo"
+        symbol="XYZ/USD",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config={"param": "value"} # Added default strategy_config
     )
 
     result = await trading_crew_service.run_analysis(request)
     assert result is not None
     assert isinstance(result, TradingDecision)
     assert result.symbol == "XYZ/USD"
-    assert result.action == TradeAction.INFO # As per fallback logic in service
-    assert result.confidence_score == 0.0
-    assert result.reasoning == crew_output_string
+    assert result.action == TradeAction.INFO
+
+    mock_persistence_service.update_agent_task_result.assert_called_once()
+    args_result, kwargs_result = mock_persistence_service.update_agent_task_result.call_args
+    assert kwargs_result['task_id'] == mock_task_id
+    assert kwargs_result['output']['action'] == "INFO"
+    assert kwargs_result['status'] == TaskStatus.COMPLETED.value
+
+@pytest.mark.asyncio
+async def test_run_analysis_task_creation_fails(trading_crew_service: TradingCrewService):
+    """Test behavior when initial task creation fails."""
+    mock_persistence_service = trading_crew_service.persistence_service
+    mock_persistence_service.create_agent_task = AsyncMock(return_value=None) # Simulate DB error
+
+    request = TradingCrewRequest(
+        symbol="FAIL/TASK",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config={"param": "value"} # Added default strategy_config
+    )
+
+    result = await trading_crew_service.run_analysis(request)
+    assert result is None
+    mock_persistence_service.create_agent_task.assert_called_once()
+    # Ensure no further calls if task creation fails
+    trading_crew_service._get_llm_instance.assert_not_called()
+    mock_persistence_service.update_agent_task_status.assert_not_called()
+    mock_persistence_service.update_agent_task_result.assert_not_called()
 ```

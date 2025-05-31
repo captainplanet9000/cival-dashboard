@@ -1,14 +1,15 @@
 import pytest
 import pytest_asyncio
 from unittest import mock # Using unittest.mock for broader compatibility
-import httpx
-import asyncio
+import asyncio # httpx removed, asyncio might still be needed for Lock if directly tested
 from datetime import datetime
+from typing import Dict, List, Optional, Any # Added for Pydantic placeholders if needed
 
-# Attempt to import actual services and types
+# Service Imports
 from python_ai_services.services.agent_state_manager import AgentStateManager
 from python_ai_services.services.market_data_service import MarketDataService
 from python_ai_services.services.trading_coordinator import TradingCoordinator
+from python_ai_services.services.agent_persistence_service import AgentPersistenceService # Added
 
 # Attempt to import Pydantic models for A2A communication and requests
 # If these imports fail in a real test environment due to path issues or complexity,
@@ -63,8 +64,25 @@ except ImportError:
 # --- Fixtures ---
 
 @pytest_asyncio.fixture
-async def agent_state_manager_service():
-    return AgentStateManager(db_connection_string="dummy_string_not_used_in_mocked_tests")
+async def mock_persistence_service() -> AgentPersistenceService:
+    """Provides a mock AgentPersistenceService."""
+    mock_svc = mock.AsyncMock(spec=AgentPersistenceService)
+    mock_svc.get_realtime_state_from_redis = mock.AsyncMock(return_value=None)
+    mock_svc.save_realtime_state_to_redis = mock.AsyncMock(return_value=True)
+    mock_svc.get_agent_state_from_supabase = mock.AsyncMock(return_value=None)
+    mock_svc.save_agent_state_to_supabase = mock.AsyncMock(return_value=None) # Will be set in tests
+    mock_svc.delete_agent_state_from_supabase = mock.AsyncMock(return_value=True)
+    mock_svc.delete_realtime_state_from_redis = mock.AsyncMock(return_value=True)
+    mock_svc.save_agent_checkpoint_to_supabase = mock.AsyncMock(return_value=None)
+    mock_svc.get_agent_checkpoint_from_supabase = mock.AsyncMock(return_value=None)
+    return mock_svc
+
+@pytest_asyncio.fixture
+async def agent_state_manager(mock_persistence_service: AgentPersistenceService) -> AgentStateManager:
+    """Provides an AgentStateManager instance with a mocked persistence service."""
+    # Default TTL, can be overridden in specific tests if needed
+    return AgentStateManager(persistence_service=mock_persistence_service, redis_realtime_ttl_seconds=3600)
+
 
 @pytest_asyncio.fixture
 async def mock_google_sdk_bridge():
@@ -91,72 +109,265 @@ async def trading_coordinator_instance(mock_google_sdk_bridge, mock_a2a_protocol
     return service
 
 
-# --- AgentStateManager Tests ---
+# --- AgentStateManager Tests (Refactored) ---
 
 @pytest.mark.asyncio
-async def test_get_agent_state_cache_hit(agent_state_manager_service: AgentStateManager):
-    agent_id = "agent_cache_hit"
-    cached_state = {"agentId": agent_id, "state": {"data": "from_cache"}, "updatedAt": datetime.utcnow().isoformat()}
-    agent_state_manager_service.in_memory_cache[agent_id] = cached_state
+async def test_get_agent_state_in_memory_cache_hit(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_mem_hit"
+    cached_data = {"agent_id": agent_id, "state": {"data": "in_memory_data"}, "source": "memory"}
+    agent_state_manager.in_memory_cache[agent_id] = cached_data
 
-    with mock.patch("httpx.AsyncClient") as mock_async_client:
-        state = await agent_state_manager_service.get_agent_state(agent_id)
-        assert state == cached_state
-        mock_async_client.assert_not_called()
+    result = await agent_state_manager.get_agent_state(agent_id)
 
-@pytest.mark.asyncio
-async def test_get_agent_state_cache_miss_success(agent_state_manager_service: AgentStateManager):
-    agent_id = "agent_cache_miss"
-    api_response_state = {"agentId": agent_id, "state": {"data": "from_api"}, "updatedAt": datetime.utcnow().isoformat()}
-
-    mock_response = mock.Mock(spec=httpx.Response)
-    mock_response.status_code = 200
-    mock_response.json.return_value = api_response_state
-
-    mock_get = mock.AsyncMock(return_value=mock_response)
-
-    with mock.patch("httpx.AsyncClient.get", mock_get):
-        state = await agent_state_manager_service.get_agent_state(agent_id)
-        assert state == api_response_state
-        assert agent_state_manager_service.in_memory_cache[agent_id] == api_response_state
-        mock_get.assert_called_once()
+    assert result == cached_data
+    mock_persistence_service.get_realtime_state_from_redis.assert_not_called()
+    mock_persistence_service.get_agent_state_from_supabase.assert_not_called()
 
 @pytest.mark.asyncio
-async def test_get_agent_state_api_404(agent_state_manager_service: AgentStateManager):
-    agent_id = "agent_api_404"
-    mock_response = mock.Mock(spec=httpx.Response)
-    mock_response.status_code = 404
-    mock_response.text = "Not Found"
+async def test_get_agent_state_redis_hit(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_redis_hit"
+    redis_data = {"agent_id": agent_id, "state": {"data": "redis_data"}, "source": "redis"}
+    mock_persistence_service.get_realtime_state_from_redis.return_value = redis_data
 
-    mock_get = mock.AsyncMock(side_effect=httpx.HTTPStatusError("Not Found", request=mock.Mock(), response=mock_response))
+    result = await agent_state_manager.get_agent_state(agent_id)
 
-    with mock.patch("httpx.AsyncClient.get", mock_get):
-        state = await agent_state_manager_service.get_agent_state(agent_id)
-        assert state["agentId"] == agent_id
-        assert state["state"] == {} # Empty default state
-        assert agent_id in agent_state_manager_service.in_memory_cache
-        assert agent_state_manager_service.in_memory_cache[agent_id]["state"] == {}
+    assert result == redis_data
+    mock_persistence_service.get_realtime_state_from_redis.assert_called_once_with(agent_id)
+    mock_persistence_service.get_agent_state_from_supabase.assert_not_called() # Should not be called if Redis hits
+    assert agent_state_manager.in_memory_cache[agent_id] == redis_data
 
 @pytest.mark.asyncio
-async def test_update_state_field_success(agent_state_manager_service: AgentStateManager):
+async def test_get_agent_state_supabase_hit(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_supabase_hit"
+    supabase_data = {"agent_id": agent_id, "state": {"data": "supabase_data"}, "strategy_type": "default_strat", "source": "supabase"}
+    mock_persistence_service.get_realtime_state_from_redis.return_value = None # Redis miss
+    mock_persistence_service.get_agent_state_from_supabase.return_value = supabase_data
+
+    result = await agent_state_manager.get_agent_state(agent_id)
+
+    assert result == supabase_data
+    mock_persistence_service.get_realtime_state_from_redis.assert_called_once_with(agent_id)
+    mock_persistence_service.get_agent_state_from_supabase.assert_called_once_with(agent_id)
+    mock_persistence_service.save_realtime_state_to_redis.assert_called_once_with(
+        agent_id, supabase_data, agent_state_manager.redis_realtime_ttl_seconds
+    )
+    assert agent_state_manager.in_memory_cache[agent_id] == supabase_data
+
+@pytest.mark.asyncio
+async def test_get_agent_state_all_miss_returns_default(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_all_miss"
+    mock_persistence_service.get_realtime_state_from_redis.return_value = None
+    mock_persistence_service.get_agent_state_from_supabase.return_value = None
+
+    result = await agent_state_manager.get_agent_state(agent_id)
+
+    assert result["agent_id"] == agent_id
+    assert result["state"] == {}
+    assert result["source"] == "new_default"
+    assert agent_state_manager.in_memory_cache[agent_id] == result
+    mock_persistence_service.get_realtime_state_from_redis.assert_called_once_with(agent_id)
+    mock_persistence_service.get_agent_state_from_supabase.assert_called_once_with(agent_id)
+    # save_realtime_state_to_redis should not be called for default state
+    mock_persistence_service.save_realtime_state_to_redis.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_agent_state_success(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_update"
+    new_state_dict = {"data": "new_value"}
+    strategy_type = "test_strategy"
+    memory_refs = ["mem1"]
+
+    # Mock the return value of save_agent_state_to_supabase
+    # This should be the full record including DB timestamps, etc.
+    persisted_record = {
+        "agent_id": agent_id,
+        "state": new_state_dict,
+        "strategy_type": strategy_type,
+        "memory_references": memory_refs,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    mock_persistence_service.save_agent_state_to_supabase.return_value = persisted_record
+
+    result = await agent_state_manager.update_agent_state(agent_id, new_state_dict, strategy_type, memory_refs)
+
+    assert result == persisted_record
+    mock_persistence_service.save_agent_state_to_supabase.assert_called_once_with(
+        agent_id, strategy_type, new_state_dict, memory_refs
+    )
+    mock_persistence_service.save_realtime_state_to_redis.assert_called_once_with(
+        agent_id, persisted_record, agent_state_manager.redis_realtime_ttl_seconds
+    )
+    assert agent_state_manager.in_memory_cache[agent_id] == persisted_record
+
+@pytest.mark.asyncio
+async def test_update_agent_state_supabase_fails(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "test_agent_update_fail"
+    new_state_dict = {"data": "new_value"}
+    mock_persistence_service.save_agent_state_to_supabase.return_value = None # Simulate Supabase failure
+
+    result = await agent_state_manager.update_agent_state(agent_id, new_state_dict)
+
+    assert result is None
+    mock_persistence_service.save_agent_state_to_supabase.assert_called_once()
+    mock_persistence_service.save_realtime_state_to_redis.assert_not_called()
+    assert agent_id not in agent_state_manager.in_memory_cache # Or it might hold old value, depends on desired behavior on fail
+
+@pytest.mark.asyncio
+async def test_update_state_field_success_refactored(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
     agent_id = "agent_update_field"
-    initial_state_data = {"field1": "value1", "field2": "value2"}
-    initial_full_state = {"agentId": agent_id, "state": initial_state_data, "updatedAt": "sometime"}
+    initial_state_dict = {"field1": "value1", "field2": "value2"}
+    initial_strategy_type = "initial_strat"
+    initial_full_record = {
+        "agent_id": agent_id,
+        "state": initial_state_dict,
+        "strategy_type": initial_strategy_type,
+        "memory_references": ["mem_ref1"],
+        "updated_at": datetime.utcnow().isoformat(),
+        "source": "supabase" # Or any source
+    }
 
-    updated_state_response = {"agentId": agent_id, "state": {"field1": "new_value", "field2": "value2"}, "updatedAt": "now"}
+    # Mock get_agent_state's underlying calls
+    mock_persistence_service.get_realtime_state_from_redis.return_value = None
+    mock_persistence_service.get_agent_state_from_supabase.return_value = initial_full_record
 
-    # Mock get_agent_state to return our initial state
-    agent_state_manager_service.get_agent_state = mock.AsyncMock(return_value=initial_full_state)
-    # Mock update_agent_state to check its arguments and return a success response
-    agent_state_manager_service.update_agent_state = mock.AsyncMock(return_value=updated_state_response)
+    # Mock update_agent_state's underlying calls for the update part
+    updated_field_state_dict = {"field1": "new_value", "field2": "value2"}
+    expected_persisted_record_after_field_update = {
+        "agent_id": agent_id,
+        "state": updated_field_state_dict,
+        "strategy_type": initial_strategy_type, # Preserved
+        "memory_references": ["mem_ref1"],      # Preserved
+        "updated_at": datetime.utcnow().isoformat() # New timestamp
+    }
+    mock_persistence_service.save_agent_state_to_supabase.return_value = expected_persisted_record_after_field_update
 
-    result = await agent_state_manager_service.update_state_field(agent_id, "field1", "new_value")
+    result = await agent_state_manager.update_state_field(agent_id, "field1", "new_value")
 
-    agent_state_manager_service.get_agent_state.assert_called_once_with(agent_id)
-    expected_state_to_update = initial_state_data.copy()
-    expected_state_to_update["field1"] = "new_value"
-    agent_state_manager_service.update_agent_state.assert_called_once_with(agent_id, expected_state_to_update)
-    assert result == updated_state_response
+    assert result == expected_persisted_record_after_field_update
+    # get_agent_state calls
+    mock_persistence_service.get_realtime_state_from_redis.assert_called_once_with(agent_id)
+    mock_persistence_service.get_agent_state_from_supabase.assert_called_once_with(agent_id)
+    # save_agent_state_to_supabase called by update_agent_state
+    mock_persistence_service.save_agent_state_to_supabase.assert_called_once_with(
+        agent_id, initial_strategy_type, updated_field_state_dict, ["mem_ref1"]
+    )
+    # save_realtime_state_to_redis also called by update_agent_state
+    mock_persistence_service.save_realtime_state_to_redis.call_count == 2 # Once for get, once for update
+
+@pytest.mark.asyncio
+async def test_delete_agent_state_refactored(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "agent_to_delete"
+    agent_state_manager.in_memory_cache[agent_id] = {"some": "data"} # Pre-populate cache
+
+    mock_persistence_service.delete_agent_state_from_supabase.return_value = True
+    mock_persistence_service.delete_realtime_state_from_redis.return_value = True
+
+    success = await agent_state_manager.delete_agent_state(agent_id)
+
+    assert success is True
+    mock_persistence_service.delete_agent_state_from_supabase.assert_called_once_with(agent_id)
+    mock_persistence_service.delete_realtime_state_from_redis.assert_called_once_with(agent_id)
+    assert agent_id not in agent_state_manager.in_memory_cache
+
+@pytest.mark.asyncio
+async def test_save_trading_decision_refactored(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "agent_decision"
+    decision_data = {"action": "BUY", "symbol": "BTCUSD", "price": 50000}
+
+    initial_state_dict = {"decisionHistory": []}
+    initial_strategy_type = "trading_bot_v1"
+    initial_full_record = {
+        "agent_id": agent_id,
+        "state": initial_state_dict,
+        "strategy_type": initial_strategy_type,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+
+    # Mock get_agent_state behavior (called by _update_decision_history -> get_agent_state)
+    mock_persistence_service.get_realtime_state_from_redis.return_value = None
+    mock_persistence_service.get_agent_state_from_supabase.return_value = initial_full_record
+
+    # Mock update_agent_state behavior (called by _update_decision_history -> update_agent_state)
+    def mock_save_supabase_for_decision(agent_id_call, strategy_type_call, state_call, memory_refs_call):
+        assert state_call["decisionHistory"][0]["action"] == "BUY"
+        return {
+            "agent_id": agent_id_call,
+            "state": state_call,
+            "strategy_type": strategy_type_call,
+            "memory_references": memory_refs_call,
+            "updated_at": datetime.utcnow().isoformat()
+        }
+    mock_persistence_service.save_agent_state_to_supabase.side_effect = mock_save_supabase_for_decision
+
+    result = await agent_state_manager.save_trading_decision(agent_id, decision_data)
+
+    assert result is not None
+    assert result["status"] == "decision_history_updated_in_state"
+    mock_persistence_service.save_agent_state_to_supabase.assert_called_once()
+    # Further assertions can be made on the arguments of save_agent_state_to_supabase if needed
+
+@pytest.mark.asyncio
+async def test_create_agent_checkpoint_refactored(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "agent_checkpoint"
+    metadata = {"reason": "daily backup"}
+    current_state_dict = {"value": 123}
+    current_strategy_type = "chkpt_strat"
+    current_full_record = {
+        "agent_id": agent_id,
+        "state": current_state_dict,
+        "strategy_type": current_strategy_type,
+        "updated_at": datetime.utcnow().isoformat()
+    }
+
+    mock_persistence_service.get_realtime_state_from_redis.return_value = None
+    mock_persistence_service.get_agent_state_from_supabase.return_value = current_full_record
+
+    mock_checkpoint_result = {"checkpoint_id": "chk_123", "agent_id": agent_id}
+    mock_persistence_service.save_agent_checkpoint_to_supabase.return_value = mock_checkpoint_result
+
+    result = await agent_state_manager.create_agent_checkpoint(agent_id, metadata)
+
+    assert result == mock_checkpoint_result
+    expected_metadata_to_save = metadata.copy()
+    expected_metadata_to_save["strategy_type"] = current_strategy_type
+    mock_persistence_service.save_agent_checkpoint_to_supabase.assert_called_once_with(
+        agent_id, current_state_dict, expected_metadata_to_save
+    )
+
+@pytest.mark.asyncio
+async def test_restore_agent_checkpoint_refactored(agent_state_manager: AgentStateManager, mock_persistence_service: mock.AsyncMock):
+    agent_id = "agent_restore"
+    checkpoint_id = "chk_to_restore"
+
+    checkpoint_state_dict = {"value": 456}
+    checkpoint_metadata = {"strategy_type": "restored_strat_type"}
+    checkpoint_data_from_db = { # As returned by persistence_service.get_agent_checkpoint_from_supabase
+        "checkpoint_id": checkpoint_id,
+        "agent_id": agent_id, # Important for validation
+        "state": checkpoint_state_dict, # Assuming 'state' key holds the snapshot
+        "metadata": checkpoint_metadata
+    }
+    mock_persistence_service.get_agent_checkpoint_from_supabase.return_value = checkpoint_data_from_db
+
+    # This is the record that update_agent_state (via persistence_service) will return
+    final_updated_state_record = {
+        "agent_id": agent_id,
+        "state": checkpoint_state_dict,
+        "strategy_type": "restored_strat_type",
+        "updated_at": datetime.utcnow().isoformat()
+    }
+    mock_persistence_service.save_agent_state_to_supabase.return_value = final_updated_state_record
+
+    result = await agent_state_manager.restore_agent_checkpoint(agent_id, checkpoint_id)
+
+    assert result == final_updated_state_record
+    mock_persistence_service.get_agent_checkpoint_from_supabase.assert_called_once_with(checkpoint_id)
+    mock_persistence_service.save_agent_state_to_supabase.assert_called_once_with(
+        agent_id, checkpoint_state_dict, strategy_type="restored_strat_type", memory_references=None # Assuming update_agent_state defaults memory_references
+    )
+    # In-memory and Redis caches are updated by the call to update_agent_state
+
 
 # --- MarketDataService Tests ---
 

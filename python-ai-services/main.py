@@ -27,6 +27,10 @@ from services.strategy_optimizer import StrategyOptimizer
 from utils.google_sdk_bridge import GoogleSDKBridge
 from utils.a2a_protocol import A2AProtocol
 from types.trading_types import * # Assuming TradingDecision is in here
+
+# New Service Imports
+from services.agent_persistence_service import AgentPersistenceService # Added
+from services.agent_state_manager import AgentStateManager # Added
 from crews.trading_crew_service import TradingCrewService, TradingCrewRequest # Added
 
 # Global services registry
@@ -106,10 +110,37 @@ async def lifespan(app: FastAPI):
         logger.info("TradingCrewService initialized.")
     except Exception as e:
         logger.error(f"Failed to initialize TradingCrewService: {e}. Crew AI endpoints may not function.")
-        # Decide if this is fatal or if app can run without it
-        # For now, allow app to run, but log error.
+
+    # Initialize AgentPersistenceService
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_SERVICE_KEY") # Ensure this is the service_role key for backend use
+    redis_url_for_persistence = os.getenv("REDIS_URL", "redis://localhost:6379") # Same Redis as cache for now
+
+    if not supabase_url or not supabase_key:
+        logger.warning("Supabase URL or Key not found in environment. AgentPersistenceService will have limited functionality.")
     
-    logger.info("✅ All PydanticAI services initialized")
+    persistence_service = AgentPersistenceService(
+        supabase_url=supabase_url,
+        supabase_key=supabase_key,
+        redis_url=redis_url_for_persistence
+    )
+    await persistence_service.connect_clients() # Connect to Redis and create Supabase client
+    services["agent_persistence_service"] = persistence_service
+    logger.info("AgentPersistenceService initialized and clients connected (or attempted).")
+
+    # Initialize AgentStateManager (refactored)
+    try:
+        redis_ttl = int(os.getenv("REDIS_REALTIME_STATE_TTL_SECONDS", "3600"))
+        agent_state_manager = AgentStateManager(
+            persistence_service=persistence_service,
+            redis_realtime_ttl_seconds=redis_ttl
+        )
+        services["agent_state_manager"] = agent_state_manager
+        logger.info("Refactored AgentStateManager initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize AgentStateManager: {e}. Agent state management may not function.")
+
+    logger.info("✅ All services initialized (or initialization attempted).")
     yield
     
     # Cleanup
@@ -121,9 +152,22 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error closing Redis cache client: {e}")
 
-    for service in services.values():
-        if hasattr(service, 'cleanup'):
-            await service.cleanup()
+    if services.get("agent_persistence_service"):
+        try:
+            await services["agent_persistence_service"].close_clients()
+            logger.info("AgentPersistenceService clients closed.")
+        except Exception as e:
+            logger.error(f"Error closing AgentPersistenceService clients: {e}")
+
+    # Generic cleanup for other services that might have a 'cleanup' method
+    # Note: TradingCoordinator, MarketAnalyst etc. don't have explicit cleanup in provided code
+    for service_name, service_instance in services.items():
+        if service_name not in ["agent_persistence_service"] and hasattr(service_instance, 'cleanup'): # Avoid double cleanup if specific already handled
+            try:
+                await service_instance.cleanup()
+                logger.info(f"Service '{service_name}' cleaned up.")
+            except Exception as e:
+                logger.error(f"Error cleaning up service '{service_name}': {e}")
 
 # Create FastAPI app with lifespan
 app = FastAPI(
@@ -221,19 +265,46 @@ async def deep_health_check(request: Request):
     # http_status_code = 503
     # dependencies.append({"name": "supabase", "status": "disconnected", "error": "reason"})
 
-    # 3. Check TradingCrewService (conceptual, if it had its own checkable dependencies)
+    # 3. Check AgentPersistenceService
+    persistence_svc = services.get("agent_persistence_service")
+    if persistence_svc:
+        supabase_status = "connected" if persistence_svc.supabase_client else "not_connected_or_configured"
+        redis_persistence_status = "connected" if persistence_svc.redis_client else "not_connected_or_configured"
+        dependencies.append({"name": "agent_persistence_supabase_client", "status": supabase_status})
+        dependencies.append({"name": "agent_persistence_redis_client", "status": redis_persistence_status})
+        if not persistence_svc.supabase_client or not persistence_svc.redis_client:
+             # If either critical persistence client is down, service might be impaired
+             # overall_status = "unhealthy" # Uncomment if these are hard dependencies for health
+             # http_status_code = 503
+             logger.warning(f"Deep health check: AgentPersistenceService clients - Supabase: {supabase_status}, Redis: {redis_persistence_status}")
+        else:
+            logger.info("Deep health check: AgentPersistenceService clients appear connected.")
+    else:
+        dependencies.append({"name": "agent_persistence_service", "status": "not_initialized"})
+        overall_status = "unhealthy" # Persistence service is critical
+        http_status_code = 503
+        logger.error("Deep health check: AgentPersistenceService not initialized.")
+
+    # 4. Check AgentStateManager
+    if services.get("agent_state_manager"):
+        dependencies.append({"name": "agent_state_manager", "status": "initialized"})
+        logger.info("Deep health check: AgentStateManager is registered.")
+    else:
+        dependencies.append({"name": "agent_state_manager", "status": "not_initialized"})
+        overall_status = "unhealthy" # State manager is critical
+        http_status_code = 503
+        logger.error("Deep health check: AgentStateManager not initialized.")
+
+    # 5. Check TradingCrewService
     if services.get("trading_crew_service"):
-        # Placeholder: In a real scenario, TradingCrewService might have a health_check method
-        # e.g., if it pre-loads models or connects to other specific resources.
-        # For now, just acknowledge its presence if initialized.
         dependencies.append({"name": "trading_crew_service", "status": "initialized_or_not_checked"})
-        logger.info("Deep health check: TradingCrewService is registered (further checks would be internal to service).")
+        logger.info("Deep health check: TradingCrewService is registered.")
     else:
         dependencies.append({"name": "trading_crew_service", "status": "not_initialized"})
-        logger.warning("Deep health check: TradingCrewService not initialized.")
         # Depending on criticality, this might set overall_status to unhealthy
         # overall_status = "unhealthy"
         # http_status_code = 503
+        logger.warning("Deep health check: TradingCrewService not initialized.")
 
 
     return JSONResponse(

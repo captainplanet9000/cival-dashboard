@@ -8,8 +8,9 @@
 # the appropriate LLM for each agent before the crew is kicked off.
 # The LLM instances here are placeholders for structure and default behavior.
 
-from crewai import Agent, Task, Crew, Process # Added Crew, Process
-from typing import Any, Type # Added Type for Pydantic model typing in tasks
+from crewai import Agent, Task, Crew, Process
+from typing import Any, Type, List as TypingList # Renamed List to TypingList to avoid conflict
+from loguru import logger # Added logger for fallback import warnings
 
 # Attempt to import a specific LLM for placeholder usage.
 # In a real environment, this would be managed by the service layer.
@@ -38,34 +39,102 @@ except ImportError:
     class TradingDecision(dict): pass
     class StrategyApplicationResult(dict): pass
 
+# Tool Imports (with fallbacks for subtask environment)
+try:
+    from ..tools.market_data_tools import fetch_market_data_tool
+except ImportError:
+    logger.warning("Failed to import 'fetch_market_data_tool'. It will be None.")
+    fetch_market_data_tool = None
+
+try:
+    from ..tools.technical_analysis_tools import run_technical_analysis_tool
+except ImportError:
+    logger.warning("Failed to import 'run_technical_analysis_tool'. It will be None.")
+    run_technical_analysis_tool = None
+
+try:
+    from ..tools.strategy_application_tools import apply_darvas_box_tool
+except ImportError:
+    logger.warning("Failed to import 'apply_darvas_box_tool'. It will be None.")
+    apply_darvas_box_tool = None
+
+# Imports for other strategy application tools
+try:
+    from ..tools.strategy_application_tools import apply_williams_alligator_tool
+except ImportError:
+    logger.warning("Failed to import 'apply_williams_alligator_tool'. It will be None.")
+    apply_williams_alligator_tool = None
+
+try:
+    from ..tools.strategy_application_tools import apply_renko_tool
+except ImportError:
+    logger.warning("Failed to import 'apply_renko_tool'. It will be None.")
+    apply_renko_tool = None
+
+try:
+    from ..tools.strategy_application_tools import apply_heikin_ashi_tool
+except ImportError:
+    logger.warning("Failed to import 'apply_heikin_ashi_tool'. It will be None.")
+    apply_heikin_ashi_tool = None
+
+try:
+    from ..tools.strategy_application_tools import apply_elliott_wave_tool
+except ImportError:
+    logger.warning("Failed to import 'apply_elliott_wave_tool'. It will be None.")
+    apply_elliott_wave_tool = None
+
+try:
+    from ..tools.risk_assessment_tools import assess_trade_risk_tool
+except ImportError:
+    logger.warning("Failed to import 'assess_trade_risk_tool'. It will be None.")
+    assess_trade_risk_tool = None
+
 
 # --- Agent Definitions ---
 
+# Prepare tool lists, filtering out None values if imports failed
+market_analyst_tools_list: TypingList[Any] = [t for t in [fetch_market_data_tool, run_technical_analysis_tool] if t is not None]
+
+all_strategy_tools_imports = [
+    apply_darvas_box_tool,
+    apply_williams_alligator_tool,
+    apply_renko_tool,
+    apply_heikin_ashi_tool,
+    apply_elliott_wave_tool,
+]
+strategy_agent_tools_list = [tool for tool in all_strategy_tools_imports if tool is not None]
+if not strategy_agent_tools_list: # Log if all strategy tools failed to import
+    logger.warning("CRITICAL: No strategy application tools were successfully imported for StrategyAgent!")
+
+trade_advisor_tools_list: TypingList[Any] = [t for t in [assess_trade_risk_tool] if t is not None]
+
+
 market_analyst_agent = Agent(
     role="Expert Market Analyst",
-    goal="Provide detailed analysis of current market conditions, trends, and key price levels for a given financial symbol, incorporating both technical and fundamental factors where applicable.",
+    goal="Analyze market conditions for {symbol} over {timeframe}, using available tools to fetch data and perform technical analysis. Synthesize findings into a structured `MarketAnalysis` object.",
     backstory=(
         "A seasoned financial analyst with over 15 years of experience in equity and crypto markets. "
         "Possesses deep expertise in technical analysis, chart patterns, indicator interpretation, and "
-        "correlating market sentiment with price movements. Known for clear, concise, and actionable insights."
+        "correlating market sentiment with price movements. Known for clear, concise, and actionable insights, "
+        "and adept at summarizing complex data into concise, structured reports compatible with Pydantic models."
     ),
     llm=default_llm,
-    tools=[], # Tools: [fetch_market_data_tool, run_technical_analysis_tool] - To be defined and added
+    tools=market_analyst_tools_list,
     allow_delegation=False,
     verbose=True,
-    memory=True # Enable memory for context continuity within a crew run
+    memory=True
 )
 
 strategy_agent = Agent(
     role="Quantitative Trading Strategist",
-    goal="Apply a specified trading strategy (e.g., Darvas Box, Elliott Wave, custom indicators) to the provided market analysis to determine a potential trading action (buy, sell, hold) and associated parameters like target price and stop-loss.",
+    goal="Apply the '{strategy_name}' trading strategy to the provided market analysis for {symbol}. Utilize strategy-specific tools and logic to determine a trading action, confidence, and key trade parameters. Format your output as a `StrategyApplicationResult` object.",
     backstory=(
         "A specialist in quantitative modeling and algorithmic trading strategy development and execution. "
-        "Expert in translating market analysis and predefined strategy rules into concrete, actionable trading advice. "
-        "Focuses on systematic approaches to trading."
+        "Expert in translating market analysis and predefined strategy rules into concrete, actionable trading advice "
+        "with strict adherence to the specified strategy's logic. Ensures all outputs are structured and precise."
     ),
     llm=default_llm,
-    tools=[], # Tools: [apply_darvas_box_tool, apply_elliott_wave_tool] - To be defined and added
+    tools=strategy_agent_tools_list, # Updated to use the comprehensive list of strategy tools
     allow_delegation=False,
     verbose=True,
     memory=True
@@ -73,15 +142,15 @@ strategy_agent = Agent(
 
 trade_advisor_agent = Agent(
     role="Prudent Chief Trading Advisor",
-    goal="Synthesize market analysis and strategy-specific advice, incorporate comprehensive risk assessment, and generate a final, well-reasoned trading decision (TradeSignal/TradingDecision) with clear rationale, entry, stop-loss, and take-profit levels.",
+    goal="Synthesize the market analysis and strategy advice for {symbol}. Perform a final risk assessment using available tools. Formulate a comprehensive and actionable trading decision, ensuring it's presented as a `TradingDecision` object.",
     backstory=(
         "An experienced trading advisor and risk manager with a fiduciary mindset. Responsible for making final, sound, "
-        "risk-managed trading recommendations. Ensures all available information and risk factors are meticulously "
-        "considered before any trade is proposed."
+        "risk-managed trading recommendations. Ensures all available information, strategy outputs, and risk factors are meticulously "
+        "evaluated to ensure the highest quality and reliability of the final trading decision."
     ),
     llm=default_llm,
-    tools=[], # Tools: [risk_assessment_tool, format_trade_signal_tool] - To be defined/added
-    allow_delegation=False, # Final decision maker for the crew's primary output
+    tools=trade_advisor_tools_list,
+    allow_delegation=False,
     verbose=True,
     memory=True
 )
@@ -93,16 +162,17 @@ trade_advisor_agent = Agent(
 
 market_analysis_task = Task(
     description=(
-        "Analyze the market conditions for '{symbol}' over the '{timeframe}'. "
-        "Focus on current trend, volatility, key support and resistance levels, and relevant technical indicators "
-        "(like RSI, MACD, Bollinger Bands, EMAs). Also consider recent news sentiment if available through tools. "
-        "The symbol and timeframe are critical inputs that must be used."
+        "Analyze the market conditions for symbol '{symbol}' over the '{timeframe}'. Utilize available tools to fetch "
+        "necessary market data and perform technical analysis. Focus on identifying the current trend, volatility, "
+        "key support and resistance levels, and summarizing relevant technical indicator values. "
+        "Consider recent news or sentiment if data is available through your tools. Your final output must be a detailed analysis."
     ),
     expected_output=(
-        "A structured Pydantic model of type `MarketAnalysis` containing detailed market insights: "
-        "current market condition (e.g., bullish, bearish, ranging), trend direction and strength, "
-        "volatility assessment, identified support and resistance levels, key technical indicator values, "
-        "summary of news sentiment impact, and a concise short-term forecast or outlook."
+        "A JSON object that strictly conforms to the `MarketAnalysis` Pydantic model. This includes fields like "
+        "`symbol`, `timeframe`, `market_condition` (e.g., 'bullish', 'bearish', 'ranging'), `trend_direction` (e.g., 'uptrend', 'downtrend', 'sideways'), "
+        "`trend_strength` (float 0-1), `volatility_score` (float 0-1), `support_levels` (list of floats), "
+        "`resistance_levels` (list of floats), `indicators` (a dictionary of key TA values like RSI, MACD signal, Bollinger Bands), "
+        "`sentiment_score` (float -1 to 1), `news_impact_summary` (string), and `short_term_forecast` (string)."
     ),
     agent=market_analyst_agent,
     output_pydantic=MarketAnalysis,
@@ -111,42 +181,47 @@ market_analysis_task = Task(
 
 strategy_application_task = Task(
     description=(
-        "Based on the provided market analysis for '{symbol}', apply the trading strategy named '{strategy_name}'. "
-        "Determine a potential trading action (buy, sell, hold), a confidence score for this action, and if applicable, "
-        "suggest a target price, stop-loss level, and take-profit level. "
-        "Clearly explain the rationale for your advice based *strictly* on the rules and signals of the '{strategy_name}' strategy."
+        "You are tasked with applying a specific trading strategy to the provided market analysis for the symbol: '{symbol}'. "
+        "The strategy to apply is explicitly named: '{strategy_name}'. "
+        "You have a set of tools, each designed to apply a different trading strategy (e.g., apply_darvas_box_tool, apply_williams_alligator_tool, etc.). "
+        "You MUST select and use the ONE tool that corresponds EXACTLY to the provided '{strategy_name}'. "
+        "The specific configuration parameters for this strategy are provided in the '{strategy_config}' dictionary. "
+        "You MUST pass the market analysis data (from the context of the 'market_analysis_task') as the first argument (e.g., 'processed_market_data_json') to the chosen tool, "
+        "and the '{strategy_config}' dictionary as the second argument (e.g., 'darvas_config' for apply_darvas_box_tool, 'alligator_config' for apply_williams_alligator_tool, etc. - ensure the config dictionary key matches the tool's expected parameter name for its specific configuration). "
+        "Your goal is to execute the selected strategy tool with the correct inputs and output its findings. "
+        "Determine a trading action (BUY, SELL, or HOLD), a confidence score, and other relevant parameters as dictated by the strategy's output. "
+        "Provide a clear rationale. Your final output must be a detailed strategy application result."
     ),
     expected_output=(
-        "A structured Pydantic model of type `StrategyApplicationResult` detailing the strategy's advice: "
-        "the recommended trading action (BUY, SELL, or HOLD), a confidence score (0.0 to 1.0), "
-        "target price, stop-loss price, take-profit price (all optional), and a clear rationale justifying the advice "
-        "based on the specific strategy's application to the market analysis."
+        "A JSON object strictly conforming to the `StrategyApplicationResult` Pydantic model. "
+        "This JSON object must accurately reflect the outcome of applying the strategy '{strategy_name}' using its specific configuration '{strategy_config}'. "
+        "Key fields to populate include: `symbol`, `strategy_name` (must match the input '{strategy_name}'), `advice` (BUY, SELL, or HOLD), "
+        "`confidence_score`, `target_price` (if applicable), `stop_loss` (if applicable), `take_profit` (if applicable), `rationale`, "
+        "and `additional_data` containing any specific outputs from the executed strategy tool (like box coordinates, Renko bricks, or HA candle previews)."
     ),
     agent=strategy_agent,
-    context=[market_analysis_task], # Depends on the output of the market analysis task
+    context=[market_analysis_task],
     output_pydantic=StrategyApplicationResult,
     async_execution=False
 )
 
 trade_decision_task = Task(
     description=(
-        "Synthesize the comprehensive market analysis and the specific strategy application result for '{symbol}'. "
-        "Conduct a final conceptual risk assessment based on the proposed action and market conditions. "
-        "Formulate a final, actionable trading decision, which will be structured as a `TradingDecision` Pydantic model. "
-        "This decision must include the symbol, the determined action (buy, sell, hold), a confidence score, "
-        "the current price (or entry price if applicable), stop-loss, and take-profit levels. "
-        "Provide a concise yet comprehensive reasoning that justifies the final decision, integrating insights from "
-        "both the market analysis and the strategy output. If the strategy advised 'HOLD' or confidence is low, "
-        "the final decision should reflect this, typically as a 'HOLD'."
+        "Review the provided market analysis and the '{strategy_name}' strategy application result for '{symbol}'. "
+        "Conduct a final risk assessment using the `assess_trade_risk_tool` based on the proposed action from the strategy, "
+        "market context from the analysis, and any available portfolio information (conceptually, portfolio context might be limited for this tool directly). "
+        "Synthesize all information to formulate a comprehensive trading decision. Your final output must be a complete trading signal, "
+        "ensuring all fields of the `TradingDecision` Pydantic model are appropriately populated."
     ),
     expected_output=(
-        "A final `TradingDecision` Pydantic model ready for execution or review. This model must include: "
-        "symbol, action (BUY, SELL, HOLD), confidence_score, current_price (or intended entry price), "
-        "stop_loss, take_profit, a detailed rationale for the decision, and relevant metadata like "
-        "the timestamp of the decision. The risk level should be implicitly managed or explicitly stated if available."
+        "A JSON object strictly conforming to the `TradingDecision` Pydantic model. This must include `action` (enum: BUY, SELL, or HOLD), "
+        "`decision_id` (generate a unique ID), `symbol`, `confidence` (float 0-1), `timestamp` (ISO format), `reasoning` (comprehensive summary), "
+        "`risk_assessment` (embedding the output from `assess_trade_risk_tool` or its key fields like `risk_level` and `warnings`), "
+        "and where applicable, `quantity` (use a default like 1.0 if not calculable yet or not provided by strategy), "
+        "`entry_price` (Optional[float]), `stop_loss` (Optional[float]), and `take_profit` (Optional[float])."
     ),
     agent=trade_advisor_agent,
-    context=[market_analysis_task, strategy_application_task], # Depends on both preceding tasks
+    context=[market_analysis_task, strategy_application_task],
     output_pydantic=TradingDecision,
     async_execution=False
 )
