@@ -32,6 +32,7 @@ from types.trading_types import * # Assuming TradingDecision is in here
 from services.agent_persistence_service import AgentPersistenceService # Added
 from services.agent_state_manager import AgentStateManager # Added
 from crews.trading_crew_service import TradingCrewService, TradingCrewRequest # Added
+from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE # Added MemoryService
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -140,6 +141,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize AgentStateManager: {e}. Agent state management may not function.")
 
+    # Initialize MemoryService
+    try:
+        letta_server_url = os.getenv("LETTA_SERVER_URL", "http://localhost:8283")
+        # AgentPersistenceService is already initialized and in 'services' dict
+        agent_persistence_for_memory = services.get("agent_persistence_service")
+
+        memory_service_instance = MemoryService(
+            letta_server_url=letta_server_url,
+            persistence_service=agent_persistence_for_memory
+        )
+        if await memory_service_instance.connect_letta_client():
+            logger.info(f"MemoryService connected to Letta client at {letta_server_url} (or stub if library not found).")
+        else:
+            logger.warning(f"MemoryService failed to connect to Letta client at {letta_server_url}. Will operate in non-functional/stub mode if library is missing.")
+        services["memory_service"] = memory_service_instance
+        logger.info("MemoryService initialized.")
+    except Exception as e:
+        logger.error(f"Failed to initialize MemoryService: {e}. Memory capabilities may be unavailable.")
+        if "memory_service" not in services: # Ensure it's None if init fails badly
+            services["memory_service"] = None
+
+
     logger.info("✅ All services initialized (or initialization attempted).")
     yield
     
@@ -152,6 +175,15 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error closing Redis cache client: {e}")
 
+    # Close MemoryService Letta client
+    memory_service_instance_to_close = services.get("memory_service")
+    if memory_service_instance_to_close and hasattr(memory_service_instance_to_close, 'close_letta_client'):
+        try:
+            await memory_service_instance_to_close.close_letta_client()
+            logger.info("MemoryService Letta client closed (conceptual).")
+        except Exception as e:
+            logger.error(f"Error closing MemoryService Letta client: {e}")
+
     if services.get("agent_persistence_service"):
         try:
             await services["agent_persistence_service"].close_clients()
@@ -162,7 +194,8 @@ async def lifespan(app: FastAPI):
     # Generic cleanup for other services that might have a 'cleanup' method
     # Note: TradingCoordinator, MarketAnalyst etc. don't have explicit cleanup in provided code
     for service_name, service_instance in services.items():
-        if service_name not in ["agent_persistence_service"] and hasattr(service_instance, 'cleanup'): # Avoid double cleanup if specific already handled
+        # Avoid double cleanup for services already handled explicitly
+        if service_name not in ["agent_persistence_service", "memory_service"] and hasattr(service_instance, 'cleanup'):
             try:
                 await service_instance.cleanup()
                 logger.info(f"Service '{service_name}' cleaned up.")
@@ -306,6 +339,28 @@ async def deep_health_check(request: Request):
         # http_status_code = 503
         logger.warning("Deep health check: TradingCrewService not initialized.")
 
+    # 6. Check MemoryService
+    memory_svc = services.get("memory_service")
+    if memory_svc:
+        letta_client_status = "connected_stub_or_actual" if memory_svc.letta_client else "not_connected"
+        if LETTA_CLIENT_AVAILABLE and not memory_svc.letta_client: # Library is there, but client failed to init/connect
+            letta_client_status = "connection_failed"
+            # If MemoryService is critical for deep health, uncomment these:
+            # overall_status = "unhealthy"
+            # http_status_code = 503
+
+        dependencies.append({
+            "name": "memory_service_letta_client",
+            "status": letta_client_status,
+            "letta_library_available": LETTA_CLIENT_AVAILABLE
+        })
+        logger.info(f"Deep health check: MemoryService Letta client status: {letta_client_status}, Letta library available: {LETTA_CLIENT_AVAILABLE}")
+    else:
+        dependencies.append({"name": "memory_service", "status": "not_initialized"})
+        # Decide if this is critical enough to mark overall as unhealthy
+        # overall_status = "unhealthy"
+        # http_status_code = 503
+        logger.warning("Deep health check: MemoryService not initialized.")
 
     return JSONResponse(
         status_code=http_status_code,

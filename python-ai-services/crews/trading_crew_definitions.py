@@ -89,11 +89,19 @@ except ImportError:
     logger.warning("Failed to import 'assess_trade_risk_tool'. It will be None.")
     assess_trade_risk_tool = None
 
+# Memory Tool Imports
+try:
+    from ..tools.memory_tools import store_memory_tool, recall_memories_tool
+except ImportError:
+    logger.warning("Failed to import memory tools ('store_memory_tool', 'recall_memories_tool'). They will be None.")
+    store_memory_tool = None
+    recall_memories_tool = None
+
 
 # --- Agent Definitions ---
 
 # Prepare tool lists, filtering out None values if imports failed
-market_analyst_tools_list: TypingList[Any] = [t for t in [fetch_market_data_tool, run_technical_analysis_tool] if t is not None]
+_market_analyst_tools_base: TypingList[Any] = [t for t in [fetch_market_data_tool, run_technical_analysis_tool] if t is not None]
 
 all_strategy_tools_imports = [
     apply_darvas_box_tool,
@@ -102,21 +110,31 @@ all_strategy_tools_imports = [
     apply_heikin_ashi_tool,
     apply_elliott_wave_tool,
 ]
-strategy_agent_tools_list = [tool for tool in all_strategy_tools_imports if tool is not None]
-if not strategy_agent_tools_list: # Log if all strategy tools failed to import
+_strategy_agent_tools_base = [tool for tool in all_strategy_tools_imports if tool is not None]
+if not _strategy_agent_tools_base: # Log if all strategy tools failed to import
     logger.warning("CRITICAL: No strategy application tools were successfully imported for StrategyAgent!")
 
-trade_advisor_tools_list: TypingList[Any] = [t for t in [assess_trade_risk_tool] if t is not None]
+_trade_advisor_tools_base: TypingList[Any] = [t for t in [assess_trade_risk_tool] if t is not None]
+
+# Prepare memory tools list
+memory_tools_list: TypingList[Any] = [t for t in [store_memory_tool, recall_memories_tool] if t is not None]
+if not memory_tools_list:
+    logger.warning("Memory tools (store_memory_tool, recall_memories_tool) failed to import. Agents will lack memory capabilities via these tools.")
+
+# Extend base tool lists with memory tools, ensuring no duplicates
+market_analyst_tools_list = list(dict.fromkeys(_market_analyst_tools_base + memory_tools_list))
+strategy_agent_tools_list = list(dict.fromkeys(_strategy_agent_tools_base + memory_tools_list))
+trade_advisor_tools_list = list(dict.fromkeys(_trade_advisor_tools_base + memory_tools_list))
 
 
 market_analyst_agent = Agent(
     role="Expert Market Analyst",
-    goal="Analyze market conditions for {symbol} over {timeframe}, using available tools to fetch data and perform technical analysis. Synthesize findings into a structured `MarketAnalysis` object.",
+    goal="Analyze market conditions for {symbol} over {timeframe}, using available tools to fetch data and perform technical analysis. Synthesize findings into a structured `MarketAnalysis` object, and store key observations using memory tools for future reference and cross-task context.",
     backstory=(
         "A seasoned financial analyst with over 15 years of experience in equity and crypto markets. "
         "Possesses deep expertise in technical analysis, chart patterns, indicator interpretation, and "
         "correlating market sentiment with price movements. Known for clear, concise, and actionable insights, "
-        "and adept at summarizing complex data into concise, structured reports compatible with Pydantic models."
+        "adept at summarizing complex data, and leveraging memory tools to maintain context over time."
     ),
     llm=default_llm,
     tools=market_analyst_tools_list,
@@ -127,14 +145,14 @@ market_analyst_agent = Agent(
 
 strategy_agent = Agent(
     role="Quantitative Trading Strategist",
-    goal="Apply the '{strategy_name}' trading strategy to the provided market analysis for {symbol}. Utilize strategy-specific tools and logic to determine a trading action, confidence, and key trade parameters. Format your output as a `StrategyApplicationResult` object.",
+    goal="Apply the '{strategy_name}' trading strategy to the provided market analysis for {symbol}. Utilize strategy-specific tools and logic to determine a trading action, confidence, and key trade parameters. Can recall prior analyses or store strategy rationale using memory tools. Format your output as a `StrategyApplicationResult` object.",
     backstory=(
         "A specialist in quantitative modeling and algorithmic trading strategy development and execution. "
         "Expert in translating market analysis and predefined strategy rules into concrete, actionable trading advice "
-        "with strict adherence to the specified strategy's logic. Ensures all outputs are structured and precise."
+        "with strict adherence to the specified strategy's logic. Uses memory tools to enhance context and record decisions. Ensures all outputs are structured and precise."
     ),
     llm=default_llm,
-    tools=strategy_agent_tools_list, # Updated to use the comprehensive list of strategy tools
+    tools=strategy_agent_tools_list,
     allow_delegation=False,
     verbose=True,
     memory=True
@@ -142,10 +160,10 @@ strategy_agent = Agent(
 
 trade_advisor_agent = Agent(
     role="Prudent Chief Trading Advisor",
-    goal="Synthesize the market analysis and strategy advice for {symbol}. Perform a final risk assessment using available tools. Formulate a comprehensive and actionable trading decision, ensuring it's presented as a `TradingDecision` object.",
+    goal="Synthesize the market analysis and strategy advice for {symbol}. Perform a final risk assessment using available tools, and recall relevant historical context or decisions using memory tools. Formulate a comprehensive and actionable trading decision, ensuring it's presented as a `TradingDecision` object and key aspects are stored in memory.",
     backstory=(
         "An experienced trading advisor and risk manager with a fiduciary mindset. Responsible for making final, sound, "
-        "risk-managed trading recommendations. Ensures all available information, strategy outputs, and risk factors are meticulously "
+        "risk-managed trading recommendations. Ensures all available information, strategy outputs, risk factors, and historical context (via memory tools) are meticulously "
         "evaluated to ensure the highest quality and reliability of the final trading decision."
     ),
     llm=default_llm,
@@ -165,7 +183,8 @@ market_analysis_task = Task(
         "Analyze the market conditions for symbol '{symbol}' over the '{timeframe}'. Utilize available tools to fetch "
         "necessary market data and perform technical analysis. Focus on identifying the current trend, volatility, "
         "key support and resistance levels, and summarizing relevant technical indicator values. "
-        "Consider recent news or sentiment if data is available through your tools. Your final output must be a detailed analysis."
+        "Consider recent news or sentiment if data is available through your tools. Your final output must be a detailed analysis. "
+        "After your analysis, use the `store_memory_tool` to save a concise summary of your key findings and the main market condition for '{symbol}' using an `app_agent_id` like 'market_analyst_{symbol}' (replace {symbol} with the actual symbol). This will help build historical context."
     ),
     expected_output=(
         "A JSON object that strictly conforms to the `MarketAnalysis` Pydantic model. This includes fields like "
@@ -183,6 +202,7 @@ strategy_application_task = Task(
     description=(
         "You are tasked with applying a specific trading strategy to the provided market analysis for the symbol: '{symbol}'. "
         "The strategy to apply is explicitly named: '{strategy_name}'. "
+        "Before applying the strategy, you can use `recall_memories_tool` with an `app_agent_id` like 'market_analyst_{symbol}' (replace {symbol} with the actual symbol) to check for recent analyses or observations about '{symbol}'. "
         "You have a set of tools, each designed to apply a different trading strategy (e.g., apply_darvas_box_tool, apply_williams_alligator_tool, etc.). "
         "You MUST select and use the ONE tool that corresponds EXACTLY to the provided '{strategy_name}'. "
         "The specific configuration parameters for this strategy are provided in the '{strategy_config}' dictionary. "
@@ -190,7 +210,8 @@ strategy_application_task = Task(
         "and the '{strategy_config}' dictionary as the second argument (e.g., 'darvas_config' for apply_darvas_box_tool, 'alligator_config' for apply_williams_alligator_tool, etc. - ensure the config dictionary key matches the tool's expected parameter name for its specific configuration). "
         "Your goal is to execute the selected strategy tool with the correct inputs and output its findings. "
         "Determine a trading action (BUY, SELL, or HOLD), a confidence score, and other relevant parameters as dictated by the strategy's output. "
-        "Provide a clear rationale. Your final output must be a detailed strategy application result."
+        "Provide a clear rationale. Your final output must be a detailed strategy application result. "
+        "After determining the strategy advice, use `store_memory_tool` to record your advice and its primary rationale, using an `app_agent_id` like 'strategy_agent_{symbol}_{strategy_name}' (replace placeholders with actual values)."
     ),
     expected_output=(
         "A JSON object strictly conforming to the `StrategyApplicationResult` Pydantic model. "
@@ -208,10 +229,12 @@ strategy_application_task = Task(
 trade_decision_task = Task(
     description=(
         "Review the provided market analysis and the '{strategy_name}' strategy application result for '{symbol}'. "
+        "You can use `recall_memories_tool` to retrieve recent analysis (e.g., `app_agent_id` 'market_analyst_{symbol}'), strategy advice (e.g., `app_agent_id` 'strategy_agent_{symbol}_{strategy_name}'), or prior risk assessments for '{symbol}'. "
         "Conduct a final risk assessment using the `assess_trade_risk_tool` based on the proposed action from the strategy, "
         "market context from the analysis, and any available portfolio information (conceptually, portfolio context might be limited for this tool directly). "
         "Synthesize all information to formulate a comprehensive trading decision. Your final output must be a complete trading signal, "
-        "ensuring all fields of the `TradingDecision` Pydantic model are appropriately populated."
+        "ensuring all fields of the `TradingDecision` Pydantic model are appropriately populated. "
+        "After formulating the final `TradingDecision`, use `store_memory_tool` to save this decision and its justification, using an `app_agent_id` like 'trade_advisor_{symbol}' (replace {symbol} with actual symbol)."
     ),
     expected_output=(
         "A JSON object strictly conforming to the `TradingDecision` Pydantic model. This must include `action` (enum: BUY, SELL, or HOLD), "
