@@ -49,33 +49,34 @@ except ImportError:
         agents = Agents()
         # Add other sub-clients like messages if needed for method stubs that are being kept
         class Messages:
-            async def create(self, agent_id: str, content: str, role: str = "user", stream: bool = False): # Keep this async as service awaits it directly
-                logger.info(f"STUB Letta client messages.create (async) for agent {agent_id}, role {role}: {content}")
+            def create(self, agent_id: str, content: str, role: str = "user", stream: bool = False): # Now synchronous
+                logger.info(f"STUB Letta client messages.create (sync) for agent {agent_id}, role {role}: '{content[:50]}...'")
                 if stream:
-                    async def mock_stream(): yield {"type": "message", "data": {"text": f"Streamed stub response to: {content}"}} # type: ignore
-                    return mock_stream()
-                # Simulate returning the message sent, or a list containing it and then assistant's reply
-                return [{"role": role, "content": content, "id": "stub_sent_msg_id"},
-                        {"role": "assistant", "content": f"Stub assistant auto-reply to: {content}", "id": "stub_reply_msg_id"}]
+                    # Synchronous stream handling in a stub is complex; returning non-streamed for simplicity
+                    logger.warning("STUB: Streamed message creation requested but stub returns non-streamed.")
+                # Simulate returning the created message object/dict with an ID
+                return MagicMock(id="stub_msg_id_for_" + content[:10], role=role, content=content)
 
-            def list(self, agent_id: str, limit: Optional[int] = None): # Add sync list method for to_thread
+            def list(self, agent_id: str, limit: Optional[int] = None): # Sync list method
                 logger.info(f"STUB Letta client messages.list (sync) for agent {agent_id}, limit {limit}")
-                # Simulate response structure with a 'results' attribute
+                # Simulate response structure with a '.data' attribute, which is a list of message objects/mocks
                 class MockMsgListResponse:
-                    def __init__(self, results_data):
-                        self.results = results_data
+                    def __init__(self, data_list):
+                        self.data = data_list # Standardizing on .data like agents.list stub
 
                 # Provide some mock messages for testing response parsing
+                # Each message should be an object with .role, .content, .id
                 mock_messages = [
-                    MagicMock(role="user", content="Previous user message", id="prev_user_msg"),
-                    MagicMock(role="assistant", content="Previous assistant reply", id="prev_asst_msg"),
+                    MagicMock(role="user", content="User prompt that led to this listing", id="prev_user_msg_in_list"),
+                    MagicMock(role="assistant", content="This is the assistant's reply.", id="prev_asst_msg_in_list"),
+                    MagicMock(role="user", content="Older user message", id="older_user_msg")
                 ]
                 if limit:
-                    return MockMsgListResponse(results_data=mock_messages[:limit])
-                return MockMsgListResponse(results_data=mock_messages)
+                    return MockMsgListResponse(data_list=mock_messages[:limit])
+                return MockMsgListResponse(data_list=mock_messages)
 
         agents = Agents()
-        messages = Messages() # type: ignore
+        messages = Messages()
 
 
     class LettaAPIError(Exception): # type: ignore
@@ -381,16 +382,22 @@ class MemoryService:
             #     self.letta_client.messages.create, # This is not how the stub is defined, stub messages.create is async
             #     agent_id=letta_agent_id, content=message_content, role=role, stream=False
             # )
-            # For the stub, we call its async version directly as it's mocked that way
-            response = await self.letta_client.messages.create(agent_id=letta_agent_id, content=message_content, role=role, stream=False)
+            response = await asyncio.to_thread(
+                self.letta_client.messages.create,
+                agent_id=letta_agent_id,
+                content=message_content,
+                role=role,
+                stream=False
+            )
 
-            # Based on typical API patterns, a successful create returns some object with an ID.
-            if response and (hasattr(response, 'id') or (isinstance(response, dict) and response.get('id'))):
-                logger.info(f"Message successfully sent to Letta agent {letta_agent_id}. Message ID: {response.get('id') if isinstance(response, dict) else response.id}")
+            # Assuming a successful create returns the message object with an 'id'
+            msg_id = getattr(response, 'id', response.get('id') if isinstance(response, dict) else None)
+            if msg_id:
+                logger.info(f"Message successfully sent to Letta agent {letta_agent_id}. Message ID: {msg_id}")
                 return True
             else:
-                logger.warning(f"Message sending to Letta agent {letta_agent_id} did not return a confirmation ID. Response: {response}")
-                return False # Or True if API doesn't confirm message content storage directly
+                logger.warning(f"Message sending to Letta agent {letta_agent_id} did not return a confirmation ID or expected response structure. Response: {response}")
+                return False
         except LettaAPIError as e:
             logger.error(f"Letta API error storing message for agent '{letta_agent_id}': {e}")
             return False
@@ -419,47 +426,47 @@ class MemoryService:
             return None
         try:
             # Step 1: Send the user's prompt message
-            # Assuming messages.create for sending a prompt might just return an ack or the sent message object
-            # The stub for messages.create is async, so direct await is fine.
-            sent_message_response = await self.letta_client.messages.create(
+            sent_message_response = await asyncio.to_thread(
+                self.letta_client.messages.create,
                 agent_id=letta_agent_id,
                 role=role,
                 content=prompt_message,
                 stream=False
             )
 
-            # Check if sending the prompt was successful (e.g., message has an ID)
-            sent_msg_id = None
-            if isinstance(sent_message_response, list) and sent_message_response: # Stub returns a list
-                sent_msg_id = sent_message_response[0].get("id")
-            elif hasattr(sent_message_response, 'id'):
-                sent_msg_id = sent_message_response.id
-
+            sent_msg_id = getattr(sent_message_response, 'id', sent_message_response.get('id') if isinstance(sent_message_response, dict) else None)
             if not sent_msg_id:
-                logger.error(f"Failed to send prompt message to Letta agent {letta_agent_id}. Response: {sent_message_response}")
+                logger.error(f"Failed to send prompt message to Letta agent {letta_agent_id} or received unexpected response. Response: {sent_message_response}")
                 return None
-            logger.info(f"Prompt successfully sent to Letta agent {letta_agent_id} (Msg ID: {sent_msg_id}). Fetching response...")
+            logger.info(f"Prompt successfully sent to Letta agent {letta_agent_id} (Msg ID: {sent_msg_id}). Fetching subsequent messages...")
 
             # Step 2: Fetch recent messages to find the assistant's reply
-            # Assuming messages.list is a synchronous SDK method
+            # Add a brief conceptual delay, as assistant message might not be instantly available after prompt.
+            # In a real scenario, this might involve polling or a webhook if the SDK doesn't block until reply.
+            # For now, we assume messages.list will quickly show the reply if one was generated.
+            # await asyncio.sleep(0.1) # Conceptual: allow time for agent processing if needed
+
             message_list_response = await asyncio.to_thread(
-                self.letta_client.messages.list, # type: ignore
+                self.letta_client.messages.list,
                 agent_id=letta_agent_id,
-                limit=5 # Fetch a few recent messages
+                limit=5 # Fetch a few recent messages, assuming latest are last
             )
 
-            if message_list_response and hasattr(message_list_response, 'results') and isinstance(message_list_response.results, list):
-                # Iterate in reverse to find the latest assistant message
-                for msg_obj in reversed(message_list_response.results):
+            # Assuming message_list_response is an object with a '.data' attribute which is a list of message objects/dicts
+            if message_list_response and hasattr(message_list_response, 'data') and isinstance(message_list_response.data, list):
+                # Iterate in reverse to find the latest assistant message that is NOT the prompt we just sent (if it echoes)
+                for msg_obj in reversed(message_list_response.data):
                     msg_role = getattr(msg_obj, 'role', msg_obj.get('role') if isinstance(msg_obj, dict) else None)
                     msg_content = getattr(msg_obj, 'content', msg_obj.get('content') if isinstance(msg_obj, dict) else None)
+                    msg_id = getattr(msg_obj, 'id', msg_obj.get('id') if isinstance(msg_obj, dict) else None)
 
-                    if msg_role == 'assistant' and msg_content is not None:
+                    # Ensure it's an assistant message and not the same as the prompt message ID we just sent (if applicable)
+                    if msg_role == 'assistant' and msg_content is not None: # and msg_id != sent_msg_id:
                         logger.info(f"Received assistant reply from Letta agent {letta_agent_id}: '{str(msg_content)[:100]}...'")
                         return str(msg_content)
 
-                logger.warning(f"No assistant reply found in recent messages for Letta agent {letta_agent_id}.")
-                return None # Or a default message like "Agent processed, no textual reply."
+                logger.warning(f"No assistant reply found in recent messages for Letta agent {letta_agent_id} after prompt '{prompt_message[:50]}...'.")
+                return None
             else:
                 logger.error(f"Unexpected response structure from Letta agent {letta_agent_id} messages.list: {message_list_response}")
                 return None
