@@ -215,15 +215,16 @@ class TradingCrewService:
             inputs_for_crew = {
                 "symbol": request.symbol,
                 "timeframe": request.timeframe,
-                "strategy_name": request.strategy_name, # This tells the StrategyAgent which strategy to focus on
-                "strategy_config": request.strategy_config # This provides the parameters for that strategy
+                "strategy_name": request.strategy_name,
+                "strategy_config": request.strategy_config,
+                "crew_run_id": task_id # New addition, using the AgentTask's task_id
             }
             # Sensitive config values (like API keys if they were ever part of strategy_config) should be redacted if logged.
             # For now, assume strategy_config contains only non-sensitive parameters.
             logger.info(
-                f"Kicking off trading analysis crew (task_id: {task_id}) for symbol {request.symbol}, "
+                f"Kicking off trading analysis crew (Task ID/Crew Run ID: {task_id}) for symbol {request.symbol}, "
                 f"strategy '{request.strategy_name}' with LLM '{llm_config_data.model_name}'. "
-                f"Strategy Config: {request.strategy_config}"
+                f"Strategy Config: {request.strategy_config}. Full inputs: {inputs_for_crew}" # Log full inputs for clarity
             )
             raw_result: Any = None
             if hasattr(current_crew, 'kickoff_async'):

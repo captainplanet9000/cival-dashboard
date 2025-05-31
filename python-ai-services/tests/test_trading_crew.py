@@ -250,7 +250,8 @@ async def test_run_analysis_success(
         "symbol": f"{strategy_name_to_test}_SYM",
         "timeframe": "1h",
         "strategy_name": strategy_name_to_test,
-        "strategy_config": sample_strategy_config
+        "strategy_config": sample_strategy_config,
+        "crew_run_id": mock_task_id # Verify crew_run_id is passed
     }
     mock_crew_instance.kickoff_async.assert_called_once_with(inputs=expected_kickoff_inputs)
 
@@ -323,7 +324,11 @@ async def test_run_analysis_invalid_crew_output_dict(MockCrewClass: MagicMock, t
     mock_crew_instance.kickoff_async = AsyncMock(return_value=malformed_output)
 
     request = TradingCrewRequest(
-        symbol="BTC/USD", timeframe="1h", strategy_name="TestStrategy", llm_config_id="openai_gpt4_turbo"
+        symbol="BTC/USD",
+        timeframe="1h",
+        strategy_name="TestStrategy",
+        llm_config_id="openai_gpt4_turbo",
+        strategy_config={"param1": "value1"} # Ensure this is present
     )
 
     result = await trading_crew_service.run_analysis(request)

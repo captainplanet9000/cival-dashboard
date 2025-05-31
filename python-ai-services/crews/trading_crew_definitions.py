@@ -184,14 +184,17 @@ market_analysis_task = Task(
         "necessary market data and perform technical analysis. Focus on identifying the current trend, volatility, "
         "key support and resistance levels, and summarizing relevant technical indicator values. "
         "Consider recent news or sentiment if data is available through your tools. Your final output must be a detailed analysis. "
-        "After your analysis, use the `store_memory_tool` to save a concise summary of your key findings and the main market condition for '{symbol}' using an `app_agent_id` like 'market_analyst_{symbol}' (replace {symbol} with the actual symbol). This will help build historical context."
+        "Upon completing your analysis, you MUST use the `store_memory_tool`. For the `app_agent_id` parameter, construct a unique ID using the provided '{{crew_run_id}}' (if available, otherwise use 'general_analysis'), the symbol '{{symbol}}', and timeframe '{{timeframe}}', formatted like: "
+        "'{crew_run_id}_market_analysis_{symbol}_{timeframe}' or 'general_analysis_market_analysis_{symbol}_{timeframe}'. "
+        "The `observation` parameter for the tool should be a concise JSON string summarizing your `MarketAnalysis` output's key findings. Example: "
+        "'observation=''{{\"condition\": \"bullish\", \"trend\": \"uptrend\", \"key_support\": 150.0, \"key_resistance\": 180.0}}'''. "
+        "This will help build historical context for subsequent tasks or runs. The placeholders {{symbol}}, {{timeframe}}, and {{crew_run_id}} will be interpolated from task inputs if provided."
     ),
     expected_output=(
         "A JSON object that strictly conforms to the `MarketAnalysis` Pydantic model. This includes fields like "
-        "`symbol`, `timeframe`, `market_condition` (e.g., 'bullish', 'bearish', 'ranging'), `trend_direction` (e.g., 'uptrend', 'downtrend', 'sideways'), "
-        "`trend_strength` (float 0-1), `volatility_score` (float 0-1), `support_levels` (list of floats), "
-        "`resistance_levels` (list of floats), `indicators` (a dictionary of key TA values like RSI, MACD signal, Bollinger Bands), "
-        "`sentiment_score` (float -1 to 1), `news_impact_summary` (string), and `short_term_forecast` (string)."
+        "`symbol`, `timeframe`, `market_condition`, `trend_direction`, `trend_strength`, `volatility_score`, `support_levels`, "
+        "`resistance_levels`, `indicators`, `sentiment_score`, `news_impact_summary`, and `short_term_forecast`. "
+        "The agent should also have stored a summary of this analysis using the memory tool as per the description."
     ),
     agent=market_analyst_agent,
     output_pydantic=MarketAnalysis,
@@ -202,7 +205,8 @@ strategy_application_task = Task(
     description=(
         "You are tasked with applying a specific trading strategy to the provided market analysis for the symbol: '{symbol}'. "
         "The strategy to apply is explicitly named: '{strategy_name}'. "
-        "Before applying the strategy, you can use `recall_memories_tool` with an `app_agent_id` like 'market_analyst_{symbol}' (replace {symbol} with the actual symbol) to check for recent analyses or observations about '{symbol}'. "
+        "Before applying the strategy, you MAY use the `recall_memories_tool` to check for recent market analyses for '{symbol}' over '{timeframe}'. "
+        "For the `app_agent_id` parameter of the recall tool, use a format like '{crew_run_id}_market_analysis_{symbol}_{timeframe}' or 'general_analysis_market_analysis_{symbol}_{timeframe}' (if {crew_run_id} is not available). The query should be specific, e.g., 'What was the market condition and trend for {symbol} recently?'. "
         "You have a set of tools, each designed to apply a different trading strategy (e.g., apply_darvas_box_tool, apply_williams_alligator_tool, etc.). "
         "You MUST select and use the ONE tool that corresponds EXACTLY to the provided '{strategy_name}'. "
         "The specific configuration parameters for this strategy are provided in the '{strategy_config}' dictionary. "
@@ -211,14 +215,17 @@ strategy_application_task = Task(
         "Your goal is to execute the selected strategy tool with the correct inputs and output its findings. "
         "Determine a trading action (BUY, SELL, or HOLD), a confidence score, and other relevant parameters as dictated by the strategy's output. "
         "Provide a clear rationale. Your final output must be a detailed strategy application result. "
-        "After determining the strategy advice, use `store_memory_tool` to record your advice and its primary rationale, using an `app_agent_id` like 'strategy_agent_{symbol}_{strategy_name}' (replace placeholders with actual values)."
+        "After determining your advice, you MUST use the `store_memory_tool`. For `app_agent_id`, use a format like '{crew_run_id}_strategy_application_{symbol}_{strategy_name}' or 'general_strategy_application_{symbol}_{strategy_name}'. "
+        "The `observation` should be a concise JSON string summary of your `StrategyApplicationResult` (e.g., advice, confidence, key rationale points). Example: "
+        "'observation=''{{\"advice\": \"BUY\", \"confidence\": 0.75, \"rationale_summary\": \"Breakout confirmed on high volume.\"}}'''. The placeholders {{symbol}}, {{strategy_name}}, and {{crew_run_id}} will be interpolated from task inputs if provided."
     ),
     expected_output=(
         "A JSON object strictly conforming to the `StrategyApplicationResult` Pydantic model. "
         "This JSON object must accurately reflect the outcome of applying the strategy '{strategy_name}' using its specific configuration '{strategy_config}'. "
         "Key fields to populate include: `symbol`, `strategy_name` (must match the input '{strategy_name}'), `advice` (BUY, SELL, or HOLD), "
         "`confidence_score`, `target_price` (if applicable), `stop_loss` (if applicable), `take_profit` (if applicable), `rationale`, "
-        "and `additional_data` containing any specific outputs from the executed strategy tool (like box coordinates, Renko bricks, or HA candle previews)."
+        "and `additional_data` containing any specific outputs from the executed strategy tool (like box coordinates, Renko bricks, or HA candle previews). "
+        "The agent should also have stored its advice summary using the memory tool as per the description."
     ),
     agent=strategy_agent,
     context=[market_analysis_task],
@@ -229,19 +236,25 @@ strategy_application_task = Task(
 trade_decision_task = Task(
     description=(
         "Review the provided market analysis and the '{strategy_name}' strategy application result for '{symbol}'. "
-        "You can use `recall_memories_tool` to retrieve recent analysis (e.g., `app_agent_id` 'market_analyst_{symbol}'), strategy advice (e.g., `app_agent_id` 'strategy_agent_{symbol}_{strategy_name}'), or prior risk assessments for '{symbol}'. "
+        "To build comprehensive context, you SHOULD use the `recall_memories_tool` to retrieve relevant information. For example: "
+        "1. The latest `MarketAnalysis` for '{symbol}' (e.g., `app_agent_id='{crew_run_id}_market_analysis_{symbol}_{timeframe}'` or 'general_analysis_market_analysis_{symbol}_{timeframe}'). "
+        "2. The latest `StrategyApplicationResult` for '{symbol}' and '{strategy_name}' (e.g., `app_agent_id='{crew_run_id}_strategy_application_{symbol}_{strategy_name}'` or 'general_strategy_application_{symbol}_{strategy_name}'). "
+        "Your query should be specific to what you need from these memories. "
         "Conduct a final risk assessment using the `assess_trade_risk_tool` based on the proposed action from the strategy, "
         "market context from the analysis, and any available portfolio information (conceptually, portfolio context might be limited for this tool directly). "
         "Synthesize all information to formulate a comprehensive trading decision. Your final output must be a complete trading signal, "
         "ensuring all fields of the `TradingDecision` Pydantic model are appropriately populated. "
-        "After formulating the final `TradingDecision`, use `store_memory_tool` to save this decision and its justification, using an `app_agent_id` like 'trade_advisor_{symbol}' (replace {symbol} with actual symbol)."
+        "After formulating the final `TradingDecision`, you MUST use the `store_memory_tool`. For `app_agent_id`, use a format like '{crew_run_id}_trade_decision_{symbol}' or 'general_trade_decision_{symbol}'. "
+        "The `observation` should be a concise JSON string summary of the key elements of your `TradingDecision` (e.g., action, symbol, confidence, primary reason, risk level). Example: "
+        "'observation=''{{\"action\": \"BUY\", \"symbol\": \"{symbol}\", \"confidence\": 0.8, \"reason_summary\": \"Strong bullish indicators and positive RRR.\", \"risk_level\": \"LOW\"}}'''. The placeholders {{symbol}}, {{strategy_name}}, {{timeframe}} and {{crew_run_id}} will be interpolated from task inputs if provided."
     ),
     expected_output=(
         "A JSON object strictly conforming to the `TradingDecision` Pydantic model. This must include `action` (enum: BUY, SELL, or HOLD), "
         "`decision_id` (generate a unique ID), `symbol`, `confidence` (float 0-1), `timestamp` (ISO format), `reasoning` (comprehensive summary), "
         "`risk_assessment` (embedding the output from `assess_trade_risk_tool` or its key fields like `risk_level` and `warnings`), "
         "and where applicable, `quantity` (use a default like 1.0 if not calculable yet or not provided by strategy), "
-        "`entry_price` (Optional[float]), `stop_loss` (Optional[float]), and `take_profit` (Optional[float])."
+        "`entry_price` (Optional[float]), `stop_loss` (Optional[float]), and `take_profit` (Optional[float]). "
+        "The agent should also have stored its final decision summary using the memory tool as per the description."
     ),
     agent=trade_advisor_agent,
     context=[market_analysis_task, strategy_application_task],
