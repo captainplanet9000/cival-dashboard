@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from loguru import logger
 import json
 import pandas as pd
+import numpy as np # Added for np.nan
 
 # Attempt to import the 'tool' decorator from crewai_tools
 try:
@@ -91,58 +92,71 @@ def run_technical_analysis_tool(market_data_json: str, volume_sma_period: int = 
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-        df = df.dropna(subset=numeric_cols) # Drop rows where essential numeric conversion failed
+        df = df.dropna(subset=numeric_cols)
         if df.empty:
-            logger.warning(f"TOOL: DataFrame for {symbol} became empty after numeric conversion and NA drop.")
-            return json.dumps({"symbol": symbol, "timeframe": timeframe, "summary": "Data for OHLCV columns was not numeric or resulted in empty dataset after cleaning.", "processed_data_preview": [], "columns": list(df.columns)})
+            logger.warning(f"TOOL: DataFrame for {symbol} became empty after numeric conversion and NA drop of essential OHLCV columns.")
+            # Return empty data structure but indicate columns that were expected/processed
+            processed_cols = list(df.columns) if not df.columns.empty else required_cols
+            return json.dumps({
+                "symbol": symbol, "timeframe": timeframe,
+                "summary": "Data for essential OHLCV columns was not numeric or resulted in empty dataset after cleaning.",
+                "ohlcv_with_ta": [],
+                "columns_available": processed_cols
+            })
 
     except Exception as e:
         logger.error(f"TOOL: Error converting DataFrame columns for {symbol}: {e}")
         return json.dumps({"error": "Error during DataFrame column conversion.", "details": str(e)})
 
-    # Calculate Volume SMA (example of an ancillary TA)
-    if 'volume' in df.columns and not df['volume'].empty and len(df) >= volume_sma_period:
-        df['volume_sma'] = df['volume'].rolling(window=volume_sma_period, min_periods=min(volume_sma_period, len(df))).mean()
-        logger.info(f"TOOL: Calculated volume SMA for {symbol} using period {volume_sma_period}.")
+    # Calculate Volume SMA
+    if 'volume' in df.columns and not df['volume'].isna().all() and len(df) >= volume_sma_period:
+        # Ensure there are enough non-NA values in volume for a meaningful SMA
+        if df['volume'].dropna().count() >= volume_sma_period:
+            df['volume_sma'] = df['volume'].rolling(window=volume_sma_period, min_periods=volume_sma_period).mean()
+            logger.info(f"TOOL: Calculated volume SMA for {symbol} using period {volume_sma_period}.")
+        else:
+            df['volume_sma'] = np.nan # Not enough data points for full period SMA
+            logger.warning(f"TOOL: Not enough non-NA volume data points for full {volume_sma_period}-period SMA on {symbol}. Set volume_sma to NaN. Non-NA count: {df['volume'].dropna().count()}")
     else:
-        df['volume_sma'] = pd.NA # Or np.nan, or 0, depending on downstream needs
-        logger.warning(f"TOOL: Volume SMA not calculated for {symbol}. Insufficient data or 'volume' column missing/empty. Data length: {len(df)}, Required period: {volume_sma_period}")
+        df['volume_sma'] = np.nan # Use np.nan for consistency if SMA cannot be calculated
+        logger.warning(f"TOOL: Volume SMA not calculated for {symbol}. Insufficient data, 'volume' column missing/empty, or all NaNs. Data length: {len(df)}, Required period: {volume_sma_period}")
 
-    # Prepare output
-    # In a real scenario, this tool might return a more complex object with various indicators.
-    # For CrewAI, returning a JSON string of the processed data or key findings is common.
-    # The 'full_data_preview_cols' helps the next agent/LLM know what's in the DataFrame.
-
-    # Convert Timestamp index back to string for JSON serialization if to_dict is used on rows
+    # Prepare output DataFrame
     df_for_output = df.copy()
+
+    # Ensure timestamp is a column and in ISO format string
     if isinstance(df_for_output.index, pd.DatetimeIndex):
-         df_for_output.index = df_for_output.index.map(lambda ts: ts.isoformat())
+        df_for_output = df_for_output.reset_index() # Moves timestamp from index to a column
+        # df_for_output['timestamp'] = df_for_output['timestamp'].dt.strftime('%Y-%m-%dT%H:%M:%SZ') # Standard ISO format
+    # else if 'timestamp' is already a column (e.g. from a previous reset_index or if not set as index)
+    # we assume it was converted to datetime object correctly earlier. Now ensure string format.
+    if 'timestamp' in df_for_output.columns and pd.api.types.is_datetime64_any_dtype(df_for_output['timestamp']):
+         df_for_output['timestamp'] = df_for_output['timestamp'].dt.strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-    # Prepare output to include the full DataFrame with TA indicators
-    # Convert Timestamp index back to string for JSON serialization
-    df_for_output = df.copy()
-    if isinstance(df_for_output.index, pd.DatetimeIndex):
-         df_for_output.index = df_for_output.index.map(lambda ts: ts.isoformat())
+    # Replace np.nan with None for JSON compatibility if not using ignore_nan with pandas json
+    # Standard json.dumps does not handle np.nan
+    df_for_output = df_for_output.replace({np.nan: None})
 
-    # Include all original columns plus the new TA columns like 'volume_sma'
-    # The next tool (strategy application) will need this full data.
-    ohlcv_with_ta_records = df_for_output.reset_index().to_dict(orient='records')
+    ohlcv_with_ta_records = df_for_output.to_dict(orient='records')
+    final_columns = list(df_for_output.columns)
 
-    output_data = {
+    output_payload = {
         "symbol": symbol,
         "timeframe": timeframe,
-        "summary": f"Technical analysis complete for {symbol}. DataFrame includes {len(ohlcv_with_ta_records)} records with calculated Volume SMA.",
-        "ohlcv_with_ta": ohlcv_with_ta_records, # Full data with TA
-        "columns_available": list(df_for_output.columns) # List of columns including new TA ones
+        "summary": f"Volume SMA ({volume_sma_period}-period) calculated for {symbol}.",
+        "ohlcv_with_ta": ohlcv_with_ta_records,
+        "columns_available": final_columns
     }
 
     try:
-        # Using default=str to handle any potential datetime objects or pd.NA if not fully converted
-        return json.dumps(output_data, default=str, ignore_nan=True)
+        # Using default=str to handle any potential datetime objects if not pre-converted
+        # np.nan should have been replaced by None already for standard json compatibility
+        return json.dumps(output_payload, default=str)
     except (TypeError, OverflowError) as e:
         logger.error(f"TOOL: Error serializing TA output to JSON for {symbol}: {e}")
-        return json.dumps({"error": "Failed to serialize TA output.", "details": str(e)})
+        # Attempt to return a more resilient error structure if serialization fails
+        return json.dumps({"error": "Failed to serialize TA output.", "details": str(e), "columns_available": final_columns})
 
 
 if __name__ == '__main__':

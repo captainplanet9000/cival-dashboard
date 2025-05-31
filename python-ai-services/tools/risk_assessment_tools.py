@@ -106,129 +106,169 @@ def assess_trade_risk_tool(
         action_enum = validated_args.proposed_action
     except PydanticValidationError as e:
         logger.error(f"TOOL: Input validation error for AssessTradeRiskArgs: {e}")
-        # Return a valid TradeRiskAssessmentOutput JSON string indicating error
+        error_messages = [f"{err['msg']} (Field: {'.'.join(map(str, err['loc']))})" for err in e.errors()]
         err_output = TradeRiskAssessmentOutput(
-            risk_level=RiskLevel.HIGH, # Default to high risk on bad input
-            warnings=[f"Input validation error: {err_detail['msg']}" for err_detail in e.errors()],
-            assessment_summary=f"Failed to assess risk due to input validation errors: {e.errors()[0]['msg'] if e.errors() else 'Unknown validation error'}.",
+            risk_level=RiskLevel.HIGH,
+            warnings=error_messages,
+            assessment_summary=f"Failed to assess risk due to input validation errors: {error_messages[0] if error_messages else 'Unknown validation error'}.",
             sanity_checks_passed=False
         )
-        return err_output.model_dump_json(indent=2)
+        return err_output.model_dump_json(indent=2, exclude_none=True)
 
+    args = validated_args # Use the validated args from now on
+
+    # Initialize variables
     warnings: List[str] = []
-    risk_level = RiskLevel.LOW
-    max_loss_pct: Optional[float] = None
-    max_loss_val: Optional[float] = None
-    suggested_adj_factor: Optional[float] = 1.0 # Default to 1.0 (no change)
-    sanity_ok = True
+    risk_level: RiskLevel = RiskLevel.LOW # Use RiskLevel enum
+    assessment_summary: str = ""
+    max_potential_loss_value: Optional[float] = None
+    max_potential_loss_estimate_percent: Optional[float] = None
+    suggested_position_size_adjustment_factor: float = 1.0
+    sanity_checks_passed: bool = True
 
     trade_value: Optional[float] = None
-    if quantity_or_value is not None and entry_price is not None:
-        # Assuming quantity_or_value is quantity if > 0.000001 (typical minimum for crypto/stocks)
-        # This is a heuristic; a dedicated 'trade_value_type' field would be better.
-        if quantity_or_value > 0.000001 : # Heuristic for quantity
-             trade_value = quantity_or_value * entry_price
-        else: # Assume it's a monetary value directly if very small (unlikely for quantity) or if it's the only interpretation
-             trade_value = quantity_or_value
+    loss_per_unit: Optional[float] = None # Define loss_per_unit here
 
-
-    if action_enum == TradeAction.BUY:
-        if entry_price is not None and stop_loss_price is not None:
-            if stop_loss_price >= entry_price:
-                warnings.append("Critical: Stop-loss for BUY order is at or above the entry price.")
-                sanity_ok = False
-            else:
-                if entry_price > 0: # Avoid division by zero
-                    max_loss_pct = round(((entry_price - stop_loss_price) / entry_price) * 100, 2)
-                if quantity_or_value is not None: # quantity_or_value is assumed to be quantity here
-                    max_loss_val = round((entry_price - stop_loss_price) * quantity_or_value, 2)
-    elif action_enum == TradeAction.SELL:
-        if entry_price is not None and stop_loss_price is not None:
-            if stop_loss_price <= entry_price:
-                warnings.append("Critical: Stop-loss for SELL order is at or below the entry price.")
-                sanity_ok = False
-            else:
-                if entry_price > 0:
-                    max_loss_pct = round(((stop_loss_price - entry_price) / entry_price) * 100, 2)
-                if quantity_or_value is not None: # quantity_or_value is assumed to be quantity here
-                    max_loss_val = round((stop_loss_price - entry_price) * quantity_or_value, 2)
-
-    if max_loss_pct is not None:
-        if max_loss_pct > 5.0:
-            warnings.append(f"Potential loss ({max_loss_pct}%) exceeds typical threshold (5%).")
-            if risk_level == RiskLevel.LOW: risk_level = RiskLevel.MEDIUM
-        if max_loss_pct > 10.0: # Stricter threshold for high risk
-            risk_level = RiskLevel.HIGH
-            suggested_adj_factor = 0.5 # Suggest halving size
-
-    if action_enum != TradeAction.HOLD:
-        if confidence_score is not None:
-            if confidence_score < 0.5:
-                warnings.append("Proposed action has a very low confidence score.")
-                risk_level = RiskLevel.HIGH
-                suggested_adj_factor = 0.0 # Suggest avoiding trade
-            elif confidence_score < 0.7:
-                warnings.append("Proposed action has a moderate confidence score.")
-                if risk_level == RiskLevel.LOW: risk_level = RiskLevel.MEDIUM
-                if suggested_adj_factor > 0.5: suggested_adj_factor = 0.75 # Suggest slight reduction
-        else:
-            warnings.append("Confidence score not provided for a trade action; risk assessment less certain.")
-            if risk_level == RiskLevel.LOW: risk_level = RiskLevel.MEDIUM
-
-    if market_conditions_summary and "volatile" in market_conditions_summary.lower():
-        warnings.append("Market conditions are reported as volatile, increasing uncertainty.")
-        if risk_level == RiskLevel.LOW: risk_level = RiskLevel.MEDIUM
-        elif risk_level == RiskLevel.MEDIUM: risk_level = RiskLevel.HIGH
-        if suggested_adj_factor > 0.5: suggested_adj_factor = 0.5
-
-    if current_portfolio_value is not None and current_portfolio_value > 0 and max_loss_val is not None:
-        portfolio_risk_pct = round((max_loss_val / current_portfolio_value) * 100, 2)
-        if portfolio_risk_pct > 2.0: # Max 2% of portfolio value at risk for one trade
-            warnings.append(f"Potential loss ({max_loss_val}, {portfolio_risk_pct}% of portfolio) exceeds 2% portfolio risk threshold.")
-            risk_level = RiskLevel.HIGH
-            suggested_adj_factor = min(suggested_adj_factor if suggested_adj_factor is not None else 1.0, 0.5) # Enforce at least halving
-        elif portfolio_risk_pct > 1.0:
-            warnings.append(f"Potential loss ({max_loss_val}, {portfolio_risk_pct}% of portfolio) exceeds 1% portfolio risk threshold.")
-            if risk_level == RiskLevel.LOW: risk_level = RiskLevel.MEDIUM
-            if suggested_adj_factor > 0.75: suggested_adj_factor = 0.75
-
-    if existing_position_size is not None and existing_position_size > 0:
-        warnings.append(f"Note: An existing position of size {existing_position_size} in {symbol} will be increased.")
-        # This might influence risk level or suggested size depending on diversification rules, not fully stubbed here.
-
-    if not sanity_ok:
-        risk_level = RiskLevel.HIGH
-        assessment_summary = f"Trade proposal for {symbol} failed basic sanity checks (e.g., stop-loss placement). High risk."
-        suggested_adj_factor = 0.0 # Avoid trade if sanity checks fail
-    elif warnings:
-        assessment_summary = f"Trade for {symbol} assessed with {risk_level.value} risk. Key warnings: {'; '.join(warnings[:3])}"
-    else:
-        assessment_summary = f"Trade for {symbol} assessed with {risk_level.value} risk. No major warnings from automated checks."
-
-    if action_enum == TradeAction.HOLD:
+    # Handle HOLD action first
+    if args.proposed_action == TradeAction.HOLD:
         risk_level = RiskLevel.LOW
-        max_loss_pct = None
-        max_loss_val = None
-        suggested_adj_factor = None # N/A for HOLD
-        assessment_summary = f"Holding {symbol} is considered low risk. Market conditions: {market_conditions_summary or 'not specified'}."
-        warnings.clear()
+        warnings = ["HOLD action proposed, no new market risk assessed."]
+        assessment_summary = f"HOLD action for {args.symbol} assessed: Low immediate risk. Market conditions: {args.market_conditions_summary or 'not specified'}."
+        # All loss/adjustment factors remain None or default for HOLD
+        output = TradeRiskAssessmentOutput(
+            risk_level=risk_level.value, # Ensure enum value is passed
+            warnings=warnings,
+            assessment_summary=assessment_summary,
+            sanity_checks_passed=True, # Sanity checks are N/A for HOLD in this context
+            timestamp=datetime.utcnow()
+            # max_potential_loss_value, max_potential_loss_estimate_percent, suggested_position_size_adjustment_factor default to None/1.0
+        )
+        return output.model_dump_json(indent=2, exclude_none=True)
+
+    # Trade Value Calculation (assuming quantity_or_value is quantity for BUY/SELL)
+    if args.quantity_or_value is not None and args.entry_price is not None:
+        trade_value = args.quantity_or_value * args.entry_price
+
+
+
+    # Stop-Loss Sanity & Max Loss Calculation
+    if args.entry_price is not None and args.stop_loss_price is not None:
+        if args.proposed_action == TradeAction.BUY:
+            if args.stop_loss_price >= args.entry_price:
+                warnings.append("Critical: Stop-loss for BUY order is at or above the entry price.")
+                sanity_checks_passed = False
+            else:
+                loss_per_unit = args.entry_price - args.stop_loss_price
+        elif args.proposed_action == TradeAction.SELL:
+            if args.stop_loss_price <= args.entry_price:
+                warnings.append("Critical: Stop-loss for SELL order is at or below the entry price.")
+                sanity_checks_passed = False
+            else:
+                loss_per_unit = args.stop_loss_price - args.entry_price
+
+        if loss_per_unit is not None and loss_per_unit > 0 and args.quantity_or_value is not None:
+            max_potential_loss_value = loss_per_unit * args.quantity_or_value
+            if trade_value is not None and trade_value > 0: # trade_value could be zero if entry_price is zero
+                max_potential_loss_estimate_percent = round((max_potential_loss_value / trade_value) * 100, 2)
+
+    # Reward/Risk Ratio (RRR) Calculation
+    if args.entry_price is not None and args.stop_loss_price is not None and args.take_profit_price is not None and loss_per_unit is not None and loss_per_unit > 0:
+        potential_reward_per_unit = None
+        if args.proposed_action == TradeAction.BUY and args.take_profit_price > args.entry_price:
+            potential_reward_per_unit = args.take_profit_price - args.entry_price
+        elif args.proposed_action == TradeAction.SELL and args.take_profit_price < args.entry_price:
+            potential_reward_per_unit = args.entry_price - args.take_profit_price
+
+        if potential_reward_per_unit is not None and potential_reward_per_unit > 0:
+            rrr = potential_reward_per_unit / loss_per_unit
+            if rrr < 1.5: # Configurable threshold
+                warnings.append(f"Poor Reward/Risk Ratio ({rrr:.2f}) found, which is less than 1.5.")
+                risk_level = max(risk_level, RiskLevel.MEDIUM)
+        elif (args.proposed_action == TradeAction.BUY and args.take_profit_price <= args.entry_price) or \
+             (args.proposed_action == TradeAction.SELL and args.take_profit_price >= args.entry_price):
+            warnings.append("Take-profit price is not logical (e.g., below entry for BUY, or above entry for SELL).")
+            sanity_checks_passed = False
+
+
+    # Position Sizing vs. Portfolio Risk
+    if max_potential_loss_value is not None and args.current_portfolio_value is not None and args.current_portfolio_value > 0:
+        loss_as_portfolio_percent = (max_potential_loss_value / args.current_portfolio_value) * 100
+        if loss_as_portfolio_percent > 2.0: # Configurable max risk per trade %
+            warnings.append(f"Potential loss ({loss_as_portfolio_percent:.1f}%) exceeds max risk per trade (2% of portfolio).")
+            risk_level = max(risk_level, RiskLevel.HIGH)
+            suggested_position_size_adjustment_factor = min(suggested_position_size_adjustment_factor, 0.5)
+        elif loss_as_portfolio_percent > 1.0:
+            warnings.append(f"Potential loss ({loss_as_portfolio_percent:.1f}%) is moderate (1-2% of portfolio).")
+            risk_level = max(risk_level, RiskLevel.MEDIUM)
+            suggested_position_size_adjustment_factor = min(suggested_position_size_adjustment_factor, 0.75)
+
+
+    # Concentration Risk (Simple)
+    if args.existing_position_size is not None and args.existing_position_size > 0:
+        warnings.append(f"Increasing exposure to an existing position of size {args.existing_position_size} in {args.symbol}.")
+        risk_level = max(risk_level, RiskLevel.MEDIUM)
+
+    # Confidence Score Impact
+    if args.confidence_score is not None:
+        if args.confidence_score < 0.5:
+            warnings.append(f"Proposed action has low confidence ({args.confidence_score:.2f}).")
+            risk_level = max(risk_level, RiskLevel.MEDIUM) # Changed from HIGH to MEDIUM as per subtask
+            suggested_position_size_adjustment_factor = min(suggested_position_size_adjustment_factor, 0.25) # Suggest significant reduction or avoiding
+        elif args.confidence_score < 0.7:
+            warnings.append(f"Proposed action has moderate confidence ({args.confidence_score:.2f}).")
+            risk_level = max(risk_level, RiskLevel.LOW) # No change if already higher
+            suggested_position_size_adjustment_factor = min(suggested_position_size_adjustment_factor, 0.75)
+    else: # No confidence score provided for a trade action
+        warnings.append("Confidence score not provided; risk assessment less certain.")
+        risk_level = max(risk_level, RiskLevel.MEDIUM)
+
+
+    # Market Conditions Impact
+    if args.market_conditions_summary and "volatile" in args.market_conditions_summary.lower():
+        warnings.append("Market conditions reported as volatile, increasing uncertainty.")
+        risk_level = max(risk_level, RiskLevel.MEDIUM)
+        suggested_position_size_adjustment_factor = min(suggested_position_size_adjustment_factor, 0.75)
+
+    # Final risk_level if sanity checks failed
+    if not sanity_checks_passed:
+        risk_level = RiskLevel.HIGH
+        # Ensure adjustment factor reflects avoiding trade if sanity fails critically
+        suggested_position_size_adjustment_factor = 0.0
+        if not any("Critical:" in w for w in warnings): # Add a generic sanity fail warning if not already specific
+            warnings.append("Critical: Trade proposal failed basic sanity checks.")
+
+
+    # Construct assessment_summary
+    if warnings:
+        assessment_summary = f"Trade for {args.symbol} ({args.proposed_action.value}) assessed with {risk_level.value} risk. Key warnings: {'; '.join(warnings[:3])}"
+        if len(warnings) > 3:
+            assessment_summary += f" ...and {len(warnings)-3} more."
+    else:
+        assessment_summary = f"Trade for {args.symbol} ({args.proposed_action.value}) assessed with {risk_level.value} risk. No major warnings from automated checks."
+
+    # If adjustment factor is 1.0, it means no downward adjustment suggested by specific checks.
+    # Set to None in output if no adjustment needed, unless sanity failed (then 0.0).
+    if suggested_position_size_adjustment_factor == 1.0 and sanity_checks_passed:
+        final_adjustment_factor = None
+    else:
+        final_adjustment_factor = suggested_position_size_adjustment_factor
+
 
     output = TradeRiskAssessmentOutput(
-        risk_level=risk_level,
+        risk_level=risk_level.value, # Ensure enum value is passed
         warnings=warnings,
-        max_potential_loss_estimate_percent=max_loss_pct,
-        max_potential_loss_value=max_loss_val,
-        suggested_position_size_adjustment_factor=suggested_adj_factor,
-        sanity_checks_passed=sanity_ok,
+        max_potential_loss_estimate_percent=max_potential_loss_estimate_percent,
+        max_potential_loss_value=max_potential_loss_value,
+        suggested_position_size_adjustment_factor=final_adjustment_factor,
+        sanity_checks_passed=sanity_checks_passed,
         assessment_summary=assessment_summary,
         timestamp=datetime.utcnow()
     )
 
     try:
-        return output.model_dump_json(indent=2)
+        return output.model_dump_json(indent=2, exclude_none=True)
     except Exception as e:
-        logger.error(f"TOOL: Error serializing TradeRiskAssessmentOutput to JSON for {symbol}: {e}")
-        # Fallback to a simpler error JSON if model serialization fails
+        logger.error(f"TOOL: Error serializing TradeRiskAssessmentOutput to JSON for {args.symbol}: {e}")
         return json.dumps({"error": "Failed to serialize risk assessment output.", "details": str(e)})
 
 

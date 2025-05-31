@@ -92,34 +92,91 @@ def test_apply_darvas_box_tool_success_buy_signal(mock_run_darvas: MagicMock, sa
     mock_run_darvas.return_value = mock_darvas_output
     result_json = apply_darvas_box_tool(processed_market_data_json=market_json_str, darvas_config=sample_darvas_config_dict)
     data = json.loads(result_json)
-    assert "error" not in data
+
+    assert "error" not in data, f"Tool returned an error: {data.get('error')}"
+
     mock_run_darvas.assert_called_once()
+    # Check the DataFrame passed to the mocked run_darvas_box
+    call_args = mock_run_darvas.call_args
+    passed_df = call_args[0][0]
+    assert isinstance(passed_df, pd.DataFrame)
+    assert isinstance(passed_df.index, pd.DatetimeIndex)
+    assert not passed_df.empty
+    # Check for essential columns Darvas Box needs
+    expected_cols_for_strategy = ['open', 'high', 'low', 'close', 'volume']
+    for col in expected_cols_for_strategy:
+        assert col in passed_df.columns
+        assert pd.api.types.is_numeric_dtype(passed_df[col])
+
+    assert isinstance(call_args[0][1], DarvasBoxConfig) # Check config type
+
     parsed_result = StrategyApplicationResult(**data)
     assert parsed_result.advice == TradeAction.BUY
     assert parsed_result.additional_data["boxes_found"][0]["top"] == 112.0
+    assert "input_ohlcv_preview" in parsed_result.additional_data
+    assert len(parsed_result.additional_data["input_ohlcv_preview"]) <= 5
 
-# ... (other Darvas tests remain unchanged) ...
+
 @patch('python_ai_services.tools.strategy_application_tools.run_darvas_box')
 def test_apply_darvas_box_tool_no_signal_hold(mock_run_darvas: MagicMock, sample_darvas_config_dict: Dict[str, Any]):
     market_json_str = get_sample_processed_market_data_json(symbol="DB_HOLD", days=60)
     mock_run_darvas.return_value = {"signals": [], "boxes": []}
+
     result_json = apply_darvas_box_tool(processed_market_data_json=market_json_str, darvas_config=sample_darvas_config_dict)
     data = json.loads(result_json)
     parsed_result = StrategyApplicationResult(**data)
     assert parsed_result.advice == TradeAction.HOLD
+    assert "input_ohlcv_preview" in parsed_result.additional_data
 
 def test_apply_darvas_box_tool_invalid_darvas_config():
-    market_json_str = get_sample_processed_market_data_json()
-    invalid_config = {"lookback_period_highs": -5}
+    market_json_str = get_sample_processed_market_data_json() # Valid market data
+    invalid_config = {"lookback_period_highs": -5, "this_is_extra": "bad"} # Invalid and extra field
+
     result_json = apply_darvas_box_tool(processed_market_data_json=market_json_str, darvas_config=invalid_config)
     data = json.loads(result_json)
-    assert "error" in data and "Invalid Darvas Box configuration" in data["error"]
+    assert "error" in data
+    assert "Invalid Darvas Box configuration" in data["error"]
+    assert "details" in data
+    # Pydantic v2+ error format for .errors() is a list of dicts
+    assert any("lookback_period_highs" in e.get("loc", ()) for e in data["details"])
+    assert any("extra_forbidden" in e.get("type", "") and "this_is_extra" in str(e.get("loc",())) for e in data["details"])
 
-def test_apply_darvas_box_tool_missing_ohlcv_key():
-    missing_key_json = json.dumps({"symbol": "MISSINGKEY", "summary": "Data missing"})
-    result_json = apply_darvas_box_tool(processed_market_data_json=missing_key_json, darvas_config={"lookback_period_highs":10})
+
+def test_apply_darvas_box_tool_malformed_market_json():
+    malformed_json_str = '{"symbol": "MALFORMED", "ohlcv_with_ta": [{}, ...' # Incomplete JSON
+    result_json = apply_darvas_box_tool(processed_market_data_json=malformed_json_str, darvas_config={"lookback_period_highs":10})
     data = json.loads(result_json)
-    assert "error" in data and "Market data 'ohlcv_with_ta' field is invalid or empty" in data["error"]
+    assert "error" in data
+    assert "Invalid JSON format for market data" in data["error"]
+
+def test_apply_darvas_box_tool_missing_key_in_market_json():
+    # Valid JSON, but missing 'ohlcv_with_ta' key
+    market_data = json.loads(get_sample_processed_market_data_json())
+    del market_data['ohlcv_with_ta']
+    missing_key_json_str = json.dumps(market_data)
+
+    result_json = apply_darvas_box_tool(processed_market_data_json=missing_key_json_str, darvas_config={"lookback_period_highs":10})
+    data = json.loads(result_json)
+    assert "error" in data
+    assert "Market data 'ohlcv_with_ta' field is invalid or empty" in data["error"]
+
+def test_apply_darvas_box_tool_records_missing_columns():
+    """Test when ohlcv_with_ta records are missing essential columns like 'close' or 'volume'."""
+    market_data = json.loads(get_sample_processed_market_data_json(days=5)) # Use full structure
+    # Corrupt one of the records
+    if market_data['ohlcv_with_ta']:
+        del market_data['ohlcv_with_ta'][0]['close'] # Remove 'close' from the first record
+        if 'volume' in market_data['ohlcv_with_ta'][1]:
+             del market_data['ohlcv_with_ta'][1]['volume'] # Remove 'volume' from the second record
+
+    corrupted_records_json_str = json.dumps(market_data)
+    sample_config = DarvasBoxConfig().model_dump()
+
+    result_json = apply_darvas_box_tool(processed_market_data_json=corrupted_records_json_str, darvas_config=sample_config)
+    data = json.loads(result_json)
+    assert "error" in data
+    assert "Market data DataFrame missing required OHLCV columns" in data["error"]
+
 
 @patch('python_ai_services.tools.strategy_application_tools.run_darvas_box')
 def test_apply_darvas_box_tool_strategy_execution_fails(mock_run_darvas: MagicMock, sample_darvas_config_dict: Dict[str, Any]):

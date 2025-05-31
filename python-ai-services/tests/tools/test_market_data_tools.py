@@ -39,11 +39,12 @@ async def test_fetch_market_data_tool_success_service_call():
     mock_mds_instance.get_historical_data.assert_called_once_with(symbol=symbol, interval=timeframe, limit=expected_limit)
     assert data["symbol"] == symbol
     assert data["timeframe"] == timeframe
-    assert data["requested_historical_days"] == historical_days
+    assert data["historical_days"] == historical_days # Field name updated in tool
     assert data["limit_calculated"] == expected_limit
+    assert data["data_source_status"] == "service_success"
+    assert data["data_points_returned"] == len(mock_service_data)
     assert data["data"] == mock_service_data
     assert data["current_price_simulated"] == mock_service_data[-1]["close"]
-    assert "Successfully retrieved from MarketDataService" in data["data_source_status"]
 
 @pytest.mark.asyncio
 async def test_fetch_market_data_tool_service_unavailable_uses_mock():
@@ -58,10 +59,13 @@ async def test_fetch_market_data_tool_service_unavailable_uses_mock():
         result_json = await fetch_market_data_tool(symbol=symbol, timeframe=timeframe, historical_days=historical_days)
 
     data = json.loads(result_json)
-    assert "MarketDataService not available" in data["data_source_status"]
+    assert data["data_source_status"] == "service_unavailable_mock_fallback"
     assert data["symbol"] == symbol
-    assert len(data["data"]) == expected_limit # Mock data should generate 'limit' candles
-    assert data["data"][0]["symbol"] == symbol # Check mock data structure
+    assert data["limit_calculated"] == expected_limit
+    assert len(data["data"]) == expected_limit
+    assert data["current_price_simulated"] == data["data"][-1]["close"] # from mock
+    # Mock data from _generate_mock_ohlcv_data does not include 'symbol' in each record anymore.
+    # assert data["data"][0].get("symbol") == symbol # This check is removed/modified
 
 @pytest.mark.asyncio
 async def test_fetch_market_data_tool_service_returns_no_data_uses_mock():
@@ -78,9 +82,11 @@ async def test_fetch_market_data_tool_service_returns_no_data_uses_mock():
         result_json = await fetch_market_data_tool(symbol=symbol, timeframe=timeframe, historical_days=historical_days)
 
     data = json.loads(result_json)
-    assert "No data (empty list) returned from MarketDataService" in data["data_source_status"]
+    assert data["data_source_status"] == "service_no_data_mock_fallback"
     assert data["symbol"] == symbol
-    assert len(data["data"]) == historical_days # Mock data generated for 'historical_days' if timeframe is '1d'
+    assert data["limit_calculated"] == historical_days # For 1d
+    assert len(data["data"]) == historical_days
+    assert data["current_price_simulated"] == data["data"][-1]["close"] # from mock
 
 @pytest.mark.asyncio
 async def test_fetch_market_data_tool_service_raises_exception_uses_mock():
@@ -97,9 +103,11 @@ async def test_fetch_market_data_tool_service_raises_exception_uses_mock():
         result_json = await fetch_market_data_tool(symbol=symbol, timeframe=timeframe, historical_days=historical_days)
 
     data = json.loads(result_json)
-    assert "Error calling MarketDataService: Service network error" in data["data_source_status"]
+    assert data["data_source_status"] == "service_error_mock_fallback"
     assert data["symbol"] == symbol
-    assert len(data["data"]) > 0 # Mock data should be generated
+    assert data["limit_calculated"] == 2 * (24 // 4) # 2 days, 4h timeframe
+    assert len(data["data"]) > 0
+    assert data["current_price_simulated"] == data["data"][-1]["close"] # from mock
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("timeframe, days, expected_limit", [
@@ -124,6 +132,7 @@ async def test_fetch_market_data_tool_limit_calculation(timeframe, days, expecte
     data = json.loads(result_json)
     mock_mds_instance.get_historical_data.assert_called_once_with(symbol=symbol, interval=timeframe, limit=expected_limit)
     assert data["limit_calculated"] == expected_limit
+    assert data["data_points_returned"] == expected_limit
     assert len(data["data"]) == expected_limit
 
 
@@ -159,6 +168,7 @@ async def test_fetch_market_data_tool_default_days_with_service_call():
 
     data = json.loads(result_json)
     mock_mds_instance.get_historical_data.assert_called_once_with(symbol=symbol, interval=timeframe, limit=expected_limit)
-    assert data["requested_historical_days"] == 30
+    assert data["historical_days"] == 30 # Field name updated
     assert data["limit_calculated"] == expected_limit
+    assert data["data_points_returned"] == expected_limit
 ```

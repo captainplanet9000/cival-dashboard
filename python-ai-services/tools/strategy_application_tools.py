@@ -126,7 +126,11 @@ def apply_darvas_box_tool(processed_market_data_json: str, darvas_config: Dict[s
     stop_loss = None
     take_profit = None
     rationale = f"No actionable Darvas Box BUY signal generated for {symbol} with the current configuration."
-    additional_data = {"boxes_found": strategy_output.get("boxes", [])}
+    # Include a preview of the input data and the identified boxes in additional_data
+    additional_data = {
+        "boxes_found": strategy_output.get("boxes", []),
+        "input_ohlcv_preview": ohlcv_records[:5] # Preview first 5 records of the input
+    }
 
     if strategy_output.get("signals"):
         last_signal = strategy_output["signals"][-1]
