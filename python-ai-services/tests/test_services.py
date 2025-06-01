@@ -11,6 +11,18 @@ from python_ai_services.services.market_data_service import MarketDataService
 from python_ai_services.services.trading_coordinator import TradingCoordinator
 from python_ai_services.services.agent_persistence_service import AgentPersistenceService # Added
 
+# Imports for new tests
+import uuid # For task_ids and service instance IDs
+from unittest.mock import AsyncMock, MagicMock, patch # Ensure MagicMock and patch are available
+from datetime import datetime, timezone
+
+# Models and Services to test/mock
+from python_ai_services.models.agent_task_models import AgentTaskStatus # For status filter
+from python_ai_services.models.monitoring_models import TaskListResponse, AgentTaskSummary
+from python_ai_services.services.agent_task_service import AgentTaskService
+from python_ai_services.services.memory_service import MemoryService, MemoryInitializationError
+
+
 # Attempt to import Pydantic models for A2A communication and requests
 # If these imports fail in a real test environment due to path issues or complexity,
 # simplified placeholder classes would be defined here.
@@ -597,4 +609,202 @@ async def test_analyze_trading_opportunity_with_account_id_and_conditional_risk_
     assert response["analysis"] == mock_market_analysis.dict()
     assert response["decision"] == ai_decision_str
     assert "timestamp" in response
+
+# --- AgentTaskService Tests ---
+
+@pytest_asyncio.fixture
+def mock_supabase_client():
+    client = MagicMock() # Use MagicMock for sync methods
+    # Configure the fluent interface for all expected call chains
+    # Path for status_filter
+    client.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute = MagicMock()
+    # Path for no status_filter
+    client.table.return_value.select.return_value.order.return_value.range.return_value.execute = MagicMock()
+    return client
+
+@pytest.fixture
+def agent_task_service_with_mock_db(mock_supabase_client: MagicMock): # Added type hint for clarity
+    return AgentTaskService(supabase=mock_supabase_client)
+
+def test_get_task_summaries_success_no_filter(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
+    task_service = agent_task_service_with_mock_db
+    page = 1
+    page_size = 10
+
+    mock_task_data = [
+        {
+            "task_id": uuid.uuid4(), "status": "COMPLETED", "task_name": "Agent Smith", "agent_id": uuid.uuid4(),
+            "created_at": datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "started_at": datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "completed_at": datetime(2023, 1, 1, 10, 5, 0, tzinfo=timezone.utc).isoformat(), # 5 mins duration
+            "error_message": None
+        },
+        {
+            "task_id": uuid.uuid4(), "status": "FAILED", "task_name": "Agent Brown", "agent_id": uuid.uuid4(),
+            "created_at": datetime(2023, 1, 1, 11, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "started_at": datetime(2023, 1, 1, 11, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "completed_at": datetime(2023, 1, 1, 11, 2, 0, tzinfo=timezone.utc).isoformat(), # 2 mins duration
+            "error_message": "Something went wrong"
+        }
+    ]
+    # Ensure the correct execute mock is configured for the "no status filter" path
+    mock_execute = mock_supabase_client.table.return_value.select.return_value.order.return_value.range.return_value.execute
+    mock_execute.return_value = MagicMock(data=mock_task_data, count=len(mock_task_data), error=None)
+
+    result = task_service.get_task_summaries(page=page, page_size=page_size)
+
+    assert isinstance(result, TaskListResponse)
+    assert result.total_tasks == len(mock_task_data)
+    assert len(result.tasks) == len(mock_task_data)
+    assert result.page == page
+    assert result.page_size == page_size
+
+    # Check select arguments
+    select_call = mock_supabase_client.table.return_value.select
+    select_call.assert_called_once()
+    select_args = select_call.call_args[0]
+    expected_select_fields = "task_id, status, task_name, agent_id, created_at, started_at, completed_at, error_message"
+    assert all(field.strip() in select_args[0] for field in expected_select_fields.split(','))
+    assert select_call.call_args[1]["count"] == "exact"
+
+    # Check order and range calls
+    order_call = mock_supabase_client.table.return_value.select.return_value.order
+    order_call.assert_called_with("created_at", desc=True)
+
+    range_call = order_call.return_value.range
+    expected_offset = (page - 1) * page_size
+    range_call.assert_called_with(expected_offset, expected_offset + page_size - 1)
+
+    # Detailed check for one task summary
+    summary1 = result.tasks[0]
+    db_task1 = mock_task_data[0]
+    assert summary1.task_id == str(db_task1["task_id"])
+    assert summary1.status == db_task1["status"]
+    assert summary1.agent_name == db_task1["task_name"] # Mapping task_name to agent_name
+    assert summary1.crew_name is None
+    # Timestamp in summary should be the 'created_at' from DB item, already ISO string
+    assert summary1.timestamp == db_task1["created_at"]
+    assert summary1.duration_ms == (5 * 60 * 1000) # 5 minutes in ms
+    assert summary1.error_message is None
+
+    summary2 = result.tasks[1]
+    db_task2 = mock_task_data[1]
+    assert summary2.error_message == db_task2["error_message"]
+    assert summary2.duration_ms == (2 * 60 * 1000) # 2 minutes in ms
+
+def test_get_task_summaries_with_status_filter(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
+    task_service = agent_task_service_with_mock_db
+    # Using string values directly as AgentTaskStatus is a string enum
+    status_filter_values = ["COMPLETED", "PENDING"]
+
+    # Ensure the mock is configured for the .in_() call path
+    mock_execute = mock_supabase_client.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute
+    mock_execute.return_value = MagicMock(data=[], count=0, error=None) # No data for simplicity
+
+    task_service.get_task_summaries(page=1, page_size=10, status_filter=status_filter_values)
+
+    # Check that .in_() was called correctly
+    in_call = mock_supabase_client.table.return_value.select.return_value.in_
+    in_call.assert_called_with("status", status_filter_values)
+
+def test_get_task_summaries_supabase_error(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
+    task_service = agent_task_service_with_mock_db
+
+    mock_error = MagicMock()
+    mock_error.message = "Database connection failed"
+    # Configure the execute mock for the "no status filter" path to simulate an error
+    mock_execute = mock_supabase_client.table.return_value.select.return_value.order.return_value.range.return_value.execute
+    mock_execute.return_value = MagicMock(data=None, count=0, error=mock_error)
+
+    with pytest.raises(Exception, match="Failed to fetch task summaries: Database connection failed"):
+        task_service.get_task_summaries(page=1, page_size=10)
+
+def test_get_task_summaries_duration_calculation_robustness(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
+    task_service = agent_task_service_with_mock_db
+    mock_task_data = [
+        { # Valid duration
+            "task_id": uuid.uuid4(), "status": "COMPLETED", "task_name": "t1", "agent_id": uuid.uuid4(),
+            "created_at": datetime(2023,1,1,9,0,0, tzinfo=timezone.utc).isoformat(),
+            "started_at": datetime(2023, 1, 1, 10, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "completed_at": datetime(2023, 1, 1, 10, 5, 0, tzinfo=timezone.utc).isoformat(),
+            "error_message": None
+        },
+        { # Missing completed_at
+            "task_id": uuid.uuid4(), "status": "RUNNING", "task_name": "t2", "agent_id": uuid.uuid4(),
+            "created_at": datetime(2023,1,1,10,0,0, tzinfo=timezone.utc).isoformat(),
+            "started_at": datetime(2023, 1, 1, 11, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "completed_at": None,
+            "error_message": None
+        },
+        { # Invalid date string for completed_at (should be handled by try-except in service)
+            "task_id": uuid.uuid4(), "status": "FAILED", "task_name": "t3", "agent_id": uuid.uuid4(),
+            "created_at": datetime(2023,1,1,11,0,0, tzinfo=timezone.utc).isoformat(),
+            "started_at": datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc).isoformat(),
+            "completed_at": "not-a-valid-date-for-fromisoformat",
+            "error_message": "Failed due to date"
+        }
+    ]
+    mock_execute = mock_supabase_client.table.return_value.select.return_value.order.return_value.range.return_value.execute
+    mock_execute.return_value = MagicMock(data=mock_task_data, count=len(mock_task_data), error=None)
+
+    result = task_service.get_task_summaries(page=1, page_size=10)
+    assert result.tasks[0].duration_ms == (5 * 60 * 1000)
+    assert result.tasks[1].duration_ms is None
+    assert result.tasks[2].duration_ms is None # Due to parsing error of completed_at
+
+# --- MemoryService Tests ---
+
+@pytest_asyncio.fixture
+async def memory_service_instance():
+    # Mocking __init__ dependencies of MemoryService if they are complex.
+    # For get_agent_memory_stats, we mainly care about self.memgpt_agent_instance.
+    # We assume MemoryService can be instantiated.
+    # If MemoryService __init__ itself has side effects (like loading MemGPT),
+    # those might need to be patched for these unit tests.
+    with patch.object(MemoryService, '__init__', return_value=None) as mock_init:
+        # Provide dummy user_id and agent_id_context as __init__ expects them, even if mocked
+        service = MemoryService(user_id=uuid.uuid4(), agent_id_context=uuid.uuid4())
+        service.memgpt_agent_name = "test_agent_for_stats" # Set manually as __init__ is mocked
+        service.memgpt_agent_instance = None # Ensure it's None initially for some tests
+        # mock_init.assert_called_once() # Not strictly necessary to assert mock_init here
+        yield service
+
+
+@pytest.mark.asyncio
+async def test_get_agent_memory_stats_success_stub(memory_service_instance: MemoryService):
+    service = memory_service_instance
+    # Mock that memgpt_agent_instance exists for this test case
+    service.memgpt_agent_instance = MagicMock() # Just needs to be not None
+
+    response = await service.get_agent_memory_stats()
+
+    assert response["status"] == "success"
+    assert "stats" in response
+    assert response["stats"] is not None
+    assert response["stats"]["memgpt_agent_name"] == "test_agent_for_stats"
+    assert response["stats"]["total_memories"] == 125 # Example value from stub
+    assert "last_memory_update_timestamp" in response["stats"]
+
+@pytest.mark.asyncio
+async def test_get_agent_memory_stats_no_instance(memory_service_instance: MemoryService):
+    service = memory_service_instance
+    service.memgpt_agent_instance = None # Ensure instance is None (should be by fixture default)
+
+    response = await service.get_agent_memory_stats()
+
+    assert response["status"] == "error"
+    assert "MemGPT client/agent not initialized" in response["message"]
+    assert response["stats"] is None
+
+@pytest.mark.asyncio
+async def test_memory_service_initialization_failure_propagates():
+    # This test checks if MemoryInitializationError is raised if MemGPT fails to init
+    # It does not use the memory_service_instance fixture because that fixture mocks out __init__
+    with patch('python_ai_services.services.memory_service.MemGPT') as mock_memgpt_class:
+        # Simulate an exception during MemGPT() instantiation within MemoryService.__init__
+        mock_memgpt_class.side_effect = Exception("MemGPT Global Init Failed")
+
+        with pytest.raises(MemoryInitializationError, match="Failed to initialize MemGPT: MemGPT Global Init Failed"):
+            # Attempt to instantiate MemoryService, which should trigger the mocked MemGPT error
+            MemoryService(user_id=uuid.uuid4(), agent_id_context=uuid.uuid4())
 ```

@@ -54,3 +54,10 @@ class AgentMemoryResponseItem(BaseModel):
     # Potentially add other fields like 'timestamp', 'score', 'id' if they become available
     # from MemoryService.list_memories in a structured way.
     # For now, this matches the current output of list_memories which wraps strings.
+
+class TradingAnalysisCrewRequest(BaseModel):
+    user_id: str # Or uuid.UUID if you have user UUIDs
+    symbol: str = Field(..., description="The financial symbol to analyze, e.g., 'BTC/USD', 'AAPL'.")
+    market_event_description: Optional[str] = Field(default=None, description="Optional description of a specific market event or news to consider.")
+    # Add any other specific inputs the trading_analysis_crew might need
+    additional_context: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Any other relevant context for the analysis.")
