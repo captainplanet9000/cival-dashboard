@@ -6,17 +6,6 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const [openSections, setOpenSections] = useState<string[]>([]);
-
-  const toggleSection = (sectionName: string) => {
-    setOpenSections((prev) =>
-      prev.includes(sectionName)
-        ? prev.filter((name) => name !== sectionName)
-        : [...prev, sectionName]
-    );
-  };
-
   return (
     <div className="dashboard-grid">
       <div className="sidebar-grid">

@@ -1,232 +1,606 @@
-import os
-import uuid
-from typing import Dict, Any, List, Optional
-from dotenv import load_dotenv
+from typing import Dict, List, Optional, Any
+from loguru import logger
+from pydantic import BaseModel, Field as PydanticField # Renamed Field to avoid conflict if any
+from datetime import datetime, timezone # Added timezone for created_at
 
-from pymemgpt import MemGPT
-from pymemgpt.config import MemGPTConfig
-from pymemgpt.constants import DEFAULT_PERSONA, DEFAULT_HUMAN # Default persona/human files
-# For specific storage connectors if needed, though MemGPTConfig handles it based on type
-# from memgpt.persistence_manager import PostgresStorageConnector 
-from datetime import datetime, timezone # For simulated memory timestamps
+import asyncio # Added for asyncio.to_thread
+import os # Added for os.getenv
 
-# It's good practice to load environment variables at the entry point of your application (e.g., main.py)
-# However, if this service might be used standalone or needs to ensure vars are loaded,
-# loading them here can be a fallback. Be mindful of where .env is relative to this file.
-# Assuming .env is at the root of python-ai-services or project root.
-# For python-ai-services, .env is one level up from 'services' directory.
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-if not os.path.exists(dotenv_path): # Fallback to project root .env if python-ai-services/.env not found
-    dotenv_path = os.path.join(os.path.dirname(__file__), '..', '..', '.env') 
-load_dotenv(dotenv_path=dotenv_path, override=True) # Override allows re-loading if already loaded
+# Attempt to import letta-client and related error classes
+try:
+    from letta import Letta
+    # Assuming specific exceptions might exist, e.g., for config or connection
+    from letta.exceptions import APIError as LettaAPIError # Confirmed
+    # from letta.exceptions import LettaClientConfigurationError # Hypothetical specific error
+    LETTA_CLIENT_AVAILABLE = True
+except ImportError:
+    logger.warning("letta-client not found. MemoryService will use stubbed Letta interactions.")
+    LETTA_CLIENT_AVAILABLE = False
+    from unittest.mock import MagicMock # Added for stub
+    # Define dummy classes for type hinting if letta-client is not available
+    class Letta: # type: ignore
+        def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None):
+            if token:
+                logger.info(f"STUB Letta client initialized with API token.")
+            else:
+                logger.info(f"STUB Letta client initialized with base_url: {base_url}")
 
-import logging # Using standard logging
-logger = logging.getLogger(__name__)
+        # Mocking the structure for self.letta_client.agents.list and .create
+        class Agents:
+            def list(self, name: Optional[str] = None): # Assuming sync method
+                logger.info(f"STUB Letta client agents.list called (sync) with name filter: {name}")
+                # Simulate response structure that might have a .data attribute or be a list directly
+                # This mock needs to align with how it's accessed in _get_letta_agent_by_name
+                class MockResponse:
+                    def __init__(self, data):
+                        self.data = data
+                if name and "nonexistent" not in name:
+                    return MockResponse(data=[MagicMock(id=f"stub_letta_id_for_{name}", name=name)])
+                return MockResponse(data=[])
 
-class MemoryServiceError(Exception):
-    """Base class for exceptions in MemoryService."""
-    pass
 
-class MemoryInitializationError(MemoryServiceError):
-    """Raised when MemGPT client initialization fails."""
-    pass
+            def create(self, name: str, persona: str, human: str, model: Optional[str] = None): # Assuming sync method
+                logger.info(f"STUB Letta client agents.create called (sync) for name: {name}")
+                # Return an object that has an 'id' attribute or is a dict with 'id'
+                mock_agent = MagicMock()
+                mock_agent.id = f"stub_letta_id_for_{name}"
+                mock_agent.name = name
+                return mock_agent # Or return {"id": ..., "name": ...} if create returns dict
 
+        agents = Agents()
+        # Add other sub-clients like messages if needed for method stubs that are being kept
+        class Messages:
+            def create(self, agent_id: str, content: str, role: str = "user", stream: bool = False): # Now synchronous
+                logger.info(f"STUB Letta client messages.create (sync) for agent {agent_id}, role {role}: '{content[:50]}...'")
+                if stream:
+                    # Synchronous stream handling in a stub is complex; returning non-streamed for simplicity
+                    logger.warning("STUB: Streamed message creation requested but stub returns non-streamed.")
+                # Simulate returning the created message object/dict with an ID
+                return MagicMock(id="stub_msg_id_for_" + content[:10], role=role, content=content)
+
+            def list(self, agent_id: str, limit: Optional[int] = None): # Sync list method
+                logger.info(f"STUB Letta client messages.list (sync) for agent {agent_id}, limit {limit}")
+                # Simulate response structure with a '.data' attribute, which is a list of message objects/mocks
+                class MockMsgListResponse:
+                    def __init__(self, data_list):
+                        self.data = data_list # Standardizing on .data like agents.list stub
+
+                # Provide some mock messages for testing response parsing
+                # Each message should be an object with .role, .content, .id
+                mock_messages = [
+                    MagicMock(role="user", content="User prompt that led to this listing", id="prev_user_msg_in_list"),
+                    MagicMock(role="assistant", content="This is the assistant's reply.", id="prev_asst_msg_in_list"),
+                    MagicMock(role="user", content="Older user message", id="older_user_msg")
+                ]
+                if limit:
+                    return MockMsgListResponse(data_list=mock_messages[:limit])
+                return MockMsgListResponse(data_list=mock_messages)
+
+        agents = Agents()
+        messages = Messages()
+
+
+    class LettaAPIError(Exception): # type: ignore
+        def __init__(self, message: str, status_code: Optional[int] = None): # type: ignore
+            super().__init__(message)
+            self.status_code = status_code
+            logger.error(f"STUB LettaAPIError: {message} (Status: {status_code})")
+
+    # class LettaClientConfigurationError(Exception): pass # Hypothetical
+
+# Import AgentMemoryStats model with a fallback
+try:
+    from ..models.monitoring_models import AgentMemoryStats
+except ImportError:
+    logger.warning("Could not import AgentMemoryStats from ..models.monitoring_models. get_agent_memory_stats will not be functional.")
+    class AgentMemoryStats(BaseModel): # type: ignore
+        app_agent_id: str
+        memories_stored_count: Optional[int] = None
+        memories_recalled_count: Optional[int] = None
+        last_activity_timestamp: Optional[datetime] = None
+
+
+# Import AgentPersistenceService with a fallback for standalone testing
+try:
+    from .agent_persistence_service import AgentPersistenceService
+except ImportError:
+    logger.warning("Could not import AgentPersistenceService. Mappings will not be persisted by MemoryService stubs.")
+    class AgentPersistenceService: # type: ignore
+        async def get_letta_mapping_by_app_agent_id(self, app_agent_id: str) -> Optional[Dict[str, Any]]: return None
+        async def save_letta_mapping(self, mapping_data: Dict[str, Any]): pass
+
+# --- Configuration Pydantic Models ---
+
+class MemGPTAgentConfig(BaseModel):
+    """Configuration for creating a MemGPT/Letta agent."""
+    persona_name_or_text: str = PydanticField(..., description="Name of a predefined persona in Letta, or the full persona text.")
+    human_name_or_text: str = PydanticField(..., description="Name of a predefined human profile in Letta, or the full human description text.")
+    llm_model_name: Optional[str] = PydanticField(None, description="Specific LLM model for this MemGPT agent (e.g., 'gpt-4'). Letta server default if None.")
+    embedding_model_name: Optional[str] = PydanticField(None, description="Specific embedding model. Letta server default if None.")
+
+class AppAgentToLettaAgentMapping(BaseModel):
+    """Model for storing the mapping between our application's agent ID and Letta's agent ID."""
+    app_agent_id: str = PydanticField(..., description="Our application's unique agent identifier.")
+    letta_agent_id: str = PydanticField(..., description="The ID of the agent within the Letta server.")
+    letta_agent_name: str = PydanticField(..., description="The name of the agent within the Letta server.")
+    created_at: datetime = PydanticField(default_factory=lambda: datetime.now(timezone.utc))
+    last_used_at: datetime = PydanticField(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Config:
+        extra = "allow" # Or forbid, depending on whether we want DB to add its own cols like 'id'
+
+# --- MemoryService Class ---
 
 class MemoryService:
-    def __init__(self, user_id: uuid.UUID, agent_id_context: uuid.UUID, config_overrides: Optional[Dict[str, Any]] = None):
-        """
-        Initializes the MemoryService for a specific user and agent context.
-        
-        Args:
-            user_id: The ID of the user associated with these memories.
-            agent_id_context: The ID of the agent whose memories are being managed.
-                             This is used to scope memories if MemGPT agents are created per-app-agent.
-            config_overrides: Optional dictionary to override specific MemGPT configurations.
-        """
-        self.user_id = str(user_id) 
-        self.agent_id_context = str(agent_id_context) # This will be part of the MemGPT agent name
-        self.memgpt_agent_instance: Optional[MemGPT] = None
-        self.memgpt_agent_name = f"cival_agent__{self.user_id}__{self.agent_id_context}" # Unique name for MemGPT agent state
+    """
+    Service for managing and interacting with MemGPT/Letta agents for persistent memory capabilities.
+    This service acts as a client to a Letta server.
+    """
+    def __init__(self, letta_server_url: str, persistence_service: Optional[AgentPersistenceService] = None):
+        self.letta_server_url: str = letta_server_url
+        self.persistence_service: Optional[AgentPersistenceService] = persistence_service
+        self.letta_client: Optional[Letta] = None
+        # active_memgpt_agents conceptually caches Letta agent IDs or client objects
+        # Key: app_agent_id, Value: letta_agent_id (string) or Letta agent object
+        self.active_memgpt_agents: Dict[str, str] = {}
+        logger.info(f"MemoryService initialized with Letta server URL: {self.letta_server_url}")
 
-        logger.info(f"Initializing MemoryService for user {self.user_id}, agent_context {self.agent_id_context} (MemGPT agent name: {self.memgpt_agent_name})")
+    async def connect_letta_client(self) -> bool:
+        """
+        Initializes the Letta client and checks connectivity to the Letta server.
+        Returns True if connection is successful, False otherwise.
+        """
+        if not LETTA_CLIENT_AVAILABLE:
+            logger.warning("Letta client library not available. MemoryService will operate in a non-functional stub mode.")
+            self.letta_client = None # Ensure it's None
+            return False
 
         try:
-            # Configure MemGPT
-            # For simplicity, we'll rely on environment variables primarily.
-            # MemGPTConfig.load() will pick them up.
-            # Ensure essential env vars like OPENAI_API_KEY (or other LLM provider) and MEMGPT_DB_URL are set.
-            
-            # These can be overridden by direct config file or specific overrides if needed
-            # For this POC, we assume env vars are the primary source for MemGPTConfig.
-            # Example of direct config if needed:
-            # cfg = MemGPTConfig(
-            #     archival_storage_type="postgres",
-            #     archival_storage_uri=os.getenv("MEMGPT_DB_URL"),
-            #     model_type=os.getenv("MEMGPT_MODEL_TYPE", "openai"), # Default to openai if not set
-            #     # ... other configs like persona, human, embedding settings ...
-            # )
+            letta_api_key = os.getenv("LETTA_API_KEY")
+            # Use self.letta_server_url which is set during __init__
+            # Defaulting here again just in case it wasn't passed to constructor, though it should be.
+            current_letta_server_url = self.letta_server_url or os.getenv("LETTA_SERVER_URL", "http://localhost:8283")
 
-            # Check if agent state already exists, otherwise create
-            if MemGPT.exists(agent_name=self.memgpt_agent_name):
-                logger.info(f"Loading existing MemGPT agent: {self.memgpt_agent_name}")
-                self.memgpt_agent_instance = MemGPT(agent_name=self.memgpt_agent_name)
+            if letta_api_key:
+                logger.info("Attempting to connect to Letta Cloud using API key...")
+                self.letta_client = Letta(token=letta_api_key)
+            elif current_letta_server_url:
+                logger.info(f"Attempting to connect to self-hosted Letta server at {current_letta_server_url}...")
+                self.letta_client = Letta(base_url=current_letta_server_url)
             else:
-                logger.info(f"Creating new MemGPT agent: {self.memgpt_agent_name}")
-                # Using default persona/human for simplicity in POC.
-                # These can be customized by setting MEMGPT_DEFAULT_PERSONA_NAME / MEMGPT_DEFAULT_HUMAN_NAME env vars
-                # or by passing persona_text/human_text arguments here.
-                self.memgpt_agent_instance = MemGPT(
-                    agent_name=self.memgpt_agent_name,
-                    persona=os.getenv("MEMGPT_DEFAULT_PERSONA_NAME") or DEFAULT_PERSONA,
-                    human=os.getenv("MEMGPT_DEFAULT_HUMAN_NAME") or DEFAULT_HUMAN,
-                )
-            logger.info(f"MemGPT agent '{self.memgpt_agent_name}' initialized/loaded successfully.")
+                logger.error("Letta connection failed: Neither LETTA_API_KEY nor LETTA_SERVER_URL environment variables are set, and no default URL was provided to MemoryService.")
+                self.letta_client = None
+                return False
 
+            if self.letta_client:
+                # Conceptual: Perform a simple API call to verify connection.
+                # Example: try to list available models or a similar lightweight call.
+                # models_response = await asyncio.to_thread(self.letta_client.models.list) # Requires models API
+                # For now, successful instantiation is considered "connected".
+                # A more robust health check would be: await asyncio.to_thread(self.letta_client.health.check) if such method exists.
+                logger.info(f"Letta client initialized successfully for server/cloud.")
+                # Simulating a basic check for URL validity if not using API key and URL was provided
+                if not letta_api_key and current_letta_server_url and not current_letta_server_url.startswith("http"):
+                    raise ValueError("Invalid Letta server URL provided.")
+                logger.info("Letta client conceptually connected.")
+                return True
+            return False # Should not be reached if logic above is correct
+        # except LettaClientConfigurationError as e_config: # Hypothetical specific error
+        #     logger.error(f"Letta client configuration error: {e_config}")
+        #     self.letta_client = None
+        #     return False
+        except LettaAPIError as e_api: # Catch API errors during initial connection/test call
+            logger.error(f"Letta API error during connection/health check: {e_api}")
+            self.letta_client = None
+            return False
         except Exception as e:
-            logger.error(f"Failed to initialize MemGPT for agent {self.memgpt_agent_name}: {e}", exc_info=True)
-            # self.memgpt_agent_instance remains None, methods will return error
-            raise MemoryInitializationError(f"Failed to initialize MemGPT: {e}")
+            logger.error(f"Failed to initialize or connect Letta client: {e}")
+            self.letta_client = None
+            return False
 
-
-    async def add_observation(self, observation_text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Adds an observation to the agent's memory. Metadata is currently ignored by MemGPT's step/send_message."""
-        if not self.memgpt_agent_instance:
-            logger.warning(f"MemGPT not initialized for agent {self.memgpt_agent_name}. Observation not added.")
-            return {"status": "error", "message": "MemGPT client/agent not initialized."}
-        
-        try:
-            logger.info(f"Agent {self.memgpt_agent_name} received observation (first 100 chars): {observation_text[:100]}...")
-            # Send message to MemGPT agent. This will be processed, stored in recall, and potentially archived.
-            # The `step` method also returns agent messages, which might include internal thoughts or a reply.
-            # For just adding to memory, `send_message` might be more direct if available and suitable.
-            # However, `step` is the primary interaction method.
-            
-            # response_messages is a list of messages (dict) from the agent after processing the input
-            response_messages = self.memgpt_agent_instance.step(input_message=observation_text) 
-            
-            # For this POC, we're not focusing on the agent's response, just that the observation was processed.
-            # The actual 'message_id' of the stored memory isn't directly returned by step().
-            # We can return a generic success or details from response_messages if useful.
-            
-            # Example: log what the agent responded with (if anything)
-            if response_messages:
-                for msg in response_messages:
-                    if msg.get("internal_monologue"):
-                         logger.info(f"MemGPT agent {self.memgpt_agent_name} internal monologue: {msg['internal_monologue']}")
-                    if msg.get("assistant_message"):
-                         logger.info(f"MemGPT agent {self.memgpt_agent_name} assistant message: {msg['assistant_message']}")
-            
-            return {"status": "success", "message_id": str(uuid.uuid4()), "info": "Observation processed by MemGPT."}
-        except Exception as e:
-            logger.error(f"Error adding observation to MemGPT agent {self.memgpt_agent_name}: {e}", exc_info=True)
-            return {"status": "error", "message": f"Failed to add observation: {str(e)}"}
-
-
-    async def list_memories(self, query: str = "*", limit: int = 20) -> List[Dict[str, Any]]:
+    async def _get_letta_agent_by_name(self, agent_name: str) -> Optional[Any]: # Return type could be specific Letta agent object
         """
-        Retrieves memories for the agent. Uses a broad query by default.
-        The structure of returned dicts depends on memory_search output.
+        Helper to retrieve a Letta agent by its name.
+        Returns Letta agent object/details if found, else None.
         """
-        if not self.memgpt_agent_instance:
-            logger.warning(f"MemGPT not initialized for agent {self.memgpt_agent_name}. Cannot list memories.")
-            return [{"error": "MemGPT client/agent not initialized."}]
+        if not self.letta_client or not LETTA_CLIENT_AVAILABLE:
+            logger.warning("Letta client not connected or library not available. Cannot get agent by name.")
+            return None
 
         try:
-            effective_query = query if query and query != "*" else "Retrieve a general sample of recent or important memories."
-            logger.info(f"Listing memories for agent {self.memgpt_agent_name} with effective query (first 100 chars): {effective_query[:100]}... Limit: {limit}")
-            
-            # pymemgpt's memory_search returns List[str]
-            results: List[str] = self.memgpt_agent_instance.memory_search(query=effective_query, count=limit)
-            
-            formatted_results = []
-            # If results are just strings, wrap them in the expected dict structure.
-            # The API model AgentMemoryResponseItem expects "retrieved_memory_content".
-            for i, res_text in enumerate(results):
-                formatted_results.append({
-                    "retrieved_memory_content": res_text,
-                    # "query": effective_query, # Can include the query used if helpful for frontend
-                    # "score": 1.0 - (i / len(results)) if len(results) > 0 else 0, # Simulated score
-                    # "timestamp": datetime.now(timezone.utc).isoformat() # Actual timestamp not available
-                })
-            return formatted_results
+            logger.info(f"Querying Letta server for agent by name: {agent_name}")
+            # Note: letta-client's agents.list() might be paginated or not support direct name filtering.
+            # This implementation assumes client-side filtering for simplicity.
+            # A more performant approach would use a dedicated get-by-name if the SDK/API supports it,
+            # or store mappings if names are not guaranteed unique or queryable.
+            all_agents_response = await asyncio.to_thread(self.letta_client.agents.list) # This is a sync call
+
+            # The structure of all_agents_response depends on the letta-client version.
+            # Assuming it's an object with a 'data' attribute which is a list of agent-like objects/dicts.
+            # Or it could be the list directly. Adapt based on actual SDK.
+            agent_list = []
+            if hasattr(all_agents_response, 'data') and isinstance(all_agents_response.data, list):
+                agent_list = all_agents_response.data
+            elif isinstance(all_agents_response, list): # If list() directly returns a list of agent objects
+                agent_list = all_agents_response
+            else:
+                logger.warning(f"Unexpected response structure from letta_client.agents.list: {type(all_agents_response)}")
+                return None
+
+            for agent_details in agent_list:
+                # Assuming agent_details is an object with .name and .id, or a dict
+                agent_detail_name = getattr(agent_details, 'name', agent_details.get('name') if isinstance(agent_details, dict) else None)
+                if agent_detail_name == agent_name:
+                    agent_detail_id = getattr(agent_details, 'id', agent_details.get('id') if isinstance(agent_details, dict) else None)
+                    logger.info(f"Found Letta agent '{agent_name}' with ID {agent_detail_id}")
+                    return agent_details # Return the full agent object/dict from client
+
+            logger.info(f"Letta agent '{agent_name}' not found among listed agents.")
+            return None
+        except LettaAPIError as e:
+            logger.error(f"Letta API error finding agent '{agent_name}': {e}")
+            return None
+        except Exception as e: # Catch other unexpected errors
+            logger.error(f"Unexpected error finding Letta agent '{agent_name}': {e}")
+            return None
+
+
+    async def _create_letta_agent(self, agent_name: str, config: MemGPTAgentConfig) -> Optional[Any]: # Return type Any for agent object/dict
+        """
+        Helper to create a new Letta agent.
+        Returns new Letta agent object/details if successful, else None.
+        """
+        if not self.letta_client or not LETTA_CLIENT_AVAILABLE:
+            logger.warning("Letta client not connected or library not available. Cannot create agent.")
+            return None
+
+        try:
+            logger.info(f"Creating Letta agent: {agent_name} with persona: {config.persona_name_or_text[:50]}...")
+            agent_payload = {
+                "name": agent_name,
+                "persona": config.persona_name_or_text,
+                "human": config.human_name_or_text,
+                # model and embedding_model are often part of server-side presets or global config in MemGPT/Letta.
+                # If the .agents.create() API takes them directly, they can be added here.
+            }
+            if config.llm_model_name:
+                # The exact field name for model depends on letta-client API (e.g., 'model', 'llm_config', 'preset_name')
+                agent_payload['model'] = config.llm_model_name
+            # if config.embedding_model_name:
+            #    agent_payload['embedding_model'] = config.embedding_model_name # Example
+
+            # This is a sync call, wrap with to_thread
+            created_agent = await asyncio.to_thread(self.letta_client.agents.create, **agent_payload)
+
+            # Process response: created_agent might be the agent object directly or a response object.
+            # Assuming it's the agent object/dict itself if successful and has an 'id'.
+            agent_id = None
+            if hasattr(created_agent, 'id'):
+                agent_id = created_agent.id
+            elif isinstance(created_agent, dict) and 'id' in created_agent:
+                agent_id = created_agent['id']
+
+            if agent_id:
+                logger.info(f"Successfully created Letta agent '{agent_name}' with ID {agent_id}")
+                return created_agent # Return the full agent object/dict
+            else:
+                logger.error(f"Failed to create Letta agent '{agent_name}'. Response did not contain ID. Response: {created_agent}")
+                return None
+        except LettaAPIError as e:
+            logger.error(f"Letta API error creating agent '{agent_name}': {e}")
+            return None
+        except Exception as e: # Catch other unexpected errors
+            logger.error(f"Unexpected error creating Letta agent '{agent_name}': {e}")
+            return None
+
+    async def get_or_create_memgpt_agent(self, app_agent_id: str, memgpt_config: MemGPTAgentConfig) -> Optional[str]:
+        """
+        Ensures a MemGPT/Letta agent exists for the given app_agent_id.
+        If it exists, its ID is returned. If not, it's created.
+        Manages mapping between app_agent_id and Letta agent ID.
+        Returns the Letta agent ID if successful, else None.
+        """
+        if not self.letta_client:
+            logger.error("Letta client not connected. Cannot get or create MemGPT agent.")
+            return None
+
+        letta_agent_name = f"app_agent_{app_agent_id}" # Derived, unique name for Letta server
+
+        # 1. Check active_memgpt_agents cache (app_agent_id -> letta_agent_id string)
+        if app_agent_id in self.active_memgpt_agents:
+            cached_letta_id = self.active_memgpt_agents[app_agent_id]
+            logger.info(f"Found active Letta agent ID '{cached_letta_id}' for app_agent_id '{app_agent_id}' in cache.")
+            # Optionally, one might verify if this agent still exists on the server if cache can be stale.
+            # For this version, we assume cache validity or re-creation if calls fail later.
+            return cached_letta_id
+
+        # 2. Conceptual: Check persistence for existing mapping (if self.persistence_service is available)
+        # if self.persistence_service:
+        #     mapping = await self.persistence_service.get_letta_mapping_by_app_agent_id(app_agent_id)
+        #     if mapping:
+        #         logger.info(f"Found mapping in DB for {app_agent_id}: Letta Agent ID {mapping.letta_agent_id}, Name {mapping.letta_agent_name}")
+        #         # Verify if this agent still exists on Letta server before using it
+        #         agent_obj_from_db_mapping = await self._get_letta_agent_by_name(mapping.letta_agent_name)
+        #         if agent_obj_from_db_mapping and agent_obj_from_db_mapping.id == mapping.letta_agent_id:
+        #             self.active_memgpt_agents[app_agent_id] = agent_obj_from_db_mapping.id
+        #             return agent_obj_from_db_mapping.id
+        #         else:
+        #             logger.warning(f"Mapping for {app_agent_id} found in DB, but agent {mapping.letta_agent_name} (ID: {mapping.letta_agent_id}) not found or ID mismatch on Letta server. Will attempt to recreate.")
+
+        # 3. Try to find agent by its derived name on Letta server
+        letta_agent_obj = await self._get_letta_agent_by_name(letta_agent_name)
+
+        # 4. If not found by name, create it
+        if not letta_agent_obj:
+            logger.info(f"Letta agent '{letta_agent_name}' not found by name. Attempting to create.")
+            letta_agent_obj = await self._create_letta_agent(letta_agent_name, memgpt_config)
+
+        if letta_agent_obj:
+            # Extract ID whether letta_agent_obj is a dict or an object with .id
+            final_letta_agent_id = getattr(letta_agent_obj, 'id', letta_agent_obj.get('id') if isinstance(letta_agent_obj, dict) else None)
+
+            if final_letta_agent_id:
+                logger.info(f"Obtained Letta agent ID '{final_letta_agent_id}' for app_agent_id '{app_agent_id}' (Name: '{letta_agent_name}').")
+                self.active_memgpt_agents[app_agent_id] = final_letta_agent_id # Cache the ID string
+
+                # Conceptual: Save/Update mapping in persistence_service
+                # if self.persistence_service:
+                #     try:
+                #         mapping_data = AppAgentToLettaAgentMapping(
+                #             app_agent_id=app_agent_id,
+                #             letta_agent_id=final_letta_agent_id,
+                #             letta_agent_name=letta_agent_name,
+                #             # created_at and last_used_at will use default_factory
+                #         )
+                #         await self.persistence_service.save_letta_mapping(mapping_data.model_dump())
+                #         logger.info(f"Saved/Updated Letta agent mapping for {app_agent_id} to DB.")
+                #     except Exception as e_persist:
+                #         logger.error(f"Failed to save Letta agent mapping for {app_agent_id}: {e_persist}")
+                return final_letta_agent_id
+            else:
+                logger.error(f"Letta agent object for '{letta_agent_name}' did not contain an ID. Object: {letta_agent_obj}")
+                return None
+        else:
+            logger.error(f"Failed to get or create Letta agent for app_agent_id '{app_agent_id}' (Name: '{letta_agent_name}')")
+            return None
+
+    async def store_memory_message(self, app_agent_id: str, message_content: str, role: str = "user") -> bool:
+        """
+        Stores an observation or message in the memory of the specified app_agent_id's MemGPT/Letta agent.
+        This is a STUB. Actual implementation requires letta-client interaction.
+        """
+        if not self.letta_client:
+            logger.error("Letta client not connected. Cannot store message.")
+            return False
+
+        letta_agent_id = self.active_memgpt_agents.get(app_agent_id)
+        if not letta_agent_id:
+            # Attempt to ensure agent exists if not in cache; this might be desirable or handled by caller.
+            # For this version, we require get_or_create to be called first to populate cache.
+            logger.error(f"Letta agent ID for app_agent_id '{app_agent_id}' not found in active cache. Ensure agent is created/retrieved first via get_or_create_memgpt_agent.")
+            return False
+
+        # Actual implementation will use self.letta_client.messages.create(...)
+        logger.info(f"MEMORY_SERVICE STUB: Storing message for Letta agent '{letta_agent_id}' (app_agent_id: {app_agent_id}), role '{role}': '{message_content[:100]}...'")
+        if not LETTA_CLIENT_AVAILABLE or not self.letta_client: # Should not happen if connect_letta_client was successful and LETTA_CLIENT_AVAILABLE is True
+            logger.error("Letta client not available for storing message (should have been caught earlier).")
+            return False # Should have been caught by connect or get_or_create
+        try:
+            # Conceptual Actual SDK call (assuming messages.create is async in the stub or needs to_thread):
+            # If letta_client.messages.create is async as per stub:
+            # response = await self.letta_client.messages.create(agent_id=letta_agent_id, content=message_content, role=role, stream=False)
+            # If it's sync:
+            # response = await asyncio.to_thread(
+            #     self.letta_client.messages.create, # This is not how the stub is defined, stub messages.create is async
+            #     agent_id=letta_agent_id, content=message_content, role=role, stream=False
+            # )
+            response = await asyncio.to_thread(
+                self.letta_client.messages.create,
+                agent_id=letta_agent_id,
+                content=message_content,
+                role=role,
+                stream=False
+            )
+
+            # Assuming a successful create returns the message object with an 'id'
+            msg_id = getattr(response, 'id', response.get('id') if isinstance(response, dict) else None)
+            if msg_id:
+                logger.info(f"Message successfully sent to Letta agent {letta_agent_id}. Message ID: {msg_id}")
+                return True
+            else:
+                logger.warning(f"Message sending to Letta agent {letta_agent_id} did not return a confirmation ID or expected response structure. Response: {response}")
+                return False
+        except LettaAPIError as e:
+            logger.error(f"Letta API error storing message for agent '{letta_agent_id}': {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error listing memories from MemGPT agent {self.memgpt_agent_name}: {e}", exc_info=True)
-            return [{"error": f"Failed to list memories: {str(e)}"}]
+            logger.error(f"Unexpected error storing message for Letta agent '{letta_agent_id}': {e}")
+            return False
 
-# To use this service, it would typically be instantiated per request or per agent interaction context.
-# For example, in an agent's execution flow:
-# memory_service = MemoryService(user_id=current_user_id, agent_id_context=current_agent_id) # This might raise MemoryInitializationError
-# await memory_service.add_observation("User said 'hello'")
-# memories = await memory_service.list_memories(query="*")
-# Added logging with standard logging module.
-# Added user_id and agent_id_context to init.
-# Added config_overrides to init for flexibility.
-# Made user_id and agent_id_context strings as MemGPT might prefer string IDs.
-# Added MemoryServiceError and MemoryInitializationError.
-# Updated TODOs with more specific examples of MemGPT usage.
-# Ensured async methods.
-# Corrected dotenv_path logic to be more robust in finding .env.
-# Added override=True to load_dotenv.
-# Changed print to logger.info/warning.
-# Added simulated return structure for memory retrieval.
-# Added example usage comments.
-# Final check on parameters and types. Looks good for a placeholder service.
-# Added Optional type hints for metadata and config_overrides.
-# Added datetime import for simulated memory timestamps.
-# Added timezone import for simulated memory timestamps.
-# Added uuid import for simulated message_id.
-# The method `add_observation` now returns a dict, as per typical API responses.
-# The method `retrieve_relevant_memories` returns a list of dicts.
-# These are good starting points for the service structure.
-# The actual MemGPT initialization (commented out) is complex and depends heavily on
-# how personas, humans, and specific LLM/embedding models are managed and selected for each agent.
-# For the POC, the simulated responses are fine.
-# The core of this task is the *setup* and *structure*, not full MemGPT operationalization.
-# The current structure achieves that.The file `python-ai-services/services/memory_service.py` has been created with the `MemoryService` class.
-This class includes:
-*   An `__init__` method that takes `user_id`, `agent_id_context`, and optional `config_overrides`. It includes TODO comments outlining the steps for actual MemGPT client/agent initialization.
-*   Placeholder `async def add_observation` and `async def retrieve_relevant_memories` methods. These methods currently log that MemGPT is not fully initialized and return simulated success/data. They also include TODO comments for implementing the actual calls to a `memgpt_agent_instance`.
-*   Custom exception classes `MemoryServiceError` and `MemoryInitializationError`.
-*   Basic logging using the standard `logging` module.
-*   `dotenv` loading to ensure environment variables are available.
+    async def get_memory_response(self, app_agent_id: str, prompt_message: str, role: str = "user") -> Optional[str]:
+        """
+        Sends a prompt to the MemGPT/Letta agent and gets its response, which may include recalled memories.
+        This is a STUB. Actual implementation requires letta-client interaction.
+        """
+        if not self.letta_client:
+            logger.error("Letta client not connected. Cannot get memory response.")
+            return None
 
-**Step 4.2: Modify `python-ai-services/services/__init__.py`**
-I need to add `from .memory_service import MemoryService` and update `__all__`.
-# For example, in an agent's execution flow:
-# memory_service = MemoryService(user_id=current_user_id, agent_id_context=current_agent_id)
-# await memory_service.add_observation("User said 'hello'")
-# memories = await memory_service.list_memories(query="*")
-# Added logging with standard logging module.
-# Added user_id and agent_id_context to init.
-# Added config_overrides to init for flexibility.
-# Made user_id and agent_id_context strings as MemGPT might prefer string IDs.
-# Added MemoryServiceError and MemoryInitializationError.
-# Updated TODOs with more specific examples of MemGPT usage.
-# Ensured async methods.
-# Corrected dotenv_path logic to be more robust in finding .env.
-# Added override=True to load_dotenv.
-# Changed print to logger.info/warning.
-# Added simulated return structure for memory retrieval.
-# Added example usage comments.
-# Final check on parameters and types. Looks good for a placeholder service.
-# Added Optional type hints for metadata and config_overrides.
-# Added datetime import for simulated memory timestamps.
-# Added timezone import for simulated memory timestamps.
-# Added uuid import for simulated message_id.
-# The method `add_observation` now returns a dict, as per typical API responses.
-# The method `retrieve_relevant_memories` returns a list of dicts.
-# These are good starting points for the service structure.
-# The actual MemGPT initialization (commented out) is complex and depends heavily on
-# how personas, humans, and specific LLM/embedding models are managed and selected for each agent.
-# For the POC, the simulated responses are fine.
-# The core of this task is the *setup* and *structure*, not full MemGPT operationalization.
-# The current structure achieves that.The file `python-ai-services/services/memory_service.py` has been created with the `MemoryService` class.
-This class includes:
-*   An `__init__` method that takes `user_id`, `agent_id_context`, and optional `config_overrides`. It includes TODO comments outlining the steps for actual MemGPT client/agent initialization.
-*   Placeholder `async def add_observation` and `async def retrieve_relevant_memories` methods. These methods currently log that MemGPT is not fully initialized and return simulated success/data. They also include TODO comments for implementing the actual calls to a `memgpt_agent_instance`.
-*   Custom exception classes `MemoryServiceError` and `MemoryInitializationError`.
-*   Basic logging using the standard `logging` module.
-*   `dotenv` loading to ensure environment variables are available.
+        letta_agent_id = self.active_memgpt_agents.get(app_agent_id)
+        if not letta_agent_id:
+            logger.error(f"Letta agent ID for app_agent_id '{app_agent_id}' not found in active cache. Ensure agent is created/retrieved first via get_or_create_memgpt_agent.")
+            return None
 
-**Step 4.2: Modify `python-ai-services/services/__init__.py`**
-I need to add `from .memory_service import MemoryService` and update `__all__`.
+        # Actual implementation will use self.letta_client.messages.create(...) and process response
+        logger.info(f"MEMORY_SERVICE STUB: Sending prompt to Letta agent '{letta_agent_id}' (app_agent_id: {app_agent_id}), role '{role}': '{prompt_message[:100]}...'")
+        if not LETTA_CLIENT_AVAILABLE or not self.letta_client:
+            logger.error("Letta client not available for getting response.")
+            return None
+        try:
+            # Step 1: Send the user's prompt message
+            sent_message_response = await asyncio.to_thread(
+                self.letta_client.messages.create,
+                agent_id=letta_agent_id,
+                role=role,
+                content=prompt_message,
+                stream=False
+            )
+
+            sent_msg_id = getattr(sent_message_response, 'id', sent_message_response.get('id') if isinstance(sent_message_response, dict) else None)
+            if not sent_msg_id:
+                logger.error(f"Failed to send prompt message to Letta agent {letta_agent_id} or received unexpected response. Response: {sent_message_response}")
+                return None
+            logger.info(f"Prompt successfully sent to Letta agent {letta_agent_id} (Msg ID: {sent_msg_id}). Fetching subsequent messages...")
+
+            # Step 2: Fetch recent messages to find the assistant's reply
+            # Add a brief conceptual delay, as assistant message might not be instantly available after prompt.
+            # In a real scenario, this might involve polling or a webhook if the SDK doesn't block until reply.
+            # For now, we assume messages.list will quickly show the reply if one was generated.
+            # await asyncio.sleep(0.1) # Conceptual: allow time for agent processing if needed
+
+            message_list_response = await asyncio.to_thread(
+                self.letta_client.messages.list,
+                agent_id=letta_agent_id,
+                limit=5 # Fetch a few recent messages, assuming latest are last
+            )
+
+            # Assuming message_list_response is an object with a '.data' attribute which is a list of message objects/dicts
+            if message_list_response and hasattr(message_list_response, 'data') and isinstance(message_list_response.data, list):
+                # Iterate in reverse to find the latest assistant message that is NOT the prompt we just sent (if it echoes)
+                for msg_obj in reversed(message_list_response.data):
+                    msg_role = getattr(msg_obj, 'role', msg_obj.get('role') if isinstance(msg_obj, dict) else None)
+                    msg_content = getattr(msg_obj, 'content', msg_obj.get('content') if isinstance(msg_obj, dict) else None)
+                    msg_id = getattr(msg_obj, 'id', msg_obj.get('id') if isinstance(msg_obj, dict) else None)
+
+                    # Ensure it's an assistant message and not the same as the prompt message ID we just sent (if applicable)
+                    if msg_role == 'assistant' and msg_content is not None: # and msg_id != sent_msg_id:
+                        logger.info(f"Received assistant reply from Letta agent {letta_agent_id}: '{str(msg_content)[:100]}...'")
+                        return str(msg_content)
+
+                logger.warning(f"No assistant reply found in recent messages for Letta agent {letta_agent_id} after prompt '{prompt_message[:50]}...'.")
+                return None
+            else:
+                logger.error(f"Unexpected response structure from Letta agent {letta_agent_id} messages.list: {message_list_response}")
+                return None
+        except LettaAPIError as e:
+            logger.error(f"Letta API error getting response from agent '{letta_agent_id}': {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error getting response from Letta agent '{letta_agent_id}': {e}")
+            return None
+
+    async def close_letta_client(self):
+        """Closes the Letta client connection if it was established."""
+        if self.letta_client: # No need to check hasattr for 'close' on the stub, just nullify
+            # In a real client, you would check: if hasattr(self.letta_client, "close") and callable(self.letta_client.close):
+            #    await asyncio.to_thread(self.letta_client.close) # Or await self.letta_client.close() if it's async
+            logger.info("MEMORY_SERVICE: Letta client connection conceptually closed.")
+            self.letta_client = None
+        else:
+            logger.info("MEMORY_SERVICE: No active Letta client to close.")
+
+    async def get_agent_memory_stats(self, app_agent_id: str) -> Optional[AgentMemoryStats]:
+        """
+        Retrieves conceptual memory usage statistics for a given application agent ID.
+        NOTE: This method currently returns STUBBED/mocked data.
+        """
+        logger.info(f"MEMORY_SERVICE STUB: Called get_agent_memory_stats for app_agent_id: {app_agent_id}. Returning mocked statistics.")
+
+        # In a real implementation, this would involve querying Letta server for stats related to the linked Letta agent,
+        # or retrieving stats tracked by MemoryService itself (e.g., from Redis or another store via AgentPersistenceService).
+
+        if AgentMemoryStats is None: # Check if the Pydantic model was imported
+            logger.error("AgentMemoryStats model not available due to import error. Cannot provide memory stats.")
+            return None
+
+        if "error_case" in app_agent_id:
+            logger.warning(f"Simulating 'agent not found' or error for memory stats for {app_agent_id}")
+            return None
+
+        stored_count: int
+        recalled_count: int
+        mock_last_activity: datetime
+
+        try:
+            import hashlib # Standard library, should always be available
+            from datetime import timedelta # Standard library
+
+            id_hash = int(hashlib.md5(app_agent_id.encode()).hexdigest(), 16)
+            stored_count = (id_hash % 100) + 50  # Range 50-149
+            recalled_count = (id_hash % 40) + 10   # Range 10-49
+            random_minutes = (id_hash % 600)
+            mock_last_activity = datetime.now(timezone.utc) - timedelta(minutes=random_minutes)
+        except Exception as e: # Broad exception for any issue with hash/date logic, though unlikely with stdlib
+            logger.warning(f"Error generating dynamic mock stats (e.g. hashlib/timedelta issue: {e}), using fixed mock stats for MemoryService.get_agent_memory_stats")
+            stored_count = 123
+            recalled_count = 45
+            try: from datetime import timedelta # ensure it's available
+            except: pass # if it fails, utcnow will be used as is
+            mock_last_activity = datetime.now(timezone.utc) - timedelta(hours=1)
+
+
+        mock_stats = AgentMemoryStats(
+            app_agent_id=app_agent_id,
+            memories_stored_count=stored_count,
+            memories_recalled_count=recalled_count,
+            last_activity_timestamp=mock_last_activity
+        )
+        return mock_stats
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        logger.remove()
+        logger.add(lambda msg: print(msg, end=''), colorize=True, format="<level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>", level="INFO")
+
+        # Example Usage
+        # This requires a running Letta server if LETTA_CLIENT_AVAILABLE is True and stubs are replaced.
+        # For now, it will mostly use the stubbed client logic if letta-client is not installed.
+        memory_service = MemoryService(letta_server_url="http://localhost:8283") # Default Letta port
+
+        if await memory_service.connect_letta_client():
+            logger.info("MemoryService connected to Letta (or stub client initialized).")
+
+            app_agent_id_1 = "crew_ai_strategist_001"
+            agent_config = MemGPTAgentConfig(
+                persona_name_or_text="I am a helpful AI assistant specialized in financial markets.",
+                human_name_or_text="The user is a trader looking for market insights."
+            )
+
+            letta_id_1 = await memory_service.get_or_create_memgpt_agent(app_agent_id_1, agent_config)
+            if letta_id_1:
+                logger.info(f"Letta Agent ID for {app_agent_id_1}: {letta_id_1}")
+
+                await memory_service.store_memory_message(app_agent_id_1, "The user is interested in BTC/USD trends.")
+                await memory_service.store_memory_message(app_agent_id_1, "Volatility has been high recently for BTC.", role="system")
+
+                response = await memory_service.get_memory_response(app_agent_id_1, "What are the recent observations for BTC/USD?")
+                logger.info(f"Response for {app_agent_id_1}: {response}")
+
+            app_agent_id_2 = "crew_ai_researcher_002"
+            agent_config_2 = MemGPTAgentConfig(
+                persona_name_or_text="I am a research assistant, I provide detailed information.",
+                human_name_or_text="The user is looking for specific data points."
+            )
+            letta_id_2 = await memory_service.get_or_create_memgpt_agent(app_agent_id_2, agent_config_2)
+            if letta_id_2:
+                 logger.info(f"Letta Agent ID for {app_agent_id_2}: {letta_id_2}")
+                 await memory_service.store_memory_message(app_agent_id_2, "User asked about ETH/USD historical data.")
+                 response2 = await memory_service.get_memory_response(app_agent_id_2, "Summarize my interests.")
+                 logger.info(f"Response for {app_agent_id_2}: {response2}")
+
+            # Try getting the first agent again (should be cached or found by name)
+            letta_id_1_again = await memory_service.get_or_create_memgpt_agent(app_agent_id_1, agent_config)
+            assert letta_id_1_again == letta_id_1
+            logger.info(f"Re-fetched Letta Agent ID for {app_agent_id_1}: {letta_id_1_again}")
+
+
+            await memory_service.close_letta_client()
+        else:
+            logger.error("Failed to connect MemoryService to Letta server.")
+
+    asyncio.run(main())
+
+```
