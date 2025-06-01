@@ -11,6 +11,14 @@ from .knowledge_service import SharedKnowledgeService # Added import
 from .agent_persistence_service import AgentPersistenceService, AgentPersistenceError, AgentStateNotFoundError
 from .event_service import EventService, EventServiceError
 from .risk_monitor import RiskMonitor, RiskMonitorError
+from .strategy_config_service import (
+    StrategyConfigService,
+    StrategyConfigServiceError,
+    StrategyConfigNotFoundError,
+    StrategyConfigCreationError,
+    StrategyConfigUpdateError,
+    StrategyConfigDeletionError
+)
 # from .agent_state_manager import AgentStateManager # If exists and needed
 # from .trading_coordinator import TradingCoordinator # If exists and needed
 
@@ -30,6 +38,12 @@ __all__ = [
     "EventServiceError",
     "RiskMonitor",
     "RiskMonitorError",
+    "StrategyConfigService",
+    "StrategyConfigServiceError",
+    "StrategyConfigNotFoundError",
+    "StrategyConfigCreationError",
+    "StrategyConfigUpdateError",
+    "StrategyConfigDeletionError",
     # "AgentStateManager",
     # "TradingCoordinator",
 ]

@@ -40,14 +40,27 @@ from models.monitoring_models import AgentTaskSummary, TaskListResponse, Depende
 from services.agent_task_service import AgentTaskService
 from services.memory_service import MemoryService, MemoryInitializationError
 from services.event_service import EventService, EventServiceError
+from services.simulated_trade_executor import SimulatedTradeExecutor
+from services.strategy_config_service import ( # Added
+    StrategyConfigService,
+    StrategyConfigNotFoundError,
+    StrategyConfigCreationError,
+    StrategyConfigUpdateError,
+    StrategyConfigDeletionError,
+    StrategyConfigServiceError
+)
 
 # Supabase client (will be initialized in lifespan or per-request)
 from supabase import create_client, Client as SupabaseClient
 
+# Strategy Config Models
+from models.strategy_models import StrategyConfig, BaseStrategyConfig, PerformanceMetrics # Added PerformanceMetrics
+from models.trading_history_models import TradeRecord # Added TradeRecord
+
 # Models and crew for new endpoint
 from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse
 from agents.crew_setup import trading_analysis_crew
-from models.event_models import CrewLifecycleEvent
+from models.event_models import CrewLifecycleEvent, AlertEvent, AlertLevel # Added AlertEvent, AlertLevel
 
 # For SSE
 from sse_starlette.sse import EventSourceResponse
@@ -120,17 +133,74 @@ async def lifespan(app: FastAPI):
     )
     await a2a_protocol.initialize()
     
-    # Initialize enhanced AI agents
-    services.update({
-        "google_bridge": google_bridge,
-        "a2a_protocol": a2a_protocol,
-        "trading_coordinator": TradingCoordinator(google_bridge, a2a_protocol),
-        "market_analyst": MarketAnalyst(google_bridge, a2a_protocol),
-        "risk_monitor": RiskMonitor(google_bridge, a2a_protocol),
-        "vault_manager": VaultManager(google_bridge, a2a_protocol),
-        "strategy_optimizer": StrategyOptimizer(google_bridge, a2a_protocol)
-    })
     
+    # Initialize SimulatedTradeExecutor
+    app.state.simulated_trade_executor = None
+    supabase_url_env = os.getenv("SUPABASE_URL") # Store env vars locally
+    supabase_key_env = os.getenv("SUPABASE_KEY")
+    event_service_instance = getattr(app.state, 'event_service', None) # Get EventService instance
+
+    if supabase_url_env and supabase_key_env: # Check if Supabase creds are set
+        if app.state.supabase_client: # Check if Supabase client itself was initialized
+            try:
+                app.state.simulated_trade_executor = SimulatedTradeExecutor(
+                    supabase_url=supabase_url_env,
+                    supabase_key=supabase_key_env,
+                    event_service=event_service_instance # Pass the EventService instance
+                )
+                logger.info("SimulatedTradeExecutor initialized successfully" + (" with EventService." if event_service_instance else " without EventService (alert events may be disabled)."))
+            except Exception as e:
+                logger.error(f"Failed to initialize SimulatedTradeExecutor: {e}", exc_info=True)
+                # app.state.simulated_trade_executor remains None
+        else:
+            logger.warning("Supabase client failed to initialize earlier. SimulatedTradeExecutor not initialized.")
+    else:
+        logger.warning("SUPABASE_URL or SUPABASE_KEY not set in environment. SimulatedTradeExecutor not initialized.")
+
+    # Initialize enhanced AI agents/services dictionary
+    # Clear any existing services to ensure fresh init with all dependencies
+    services.clear()
+    services["google_bridge"] = google_bridge
+    services["a2a_protocol"] = a2a_protocol
+
+    # Initialize services that depend on google_bridge and a2a_protocol
+    services["market_analyst"] = MarketAnalyst(google_bridge, a2a_protocol)
+    services["risk_monitor"] = RiskMonitor(google_bridge, a2a_protocol) # Assuming RiskMonitor takes these two
+    services["vault_manager"] = VaultManager(google_bridge, a2a_protocol) # Assuming VaultManager takes these two
+    services["strategy_optimizer"] = StrategyOptimizer(google_bridge, a2a_protocol) # Assuming StrategyOptimizer takes these two
+
+    # Initialize TradingCoordinator with SimulatedTradeExecutor
+    if app.state.simulated_trade_executor:
+        services["trading_coordinator"] = TradingCoordinator(
+            google_bridge=google_bridge,
+            a2a_protocol=a2a_protocol,
+            simulated_trade_executor=app.state.simulated_trade_executor
+        )
+    else:
+        logger.error("SimulatedTradeExecutor not available. TradingCoordinator will not have paper trading capabilities.")
+        # Optionally, initialize TradingCoordinator without simulated_trade_executor or handle this state
+        # For now, if STE is missing, TC that uses it for paper trading won't be fully functional.
+        # One might decide to not add it to services dict, or add a version with limited functionality.
+        # To keep it simple, we'll assume if STE fails, TC that needs it might not be added or will error on use.
+        # However, the prompt implies TC is always there, so let's log a severe warning.
+        # services["trading_coordinator"] = TradingCoordinator(google_bridge, a2a_protocol, None) # If TC can handle None STE
+    elif services.get("google_bridge") and services.get("a2a_protocol"): # If STE is None, but other deps are there
+        logger.error("SimulatedTradeExecutor not available. Initializing TradingCoordinator without paper trading capabilities or it might fail if STE is mandatory.")
+        # Decide if TradingCoordinator should be initialized at all if STE is critical for its core functions.
+        # For now, assuming TradingCoordinator might still have other roles or can handle a None STE.
+        # If TradingCoordinator's __init__ was updated to make simulated_trade_executor non-optional, this would fail.
+        # The current __init__ for TradingCoordinator makes it non-optional.
+        # So, if app.state.simulated_trade_executor is None, TC init will fail here unless TC is updated.
+        # This part of the logic needs to be robust based on whether TC *requires* STE.
+        # Given the prompt, TC does require it in its __init__.
+        # So, if STE is None, TC will not be correctly initialized with it.
+        # The `else` block for TC initialization needs to reflect this.
+        # The current code for TC init is *inside* the `if app.state.simulated_trade_executor:` block
+        # which is correct: TC is only initialized with STE if STE is available.
+        # If TC *must* be in services dict, then it needs to handle STE being None.
+        # For now, if STE is None, TC that *requires* it won't be in services dict.
+        pass # trading_coordinator will not be (re)set in services if STE is None.
+
     # Register agents with A2A protocol
     # Renamed agent to agent_instance to avoid potential conflicts
     for agent_name, agent_instance in services.items():
@@ -312,6 +382,20 @@ async def get_event_service(request: Request) -> Optional[EventService]:
         # you might raise HTTPException here or let the endpoint handle None.
         return None
     return request.app.state.event_service
+
+async def get_simulated_trade_executor(request: Request) -> Optional[SimulatedTradeExecutor]:
+    if not hasattr(request.app.state, 'simulated_trade_executor') or request.app.state.simulated_trade_executor is None:
+        logger.warning("SimulatedTradeExecutor not found in app.state or not initialized.")
+        return None
+    return request.app.state.simulated_trade_executor
+
+async def get_strategy_config_service(
+    # request: Request, # Not strictly needed if only depending on supabase_client
+    supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client)
+) -> StrategyConfigService:
+    if not supabase_client:
+        raise HTTPException(status_code=503, detail="Database client not available. Cannot manage strategy configurations.")
+    return StrategyConfigService(supabase_client=supabase_client)
 
 
 # Enhanced AI Agent Endpoints
@@ -864,20 +948,48 @@ def run_trading_analysis_crew_background(
                 status="STARTED",
                 inputs=inputs
             )
-            # This is a sync function (BackgroundTasks run in a thread pool).
-            # To call async event_service.publish_event, we need to handle the event loop.
-            # A simple way for now, if the underlying publish can handle it or if it's quick.
-            # Proper way: use `asyncio.run_coroutine_threadsafe` with the main loop.
             try:
-                asyncio.run(event_service.publish_event(crew_started_event))
+                asyncio.run(event_service.publish_event(crew_started_event)) # Placeholder for sync context
                 logger.info(f"CREW_STARTED event published for Task ID: {task_id}")
             except RuntimeError as e:
-                 logger.warning(f"Could not publish CREW_STARTED event via asyncio.run for Task ID {task_id} (RuntimeError: {e}). This is common if an event loop is already running in the thread.")
+                 logger.warning(f"Could not publish CREW_STARTED event via asyncio.run for Task ID {task_id}: {e}. Logging locally.")
                  logger.debug(f"[EventService Direct Log] Event: {crew_started_event.model_dump_json()}")
 
         logger.info(f"Running trading_analysis_crew with inputs: {inputs} for Task ID: {task_id}")
-        result = trading_analysis_crew.kickoff(inputs=inputs)
+        result = trading_analysis_crew.kickoff(inputs=inputs) # This is a string result
         logger.info(f"Trading analysis crew finished for Task ID: {task_id}. Result: {str(result)[:500]}")
+
+        # Attempt to parse result and potentially publish actionable signal alert
+        try:
+            crew_result_dict = json.loads(result if isinstance(result, str) else "{}")
+            opportunity_details = crew_result_dict.get("opportunity_details")
+            if opportunity_details and isinstance(opportunity_details, dict):
+                action_type = opportunity_details.get("type", "").upper()
+                confidence = float(opportunity_details.get("confidence", 0.0))
+                CONFIDENCE_THRESHOLD = 0.6 # Example
+                if action_type in ["BUY", "SELL"] and confidence >= CONFIDENCE_THRESHOLD:
+                    if event_service and event_service.redis_client:
+                        actionable_signal_alert = AlertEvent(
+                            source_id=f"TradingCoordinator_CrewRun_{task_id}",
+                            crew_run_id=task_id,
+                            alert_level=AlertLevel.INFO,
+                            message=f"Actionable trade signal by crew for {inputs.get('symbol')}: {action_type}",
+                            details={
+                                "symbol": inputs.get('symbol'), "action": action_type, "confidence": confidence,
+                                "opportunity_details": opportunity_details
+                            }
+                        )
+                        try:
+                            asyncio.run(event_service.publish_event(actionable_signal_alert, channel="alert_events"))
+                            logger.info(f"Published actionable signal alert for crew run {task_id}")
+                        except RuntimeError as re:
+                            logger.warning(f"Could not publish actionable signal alert via asyncio.run for Task ID {task_id}: {re}. Logging locally.")
+                            logger.debug(f"[EventService Direct Log] Event: {actionable_signal_alert.model_dump_json()}")
+        except json.JSONDecodeError:
+            logger.warning(f"Crew result for task {task_id} was not valid JSON, cannot check for actionable signal alert. Result: {result}")
+        except Exception as e_alert:
+            logger.error(f"Error processing crew result for actionable signal alert (task {task_id}): {e_alert}", exc_info=True)
+
 
         task_service.update_task_status(task_id=task_id, status="COMPLETED", results={"output": str(result)})
 
@@ -892,27 +1004,43 @@ def run_trading_analysis_crew_background(
                 asyncio.run(event_service.publish_event(crew_completed_event))
                 logger.info(f"CREW_COMPLETED event published for Task ID: {task_id}")
             except RuntimeError as e:
-                logger.warning(f"Could not publish CREW_COMPLETED event via asyncio.run for Task ID {task_id} (RuntimeError: {e}).")
+                logger.warning(f"Could not publish CREW_COMPLETED event via asyncio.run for Task ID {task_id}: {e}. Logging locally.")
                 logger.debug(f"[EventService Direct Log] Event: {crew_completed_event.model_dump_json()}")
 
     except Exception as e:
         logger.error(f"Error running trading_analysis_crew in background for Task ID {task_id}: {e}", exc_info=True)
-        if task_id: # Ensure task_id was set (it should be, as it's an arg)
+        if task_id:
             task_service.update_task_status(task_id=task_id, status="FAILED", error_message=str(e))
 
         if event_service and event_service.redis_client:
-            crew_failed_event = CrewLifecycleEvent(
-                source_id=str(task_id) if task_id else "unknown_task",
+            # Publish CrewLifecycleEvent for FAILED
+            crew_lifecycle_failed_event = CrewLifecycleEvent( # Renamed to avoid conflict with AlertEvent
+                source_id=str(task_id) if task_id else "unknown_task_lc", # Distinguish source for lifecycle
                 crew_run_id=task_id if task_id else None,
                 status="FAILED",
                 error_message=str(e)
             )
             try:
-                asyncio.run(event_service.publish_event(crew_failed_event))
-                logger.info(f"CREW_FAILED event published for Task ID: {task_id if task_id else 'unknown_task'}")
+                asyncio.run(event_service.publish_event(crew_lifecycle_failed_event)) # Default channel from EventService
+                logger.info(f"CREW_LIFECYCLE_FAILED event published for Task ID: {task_id if task_id else 'unknown_task_lc'}")
             except RuntimeError as re:
-                logger.warning(f"Could not publish CREW_FAILED event via asyncio.run for Task ID {task_id if task_id else 'unknown_task'} (RuntimeError: {re}).")
-                logger.debug(f"[EventService Direct Log] Event: {crew_failed_event.model_dump_json()}")
+                logger.warning(f"Could not publish CREW_LIFECYCLE_FAILED event via asyncio.run for Task ID {task_id if task_id else 'unknown_task_lc'}: {re}. Logging locally.")
+                logger.debug(f"[EventService Direct Log] Event: {crew_lifecycle_failed_event.model_dump_json()}")
+
+            # Publish AlertEvent for FAILED crew execution
+            crew_failure_alert = AlertEvent(
+                source_id=f"TradingCoordinator_CrewRun_{task_id}",
+                crew_run_id=task_id,
+                alert_level=AlertLevel.ERROR,
+                message=f"Trading analysis crew execution FAILED for symbol {inputs.get('symbol', 'N/A')}.",
+                details={"error": str(e), "inputs": inputs}
+            )
+            try:
+                asyncio.run(event_service.publish_event(crew_failure_alert, channel="alert_events"))
+                logger.info(f"Published crew FAILED alert for Task ID: {task_id}")
+            except RuntimeError as re:
+                logger.warning(f"Could not publish crew FAILED alert via asyncio.run for Task ID {task_id}: {re}. Logging locally.")
+                logger.debug(f"[EventService Direct Log] Event: {crew_failure_alert.model_dump_json()}")
 
 
 @app.post("/api/v1/crews/trading/analyze", response_model=CrewRunResponse, status_code=202)
@@ -952,6 +1080,186 @@ async def analyze_trading_strategy_with_crew(
         status="ACCEPTED",
         message="Trading analysis crew task accepted and initiated."
     )
+
+# --- Strategy Configuration Endpoints ---
+STRATEGY_CONFIG_API_PREFIX = "/api/v1/strategies"
+
+@app.post(
+    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}",
+    response_model=StrategyConfig,
+    status_code=201,
+    summary="Create a new strategy configuration for a user",
+    tags=["Strategy Configurations"]
+)
+async def create_user_strategy_config(
+    user_id: UUID,
+    config_payload: StrategyConfig,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        created_config = await service.create_strategy_config(user_id=user_id, config_data=config_payload)
+        return created_config
+    except StrategyConfigCreationError as e:
+        logger.error(f"Failed to create strategy config for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error creating strategy config for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the strategy configuration.")
+
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}",
+    response_model=List[StrategyConfig],
+    summary="Get all strategy configurations for a specific user",
+    tags=["Strategy Configurations"]
+)
+async def get_all_strategy_configs_for_user(
+    user_id: UUID,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        return await service.get_strategy_configs_by_user(user_id=user_id)
+    except Exception as e:
+        logger.error(f"Unexpected error fetching strategy configs for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    response_model=StrategyConfig,
+    summary="Get a specific strategy configuration by ID for a user",
+    tags=["Strategy Configurations"]
+)
+async def get_single_strategy_config(
+    strategy_id: UUID,
+    user_id: UUID,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        config = await service.get_strategy_config(strategy_id=strategy_id, user_id=user_id)
+        if not config:
+            raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
+        return config
+    except StrategyConfigNotFoundError:
+        raise HTTPException(status_code=404, detail="Strategy configuration not found.")
+    except Exception as e:
+        logger.error(f"Unexpected error fetching strategy config {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+# Define a Pydantic model for partial updates. All fields should be optional.
+# This can be generated dynamically or defined explicitly.
+# For now, using Dict[str, Any] as per prompt, but noting this is less safe.
+# class StrategyConfigUpdatePayload(BaseModel):
+#     strategy_name: Optional[str] = None
+#     description: Optional[str] = None
+#     symbols: Optional[List[str]] = Field(default=None, min_items=1)
+#     timeframe: Optional[str] = None # Ideally StrategyTimeframe, but needs to be importable here
+#     parameters: Optional[Dict[str, Any]] = None
+#     is_active: Optional[bool] = None
+#     # strategy_type typically should not be updatable once set, or requires careful handling
+#     # of parameters field if it is.
+
+@app.put(
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    response_model=StrategyConfig,
+    summary="Update an existing strategy configuration for a user",
+    tags=["Strategy Configurations"]
+)
+async def update_user_strategy_config(
+    strategy_id: UUID,
+    user_id: UUID,
+    update_payload: Dict[str, Any], # Using Dict for partial updates
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    if not update_payload:
+        raise HTTPException(status_code=400, detail="Update payload cannot be empty.")
+    try:
+        updated_config = await service.update_strategy_config(
+            strategy_id=strategy_id, user_id=user_id, update_payload=update_payload
+        )
+        return updated_config
+    except StrategyConfigNotFoundError:
+        raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
+    except (StrategyConfigUpdateError, ValueError) as e: # Catch both service and Pydantic validation errors
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error updating strategy config {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.delete(
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    status_code=204,
+    summary="Delete a strategy configuration for a user",
+    tags=["Strategy Configurations"]
+)
+async def delete_user_strategy_config(
+    strategy_id: UUID,
+    user_id: UUID,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        await service.delete_strategy_config(strategy_id=strategy_id, user_id=user_id)
+        return # FastAPI handles 204 No Content response automatically
+    except StrategyConfigNotFoundError:
+        raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
+    except StrategyConfigDeletionError as e:
+        logger.error(f"Failed to delete strategy config {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error deleting strategy config {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}/performance/latest",
+    response_model=Optional[PerformanceMetrics],
+    summary="Get the latest performance metrics for a specific strategy configuration",
+    tags=["Strategy Configurations", "Performance Analytics"]
+)
+async def get_latest_strategy_performance(
+    strategy_id: UUID,
+    user_id: UUID,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        metrics = await service.get_latest_performance_metrics(strategy_id=strategy_id, user_id=user_id)
+        if not metrics:
+            raise HTTPException(status_code=404, detail="Performance metrics not found for this strategy, or strategy does not exist/belong to user.")
+        return metrics
+    except StrategyConfigServiceError as e:
+        logger.error(f"Service error fetching performance for strategy {strategy_id}: {e}", exc_info=True)
+        # Check if the error message implies "not found" for the strategy itself
+        if "not found for user" in str(e).lower(): # Basic check, might need refinement based on actual error messages
+            raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error fetching performance for strategy {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}/trade_history",
+    response_model=List[TradeRecord],
+    summary="Get trade history for a specific strategy configuration",
+    tags=["Strategy Configurations", "Performance Analytics"]
+)
+async def get_strategy_trade_history(
+    strategy_id: UUID,
+    user_id: UUID,
+    limit: int = Query(100, ge=1, le=1000, description="Number of trades to return."),
+    offset: int = Query(0, ge=0, description="Offset for pagination."),
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    try:
+        trades = await service.get_trade_history_for_strategy(
+            strategy_id=strategy_id, user_id=user_id, limit=limit, offset=offset
+        )
+        # The service method returns [] if strategy config not found for user, which is acceptable (no trades).
+        return trades
+    except StrategyConfigServiceError as e:
+        logger.error(f"Service error fetching trade history for strategy {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error fetching trade history for strategy {strategy_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
 
 if __name__ == "__main__":
     # Run the enhanced AI services
