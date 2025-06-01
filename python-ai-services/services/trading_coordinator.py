@@ -19,16 +19,32 @@ from ..agents.crew_setup import trading_analysis_crew
 # or might need to be reconciled. For analyze_trading_opportunity, we use TradingAnalysisCrewRequest.
 from ..types.trading_types import TradingAnalysisRequest as OriginalTradingAnalysisRequest
 
+# Add import for SimulatedTradeExecutor for type hinting
+from .simulated_trade_executor import SimulatedTradeExecutor
+
+# Add imports for PaperTradeOrder and related enums
+from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill
+from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType
+from datetime import timezone # Ensure timezone is available for datetime.now(timezone.utc)
+import uuid
+
 
 class TradingCoordinator:
-    """Enhanced Trading Coordinator with PydanticAI intelligence"""
+    """
+    Coordinates trading analysis by leveraging specialized CrewAI crews.
+    Other functionalities like trade execution are delegated to external APIs or simulators.
+    """
     
-    def __init__(self, google_bridge: GoogleSDKBridge, a2a_protocol: A2AProtocol):
+    def __init__(self,
+                 google_bridge: GoogleSDKBridge,
+                 a2a_protocol: A2AProtocol,
+                 simulated_trade_executor: SimulatedTradeExecutor # Added
+                ):
         self.google_bridge = google_bridge
         self.a2a_protocol = a2a_protocol
-        self.base_url = "http://localhost:3000/api/agents/trading" # For external calls
-        
-        logger.info("TradingCoordinator initialized. Analysis will be delegated to trading_analysis_crew.")
+        self.simulated_trade_executor = simulated_trade_executor # Added
+        self.base_url = "http://localhost:3000/api/agents/trading"
+        logger.info("TradingCoordinator initialized with SimulatedTradeExecutor. Analysis will be delegated to trading_analysis_crew.")
 
     async def execute_trade(self, trade_request: Dict) -> Dict:
         logger.info(f"Executing trade: {trade_request}")

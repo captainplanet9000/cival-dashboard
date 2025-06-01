@@ -51,3 +51,29 @@ class CrewLifecycleEvent(BaseEvent):
 
 # Union type for all possible events (optional, but can be useful)
 # AgentEvent = Union[AgentTaskStartedEvent, AgentTaskCompletedEvent, AgentTaskErrorEvent, AgentLogEvent]
+
+AlertLevel = Literal["INFO", "WARNING", "ERROR", "CRITICAL"]
+
+class AlertEvent(BaseEvent):
+    event_type: Literal["AlertEvent"] = Field(default="AlertEvent", description="The fixed type for alert events.")
+
+    alert_level: AlertLevel = Field(..., description="Severity level of the alert (e.g., INFO, WARNING, ERROR, CRITICAL).")
+    message: str = Field(..., description="A human-readable message describing the alert.")
+    details: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Optional dictionary for structured data related to the alert.")
+
+    # source_id from BaseEvent can be used to indicate the component generating the alert,
+    # e.g., "TradingCoordinator", "SimulatedTradeExecutor", or a specific strategy_id/agent_id.
+
+    class Config:
+        from_attributes = True
+        validate_assignment = True
+        extra = 'forbid' # Assuming BaseEvent also has this or it's compatible.
+
+# Example usage:
+# alert = AlertEvent(
+#     source_id="TradingCoordinator",
+#     alert_level="INFO",
+#     message="New trade signal generated for AAPL.",
+#     details={"symbol": "AAPL", "signal": "BUY", "confidence": 0.75}
+# )
+# print(alert.model_dump_json(indent=2))
