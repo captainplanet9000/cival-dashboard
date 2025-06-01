@@ -28,6 +28,22 @@ from utils.google_sdk_bridge import GoogleSDKBridge
 from utils.a2a_protocol import A2AProtocol
 from types.trading_types import *
 
+# Added for monitoring API
+from fastapi import Query # Query for pagination params
+from uuid import UUID, uuid4 # For MemoryService dummy IDs
+from datetime import datetime, timezone # Ensure these are imported
+
+# Import monitoring models
+from models.monitoring_models import AgentTaskSummary, TaskListResponse, DependencyStatus, SystemHealthSummary
+
+# Import services
+from services.agent_task_service import AgentTaskService
+from services.memory_service import MemoryService, MemoryInitializationError
+
+# Supabase client (will be initialized in lifespan or per-request)
+from supabase import create_client, Client as SupabaseClient
+
+
 # Global services registry
 services: Dict[str, Any] = {}
 
@@ -56,16 +72,29 @@ class LLMConfig(BaseModel):
 async def lifespan(app: FastAPI):
     """Initialize and cleanup AI services"""
     logger.info("🚀 Starting PydanticAI Enhanced Services")
-    app.state.redis_cache_client = None  # Initialize with None
+    app.state.redis_cache_client = None
+    app.state.supabase_client = None # Initialize with None
+
     try:
-        # Initialize Redis Cache Client
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         app.state.redis_cache_client = await aioredis.from_url(redis_url)
-        await app.state.redis_cache_client.ping()  # Check connection
+        await app.state.redis_cache_client.ping()
         logger.info(f"Successfully connected to Redis at {redis_url} for caching.")
     except Exception as e:
         logger.error(f"Failed to connect to Redis for caching: {e}. Application will continue without caching.")
-        app.state.redis_cache_client = None # Ensure it's None if connection failed
+        app.state.redis_cache_client = None
+
+    try:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_key = os.getenv("SUPABASE_KEY")
+        if not supabase_url or not supabase_key:
+            logger.warning("SUPABASE_URL or SUPABASE_KEY environment variables not set. Supabase dependent services may fail.")
+        else:
+            app.state.supabase_client = create_client(supabase_url, supabase_key)
+            logger.info(f"Supabase client initialized for URL: {supabase_url[:20]}...") # Log only part of the URL
+    except Exception as e:
+        logger.error(f"Failed to initialize Supabase client: {e}. Supabase dependent services may fail.")
+        app.state.supabase_client = None
 
     # Initialize Google SDK Bridge
     google_bridge = GoogleSDKBridge(
@@ -94,9 +123,10 @@ async def lifespan(app: FastAPI):
     })
     
     # Register agents with A2A protocol
-    for agent_name, agent in services.items():
-        if hasattr(agent, 'register_with_a2a'):
-            await agent.register_with_a2a()
+    # Renamed agent to agent_instance to avoid potential conflicts
+    for agent_name, agent_instance in services.items():
+        if hasattr(agent_instance, 'register_with_a2a'):
+            await agent_instance.register_with_a2a()
     
     logger.info("✅ All PydanticAI services initialized")
     yield
@@ -110,9 +140,14 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error closing Redis cache client: {e}")
 
-    for service in services.values():
-        if hasattr(service, 'cleanup'):
-            await service.cleanup()
+    # No explicit Supabase client close method in supabase-py, it uses httpx internally.
+    # If create_client gives a client that needs closing, it should be done here.
+    # For now, assuming no explicit close needed for the client from create_client.
+
+    # Renamed service to service_instance to avoid potential conflicts
+    for service_instance in services.values():
+        if hasattr(service_instance, 'cleanup'):
+            await service_instance.cleanup()
 
 # Create FastAPI app with lifespan
 app = FastAPI(
@@ -215,6 +250,39 @@ async def deep_health_check(request: Request):
         status_code=http_status_code,
         content={"overall_status": overall_status, "dependencies": dependencies}
     )
+
+# Dependency Injection for Services
+
+async def get_supabase_client(request: Request) -> Optional[SupabaseClient]:
+    if not hasattr(request.app.state, 'supabase_client') or request.app.state.supabase_client is None:
+        logger.warning("Supabase client not found in app.state or not initialized.")
+        return None
+    return request.app.state.supabase_client
+
+async def get_agent_task_service(
+    supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client)
+) -> AgentTaskService:
+    if not supabase_client:
+        # This exception will be caught by FastAPI's default error handling
+        # and return a 500 error. For more specific client-facing errors (like 503),
+        # this could be raised from the endpoint itself or via a custom exception handler.
+        raise HTTPException(status_code=503, detail="Supabase client not available. Task service cannot operate.")
+    return AgentTaskService(supabase=supabase_client)
+
+async def get_memory_service_for_monitoring() -> MemoryService:
+    try:
+        # Using dummy IDs for monitoring purposes as actual user/agent context might not be relevant
+        dummy_user_id = uuid4()
+        dummy_agent_id = uuid4()
+        # Ensure MemoryService is correctly imported and its __init__ is compatible
+        return MemoryService(user_id=dummy_user_id, agent_id_context=dummy_agent_id)
+    except MemoryInitializationError as e:
+        logger.error(f"MemoryService initialization failed for monitoring: {e}")
+        raise HTTPException(status_code=503, detail=f"MemoryService not available for monitoring: {str(e)}")
+    except Exception as e: # Catch any other unexpected errors during initialization
+        logger.error(f"Unexpected error initializing MemoryService for monitoring: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Unexpected error initializing MemoryService.")
+
 
 # Enhanced AI Agent Endpoints
 @app.post("/api/agents/trading-coordinator/analyze")
@@ -437,6 +505,170 @@ async def websocket_agent_updates(websocket):
         logger.error(f"WebSocket error: {e}")
     finally:
         await websocket.close()
+
+# --- Monitoring API Endpoints ---
+MONITORING_API_PREFIX = "/api/v1/monitoring"
+
+@app.get(
+    f"{MONITORING_API_PREFIX}/tasks",
+    response_model=TaskListResponse,
+    summary="Get Paginated List of Agent Tasks",
+    tags=["Monitoring"]
+)
+async def get_tasks_summary(
+    page: int = Query(1, ge=1, description="Page number, starting from 1."),
+    page_size: int = Query(20, ge=1, le=100, description="Number of tasks per page."),
+    task_service: AgentTaskService = Depends(get_agent_task_service)
+):
+    try:
+        # Run the synchronous Supabase call in a thread pool
+        loop = asyncio.get_event_loop()
+        task_list_response = await loop.run_in_executor(
+            None,  # Uses the default thread pool executor
+            task_service.get_task_summaries,
+            page,
+            page_size,
+            None  # status_filter is None for now, can be added as a Query param later
+        )
+        return task_list_response
+    except Exception as e:
+        logger.error(f"Error fetching task summaries: {e}", exc_info=True)
+        # Check if the exception is already an HTTPException (e.g. from get_agent_task_service)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=f"Failed to fetch task summaries: {str(e)}")
+
+@app.get(
+    f"{MONITORING_API_PREFIX}/health/dependencies",
+    response_model=List[DependencyStatus],
+    summary="Get Status of External Dependencies",
+    tags=["Monitoring", "Health"]
+)
+async def get_dependencies_health(request: Request):
+    dependencies: List[DependencyStatus] = []
+
+    # Check Supabase client
+    supabase_client = await get_supabase_client(request) # Use the dependency
+    if supabase_client:
+        # This is a basic check. A real check might involve a light query.
+        # For now, if client object exists from lifespan, assume 'configured'.
+        # Actual operational status would need a ping/query.
+        dependencies.append(DependencyStatus(
+            name="Supabase (PostgreSQL)",
+            status="operational", # Simplified status based on client configuration
+            details="Supabase client is configured. Actual DB connection health not deeply checked by this endpoint.",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+    else:
+         dependencies.append(DependencyStatus(
+            name="Supabase (PostgreSQL)",
+            status="misconfigured", # Or "unavailable" if init failed
+            details="Supabase client not initialized or connection details missing.",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+
+    # Check Redis client
+    redis_client = request.app.state.redis_cache_client if hasattr(request.app.state, 'redis_cache_client') else None
+    if redis_client:
+        try:
+            await redis_client.ping()
+            dependencies.append(DependencyStatus(
+                name="Redis", status="operational",
+                details="Connection to Redis is active.",
+                last_checked=datetime.now(timezone.utc).isoformat()
+            ))
+        except Exception as e:
+            dependencies.append(DependencyStatus(
+                name="Redis", status="unavailable",
+                details=f"Failed to connect to Redis: {str(e)}",
+                last_checked=datetime.now(timezone.utc).isoformat()
+            ))
+    else:
+        dependencies.append(DependencyStatus(
+            name="Redis", status="misconfigured",
+            details="Redis client not configured or not initialized.",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+
+    # Check MemoryService (MemGPT)
+    try:
+        # Attempt to get (and thus initialize) the MemoryService
+        await get_memory_service_for_monitoring()
+        dependencies.append(DependencyStatus(
+            name="MemGPT (via MemoryService)", status="operational",
+            details="MemoryService initialized (configuration seems ok). Runtime health of MemGPT itself not deeply checked.",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+    except HTTPException as http_exc: # Catch HTTPException from get_memory_service_for_monitoring
+         dependencies.append(DependencyStatus(
+            name="MemGPT (via MemoryService)", status="unavailable", # Or "error" depending on http_exc.status_code
+            details=f"MemoryService initialization failed: {http_exc.detail}",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+    except Exception as e: # Catch any other unexpected errors
+        dependencies.append(DependencyStatus(
+            name="MemGPT (via MemoryService)", status="error",
+            details=f"MemoryService encountered an unexpected error during initialization check: {str(e)}",
+            last_checked=datetime.now(timezone.utc).isoformat()
+        ))
+
+    return dependencies
+
+@app.get(
+    f"{MONITORING_API_PREFIX}/health/system",
+    response_model=SystemHealthSummary,
+    summary="Get Overall System Health Summary",
+    tags=["Monitoring", "Health"]
+)
+async def get_system_health(request: Request):
+    dependency_statuses = await get_dependencies_health(request)
+
+    overall_status = "healthy"
+    # Determine overall status based on dependencies
+    for dep_status in dependency_statuses:
+        if dep_status.status not in ["operational", "not_checked"]: # "not_checked" can be debated
+            overall_status = "warning" # If any dependency is not fully operational
+            if dep_status.status in ["unavailable", "error", "misconfigured"]:
+                overall_status = "critical" # If any critical dependency is down/misconfigured
+                break
+
+    # Mock system metrics (replace with actual metrics if available)
+    mock_system_metrics = {
+        "cpu_load_percentage": 0.0, # Example: psutil.cpu_percent()
+        "memory_usage_mb": 0.0,     # Example: psutil.virtual_memory().used / (1024 * 1024)
+        "active_tasks": 0 # Example: Could query AgentTaskService for active tasks
+    }
+
+    return SystemHealthSummary(
+        overall_status=overall_status,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        dependencies=dependency_statuses,
+        system_metrics=mock_system_metrics
+    )
+
+@app.get(
+    f"{MONITORING_API_PREFIX}/memory/stats",
+    # response_model=Optional[Dict[str,Any]], # Return type is Dict[str, Any] from service
+    summary="Get Agent Memory Statistics (Stubbed)",
+    tags=["Monitoring", "Memory"]
+)
+async def get_memory_stats(
+    memory_service: MemoryService = Depends(get_memory_service_for_monitoring)
+):
+    try:
+        stats_response = await memory_service.get_agent_memory_stats()
+        # Check the 'status' field within the response from the service
+        if stats_response.get("status") == "error":
+            # Use the message from the service response for the HTTPException detail
+            raise HTTPException(status_code=503, detail=stats_response.get("message", "MemoryService error"))
+        return stats_response # FastAPI will serialize this dict to JSON
+    except MemoryInitializationError as e: # Raised by MemoryService.__init__ if it fails
+        raise HTTPException(status_code=503, detail=f"MemoryService not available: {str(e)}")
+    except HTTPException: # Re-raise if it's already an HTTPException (e.g. from dependency)
+        raise
+    except Exception as e: # Catch-all for other unexpected errors
+        logger.error(f"Error fetching memory stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching memory stats: {str(e)}")
 
 if __name__ == "__main__":
     # Run the enhanced AI services
