@@ -62,3 +62,13 @@ try:
         __all__ = ['SharedKnowledgeItem']
 except ImportError:
     pass
+
+# Export models from monitoring_models.py
+try:
+    from .monitoring_models import AgentTaskSummary, TaskListResponse, DependencyStatus, SystemHealthSummary
+    if '__all__' in globals():
+        __all__.extend(["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"])
+    else:
+        __all__ = ["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"]
+except ImportError:
+    pass
