@@ -9,7 +9,7 @@ import time # Added for request logging
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request # Added Request
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, WebSocket, WebSocketDisconnect # Added WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse # Added JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -42,6 +42,9 @@ from services.memory_service import MemoryService, MemoryInitializationError
 
 # Supabase client (will be initialized in lifespan or per-request)
 from supabase import create_client, Client as SupabaseClient
+
+# For SSE
+from sse_starlette.sse import EventSourceResponse
 
 
 # Global services registry
@@ -669,6 +672,89 @@ async def get_memory_stats(
     except Exception as e: # Catch-all for other unexpected errors
         logger.error(f"Error fetching memory stats: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while fetching memory stats: {str(e)}")
+
+# --- Interactive WebSocket Endpoint ---
+
+@app.websocket("/ws/interactive/{agent_id}")
+async def websocket_interactive_endpoint(websocket: WebSocket, agent_id: str):
+    await websocket.accept()
+    logger.info(f"WebSocket connection established for agent_id: {agent_id} from {websocket.client.host if websocket.client else 'Unknown Client'}")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            logger.info(f"Received message for agent {agent_id}: {data}")
+
+            # Placeholder for processing and agent interaction
+            response_message = f"Agent {agent_id} received your message: '{data}'"
+            await websocket.send_text(response_message)
+            logger.info(f"Sent response to client for agent {agent_id}: {response_message}")
+
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for agent_id: {agent_id} from {websocket.client.host if websocket.client else 'Unknown Client'}")
+    except Exception as e:
+        # Attempt to inform client of error before closing, if possible.
+        error_message_to_client = f"An error occurred: {str(e)}"
+        logger.error(f"Error in WebSocket for agent_id {agent_id}: {e}", exc_info=True)
+        try:
+            await websocket.send_text(error_message_to_client)
+        except Exception as send_error: # If sending error also fails (e.g. connection already broken)
+            logger.error(f"Failed to send error to client for agent {agent_id} during exception handling: {send_error}", exc_info=True)
+        # Depending on the error, you might want to close with a specific code
+        # await websocket.close(code=status.WS_1011_INTERNAL_ERROR) # Example: from fastapi import status
+    finally:
+        # Ensure cleanup or logging associated with the end of this specific connection handler
+        logger.info(f"WebSocket connection handler for agent_id: {agent_id} finished.")
+
+# --- SSE Endpoint for Agent Updates ---
+
+async def agent_updates_event_generator(request: Request):
+    client_host = request.client.host if request.client else "unknown_sse_client"
+    logger.info(f"SSE connection established for agent updates from {client_host}")
+    counter = 0
+    try:
+        while True:
+            # Check if client is still connected before attempting to send
+            if await request.is_disconnected():
+                logger.info(f"SSE client {client_host} disconnected during event generation loop.")
+                break
+
+            counter += 1
+            mock_update = {
+                "eventId": str(uuid4()), # Use existing imported uuid4
+                "timestamp": datetime.now(timezone.utc).isoformat(), # Use existing imported datetime, timezone
+                "agentId": f"agent_{counter % 3 + 1}",
+                "status": "processing" if counter % 2 == 0 else "idle",
+                "message": f"Agent {counter % 3 + 1} update event #{counter}",
+                "progress": counter % 100
+            }
+
+            # Yielding a dictionary structure that EventSourceResponse understands
+            yield {
+                "id": str(mock_update["eventId"]),
+                "event": "agent_update", # Custom event name
+                "data": json.dumps(mock_update) # Data must be a string, typically JSON
+            }
+            await asyncio.sleep(2) # Simulate delay between events
+
+    except asyncio.CancelledError:
+        # This occurs if the client disconnects and FastAPI cancels the task
+        logger.info(f"SSE event generator for {client_host} was cancelled (client likely disconnected).")
+    except Exception as e:
+        # Log any other unexpected errors during event generation
+        logger.error(f"Error in SSE event generator for {client_host}: {e}", exc_info=True)
+    finally:
+        # Log when the generator stops, whether normally or due to an error/cancellation
+        logger.info(f"SSE event generator for {client_host} stopped.")
+
+@app.get("/api/agent-updates/sse")
+async def sse_agent_updates(request: Request):
+    """
+    Server-Sent Events endpoint to stream agent updates.
+    Clients can connect to this endpoint to receive real-time updates.
+    """
+    return EventSourceResponse(agent_updates_event_generator(request))
+
 
 if __name__ == "__main__":
     # Run the enhanced AI services

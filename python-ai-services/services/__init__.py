@@ -8,6 +8,7 @@ from .agent_service import AgentService
 from .vault_service import VaultService
 from .memory_service import MemoryService
 from .knowledge_service import SharedKnowledgeService # Added import
+from .agent_persistence_service import AgentPersistenceService, AgentPersistenceError, AgentStateNotFoundError
 # from .agent_state_manager import AgentStateManager # If exists and needed
 # from .trading_coordinator import TradingCoordinator # If exists and needed
 
@@ -20,6 +21,9 @@ __all__ = [
     "VaultService",
     "MemoryService",
     "SharedKnowledgeService", # Added to __all__
+    "AgentPersistenceService",
+    "AgentPersistenceError",
+    "AgentStateNotFoundError",
     # "AgentStateManager",
     # "TradingCoordinator",
 ]
