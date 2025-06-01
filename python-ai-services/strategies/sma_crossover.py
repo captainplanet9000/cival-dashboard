@@ -1,90 +1,211 @@
-import numpy as np
+import pandas as pd
+import numpy as np # Retain for potential future use, though not strictly needed for this version
+import vectorbt as vbt
+from logging import getLogger
+from typing import Optional, Tuple
 
-class SMACrossoverStrategy:
-    def __init__(self, symbol: str, short_window: int, long_window: int, 
-                 config_params: dict = None): 
-        if not symbol or not short_window or not long_window:
-            raise ValueError("Symbol, short_window, and long_window must be provided.")
-        if short_window <= 0 or long_window <= 0:
-            raise ValueError("SMA windows must be positive integers.")
-        if short_window >= long_window:
-            raise ValueError("Short SMA window must be less than Long SMA window.")
+try:
+    from openbb import obb
+except ImportError:
+    obb = None
 
-        self.symbol = symbol
-        self.short_window = short_window
-        self.long_window = long_window
-        self.config_params = config_params if config_params else {}
+logger = getLogger(__name__)
 
-    def _calculate_sma(self, prices: list[float], window: int) -> list[float | None]:
-        if len(prices) < window:
-            return [None] * len(prices) 
+# Default parameters
+DEFAULT_SHORT_WINDOW = 20 # Common short-term SMA
+DEFAULT_LONG_WINDOW = 50  # Common long-term SMA
+
+def get_sma_crossover_signals(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    short_window: int = DEFAULT_SHORT_WINDOW,
+    long_window: int = DEFAULT_LONG_WINDOW,
+    data_provider: str = "yfinance"
+) -> Optional[pd.DataFrame]:
+    logger.info(
+        f"Generating SMA Crossover signals for {symbol} ({short_window}/{long_window}) "
+        f"from {start_date} to {end_date} using {data_provider}"
+    )
+
+    if obb is None:
+        logger.error("OpenBB SDK not available. Cannot fetch data for SMA Crossover strategy.")
+        return None
+
+    if not (isinstance(short_window, int) and short_window > 0):
+        logger.error(f"Short SMA window must be a positive integer. Got: {short_window}")
+        return None
+    if not (isinstance(long_window, int) and long_window > 0):
+        logger.error(f"Long SMA window must be a positive integer. Got: {long_window}")
+        return None
+    if short_window >= long_window:
+        logger.error(f"Short SMA window ({short_window}) must be less than Long SMA window ({long_window}).")
+        return None
+
+    try:
+        data_obb = obb.equity.price.historical(
+            symbol=symbol, start_date=start_date, end_date=end_date, provider=data_provider, interval="1d"
+        )
+        if not data_obb or not hasattr(data_obb, 'to_df'):
+            logger.warning(f"No data or unexpected data object returned for {symbol} from {start_date} to {end_date}")
+            return None
+        price_data_full = data_obb.to_df()
+        if price_data_full.empty:
+            logger.warning(f"No data returned (empty DataFrame) for {symbol} from {start_date} to {end_date}")
+            return None
         
-        sma_values = [None] * (window - 1) 
-        sma_values.extend(np.convolve(prices, np.ones(window), 'valid') / window)
-        return sma_values
+        rename_map = {}
+        for col_map_from, col_map_to in {'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}.items():
+            if col_map_from in price_data_full.columns: rename_map[col_map_from] = col_map_to
+            elif col_map_to not in price_data_full.columns and col_map_from.title() in price_data_full.columns: rename_map[col_map_from.title()] = col_map_to
+        price_data_full.rename(columns=rename_map, inplace=True)
 
-    def execute(self, historical_klines: list[dict]) -> dict:
-        # historical_klines: A list of OHLCV data points, oldest to newest.
-        # Each kline: {"time_open": ..., "quote": {"USD": {"close": 60000, ...}}}
-        if not historical_klines or len(historical_klines) < self.long_window:
-            return {"signal": "HOLD", "reason": "Not enough historical data.", "latest_close": None, "short_sma": None, "long_sma": None}
+        if 'Close' not in price_data_full.columns:
+            logger.error(f"DataFrame for {symbol} is missing 'Close' column. Available: {price_data_full.columns.tolist()}")
+            return None
 
-        try:
-            closing_prices = []
-            for kline in historical_klines:
-                if kline and kline.get('quote') and kline['quote'].get('USD') and kline['quote']['USD'].get('close') is not None:
-                    closing_prices.append(float(kline['quote']['USD']['close']))
-                # else:
-                    # Optionally handle malformed klines or log a warning
-                    # For SMA, it's often better to just skip them if they don't have the close price
-        except (TypeError, KeyError, ValueError) as e: # Added ValueError for float conversion
-            return {"signal": "HOLD", "reason": f"Error processing kline data: {e}", "latest_close": None, "short_sma": None, "long_sma": None}
-
-        if len(closing_prices) < self.long_window:
-            return {"signal": "HOLD", "reason": "Not enough valid closing prices.", "latest_close": None, "short_sma": None, "long_sma": None}
-
-        short_sma_values = self._calculate_sma(closing_prices, self.short_window)
-        long_sma_values = self._calculate_sma(closing_prices, self.long_window)
-
-        latest_short_sma = short_sma_values[-1] if short_sma_values and short_sma_values[-1] is not None else None
-        prev_short_sma = short_sma_values[-2] if len(short_sma_values) >= 2 and short_sma_values[-2] is not None else None
+        # Ensure we only work with necessary columns and avoid SettingWithCopyWarning
+        price_data = price_data_full[['Close']].copy()
         
-        latest_long_sma = long_sma_values[-1] if long_sma_values and long_sma_values[-1] is not None else None
-        prev_long_sma = long_sma_values[-2] if len(long_sma_values) >= 2 and long_sma_values[-2] is not None else None
+    except Exception as e:
+        logger.error(f"Failed to fetch data for {symbol} using OpenBB: {e}", exc_info=True)
+        return None
 
-        latest_close = closing_prices[-1] if closing_prices else None
-        signal = "HOLD" 
+    if len(price_data) < long_window: # Check against original data length before dropna
+        logger.warning(f"Not enough historical data ({len(price_data)} bars) for the longest SMA window ({long_window} bars).")
+        return None
+
+    try:
+        # Calculate Short SMA
+        # obb.technical.ma takes a Series as input.
+        short_sma_df = obb.technical.ma(price_data['Close'], length=short_window, ma_type='sma')
+        if not isinstance(short_sma_df, pd.DataFrame) or short_sma_df.empty or short_sma_df.columns.empty:
+            logger.error(f"Short SMA calculation returned empty or invalid DataFrame for window {short_window}.")
+            return None
         
-        if None not in [latest_short_sma, latest_long_sma, prev_short_sma, prev_long_sma]:
-            if prev_short_sma <= prev_long_sma and latest_short_sma > latest_long_sma:
-                signal = "BUY"
-            elif prev_short_sma >= prev_long_sma and latest_short_sma < latest_long_sma:
-                signal = "SELL"
-        
-        return {
-            "signal": signal, 
-            "short_sma": latest_short_sma, 
-            "long_sma": latest_long_sma,
-            "latest_close": latest_close,
-            "symbol": self.symbol
-        }
+        short_sma_col_name_expected = f'SMA_{short_window}'
+        if short_sma_col_name_expected in short_sma_df.columns:
+            price_data['short_sma'] = short_sma_df[short_sma_col_name_expected]
+        elif f'close_{short_sma_col_name_expected}' in short_sma_df.columns: # Alternative common naming
+             price_data['short_sma'] = short_sma_df[f'close_{short_sma_col_name_expected}']
+        else: # Fallback to first column if specific names not found
+            logger.warning(f"Could not find standard name '{short_sma_col_name_expected}' for short SMA. Using first column: {short_sma_df.columns[0]}")
+            price_data['short_sma'] = short_sma_df.iloc[:, 0]
 
-if __name__ == '__main__':
-    print("Testing SMACrossoverStrategy...")
-    dummy_klines_rising_cross = [{'quote': {'USD': {'close': float(10 + i*0.5)}}} for i in range(20)] # Gradual rise
-    dummy_klines_falling_cross = [{'quote': {'USD': {'close': float(20 - i*0.5)}}} for i in range(20)] # Gradual fall
 
-    strategy_buy_test = SMACrossoverStrategy(symbol="BTC/USD", short_window=5, long_window=10)
-    # Ensure enough data for two full SMA calculations plus one for crossover
-    test_data_buy = dummy_klines_rising_cross[:11] # 10 for long SMA, 11th for crossover
-    result_buy = strategy_buy_test.execute(historical_klines=test_data_buy)
-    print(f"Buy Test (Data len {len(test_data_buy)}): {result_buy}")
+        # Calculate Long SMA
+        long_sma_df = obb.technical.ma(price_data['Close'], length=long_window, ma_type='sma')
+        if not isinstance(long_sma_df, pd.DataFrame) or long_sma_df.empty or long_sma_df.columns.empty:
+            logger.error(f"Long SMA calculation returned empty or invalid DataFrame for window {long_window}.")
+            return None
 
-    strategy_sell_test = SMACrossoverStrategy(symbol="BTC/USD", short_window=5, long_window=10)
-    test_data_sell = dummy_klines_falling_cross[:11]
-    result_sell = strategy_sell_test.execute(historical_klines=test_data_sell)
-    print(f"Sell Test (Data len {len(test_data_sell)}): {result_sell}")
+        long_sma_col_name_expected = f'SMA_{long_window}'
+        if long_sma_col_name_expected in long_sma_df.columns:
+            price_data['long_sma'] = long_sma_df[long_sma_col_name_expected]
+        elif f'close_{long_sma_col_name_expected}' in long_sma_df.columns:
+            price_data['long_sma'] = long_sma_df[f'close_{long_sma_col_name_expected}']
+        else:
+            logger.warning(f"Could not find standard name '{long_sma_col_name_expected}' for long SMA. Using first column: {long_sma_df.columns[0]}")
+            price_data['long_sma'] = long_sma_df.iloc[:, 0]
+
+        price_data.dropna(inplace=True)
+
+        if price_data.empty:
+            logger.warning("DataFrame became empty after SMA calculations and dropna. Insufficient data for all windows.")
+            return None
+
+    except Exception as e:
+        logger.error(f"Error calculating SMAs for {symbol}: {e}", exc_info=True)
+        return None
+
+    price_data['signal'] = 0
+    # Golden Cross: short_sma crosses above long_sma (Buy signal)
+    golden_cross = (price_data['short_sma'].shift(1) < price_data['long_sma'].shift(1)) & \
+                   (price_data['short_sma'] > price_data['long_sma'])
+    price_data.loc[golden_cross, 'signal'] = 1
+
+    # Death Cross: short_sma crosses below long_sma (Sell signal to close long, or open short)
+    death_cross = (price_data['short_sma'].shift(1) > price_data['long_sma'].shift(1)) & \
+                  (price_data['short_sma'] < price_data['long_sma'])
+    price_data.loc[death_cross, 'signal'] = -1
     
-    strategy_insufficient_data = SMACrossoverStrategy(symbol="BTC/USD", short_window=5, long_window=10)
-    result_insufficient = strategy_insufficient_data.execute(historical_klines=dummy_klines_rising_cross[:5])
-    print(f"Insufficient Data Test: {result_insufficient}")
+    price_data['entries'] = price_data['signal'] == 1
+    price_data['exits'] = price_data['signal'] == -1
+
+    price_data.loc[price_data['entries'], 'exits'] = False # Avoid entry and exit on same bar
+
+    logger.info(f"Generated {price_data['entries'].sum()} entry signals and {price_data['exits'].sum()} exit signals for {symbol}.")
+    # Return only necessary columns for backtesting and analysis
+    return price_data[['Close', 'short_sma', 'long_sma', 'entries', 'exits']].copy()
+
+
+def run_sma_crossover_backtest(
+    price_data_with_signals: pd.DataFrame,
+    init_cash: float = 100000,
+    size: float = 0.10,
+    commission_pct: float = 0.001,
+    freq: str = 'D'
+) -> Optional[vbt.Portfolio.StatsEntry]:
+    if price_data_with_signals is None or not all(col in price_data_with_signals for col in ['Close', 'entries', 'exits']):
+        logger.error("Price data with signals is missing required 'Close', 'entries', or 'exits' columns for SMA Crossover backtest.")
+        return None
+    if price_data_with_signals['entries'].sum() == 0:
+        logger.warning("No entry signals found for SMA Crossover. Backtest will show no trades.")
+
+    try:
+        portfolio = vbt.Portfolio.from_signals(
+            close=price_data_with_signals['Close'],
+            entries=price_data_with_signals['entries'],
+            exits=price_data_with_signals['exits'],
+            init_cash=init_cash,
+            size=size,
+            size_type='percentequity',
+            fees=commission_pct,
+            freq=freq
+        )
+        logger.info("SMA Crossover backtest portfolio created successfully.")
+        return portfolio.stats()
+    except Exception as e:
+        logger.error(f"Error running SMA Crossover vectorbt backtest: {e}", exc_info=True)
+        return None
+
+# Example Usage (commented out):
+# if __name__ == '__main__':
+#     symbol_to_test = "TSLA"
+#     start_date_test = "2022-01-01"
+#     end_date_test = "2023-12-31"
+#     logger.info(f"--- Running SMA Crossover Refactored Example for {symbol_to_test} ---")
+#     signals_df = get_sma_crossover_signals(symbol_to_test, start_date_test, end_date_test, short_window=20, long_window=50)
+#     if signals_df is not None and not signals_df.empty:
+#         print("\nSignals DataFrame head:")
+#         print(signals_df.head(10))
+#         print(f"\nTotal Entry Signals: {signals_df['entries'].sum()}")
+#         print(f"Total Exit Signals: {signals_df['exits'].sum()}")
+#         active_signals = signals_df[(signals_df['entries']) | (signals_df['exits'])]
+#         if not active_signals.empty:
+#             print("Active signal dates:")
+#             print(active_signals.index)
+#
+#         stats = run_sma_crossover_backtest(signals_df, freq='D') # Ensure freq matches data
+#         if stats is not None:
+#             print("\nBacktest Stats:")
+#             print(stats)
+#
+#         # Plotting example (requires plotly and graphical environment)
+#         # try:
+#         #     fig = signals_df[['Close', 'short_sma', 'long_sma']].vbt.plot(title=f"{symbol_to_test} SMA Crossover")
+#         #     # Add entry signals
+#         #     entry_points = signals_df[signals_df['entries']]
+#         #     fig.add_scatter(x=entry_points.index, y=entry_points['short_sma'], mode='markers',
+#         #                     marker=dict(symbol='triangle-up', color='green', size=10), name='Entry')
+#         #     # Add exit signals
+#         #     exit_points = signals_df[signals_df['exits']]
+#         #     fig.add_scatter(x=exit_points.index, y=exit_points['short_sma'], mode='markers',
+#         #                     marker=dict(symbol='triangle-down', color='red', size=10), name='Exit')
+#         #     fig.show()
+#         # except Exception as plot_e:
+#         #     print(f"Plotting failed (might require graphical environment or Plotly setup): {plot_e}")
+#
+#     else:
+#         logger.warning("Could not generate SMA Crossover signals.")
+#     logger.info(f"--- End of SMA Crossover Refactored Example for {symbol_to_test} ---")

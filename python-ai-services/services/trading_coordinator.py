@@ -1,17 +1,23 @@
 """
-Enhanced Trading Coordinator with execution capabilities
+Enhanced Trading Coordinator that leverages CrewAI for analysis.
 """
-from typing import Dict, List, Optional, Any
+from typing import Dict, Any, Optional
 from datetime import datetime
-from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
 from loguru import logger
 import httpx
 import json
+import asyncio # Added
 
+# Local imports
 from ..utils.google_sdk_bridge import GoogleSDKBridge
 from ..utils.a2a_protocol import A2AProtocol
-from ..types.trading_types import *
+# Use TradingAnalysisCrewRequest from api_models.py for consistency with new API endpoint
+from ..models.api_models import TradingAnalysisCrewRequest
+# Import the crew
+from ..agents.crew_setup import trading_analysis_crew
+# The original TradingAnalysisRequest and other types from trading_types might still be used by other methods
+# or might need to be reconciled. For analyze_trading_opportunity, we use TradingAnalysisCrewRequest.
+from ..types.trading_types import TradingAnalysisRequest as OriginalTradingAnalysisRequest
 
 
 class TradingCoordinator:
@@ -20,69 +26,11 @@ class TradingCoordinator:
     def __init__(self, google_bridge: GoogleSDKBridge, a2a_protocol: A2AProtocol):
         self.google_bridge = google_bridge
         self.a2a_protocol = a2a_protocol
-        self.base_url = "http://localhost:3000/api/agents/trading"
+        self.base_url = "http://localhost:3000/api/agents/trading" # For external calls
         
-        # Initialize the PydanticAI agent
-        self.agent = Agent(
-            'google-gla:gemini-1.5-pro',
-            system_prompt="""You are an expert trading coordinator responsible for:
-            1. Analyzing market conditions and opportunities
-            2. Making informed trading decisions based on multiple data sources
-            3. Managing risk and position sizing
-            4. Coordinating with other specialized agents
-            5. Executing trades through the trading API
-            
-            Always prioritize risk management and follow strict position limits.""",
-            retries=3
-        )
-        
-        # Register tools
-        self._register_tools()
-        
-    def _register_tools(self):
-        """Register agent tools for trading operations"""
-        
-        @self.agent.tool
-        async def analyze_market_conditions(
-            ctx: RunContext[Dict],
-            symbol: str,
-            timeframe: str = "1h"
-        ) -> MarketAnalysis:
-            """Analyze current market conditions for a symbol"""
-            # Communicate with market analyst agent
-            response = await self.a2a_protocol.send_message(
-                to_agent="market-analyst",
-                message_type="analyze_request",
-                payload={
-                    "symbol": symbol,
-                    "timeframe": timeframe,
-                    "indicators": ["RSI", "MACD", "BB", "EMA"]
-                }
-            )
-            
-            return MarketAnalysis(**response.payload)
-            
-        @self.agent.tool
-        async def check_risk_limits(
-            ctx: RunContext[Dict],
-            portfolio_id: str,
-            proposed_trade: Dict
-        ) -> RiskAssessment:
-            """Check if proposed trade meets risk limits"""
-            # Communicate with risk monitor agent
-            response = await self.a2a_protocol.send_message(
-                to_agent="risk-monitor",
-                message_type="risk_check",
-                payload={
-                    "portfolio_id": portfolio_id,
-                    "proposed_trade": proposed_trade
-                }
-            )
-            
-            return RiskAssessment(**response.payload)
-    
+        logger.info("TradingCoordinator initialized. Analysis will be delegated to trading_analysis_crew.")
+
     async def execute_trade(self, trade_request: Dict) -> Dict:
-        """Execute a trade through the Next.js API"""
         logger.info(f"Executing trade: {trade_request}")
         
         try:
@@ -102,7 +50,7 @@ class TradingCoordinator:
                 await self.a2a_protocol.broadcast_message(
                     message_type="trade_executed",
                     payload={
-                        "agent_id": trade_request.get("agentId"),
+                        "agent_id": trade_request.get("agentId", trade_request.get("agent_id")),
                         "trade": result,
                         "timestamp": datetime.utcnow().isoformat()
                     }
@@ -117,9 +65,9 @@ class TradingCoordinator:
             logger.error(f"Request error executing trade: {str(e)}")
             raise Exception(f"Trade execution request failed: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error executing trade: {str(e)}")
-            raise
-    
+            logger.error(f"Unexpected error executing trade: {str(e)}", exc_info=True)
+            raise Exception(f"An unexpected error occurred during trade execution: {str(e)}")
+
     async def register_agent(self, agent_config: Dict) -> Dict:
         """Register agent with trading permissions"""
         logger.info(f"Registering agent: {agent_config}")
@@ -144,9 +92,9 @@ class TradingCoordinator:
             logger.error(f"Request error registering agent: {str(e)}")
             raise Exception(f"Agent registration request failed: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error registering agent: {str(e)}")
-            raise
-    
+            logger.error(f"Unexpected error registering agent: {str(e)}", exc_info=True)
+            raise Exception(f"An unexpected error occurred during agent registration: {str(e)}")
+
     async def get_agent_status(self, agent_id: str) -> Dict:
         """Get agent status"""
         logger.info(f"Getting status for agent: {agent_id}")
@@ -170,9 +118,9 @@ class TradingCoordinator:
             logger.error(f"Request error getting agent status: {str(e)}")
             raise Exception(f"Agent status request failed: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error getting agent status: {str(e)}")
-            raise
-    
+            logger.error(f"Unexpected error getting agent status: {str(e)}", exc_info=True)
+            raise Exception(f"An unexpected error occurred while fetching agent status: {str(e)}")
+
     async def get_agent_trading_history(self, agent_id: str) -> Dict:
         """Get agent trading history"""
         logger.info(f"Getting trading history for agent: {agent_id}")
@@ -196,74 +144,40 @@ class TradingCoordinator:
             logger.error(f"Request error getting agent trading history: {str(e)}")
             raise Exception(f"Agent trading history request failed: {str(e)}")
         except Exception as e:
-            logger.error(f"Unexpected error getting agent trading history: {str(e)}")
-            raise
+            logger.error(f"Unexpected error getting agent trading history: {str(e)}", exc_info=True)
+            raise Exception(f"An unexpected error occurred while fetching agent trading history: {str(e)}")
             
-    async def analyze_trading_opportunity(self, request: TradingAnalysisRequest) -> Dict:
-        """Analyze trading opportunity with PydanticAI intelligence"""
+    async def analyze_trading_opportunity(self, request: TradingAnalysisCrewRequest) -> Any:
+        """
+        Analyzes a trading opportunity by kicking off the trading_analysis_crew.
+        The request should conform to TradingAnalysisCrewRequest.
+        """
+        logger.info(f"TradingCoordinator: Received request to analyze trading opportunity for symbol: {request.symbol}")
+
+        inputs_for_crew = {
+            "symbol": request.symbol,
+            "market_event_description": request.market_event_description,
+            "additional_context": request.additional_context,
+            "user_id": request.user_id,
+            # crew_run_id could be generated here or expected in request if needed by crew directly
+            # For now, crew_setup.py's example kickoff didn't strictly require it in inputs if tasks are general
+        }
+
+        # CrewAI's kickoff is a synchronous (blocking) call.
+        # Since this service method is async, we must run kickoff in an executor.
         try:
-            # Get market analysis
-            market_analysis = await self.agent.tools.analyze_market_conditions(
-                symbol=request.symbol,
-                timeframe=request.context.get("timeframe", "1h") if request.context else "1h"
-            )
+            logger.info(f"Delegating analysis to trading_analysis_crew with inputs: {inputs_for_crew}")
             
-            # Formulate trading decision request
-            prompt = f"""
-            Analyze this trading opportunity:
-            
-            Symbol: {request.symbol}
-            Market Condition: {market_analysis.condition}
-            Trend Direction: {market_analysis.trend_direction}
-            Trend Strength: {market_analysis.trend_strength}
-            Support Levels: {market_analysis.support_levels}
-            Resistance Levels: {market_analysis.resistance_levels}
-            Technical Indicators: {json.dumps(market_analysis.indicators)}
-            
-            Additional Context:
-            {json.dumps(request.context) if request.context else "No additional context"}
-            
-            Recommend a trading action (buy, sell, hold) with:
-            1. Clear reasoning
-            2. Position size recommendation
-            3. Risk assessment
-            4. Entry price (if applicable)
-            5. Stop loss and take profit levels
-            """
-            
-            # Get AI trading decision
-            decision = await self.agent.run(prompt)
-            
-            # Check if proposed trade meets risk limits
-            if request.account_id and ("buy" in decision.lower() or "sell" in decision.lower()):
-                proposed_trade = {
-                    "symbol": request.symbol,
-                    "action": "buy" if "buy" in decision.lower() else "sell",
-                    "account_id": request.account_id
-                }
-                
-                risk_assessment = await self.agent.tools.check_risk_limits(
-                    portfolio_id=request.account_id,
-                    proposed_trade=proposed_trade
-                )
-                
-                # Include risk assessment in response
-                return {
-                    "symbol": request.symbol,
-                    "analysis": market_analysis.dict(),
-                    "decision": decision,
-                    "risk_assessment": risk_assessment.dict(),
-                    "timestamp": datetime.utcnow().isoformat()
-                }
-            
-            # Return analysis without risk assessment
-            return {
-                "symbol": request.symbol,
-                "analysis": market_analysis.dict(),
-                "decision": decision,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
+            loop = asyncio.get_event_loop()
+            # Using lambda to correctly pass inputs to kickoff in the executor
+            result = await loop.run_in_executor(None, lambda: trading_analysis_crew.kickoff(inputs=inputs_for_crew))
+
+            logger.info(f"Trading_analysis_crew execution completed. Result snippet: {str(result)[:500]}")
+            # The structure of 'result' depends on the output of the last task in trading_analysis_crew.
+            # For now, we return it directly. It might need mapping to a specific Pydantic response model.
+            return result
         except Exception as e:
-            logger.error(f"Error analyzing trading opportunity: {str(e)}")
-            raise
+            logger.error(f"Error during trading_analysis_crew kickoff via TradingCoordinator: {e}", exc_info=True)
+            # Depending on desired error handling, could raise a custom service exception here.
+            # For now, re-raising a generic Exception to be caught by the main API handler.
+            raise Exception(f"Failed to analyze trading opportunity due to crew execution error: {e}")

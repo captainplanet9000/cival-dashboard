@@ -10,6 +10,19 @@ from pydantic import BaseModel # For placeholder service type hint
 from typing import Optional, Any # For placeholder service type hint and callback
 import asyncio
 
+# Import the newly created tools
+from ..tools.agent_analysis_tools import (
+    historical_stock_prices,
+    current_stock_quote,
+    search_stock_symbols,
+    sma_calculation_tool,
+    ema_calculation_tool,
+    rsi_calculation_tool,
+    macd_calculation_tool
+)
+from typing import Optional, Any # For placeholder service type hint and callback
+import asyncio
+
 
 class PlaceholderEventService:
     async def publish_event(self, event: BaseModel, channel: Optional[str] = None):
@@ -83,16 +96,26 @@ except EnvironmentError as e:
 # Define MarketAnalystAgent
 market_analyst_agent = Agent(
     role="Market Analyst",
-    goal="Analyze market conditions, identify trends, and pinpoint trading opportunities based on comprehensive technical and fundamental analysis.",
+    goal="Analyze market conditions, identify trends, and pinpoint trading opportunities based on comprehensive technical and fundamental analysis, utilizing provided tools for data retrieval and indicator calculation.", # Refined goal
     backstory=(
         "As a seasoned Market Analyst with years of experience in financial markets, you possess a deep understanding of market dynamics, "
         "economic indicators, and chart patterns. You excel at synthesizing vast amounts of data into actionable insights, "
-        "providing a clear outlook on potential market movements and opportunities for various assets."
+        "providing a clear outlook on potential market movements and opportunities for various assets. You are proficient in using a suite of "
+        "data fetching and technical analysis tools to support your analysis."
     ),
     verbose=True,
     allow_delegation=False,
     llm=llm_instance,
-    step_callback=lambda step_output_arg: agent_step_callback(step_output=step_output_arg, agent_name_for_event="market_analyst_agent")
+    tools=[
+        historical_stock_prices,
+        current_stock_quote,
+        search_stock_symbols,
+        sma_calculation_tool,
+        ema_calculation_tool,
+        rsi_calculation_tool,
+        macd_calculation_tool
+    ], # Assign the new tools
+    step_callback=lambda step_output_arg: agent_step_callback(step_output=step_output_arg, agent_name_for_event="market_analyst_agent") # Existing callback
 )
 
 # Define RiskManagerAgent
@@ -145,20 +168,29 @@ logger.info("CrewAI agents (MarketAnalyst, RiskManager, TradeExecutor) defined i
 # Task for Market Analyst Agent
 market_analysis_task = Task(
     description=(
-        "Analyze the current market conditions for a specified financial symbol (e.g., BTC/USD, AAPL). "
-        "Consider recent price movements, news sentiment (if available), and general market trends. "
-        "Provide a concise summary of the analysis, identify potential trading opportunities (e.g., bullish, bearish, ranging), "
-        "and list key support and resistance levels."
+        "Conduct a comprehensive market analysis for the financial symbol: {symbol}. "
+        "Consider any provided {market_event_description} and {additional_context}. "
+        "Your analysis should cover today's date: {current_date}. " # Agent will need a tool for current date or it's passed in inputs
+        "1. Fetch historical price data for the past year (e.g., using '2023-01-01' to '2023-12-31' if current year is 2024, adjust accordingly). "
+        "2. Calculate and consider key technical indicators: SMA (20-period, 50-period), EMA (20-period), RSI (14-period), and MACD (standard parameters). "
+        "3. Fetch the current quote for the symbol. "
+        "4. Synthesize this information to determine current market sentiment, identify key support and resistance levels, "
+        "and pinpoint any potential trading opportunities (e.g., bullish breakout, bearish reversal, ranging conditions). "
+        "If a specific opportunity is identified, clearly state it."
+        "You must use the provided tools for fetching data and calculating indicators."
     ),
     expected_output=(
-        "A structured report containing: "
-        "1. Market sentiment summary (e.g., bullish, bearish, neutral). "
-        "2. Key support and resistance levels identified. "
-        "3. Potential trading opportunities or notable patterns. "
-        "4. Confidence score (0.0-1.0) for the primary identified opportunity."
+        "A structured JSON report containing: "
+        "  - 'symbol': The analyzed symbol. "
+        "  - 'current_date_analyzed': Date of analysis. "
+        "  - 'market_sentiment': Overall sentiment (e.g., 'Bullish', 'Bearish', 'Neutral', 'Ranging'). "
+        "  - 'key_levels': {{ 'support': [level1, level2, ...], 'resistance': [level1, level2, ...] }}. "
+        "  - 'technical_summary': Brief summary of indicator states (e.g., 'SMA20 above SMA50', 'RSI oversold'). "
+        "  - 'identified_opportunity': Description of the primary trading opportunity identified (e.g., 'Potential bullish breakout above resistance X if volume confirms.') or 'None identified'. "
+        "  - 'opportunity_details': {{ 'type': 'buy/sell/hold_watch', 'confidence': 0.0-1.0, 'entry_conditions': 'e.g., price closes above X', 'stop_loss_suggestion': 'e.g., price Y', 'take_profit_suggestion': 'e.g., price Z' }} if an opportunity is identified, else null. "
+        "  - 'raw_indicator_values': {{ 'sma_20': last_sma20_value, 'sma_50': last_sma50_value, 'ema_20': last_ema20_value, 'rsi_14': last_rsi_value, 'macd': {{'macd': last_macd, 'signal': last_signal, 'histogram': last_hist}} }} (latest values of calculated indicators)."
     ),
-    agent=market_analyst_agent,
-    # async_execution=False # Default is False, can be True if task involves long IO
+    agent=market_analyst_agent
 )
 
 # Task for Risk Manager Agent

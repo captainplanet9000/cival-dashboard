@@ -19,6 +19,22 @@ from .risk_assessment_tools import (
     PositionSizeRequest,
     RiskCheckRequest
 )
+from .agent_analysis_tools import (
+    historical_stock_prices,
+    current_stock_quote,
+    search_stock_symbols,
+    sma_calculation_tool,
+    ema_calculation_tool,
+    rsi_calculation_tool,
+    macd_calculation_tool,
+    HistoricalDataArgs,
+    CurrentQuoteArgs,
+    SymbolSearchArgs,
+    SMAArgs,
+    # EMAArgs uses SMAArgs, no need to export EMAArgs explicitly if it's identical
+    # RSIArgs uses SMAArgs, no need to export RSIArgs explicitly if it's identical
+    MACDArgs
+)
 
 __all__ = [
     # Market Data Tools
@@ -38,5 +54,18 @@ __all__ = [
     "calculate_position_size_tool",
     "check_trade_risk_limit_tool",
     "PositionSizeRequest",
-    "RiskCheckRequest"
+    "RiskCheckRequest",
+    # Agent Analysis Tools (CrewAI compatible)
+    "historical_stock_prices",
+    "current_stock_quote",
+    "search_stock_symbols",
+    "sma_calculation_tool",
+    "ema_calculation_tool",
+    "rsi_calculation_tool",
+    "macd_calculation_tool",
+    "HistoricalDataArgs",
+    "CurrentQuoteArgs",
+    "SymbolSearchArgs",
+    "SMAArgs", # EMAArgs and RSIArgs are type aliases or inherit from SMAArgs, usually not re-exported if identical structure
+    "MACDArgs"
 ]

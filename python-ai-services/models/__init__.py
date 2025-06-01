@@ -82,3 +82,13 @@ try:
         __all__ = ["TradeRecord", "TradeSide", "OrderStatus", "OrderType"]
 except ImportError:
     pass
+
+# Export models from context_models.py
+try:
+    from .context_models import RunContext
+    if '__all__' in globals():
+        __all__.append("RunContext") # Use append for single item
+    else:
+        __all__ = ["RunContext"]
+except ImportError:
+    pass
