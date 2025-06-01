@@ -4,9 +4,9 @@ from unittest import mock
 from unittest.mock import AsyncMock, MagicMock, patch, call # Added call
 import json
 import os
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple # Added Tuple
 from loguru import logger
-from datetime import datetime # Added for comparing timestamps
+from datetime import datetime, timedelta # Added timedelta for date filtering tests
 import uuid # Added for task_id
 
 # Module to test
@@ -405,5 +405,132 @@ class TestAgentTaskPersistence:
 
         assert await service.list_agent_tasks() == []
         assert "Supabase client not available" in caplog.text
+        caplog.clear()
 
+        # Test new paginated list method with no client
+        assert await service.list_and_count_agent_tasks_paginated() == ([], 0)
+        assert "Supabase client not available" in caplog.text
+
+
+    # --- Tests for list_and_count_agent_tasks_paginated ---
+    @pytest.mark.asyncio
+    async def test_list_and_count_no_filters(self, persistence_service_mock_clients: AgentPersistenceService):
+        service = persistence_service_mock_clients
+        mock_task_data = [{"task_id": str(uuid.uuid4()), "crew_id": "crew1"}]
+
+        # Mock for count query
+        mock_count_response = MagicMock()
+        mock_count_response.count = 10
+        # Mock for data query
+        mock_data_response = MagicMock()
+        mock_data_response.data = mock_task_data
+
+        # service.supabase_client.execute will be called twice.
+        # First for count, second for data.
+        service.supabase_client.execute = MagicMock(side_effect=[mock_count_response, mock_data_response])
+
+        tasks, total = await service.list_and_count_agent_tasks_paginated(limit=5, offset=0)
+
+        assert total == 10
+        assert tasks == mock_task_data
+
+        # Check calls to Supabase client chain
+        # Count call
+        service.supabase_client.table.assert_any_call("agent_tasks")
+        service.supabase_client.select.assert_any_call("task_id", count="exact")
+
+        # Data call
+        service.supabase_client.table.assert_any_call("agent_tasks")
+        service.supabase_client.select.assert_any_call("*")
+        service.supabase_client.order.assert_called_with("start_time", desc=True)
+        service.supabase_client.range.assert_called_with(0, 4) # offset, offset + limit - 1
+        assert service.supabase_client.execute.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_list_and_count_with_all_filters(self, persistence_service_mock_clients: AgentPersistenceService):
+        service = persistence_service_mock_clients
+        crew_id_filter = "filtered_crew"
+        status_filter = TaskStatus.COMPLETED
+        date_from = datetime.utcnow() - timedelta(days=1)
+        date_to = datetime.utcnow()
+
+        mock_task_data = [{"task_id": str(uuid.uuid4()), "crew_id": crew_id_filter, "status": status_filter.value}]
+        mock_count_response = MagicMock(count=1)
+        mock_data_response = MagicMock(data=mock_task_data)
+        service.supabase_client.execute = MagicMock(side_effect=[mock_count_response, mock_data_response])
+
+        tasks, total = await service.list_and_count_agent_tasks_paginated(
+            crew_id=crew_id_filter, status=status_filter,
+            start_date_from=date_from, start_date_to=date_to,
+            limit=10, offset=0
+        )
+        assert total == 1
+        assert tasks == mock_task_data
+
+        # Check that eq and date filters were applied (they are applied to the same builder object)
+        # For count query
+        eq_calls_for_count = [
+            call("crew_id", crew_id_filter),
+            call("status", status_filter.value)
+        ]
+        gte_calls_for_count = [call("start_time", date_from.isoformat())]
+        lte_calls_for_count = [call("start_time", date_to.isoformat())]
+
+        # For data query (same filters)
+        eq_calls_for_data = eq_calls_for_count
+        gte_calls_for_data = gte_calls_for_count
+        lte_calls_for_data = lte_calls_for_count
+
+        # This is tricky because the builder is chained. We check the final execute calls.
+        # The mock structure in fixture helps assert on the last part of chain (e.g. service.supabase_client.eq)
+        # We need to ensure the *same mock object* (representing the builder) had these calls.
+
+        # A more robust way is to check the calls on the specific mock instance if the builder is returned
+        # For now, we rely on the fact that execute is called twice and the filters are applied before each.
+        # This test mainly ensures the method runs and returns data. The filter application
+        # itself is part of Supabase client's tested behavior. We just ensure our method calls it.
+        # The `persistence_service_mock_clients` already makes `eq`, `gte`, `lte` return `self.supabase_client`.
+
+        # We can check the number of times eq was called.
+        # It should be called for crew_id and status for count, then again for data.
+        assert service.supabase_client.eq.call_count == 4 # crew_id, status for count; crew_id, status for data
+        assert service.supabase_client.gte.call_count == 2
+        assert service.supabase_client.lte.call_count == 2
+        assert service.supabase_client.execute.call_count == 2
+
+
+    @pytest.mark.asyncio
+    async def test_list_and_count_supabase_count_error(self, persistence_service_mock_clients: AgentPersistenceService, caplog):
+        service = persistence_service_mock_clients
+        # Simulate error only on the first execute call (count query)
+        service.supabase_client.execute = MagicMock(
+            side_effect=[MagicMock(data=None, count=None, error=MagicMock(message="Count query failed")),
+                         MagicMock(data=[]) # Should not be reached if count fails and returns early
+                        ]
+        )
+
+        tasks, total = await service.list_and_count_agent_tasks_paginated()
+
+        assert tasks == []
+        assert total == 0
+        assert "Supabase API error during count query" in caplog.text
+        assert service.supabase_client.execute.call_count == 1 # Only count query executed
+
+    @pytest.mark.asyncio
+    async def test_list_and_count_supabase_data_error(self, persistence_service_mock_clients: AgentPersistenceService, caplog):
+        service = persistence_service_mock_clients
+        mock_count_response = MagicMock(count=5, error=None) # Count succeeds
+        # Simulate error on the second execute call (data query)
+        service.supabase_client.execute = MagicMock(
+            side_effect=[mock_count_response,
+                         MagicMock(data=None, error=MagicMock(message="Data query failed"))
+                        ]
+        )
+
+        tasks, total = await service.list_and_count_agent_tasks_paginated()
+
+        assert tasks == [] # Data query failed, so tasks list is empty
+        assert total == 5  # Total count was successfully retrieved
+        assert "Supabase API error during data query" in caplog.text
+        assert service.supabase_client.execute.call_count == 2 # Both count and data queries executed
 ```

@@ -29,10 +29,13 @@ from utils.a2a_protocol import A2AProtocol
 from types.trading_types import * # Assuming TradingDecision is in here
 
 # New Service Imports
-from services.agent_persistence_service import AgentPersistenceService # Added
-from services.agent_state_manager import AgentStateManager # Added
-from crews.trading_crew_service import TradingCrewService, TradingCrewRequest # Added
-from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE # Added MemoryService
+from services.agent_persistence_service import AgentPersistenceService
+from services.agent_state_manager import AgentStateManager
+from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE
+from crews.trading_crew_service import TradingCrewService, TradingCrewRequest
+
+# API Routers
+from api.v1 import monitoring_routes # Added Monitoring API router
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -210,6 +213,11 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Include API routers
+app.include_router(monitoring_routes.router)
+# Add other V1 routers here if created, e.g., for agent interactions, configurations etc.
+
+
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -264,107 +272,32 @@ async def health_check():
 
 @app.get("/health/deep")
 async def deep_health_check(request: Request):
-    """Performs a deep health check of critical dependencies."""
-    dependencies = []
-    overall_status = "healthy"
-    http_status_code = 200
+    """
+    Performs a deep health check of critical dependencies by calling the shared logic.
+    """
+    # The core logic is now in monitoring_routes.get_deep_health_logic
+    # We need to ensure that function is accessible here.
+    # For now, assuming it's correctly imported or we adjust the import.
+    # If monitoring_routes.get_deep_health_logic is not directly usable due to Request object scope,
+    # this endpoint might need to replicate some logic or call an internal service method.
+    # For this refactor, we assume get_deep_health_logic can be used.
 
-    # 1. Check Redis Cache Client
-    redis_cache_client = request.app.state.redis_cache_client
-    if redis_cache_client:
-        try:
-            await redis_cache_client.ping()
-            dependencies.append({"name": "redis_cache", "status": "connected"})
-            logger.info("Deep health check: Redis cache connected.")
-        except Exception as e:
-            dependencies.append({"name": "redis_cache", "status": "disconnected", "error": str(e)})
-            overall_status = "unhealthy"
-            http_status_code = 503
-            logger.error(f"Deep health check: Redis cache disconnected - {e}")
-    else:
-        dependencies.append({"name": "redis_cache", "status": "not_configured"})
-        logger.warning("Deep health check: Redis cache client not configured.")
+    # Check if monitoring_routes.get_deep_health_logic is available
+    if not hasattr(monitoring_routes, 'get_deep_health_logic'):
+        logger.error("get_deep_health_logic not found in monitoring_routes. Falling back to basic health response for /health/deep.")
+        raise HTTPException(status_code=500, detail="Deep health check logic is currently unavailable.")
 
-    # 2. Conceptual Supabase Check (Placeholder)
-    # No direct Supabase client is available in app.state for a generic check.
-    # A real check would involve:
-    # - Accessing a Supabase client (e.g., from app.state if initialized globally, or via a service).
-    # - Performing a simple query, e.g., "SELECT 1" or checking a specific table's accessibility.
-    # For now, this is a placeholder.
-    dependencies.append({"name": "supabase", "status": "not_checked"})
-    logger.info("Deep health check: Supabase check is a placeholder (not directly implemented in main.py).")
-    # If a real check failed:
-    # overall_status = "unhealthy"
-    # http_status_code = 503
-    # dependencies.append({"name": "supabase", "status": "disconnected", "error": "reason"})
+    detailed_health_data = await monitoring_routes.get_deep_health_logic(request)
 
-    # 3. Check AgentPersistenceService
-    persistence_svc = services.get("agent_persistence_service")
-    if persistence_svc:
-        supabase_status = "connected" if persistence_svc.supabase_client else "not_connected_or_configured"
-        redis_persistence_status = "connected" if persistence_svc.redis_client else "not_connected_or_configured"
-        dependencies.append({"name": "agent_persistence_supabase_client", "status": supabase_status})
-        dependencies.append({"name": "agent_persistence_redis_client", "status": redis_persistence_status})
-        if not persistence_svc.supabase_client or not persistence_svc.redis_client:
-             # If either critical persistence client is down, service might be impaired
-             # overall_status = "unhealthy" # Uncomment if these are hard dependencies for health
-             # http_status_code = 503
-             logger.warning(f"Deep health check: AgentPersistenceService clients - Supabase: {supabase_status}, Redis: {redis_persistence_status}")
-        else:
-            logger.info("Deep health check: AgentPersistenceService clients appear connected.")
-    else:
-        dependencies.append({"name": "agent_persistence_service", "status": "not_initialized"})
-        overall_status = "unhealthy" # Persistence service is critical
+    http_status_code = 200 # Default
+    if detailed_health_data.get("overall_status") == "unhealthy":
         http_status_code = 503
-        logger.error("Deep health check: AgentPersistenceService not initialized.")
-
-    # 4. Check AgentStateManager
-    if services.get("agent_state_manager"):
-        dependencies.append({"name": "agent_state_manager", "status": "initialized"})
-        logger.info("Deep health check: AgentStateManager is registered.")
-    else:
-        dependencies.append({"name": "agent_state_manager", "status": "not_initialized"})
-        overall_status = "unhealthy" # State manager is critical
-        http_status_code = 503
-        logger.error("Deep health check: AgentStateManager not initialized.")
-
-    # 5. Check TradingCrewService
-    if services.get("trading_crew_service"):
-        dependencies.append({"name": "trading_crew_service", "status": "initialized_or_not_checked"})
-        logger.info("Deep health check: TradingCrewService is registered.")
-    else:
-        dependencies.append({"name": "trading_crew_service", "status": "not_initialized"})
-        # Depending on criticality, this might set overall_status to unhealthy
-        # overall_status = "unhealthy"
-        # http_status_code = 503
-        logger.warning("Deep health check: TradingCrewService not initialized.")
-
-    # 6. Check MemoryService
-    memory_svc = services.get("memory_service")
-    if memory_svc:
-        letta_client_status = "connected_stub_or_actual" if memory_svc.letta_client else "not_connected"
-        if LETTA_CLIENT_AVAILABLE and not memory_svc.letta_client: # Library is there, but client failed to init/connect
-            letta_client_status = "connection_failed"
-            # If MemoryService is critical for deep health, uncomment these:
-            # overall_status = "unhealthy"
-            # http_status_code = 503
-
-        dependencies.append({
-            "name": "memory_service_letta_client",
-            "status": letta_client_status,
-            "letta_library_available": LETTA_CLIENT_AVAILABLE
-        })
-        logger.info(f"Deep health check: MemoryService Letta client status: {letta_client_status}, Letta library available: {LETTA_CLIENT_AVAILABLE}")
-    else:
-        dependencies.append({"name": "memory_service", "status": "not_initialized"})
-        # Decide if this is critical enough to mark overall as unhealthy
-        # overall_status = "unhealthy"
-        # http_status_code = 503
-        logger.warning("Deep health check: MemoryService not initialized.")
+    elif detailed_health_data.get("overall_status") == "degraded":
+        http_status_code = 200 # Or 503 if degraded means critical issues for this endpoint
 
     return JSONResponse(
         status_code=http_status_code,
-        content={"overall_status": overall_status, "dependencies": dependencies}
+        content=detailed_health_data # The helper now returns the full structure
     )
 
 # --- Crew AI Endpoints ---

@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from loguru import logger
 import json
 from datetime import datetime
@@ -573,6 +573,84 @@ class AgentPersistenceService:
         except Exception as e:
             logger.exception(f"Supabase client error listing tasks: {e}")
             return []
+
+    async def list_and_count_agent_tasks_paginated(
+        self,
+        crew_id: Optional[str] = None,
+        status: Optional[TaskStatus] = None,
+        start_date_from: Optional[datetime] = None,
+        start_date_to: Optional[datetime] = None,
+        limit: int = 20,
+        offset: int = 0
+    ) -> Tuple[List[Dict[str, Any]], int]:
+        """
+        Lists agent tasks with pagination and filtering, and provides a total count
+        for the filtered query. Returns raw dictionaries from the database.
+        """
+        if not self.supabase_client:
+            logger.error("Supabase client not available. Cannot list agent tasks.")
+            return ([], 0)
+
+        total_count = 0
+        tasks_list: List[Dict[str, Any]] = []
+
+        try:
+            # Count Query
+            query_builder_count = self.supabase_client.table("agent_tasks").select("task_id", count="exact")
+            if crew_id:
+                query_builder_count = query_builder_count.eq("crew_id", crew_id)
+            if status:
+                query_builder_count = query_builder_count.eq("status", status.value) # Use enum value
+            if start_date_from:
+                query_builder_count = query_builder_count.gte("start_time", start_date_from.isoformat())
+            if start_date_to:
+                query_builder_count = query_builder_count.lte("start_time", start_date_to.isoformat())
+
+            logger.debug(f"Executing count query for agent_tasks with filters: crew_id={crew_id}, status={status}, from={start_date_from}, to={start_date_to}")
+            count_response = await asyncio.to_thread(query_builder_count.execute)
+
+            if hasattr(count_response, 'count') and count_response.count is not None:
+                total_count = count_response.count
+                logger.info(f"Total tasks matching filters: {total_count}")
+            elif hasattr(count_response, 'error') and count_response.error:
+                logger.error(f"Supabase API error during count query for agent_tasks: {count_response.error.message}")
+                # Return 0,0 and let the caller decide how to handle partial failure
+                return ([], 0)
+            else:
+                logger.warning("Supabase count query for agent_tasks returned no count and no error.")
+
+
+            # Data Query (only if there's a potential count, or always try if desired)
+            if total_count > 0 or offset == 0 : # Only query data if there's something to query or it's the first page
+                query_builder_data = self.supabase_client.table("agent_tasks").select("*")
+                if crew_id:
+                    query_builder_data = query_builder_data.eq("crew_id", crew_id)
+                if status:
+                    query_builder_data = query_builder_data.eq("status", status.value)
+                if start_date_from:
+                    query_builder_data = query_builder_data.gte("start_time", start_date_from.isoformat())
+                if start_date_to:
+                    query_builder_data = query_builder_data.lte("start_time", start_date_to.isoformat())
+
+                query_builder_data = query_builder_data.order("start_time", desc=True).range(offset, offset + limit - 1)
+
+                logger.debug(f"Executing data query for agent_tasks with filters and pagination: offset={offset}, limit={limit}")
+                response = await asyncio.to_thread(query_builder_data.execute)
+
+                if hasattr(response, 'data') and response.data is not None:
+                    tasks_list = response.data
+                    logger.info(f"Retrieved {len(tasks_list)} tasks for the current page.")
+                elif hasattr(response, 'error') and response.error:
+                    logger.error(f"Supabase API error during data query for agent_tasks: {response.error.message}")
+                    # tasks_list remains empty, total_count might be from earlier
+                else:
+                    logger.info("No tasks found for the current page or Supabase returned no data.")
+
+            return (tasks_list, total_count)
+
+        except Exception as e:
+            logger.exception(f"Supabase client error in list_and_count_agent_tasks_paginated: {e}")
+            return ([], 0)
 
 
 # Appended by subtask worker: (This should remain at the end of the file)

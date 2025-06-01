@@ -16,6 +16,7 @@ try:
 except ImportError:
     logger.warning("letta-client not found. MemoryService will use stubbed Letta interactions.")
     LETTA_CLIENT_AVAILABLE = False
+    from unittest.mock import MagicMock # Added for stub
     # Define dummy classes for type hinting if letta-client is not available
     class Letta: # type: ignore
         def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None):
@@ -86,6 +87,17 @@ except ImportError:
             logger.error(f"STUB LettaAPIError: {message} (Status: {status_code})")
 
     # class LettaClientConfigurationError(Exception): pass # Hypothetical
+
+# Import AgentMemoryStats model with a fallback
+try:
+    from ..models.monitoring_models import AgentMemoryStats
+except ImportError:
+    logger.warning("Could not import AgentMemoryStats from ..models.monitoring_models. get_agent_memory_stats will not be functional.")
+    class AgentMemoryStats(BaseModel): # type: ignore
+        app_agent_id: str
+        memories_stored_count: Optional[int] = None
+        memories_recalled_count: Optional[int] = None
+        last_activity_timestamp: Optional[datetime] = None
 
 
 # Import AgentPersistenceService with a fallback for standalone testing
@@ -486,6 +498,54 @@ class MemoryService:
             self.letta_client = None
         else:
             logger.info("MEMORY_SERVICE: No active Letta client to close.")
+
+    async def get_agent_memory_stats(self, app_agent_id: str) -> Optional[AgentMemoryStats]:
+        """
+        Retrieves conceptual memory usage statistics for a given application agent ID.
+        NOTE: This method currently returns STUBBED/mocked data.
+        """
+        logger.info(f"MEMORY_SERVICE STUB: Called get_agent_memory_stats for app_agent_id: {app_agent_id}. Returning mocked statistics.")
+
+        # In a real implementation, this would involve querying Letta server for stats related to the linked Letta agent,
+        # or retrieving stats tracked by MemoryService itself (e.g., from Redis or another store via AgentPersistenceService).
+
+        if AgentMemoryStats is None: # Check if the Pydantic model was imported
+            logger.error("AgentMemoryStats model not available due to import error. Cannot provide memory stats.")
+            return None
+
+        if "error_case" in app_agent_id:
+            logger.warning(f"Simulating 'agent not found' or error for memory stats for {app_agent_id}")
+            return None
+
+        stored_count: int
+        recalled_count: int
+        mock_last_activity: datetime
+
+        try:
+            import hashlib # Standard library, should always be available
+            from datetime import timedelta # Standard library
+
+            id_hash = int(hashlib.md5(app_agent_id.encode()).hexdigest(), 16)
+            stored_count = (id_hash % 100) + 50  # Range 50-149
+            recalled_count = (id_hash % 40) + 10   # Range 10-49
+            random_minutes = (id_hash % 600)
+            mock_last_activity = datetime.now(timezone.utc) - timedelta(minutes=random_minutes)
+        except Exception as e: # Broad exception for any issue with hash/date logic, though unlikely with stdlib
+            logger.warning(f"Error generating dynamic mock stats (e.g. hashlib/timedelta issue: {e}), using fixed mock stats for MemoryService.get_agent_memory_stats")
+            stored_count = 123
+            recalled_count = 45
+            try: from datetime import timedelta # ensure it's available
+            except: pass # if it fails, utcnow will be used as is
+            mock_last_activity = datetime.now(timezone.utc) - timedelta(hours=1)
+
+
+        mock_stats = AgentMemoryStats(
+            app_agent_id=app_agent_id,
+            memories_stored_count=stored_count,
+            memories_recalled_count=recalled_count,
+            last_activity_timestamp=mock_last_activity
+        )
+        return mock_stats
 
 
 if __name__ == "__main__":

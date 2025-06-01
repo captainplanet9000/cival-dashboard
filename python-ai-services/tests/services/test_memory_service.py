@@ -288,16 +288,21 @@ async def test_store_memory_message_success(memory_service_fixture: MemoryServic
     memory_service_fixture.active_memgpt_agents[app_agent_id] = letta_agent_id_mock
 
     memory_service_fixture.letta_client = MagicMock()
-    # messages.create is awaited directly in service, so it should be an AsyncMock
-    mock_message_create_response = [{"id": "msg_sdk_123"}] # Stub returns a list
-    memory_service_fixture.letta_client.messages.create = AsyncMock(return_value=mock_message_create_response)
+    # Mock the messages.create method - now assumed sync and called via to_thread
+    mock_message_create_response = MagicMock(id="msg_sdk_123") # Direct object with id
+    memory_service_fixture.letta_client.messages.create = MagicMock(return_value=mock_message_create_response)
 
     observation="Test observation for SDK"
     role="user"
-    success = await memory_service_fixture.store_memory_message(app_agent_id, observation, role)
+
+    with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+        mock_to_thread.return_value = mock_message_create_response
+        success = await memory_service_fixture.store_memory_message(app_agent_id, observation, role)
 
     assert success is True
-    memory_service_fixture.letta_client.messages.create.assert_called_once_with(
+    # Assert that to_thread was called with the messages.create method and correct args
+    mock_to_thread.assert_called_once_with(
+        memory_service_fixture.letta_client.messages.create,
         agent_id=letta_agent_id_mock, content=observation, role=role, stream=False
     )
     assert f"Message successfully sent to Letta agent {letta_agent_id_mock}" in caplog.text
@@ -310,11 +315,15 @@ async def test_store_memory_message_api_error(memory_service_fixture: MemoryServ
     memory_service_fixture.active_memgpt_agents[app_agent_id] = letta_agent_id_mock
 
     memory_service_fixture.letta_client = MagicMock()
-    from python_ai_services.services.memory_service import LettaAPIError # Import for instantiation
-    memory_service_fixture.letta_client.messages.create = AsyncMock(side_effect=LettaAPIError("API Error storing message"))
+    from python_ai_services.services.memory_service import LettaAPIError
 
-    success = await memory_service_fixture.store_memory_message(app_agent_id, "Test observation", "user")
+    with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+        mock_to_thread.side_effect = LettaAPIError("API Error storing message")
+        success = await memory_service_fixture.store_memory_message(app_agent_id, "Test observation", "user")
+
     assert success is False
+    # Check that to_thread was called, even if it then raised an error that was caught
+    mock_to_thread.assert_called_once()
     assert f"Letta API error storing message for agent '{letta_agent_id_mock}'" in caplog.text
 
 @pytest.mark.asyncio
@@ -338,31 +347,42 @@ async def test_get_memory_response_success(memory_service_fixture: MemoryService
 
     memory_service_fixture.letta_client = MagicMock()
 
-    # Mock for sending the prompt (messages.create)
-    mock_sent_prompt_response = [{"id":"prompt_msg_id", "role":"user", "content":"Test Query"}] # Stub returns list
-    memory_service_fixture.letta_client.messages.create = AsyncMock(return_value=mock_sent_prompt_response)
+    # Mock for sending the prompt (messages.create - now sync via to_thread)
+    mock_sent_prompt_sdk_object = MagicMock(id="prompt_msg_id_sdk")
+    memory_service_fixture.letta_client.messages.create = MagicMock(return_value=mock_sent_prompt_sdk_object)
 
-    # Mock for listing messages to get reply (messages.list)
-    # This mock should return an object with a 'results' attribute, which is a list of message-like objects/mocks
-    mock_assistant_reply_obj = MagicMock(role="assistant", content="Assistant SDK response", id="asst_reply_id")
-    mock_user_prompt_obj_in_list = MagicMock(role="user", content="Test Query", id="prompt_msg_id")
-    mock_list_response = MagicMock()
-    mock_list_response.results = [mock_user_prompt_obj_in_list, mock_assistant_reply_obj] # Assistant is last
+    # Mock for listing messages to get reply (messages.list - sync via to_thread)
+    mock_assistant_reply_obj = MagicMock(role="assistant", content="Assistant SDK response", id="asst_reply_id_sdk")
+    mock_user_prompt_obj_in_list = MagicMock(role="user", content="Test Query", id="prompt_msg_id_sdk")
+    mock_list_response_obj = MagicMock()
+    mock_list_response_obj.data = [mock_user_prompt_obj_in_list, mock_assistant_reply_obj] # Standardized to .data
+    memory_service_fixture.letta_client.messages.list = MagicMock(return_value=mock_list_response_obj)
 
-    # Patch asyncio.to_thread for the messages.list call
     with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        mock_to_thread.return_value = mock_list_response # messages.list is called via to_thread
+        # Configure side_effect for multiple to_thread calls
+        mock_to_thread.side_effect = [
+            mock_sent_prompt_sdk_object, # First call to to_thread (messages.create)
+            mock_list_response_obj       # Second call to to_thread (messages.list)
+        ]
 
         prompt = "Test Query"
         response = await memory_service_fixture.get_memory_response(app_agent_id, prompt)
 
         assert response == "Assistant SDK response"
-        memory_service_fixture.letta_client.messages.create.assert_called_once_with(
-            agent_id=letta_agent_id_mock, content=prompt, role="user", stream=False
-        )
-        mock_to_thread.assert_called_once_with(
-            memory_service_fixture.letta_client.messages.list, agent_id=letta_agent_id_mock, limit=5
-        )
+
+        # Check calls to to_thread
+        assert mock_to_thread.call_count == 2
+        first_to_thread_call_args = mock_to_thread.call_args_list[0][0]
+        second_to_thread_call_args = mock_to_thread.call_args_list[1][0]
+
+        assert first_to_thread_call_args[0] == memory_service_fixture.letta_client.messages.create
+        assert first_to_thread_call_args[1] == letta_agent_id_mock # agent_id
+        assert first_to_thread_call_args[3] == prompt # content (args are method, *args, **kwargs)
+
+        assert second_to_thread_call_args[0] == memory_service_fixture.letta_client.messages.list
+        assert second_to_thread_call_args[1] == letta_agent_id_mock # agent_id
+        assert second_to_thread_call_args[2] == 5 # limit
+
         assert f"Received assistant reply from Letta agent {letta_agent_id_mock}" in caplog.text
 
 @pytest.mark.asyncio
@@ -373,18 +393,19 @@ async def test_get_memory_response_no_assistant_reply(memory_service_fixture: Me
     memory_service_fixture.active_memgpt_agents[app_agent_id] = letta_agent_id_mock
 
     memory_service_fixture.letta_client = MagicMock()
-    mock_sent_prompt_response = [{"id":"prompt_msg_id"}]
-    memory_service_fixture.letta_client.messages.create = AsyncMock(return_value=mock_sent_prompt_response)
+    mock_sent_prompt_sdk_object = MagicMock(id="prompt_msg_id_sdk")
+    memory_service_fixture.letta_client.messages.create = MagicMock(return_value=mock_sent_prompt_sdk_object)
 
-    mock_list_response_no_assistant = MagicMock()
-    mock_user_prompt_obj_in_list = MagicMock(role="user", content="Test Query", id="prompt_msg_id")
-    mock_list_response_no_assistant.results = [mock_user_prompt_obj_in_list] # Only user message
+    mock_list_response_obj_no_assistant = MagicMock()
+    mock_user_prompt_obj_in_list = MagicMock(role="user", content="Test Query", id="prompt_msg_id_sdk")
+    mock_list_response_obj_no_assistant.data = [mock_user_prompt_obj_in_list] # Only user message
+    memory_service_fixture.letta_client.messages.list = MagicMock(return_value=mock_list_response_obj_no_assistant)
 
     with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        mock_to_thread.return_value = mock_list_response_no_assistant
+        mock_to_thread.side_effect = [mock_sent_prompt_sdk_object, mock_list_response_obj_no_assistant]
 
         response = await memory_service_fixture.get_memory_response(app_agent_id, "Query with no assistant reply")
-        assert response is None # Service method returns None if no assistant reply
+        assert response is None
         assert f"No assistant reply found in recent messages for Letta agent {letta_agent_id_mock}" in caplog.text
 
 @pytest.mark.asyncio
@@ -396,11 +417,16 @@ async def test_get_memory_response_api_error_on_send(memory_service_fixture: Mem
 
     memory_service_fixture.letta_client = MagicMock()
     from python_ai_services.services.memory_service import LettaAPIError
-    memory_service_fixture.letta_client.messages.create = AsyncMock(side_effect=LettaAPIError("API Error sending prompt"))
 
-    response = await memory_service_fixture.get_memory_response(app_agent_id, "Query")
-    assert response is None
-    assert f"Letta API error getting response from agent '{letta_agent_id_mock}'" in caplog.text # Error from create
+    with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
+        mock_to_thread.side_effect = LettaAPIError("API Error sending prompt") # Error on first to_thread call
+
+        response = await memory_service_fixture.get_memory_response(app_agent_id, "Query")
+        assert response is None
+        # Check that to_thread was called for messages.create
+        mock_to_thread.assert_called_once()
+        assert mock_to_thread.call_args[0][0] == memory_service_fixture.letta_client.messages.create
+        assert f"Letta API error getting response from agent '{letta_agent_id_mock}'" in caplog.text
 
 @pytest.mark.asyncio
 @patch(LETTA_AVAILABLE_PATH, True)
@@ -410,16 +436,23 @@ async def test_get_memory_response_api_error_on_list(memory_service_fixture: Mem
     memory_service_fixture.active_memgpt_agents[app_agent_id] = letta_agent_id_mock
 
     memory_service_fixture.letta_client = MagicMock()
-    mock_sent_prompt_response = [{"id":"prompt_msg_id"}]
-    memory_service_fixture.letta_client.messages.create = AsyncMock(return_value=mock_sent_prompt_response)
+    mock_sent_prompt_sdk_object = MagicMock(id="prompt_msg_id_sdk")
+    memory_service_fixture.letta_client.messages.create = MagicMock(return_value=mock_sent_prompt_sdk_object)
 
     from python_ai_services.services.memory_service import LettaAPIError
     with patch("python_ai_services.services.memory_service.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread:
-        mock_to_thread.side_effect = LettaAPIError("API Error listing messages")
+        # First call (messages.create) succeeds, second call (messages.list) fails
+        mock_to_thread.side_effect = [
+            mock_sent_prompt_sdk_object,
+            LettaAPIError("API Error listing messages")
+        ]
 
         response = await memory_service_fixture.get_memory_response(app_agent_id, "Query")
         assert response is None
-        assert f"Letta API error getting response from agent '{letta_agent_id_mock}'" in caplog.text # Error from list
+        assert mock_to_thread.call_count == 2
+        assert mock_to_thread.call_args_list[0][0][0] == memory_service_fixture.letta_client.messages.create
+        assert mock_to_thread.call_args_list[1][0][0] == memory_service_fixture.letta_client.messages.list
+        assert f"Letta API error getting response from agent '{letta_agent_id_mock}'" in caplog.text
 
 
 @pytest.mark.asyncio
