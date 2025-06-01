@@ -1,0 +1,20 @@
+{
+  "plugin": "binance-connector",
+  "version": "1.0.3",
+  "settings": {
+    "useTestnet": false,
+    "apiRateLimit": {
+      "orders": 10,
+      "trades": 20,
+      "account": 5
+    },
+    "orderDefaults": {
+      "timeInForce": "GTC",
+      "recvWindow": 5000
+    },
+    "reconnectStrategy": {
+      "maxAttempts": 5,
+      "delayMs": 2000
+    }
+  }
+}

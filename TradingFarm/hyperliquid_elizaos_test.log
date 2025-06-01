@@ -1,0 +1,193 @@
+2025-03-14 13:08:28,911 - hyperliquid_elizaos_test - INFO - Starting Hyperliquid ElizaOS test...
+2025-03-14 13:08:28,912 - hyperliquid_elizaos_test - INFO - Attempting to execute trade via ElizaOS...
+2025-03-14 13:08:28,912 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "analyze_market",
+  "parameters": {
+    "market": "ETH",
+    "timeframe": "1h"
+  }
+}
+2025-03-14 13:08:32,972 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000014DC9818590>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 13:08:32,978 - hyperliquid_elizaos_test - WARNING - Could not get market data from ElizaOS, continuing with direct API approach
+2025-03-14 13:08:32,979 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "execute_trade",
+  "parameters": {
+    "market": "ETH",
+    "direction": "long",
+    "size": 0.1,
+    "order_type": "market",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 13:08:37,022 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000014DC982EE90>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 13:08:37,024 - hyperliquid_elizaos_test - WARNING - ElizaOS trade execution failed, attempting direct API approach
+2025-03-14 13:08:37,041 - hyperliquid_elizaos_test - INFO - Sending direct Hyperliquid order: {
+  "action": {
+    "type": "order",
+    "order": {
+      "coin": "ETH",
+      "is_buy": true,
+      "sz": 0.1,
+      "limit_px": 0,
+      "tif": "Gtc"
+    }
+  },
+  "signature": "df6d0011bbe75ab1c60ed8d28b23ddd073ed461013dcb8eb9b5376682b1d4407702b9a17cdf314853e94f68cf3522fc0bc220cdd3a5e771bd8b7a21ee0c2c8361c",
+  "nonce": 1741982917025,
+  "expiration": 1741982977025
+}
+2025-03-14 13:08:37,429 - hyperliquid_elizaos_test - ERROR - Hyperliquid API error: 422 - Failed to deserialize the JSON body into the target type
+2025-03-14 13:08:37,430 - hyperliquid_elizaos_test - ERROR - Failed to execute trade via direct API
+2025-03-14 13:08:37,431 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "check_position",
+  "parameters": {
+    "market": "ETH",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 13:08:41,478 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000014DC982F610>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 13:08:41,480 - hyperliquid_elizaos_test - INFO - Test completed successfully
+2025-03-14 23:54:58,309 - hyperliquid_elizaos_test - INFO - Starting Hyperliquid ElizaOS test...
+2025-03-14 23:54:58,310 - hyperliquid_elizaos_test - INFO - Attempting to execute trade via ElizaOS...
+2025-03-14 23:54:58,310 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "analyze_market",
+  "parameters": {
+    "market": "ETH",
+    "timeframe": "1h"
+  }
+}
+2025-03-14 23:55:02,381 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000022393EC8590>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 23:55:02,383 - hyperliquid_elizaos_test - WARNING - Could not get market data from ElizaOS, continuing with direct API approach
+2025-03-14 23:55:02,384 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "execute_trade",
+  "parameters": {
+    "market": "ETH",
+    "direction": "long",
+    "size": 0.1,
+    "order_type": "market",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 23:55:06,442 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000022393EDEE90>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 23:55:06,444 - hyperliquid_elizaos_test - WARNING - ElizaOS trade execution failed, attempting direct API approach
+2025-03-14 23:55:06,457 - hyperliquid_elizaos_test - INFO - Sending direct Hyperliquid order: {
+  "action": {
+    "type": "order",
+    "order": {
+      "coin": "ETH",
+      "is_buy": true,
+      "sz": 0.1,
+      "limit_px": 0,
+      "tif": "Gtc"
+    }
+  },
+  "signature": "f18aa3ee60fd42ab9a6c7cc59f256bbd2137075bf4bcd598c9af013fddf597637a32da292642ec997e04937e663652d9bffa126217614b7aec149e02c66982f61c",
+  "nonce": 1742021706445,
+  "expiration": 1742021766445
+}
+2025-03-14 23:55:06,849 - hyperliquid_elizaos_test - ERROR - Hyperliquid API error: 422 - Failed to deserialize the JSON body into the target type
+2025-03-14 23:55:06,850 - hyperliquid_elizaos_test - ERROR - Failed to execute trade via direct API
+2025-03-14 23:55:06,850 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "check_position",
+  "parameters": {
+    "market": "ETH",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 23:55:10,921 - hyperliquid_elizaos_test - ERROR - Error sending ElizaOS command: HTTPConnectionPool(host='localhost', port=3000): Max retries exceeded with url: /api/agents/eliza_trading_agent_1/command (Caused by NewConnectionError('<urllib3.connection.HTTPConnection object at 0x0000022393EDF610>: Failed to establish a new connection: [WinError 10061] No connection could be made because the target machine actively refused it'))
+2025-03-14 23:55:10,922 - hyperliquid_elizaos_test - INFO - Test completed successfully
+2025-03-14 23:57:07,107 - hyperliquid_elizaos_test - INFO - Starting Hyperliquid ElizaOS test...
+2025-03-14 23:57:07,108 - hyperliquid_elizaos_test - INFO - Attempting to execute trade via ElizaOS...
+2025-03-14 23:57:07,109 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "analyze_market",
+  "parameters": {
+    "market": "ETH",
+    "timeframe": "1h"
+  }
+}
+2025-03-14 23:57:09,157 - hyperliquid_elizaos_test - INFO - Market data: {
+  "success": true,
+  "data": {
+    "price": 3245.67,
+    "24h_change": 2.3,
+    "volume": 1200000000,
+    "trend": "bullish",
+    "support_levels": [
+      3100,
+      3000,
+      2900
+    ],
+    "resistance_levels": [
+      3300,
+      3400,
+      3500
+    ],
+    "indicators": {
+      "rsi": 58,
+      "macd": "positive crossover",
+      "sma_50": 3100,
+      "sma_200": 2900,
+      "volatility": "medium"
+    },
+    "market": "ETH",
+    "timeframe": "1h",
+    "analysis_time": "2025-03-14T23:57:09.156779",
+    "ai_commentary": "The ETH market is showing strong bullish signals with positive momentum across multiple indicators. RSI at 58 suggests room for additional upside while staying below overbought territory. The 1h chart shows price holding well above both 50 and 200 SMAs, confirming the bullish trend structure. Consider long positions with appropriate risk management."
+  }
+}
+2025-03-14 23:57:09,160 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "execute_trade",
+  "parameters": {
+    "market": "ETH",
+    "direction": "long",
+    "size": 0.1,
+    "order_type": "market",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 23:57:11,200 - hyperliquid_elizaos_test - INFO - Trade result from ElizaOS: {
+  "success": true,
+  "data": {
+    "order_id": "eliza_sim_1742021831_ETH",
+    "market": "ETH",
+    "direction": "long",
+    "size": 0.1,
+    "exchange": "hyperliquid",
+    "status": "filled",
+    "execution_time": "2025-03-14T23:57:11.198769",
+    "execution_price": 3245.67,
+    "fee": 0.16228350000000002,
+    "message": "Successfully executed long market order for 0.1 ETH on hyperliquid"
+  }
+}
+2025-03-14 23:57:11,201 - hyperliquid_elizaos_test - INFO - Successfully executed 0.1 ETH long market order via ElizaOS
+2025-03-14 23:57:11,202 - hyperliquid_elizaos_test - INFO - Sending ElizaOS command: {
+  "command": "check_position",
+  "parameters": {
+    "market": "ETH",
+    "exchange": "hyperliquid"
+  }
+}
+2025-03-14 23:57:13,248 - hyperliquid_elizaos_test - INFO - Position status: {
+  "success": true,
+  "data": {
+    "positions": [
+      {
+        "market": "ETH",
+        "exchange": "hyperliquid",
+        "size": 0.1,
+        "entry_price": 3245.67,
+        "current_price": 3245.67,
+        "liquidation_price": 2596.536,
+        "pnl": 16.228350000000002,
+        "pnl_percentage": 5.0,
+        "timestamp": "2025-03-14T23:57:13.247060"
+      }
+    ],
+    "total_count": 1,
+    "total_notional_value": 324.567,
+    "total_pnl": 16.228350000000002,
+    "average_pnl_percentage": 5.0
+  }
+}
+2025-03-14 23:57:13,249 - hyperliquid_elizaos_test - INFO - Test completed successfully

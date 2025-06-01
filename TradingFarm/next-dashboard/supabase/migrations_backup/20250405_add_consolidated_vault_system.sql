@@ -1,0 +1,1 @@
+npx supabase migration upnpx supabase migration up

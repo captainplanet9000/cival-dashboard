@@ -1,0 +1,30 @@
+{
+  "name": "Sonic NFT #$ID",
+  "description": "Sonic NFT is a collection of generative art pieces created using Houdini VEX. This particular NFT features $GENERATOR_TYPE style.",
+  "image": "ipfs://INSERT_YOUR_REVEALED_IMAGES_CID_HERE/$ID.png",
+  "external_url": "https://sonicnft.example.com/token/$ID",
+  "animation_url": "",
+  "background_color": "",
+  "attributes": [
+    {
+      "trait_type": "Generator Type",
+      "value": "$GENERATOR_TYPE"
+    },
+    {
+      "trait_type": "Style",
+      "value": "$STYLE"
+    },
+    {
+      "trait_type": "Color Palette",
+      "value": "$COLOR_PALETTE"
+    },
+    {
+      "trait_type": "Complexity",
+      "value": "$COMPLEXITY"
+    },
+    {
+      "trait_type": "Dimensions",
+      "value": "$DIMENSIONS"
+    }
+  ]
+} 

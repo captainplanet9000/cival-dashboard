@@ -1,0 +1,44 @@
+<!-- Hyperliquid Connection Monitor Component -->
+<div class="hyperliquid-monitor-panel">
+    <div class="hyperliquid-monitor-header">
+        <h3 class="hyperliquid-monitor-title">
+            <span id="hyperliquid-status" class="status-indicator status-disconnected" title="Hyperliquid disconnected"></span>
+            Hyperliquid Testnet Monitor
+        </h3>
+        <div>
+            <button id="refresh-hyperliquid" class="hyperliquid-action-btn secondary">
+                <i class="bi bi-arrow-repeat"></i>
+            </button>
+        </div>
+    </div>
+    <div class="hyperliquid-monitor-body">
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-label">API Latency</div>
+                <div id="hyperliquid-latency" class="metric-value metric-success">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Error Rate</div>
+                <div id="hyperliquid-error-rate" class="metric-value metric-success">--</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Last Order Status</div>
+                <div id="hyperliquid-last-order" class="metric-value">--</div>
+            </div>
+        </div>
+        
+        <div class="latency-chart" id="latency-chart-container"></div>
+        
+        <div class="events-log" id="hyperliquid-events">
+            <div class="log-entry">
+                <span class="log-time">--:--:--</span>
+                <span class="log-message">Waiting for Hyperliquid connection...</span>
+            </div>
+        </div>
+        
+        <div class="hyperliquid-actions">
+            <button id="test-connection" class="hyperliquid-action-btn">Test Connection</button>
+            <button id="retry-connect" class="hyperliquid-action-btn">Reconnect</button>
+        </div>
+    </div>
+</div>

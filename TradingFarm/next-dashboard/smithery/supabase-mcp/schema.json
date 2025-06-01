@@ -1,0 +1,124 @@
+{
+  "tables": {
+    "farms": {
+      "columns": {
+        "id": { "type": "integer", "primaryKey": true },
+        "name": { "type": "text", "nullable": false },
+        "description": { "type": "text", "nullable": true },
+        "user_id": { "type": "uuid", "nullable": true },
+        "created_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" },
+        "updated_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" }
+      },
+      "relationships": [
+        { "name": "user", "table": "auth.users", "columns": ["user_id"], "referencedColumns": ["id"] }
+      ]
+    },
+    "agents": {
+      "columns": {
+        "id": { "type": "integer", "primaryKey": true },
+        "name": { "type": "text", "nullable": false },
+        "farm_id": { "type": "integer", "nullable": false },
+        "status": { "type": "text", "defaultValue": "inactive" },
+        "type": { "type": "text", "defaultValue": "standard" },
+        "configuration": { "type": "jsonb", "defaultValue": "{}" },
+        "created_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" },
+        "updated_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" }
+      },
+      "relationships": [
+        { "name": "farm", "table": "farms", "columns": ["farm_id"], "referencedColumns": ["id"] }
+      ]
+    },
+    "strategies": {
+      "columns": {
+        "id": { "type": "integer", "primaryKey": true },
+        "name": { "type": "text", "nullable": false },
+        "description": { "type": "text", "nullable": true },
+        "parameters": { "type": "jsonb", "defaultValue": "{}" },
+        "created_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" },
+        "updated_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" }
+      }
+    },
+    "wallets": {
+      "columns": {
+        "id": { "type": "integer", "primaryKey": true },
+        "name": { "type": "text", "nullable": false },
+        "address": { "type": "text", "nullable": false, "unique": true },
+        "balance": { "type": "numeric", "precision": 24, "scale": 8, "defaultValue": 0 },
+        "farm_id": { "type": "integer", "nullable": true },
+        "user_id": { "type": "uuid", "nullable": true },
+        "created_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" },
+        "updated_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" }
+      },
+      "relationships": [
+        { "name": "farm", "table": "farms", "columns": ["farm_id"], "referencedColumns": ["id"] },
+        { "name": "user", "table": "auth.users", "columns": ["user_id"], "referencedColumns": ["id"] }
+      ]
+    },
+    "transactions": {
+      "columns": {
+        "id": { "type": "integer", "primaryKey": true },
+        "type": { "type": "text", "nullable": false },
+        "amount": { "type": "numeric", "precision": 24, "scale": 8, "nullable": false },
+        "status": { "type": "text", "defaultValue": "pending" },
+        "wallet_id": { "type": "integer", "nullable": false },
+        "farm_id": { "type": "integer", "nullable": true },
+        "created_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" },
+        "updated_at": { "type": "timestamp with time zone", "defaultValue": "NOW()" }
+      },
+      "relationships": [
+        { "name": "wallet", "table": "wallets", "columns": ["wallet_id"], "referencedColumns": ["id"] },
+        { "name": "farm", "table": "farms", "columns": ["farm_id"], "referencedColumns": ["id"] }
+      ]
+    }
+  },
+  "functions": {
+    "handle_created_at": {
+      "returns": "trigger",
+      "language": "plpgsql"
+    },
+    "handle_updated_at": {
+      "returns": "trigger",
+      "language": "plpgsql"
+    },
+    "list_tables": {
+      "returns": "table(tablename text)",
+      "language": "plpgsql"
+    }
+  },
+  "policies": {
+    "farms": [
+      {
+        "name": "Allow users to read farms",
+        "operation": "SELECT",
+        "using": "true"
+      },
+      {
+        "name": "Allow users to create farms",
+        "operation": "INSERT",
+        "check": "auth.uid() = user_id OR user_id IS NULL"
+      },
+      {
+        "name": "Allow owners to update farms",
+        "operation": "UPDATE",
+        "using": "auth.uid() = user_id"
+      },
+      {
+        "name": "Allow owners to delete farms",
+        "operation": "DELETE",
+        "using": "auth.uid() = user_id"
+      }
+    ],
+    "agents": [
+      {
+        "name": "Allow users to read agents",
+        "operation": "SELECT",
+        "using": "true"
+      },
+      {
+        "name": "Allow farm owners to manage agents",
+        "operation": "ALL",
+        "using": "EXISTS (SELECT 1 FROM public.farms WHERE farms.id = agents.farm_id AND farms.user_id = auth.uid())"
+      }
+    ]
+  }
+}

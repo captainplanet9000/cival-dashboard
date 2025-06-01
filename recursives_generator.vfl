@@ -1,0 +1,576 @@
+/**
+ * Recursive Fractal Generator for Recursives NFT Collection
+ * This VEX script demonstrates a recursive fractal pattern generator
+ * that can be used to create generative art for the Recursives collection.
+ * 
+ * Usage in Houdini:
+ * 1. Create a grid with many points (e.g., 200x200)
+ * 2. Add an Attribute Wrangle
+ * 3. Paste this code into the Attribute Wrangle
+ * 4. Add the parameters mentioned below
+ * 5. Connect to a PolyWire SOP for visualization
+ */
+
+// Parameters to expose in UI (add these to your wrangle node)
+// int pattern_type = chi("pattern_type");           // Pattern type (0-4)
+// string algorithm = chs("algorithm");              // Algorithm to use
+// string color_scheme = chs("color_scheme");        // Color scheme
+// int complexity = chi("complexity");               // Complexity (1-4)
+// string effect = chs("effect");                   // Effect to apply
+// string dimension = chds("dimension");            // Dimension (2d, 2.5d, 3d)
+// string background = chds("background");          // Background type
+// string special = chds("special");                // Special attribute (optional)
+// string legendary = chds("legendary");            // Legendary attribute (optional)
+// float seed = chf("seed");                        // Seed for randomness
+
+// Main function
+int pattern_type = chi("pattern_type");
+string algorithm = chts("algorithm");
+string color_scheme = chts("color_scheme");
+int complexity = chi("complexity");
+float seed = chf("seed");
+
+// Initialize position with small jitter for organic feel
+vector pos = @P;
+pos += rand(@ptnum + seed) * 0.01;
+
+// Apply base pattern transformation based on pattern_type
+if (pattern_type == 0) {
+    // Fractal pattern
+    pos = applyFractalPattern(pos, complexity, seed);
+} else if (pattern_type == 1) {
+    // Cellular pattern
+    pos = applyCellularPattern(pos, complexity, seed);
+} else if (pattern_type == 2) {
+    // Flow Field pattern
+    pos = applyFlowFieldPattern(pos, complexity, seed);
+} else if (pattern_type == 3) {
+    // Geometric pattern
+    pos = applyGeometricPattern(pos, complexity, seed);
+} else if (pattern_type == 4) {
+    // Crystalline pattern
+    pos = applyCrystallinePattern(pos, complexity, seed);
+}
+
+// Apply algorithm-specific transformations
+if (algorithm == "recursive") {
+    pos = applyRecursiveAlgorithm(pos, complexity, seed);
+} else if (algorithm == "mandelbrot") {
+    pos = applyMandelbrotAlgorithm(pos, complexity, seed);
+} else if (algorithm == "voronoi") {
+    pos = applyVoronoiAlgorithm(pos, complexity, seed);
+} else if (algorithm == "l_system") {
+    pos = applyLSystemAlgorithm(pos, complexity, seed);
+} else if (algorithm == "perlin_flow") {
+    pos = applyPerlinFlowAlgorithm(pos, complexity, seed);
+} else if (algorithm == "reaction_diffusion") {
+    pos = applyReactionDiffusionAlgorithm(pos, complexity, seed);
+}
+
+// Apply the final position
+@P = pos;
+
+// Apply color based on color scheme
+vector color = {0,0,0};
+if (color_scheme == "nebula") {
+    color = calculateNebulaColors(pos, seed);
+} else if (color_scheme == "sunset") {
+    color = calculateSunsetColors(pos, seed);
+} else if (color_scheme == "neon") {
+    color = calculateNeonColors(pos, seed);
+} else if (color_scheme == "arctic") {
+    color = calculateArcticColors(pos, seed);
+} else if (color_scheme == "volcanic") {
+    color = calculateVolcanicColors(pos, seed);
+} else if (color_scheme == "forest") {
+    color = calculateForestColors(pos, seed);
+} else if (color_scheme == "ocean") {
+    color = calculateOceanColors(pos, seed);
+} else if (color_scheme == "monochrome") {
+    color = calculateMonochromeColors(pos, seed);
+}
+
+// Set the color
+@Cd = color;
+
+// Set point scale for visualization (useful for PolyWire rendering)
+@width = 0.01;
+
+// Store parameters as attributes for metadata generation
+s@pattern_type_attr = pattern_type;
+s@algorithm_attr = algorithm;
+s@color_scheme_attr = color_scheme;
+i@complexity_attr = complexity;
+f@seed_attr = seed;
+
+// Utility Functions for Pattern Generation
+
+vector applyFractalPattern(vector pos; int complexity; float seed) {
+    // Create a fractal pattern using recursive subdivision
+    vector result = pos;
+    
+    // Scale based on complexity
+    float scale = 1.0 + (complexity * 0.5);
+    
+    // Apply fractal iterations
+    for (int i = 0; i < complexity; i++) {
+        // Create fractal branching
+        float angle = noise(result * (i+1) + seed) * 2 * PI;
+        float radius = noise(result * (i+1) + seed + 123.4) * 0.2 * (complexity - i) / complexity;
+        
+        // Add fractal component
+        result += set(cos(angle), sin(angle), 0) * radius * scale;
+        
+        // Add some variation
+        result += curlnoise(result * (0.5 + i*0.1) + seed) * 0.05 * (complexity - i) / complexity;
+    }
+    
+    return result;
+}
+
+vector applyCellularPattern(vector pos; int complexity; float seed) {
+    // Create a cellular growth pattern
+    vector result = pos;
+    
+    // Cell center points (pseudo-random)
+    float cell_size = 1.0 / complexity;
+    vector cell_center = floor(pos / cell_size) * cell_size + cell_size/2;
+    
+    // Distance to nearest cell center
+    float dist = distance(pos, cell_center);
+    
+    // Cell effect strength
+    float strength = smoothstep(0.0, cell_size/2, dist);
+    
+    // Apply cellular transformation
+    result += (pos - cell_center) * strength * 0.5;
+    
+    // Add complexity-based noise
+    result += noise(pos * complexity + seed) * 0.1;
+    
+    return result;
+}
+
+vector applyFlowFieldPattern(vector pos; int complexity; float seed) {
+    // Create a flow field using curl noise
+    vector result = pos;
+    
+    // Generate curl noise vector field
+    vector curl = curlnoise(pos * (0.5 * complexity) + seed);
+    
+    // Apply the flow field transformation
+    result += curl * 0.1 * complexity;
+    
+    return result;
+}
+
+vector applyGeometricPattern(vector pos; int complexity; float seed) {
+    // Create a geometric pattern using mathematical functions
+    vector result = pos;
+    
+    // Basic geometric transformations
+    float angle = atan2(pos.y, pos.x);
+    float radius = length(pos);
+    
+    // Create geometric patterns based on polar coordinates
+    float pattern = sin(angle * (complexity * 2.0) + seed) * 0.1;
+    pattern += cos(radius * PI * complexity + seed) * 0.1;
+    
+    // Apply the pattern
+    result += set(cos(angle), sin(angle), 0) * pattern;
+    
+    return result;
+}
+
+vector applyCrystallinePattern(vector pos; int complexity; float seed) {
+    // Create a crystalline growth pattern
+    vector result = pos;
+    
+    // Crystal axes
+    float num_axes = max(3, complexity * 2);
+    float central_value = 0;
+    
+    // Calculate crystalline growth along axes
+    for (int i = 0; i < num_axes; i++) {
+        float angle = (2 * PI * i) / num_axes;
+        vector axis = set(cos(angle), sin(angle), 0);
+        
+        // Project position onto axis
+        float proj = dot(pos, axis);
+        
+        // Crystal growth function
+        float growth = abs(sin(proj * complexity + seed * i));
+        
+        // Accumulate
+        central_value = max(central_value, growth);
+    }
+    
+    // Apply crystalline effect
+    result *= (1.0 + central_value * 0.2);
+    
+    return result;
+}
+
+// Algorithms
+
+vector applyRecursiveAlgorithm(vector pos; int complexity; float seed) {
+    // Apply a recursive subdivision algorithm
+    vector result = pos;
+    
+    // Recursively apply transformations
+    for (int i = 0; i < complexity; i++) {
+        // Create recursive branching pattern
+        vector offset = noise(result * (1.0 + i*0.5) + seed + i*100);
+        
+        // Scale down influence with each iteration
+        float scale = pow(0.6, i);
+        
+        // Apply offset with scaling
+        result += offset * scale * 0.2;
+    }
+    
+    return result;
+}
+
+vector applyMandelbrotAlgorithm(vector pos; int complexity; float seed) {
+    // Apply a Mandelbrot-inspired algorithm
+    vector result = pos;
+    
+    // Initialize z value for iteration
+    vector z = result;
+    
+    // Iterate the Mandelbrot formula: z = z² + c
+    for (int i = 0; i < complexity * 2; i++) {
+        // Compute z² + c (in 2D, treating z as complex number)
+        float xtemp = z.x * z.x - z.y * z.y + result.x + noise(seed + i) * 0.1;
+        z.y = 2 * z.x * z.y + result.y + noise(seed + i + 100) * 0.1;
+        z.x = xtemp;
+        
+        // Check if we're escaping to infinity
+        if (length(z) > 2.0) {
+            // Apply transformation based on escape iteration
+            float factor = float(i) / (complexity * 2);
+            result += (result - z) * factor * 0.1;
+            break;
+        }
+    }
+    
+    return result;
+}
+
+vector applyVoronoiAlgorithm(vector pos; int complexity; float seed) {
+    // Apply a Voronoi-based algorithm
+    vector result = pos;
+    
+    // Number of Voronoi cells increases with complexity
+    int num_points = 5 + complexity * 5;
+    float min_dist = 1e10;
+    vector closest_point;
+    
+    // Find closest Voronoi cell
+    for (int i = 0; i < num_points; i++) {
+        // Generate pseudo-random cell position
+        vector cell_pos = set(
+            noise(i * 0.1 + seed),
+            noise(i * 0.1 + seed + 100),
+            0
+        ) * 2.0 - 1.0;
+        
+        // Calculate distance
+        float dist = distance(result, cell_pos);
+        
+        // Track closest cell
+        if (dist < min_dist) {
+            min_dist = dist;
+            closest_point = cell_pos;
+        }
+    }
+    
+    // Apply Voronoi transformation
+    result = mix(result, closest_point, 0.1 * complexity);
+    
+    return result;
+}
+
+vector applyLSystemAlgorithm(vector pos; int complexity; float seed) {
+    // Apply an L-System inspired algorithm
+    vector result = pos;
+    
+    // Define "growth" direction based on position
+    float angle = atan2(pos.y, pos.x) + noise(pos + seed) * PI;
+    
+    // L-System growth iterations
+    vector direction = set(cos(angle), sin(angle), 0);
+    vector perpendicular = set(-direction.y, direction.x, 0);
+    
+    // Apply branching structure
+    for (int i = 0; i < complexity; i++) {
+        float branch_angle = angle + PI/4 * (i % 2 == 0 ? 1 : -1);
+        vector branch_dir = set(cos(branch_angle), sin(branch_angle), 0);
+        
+        // Calculate influence
+        float influence = smoothstep(0.0, 1.0, noise(pos * (i+1) + seed));
+        
+        // Apply branching
+        result += branch_dir * influence * 0.05;
+    }
+    
+    return result;
+}
+
+vector applyPerlinFlowAlgorithm(vector pos; int complexity; float seed) {
+    // Apply a Perlin noise flow field algorithm
+    vector result = pos;
+    
+    // Multi-octave Perlin noise
+    float noise_value = 0;
+    float amplitude = 1.0;
+    float frequency = 1.0;
+    float max_value = 0;
+    
+    // Calculate fractal Perlin noise
+    for (int i = 0; i < complexity; i++) {
+        noise_value += amplitude * noise(result * frequency + seed + i*100);
+        max_value += amplitude;
+        amplitude *= 0.5;
+        frequency *= 2.0;
+    }
+    
+    // Normalize
+    noise_value /= max_value;
+    
+    // Create flow direction based on noise gradient
+    vector gradient = set(
+        noise(result + set(0.01, 0, 0) + seed) - noise(result - set(0.01, 0, 0) + seed),
+        noise(result + set(0, 0.01, 0) + seed) - noise(result - set(0, 0.01, 0) + seed),
+        0
+    );
+    
+    // Apply flow field
+    result += normalize(gradient) * noise_value * 0.2;
+    
+    return result;
+}
+
+vector applyReactionDiffusionAlgorithm(vector pos; int complexity; float seed) {
+    // Apply a reaction-diffusion inspired algorithm
+    vector result = pos;
+    
+    // Simple approximation of reaction-diffusion effect
+    float u = noise(pos * 2 + seed);
+    float v = noise(pos * 2 + seed + 100);
+    
+    // Reaction-diffusion parameters
+    float du = 0.2;
+    float dv = 0.1;
+    float f = 0.055 + 0.01 * complexity;
+    float k = 0.062 + 0.01 * complexity;
+    
+    // Calculate reaction-diffusion
+    float laplacian_u = noise(pos * 4 + seed) - u;
+    float laplacian_v = noise(pos * 4 + seed + 100) - v;
+    
+    float reaction = u * v * v;
+    u += (du * laplacian_u - reaction + f * (1-u)) * 0.1;
+    v += (dv * laplacian_v + reaction - (f+k) * v) * 0.1;
+    
+    // Apply effect to position
+    result += set(u-v, v-u, 0) * 0.1;
+    
+    return result;
+}
+
+// Color calculation functions
+
+vector calculateNebulaColors(vector pos; float seed) {
+    // Create a cosmic nebula-inspired color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Core colors for nebula
+    vector color1 = {0.5, 0.0, 0.8}; // Purple
+    vector color2 = {0.0, 0.2, 0.7}; // Deep blue
+    vector color3 = {0.8, 0.2, 0.7}; // Pink
+    
+    // Mix colors based on noise
+    vector color;
+    if (value < 0.33) {
+        color = mix(color1, color2, value * 3);
+    } else if (value < 0.66) {
+        color = mix(color2, color3, (value - 0.33) * 3);
+    } else {
+        color = mix(color3, color1, (value - 0.66) * 3);
+    }
+    
+    // Add starfield highlights
+    if (noise(pos * 20 + seed) > 0.97) {
+        color = {1, 1, 1}; // White stars
+    }
+    
+    return color;
+}
+
+vector calculateSunsetColors(vector pos; float seed) {
+    // Create a sunset-inspired color scheme
+    float height = (pos.y + 1) * 0.5; // Normalize y to 0-1
+    
+    // Sunset gradient
+    vector sky = {0.0, 0.1, 0.3}; // Deep blue
+    vector horizon = {0.8, 0.3, 0.0}; // Orange
+    vector sun = {1.0, 0.8, 0.0}; // Yellow
+    
+    // Create gradient from bottom to top
+    vector color;
+    if (height < 0.4) {
+        color = mix(horizon, sun, height / 0.4);
+    } else {
+        color = mix(sun, sky, (height - 0.4) / 0.6);
+    }
+    
+    // Add clouds
+    float cloud = smoothstep(0.4, 0.6, noise(pos * 3 + seed));
+    color = mix(color, vector(1,1,1), cloud * 0.5);
+    
+    return color;
+}
+
+vector calculateNeonColors(vector pos; float seed) {
+    // Create a neon-inspired color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Vibrant neon colors
+    vector color1 = {0.0, 1.0, 0.8}; // Cyan
+    vector color2 = {1.0, 0.0, 0.8}; // Magenta
+    vector color3 = {1.0, 0.8, 0.0}; // Yellow
+    
+    // Mix colors based on noise
+    vector color;
+    if (value < 0.33) {
+        color = mix(color1, color2, value * 3);
+    } else if (value < 0.66) {
+        color = mix(color2, color3, (value - 0.33) * 3);
+    } else {
+        color = mix(color3, color1, (value - 0.66) * 3);
+    }
+    
+    // Add glow effect
+    color += pow(color, {3,3,3}) * 0.5;
+    
+    return color;
+}
+
+vector calculateArcticColors(vector pos; float seed) {
+    // Create an arctic-inspired color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Cool arctic colors
+    vector color1 = {0.8, 0.9, 1.0}; // Ice white
+    vector color2 = {0.4, 0.6, 0.8}; // Light blue
+    vector color3 = {0.1, 0.2, 0.5}; // Deep blue
+    
+    // Mix colors based on noise
+    vector color;
+    if (value < 0.4) {
+        color = mix(color1, color2, value * 2.5);
+    } else {
+        color = mix(color2, color3, (value - 0.4) * 1.67);
+    }
+    
+    // Add ice crystal highlights
+    if (noise(pos * 10 + seed) > 0.92) {
+        color = {1, 1, 1}; // White highlight
+    }
+    
+    return color;
+}
+
+vector calculateVolcanicColors(vector pos; float seed) {
+    // Create a volcanic-inspired color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Hot volcanic colors
+    vector color1 = {0.1, 0.0, 0.0}; // Deep red/black
+    vector color2 = {0.7, 0.2, 0.0}; // Burnt orange
+    vector color3 = {1.0, 0.7, 0.0}; // Lava yellow
+    
+    // Mix colors based on noise
+    vector color;
+    if (value < 0.4) {
+        color = mix(color1, color2, value * 2.5);
+    } else {
+        color = mix(color2, color3, (value - 0.4) * 1.67);
+    }
+    
+    // Add lava highlights
+    if (noise(pos * 8 + seed) > 0.85) {
+        color = {1, 0.7, 0}; // Bright lava
+    }
+    
+    return color;
+}
+
+vector calculateForestColors(vector pos; float seed) {
+    // Create a forest-inspired color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Forest colors
+    vector color1 = {0.0, 0.2, 0.0}; // Dark green
+    vector color2 = {0.2, 0.5, 0.1}; // Medium green
+    vector color3 = {0.5, 0.7, 0.2}; // Light green
+    vector color4 = {0.4, 0.3, 0.1}; // Brown
+    
+    // Mix colors based on noise
+    vector color;
+    if (value < 0.3) {
+        color = mix(color1, color2, value * 3.33);
+    } else if (value < 0.6) {
+        color = mix(color2, color3, (value - 0.3) * 3.33);
+    } else if (value < 0.8) {
+        color = color3;
+    } else {
+        color = color4; // Brown patches
+    }
+    
+    return color;
+}
+
+vector calculateOceanColors(vector pos; float seed) {
+    // Create an ocean-inspired color scheme
+    float depth = noise(pos * 2 + seed);
+    
+    // Ocean depth colors
+    vector deep = {0.0, 0.0, 0.3}; // Deep ocean
+    vector mid = {0.0, 0.3, 0.6}; // Mid-depth
+    vector shallow = {0.0, 0.5, 0.8}; // Shallow water
+    vector foam = {0.8, 0.9, 1.0}; // White foam
+    
+    // Mix colors based on depth
+    vector color;
+    if (depth < 0.3) {
+        color = deep;
+    } else if (depth < 0.6) {
+        color = mix(deep, mid, (depth - 0.3) * 3.33);
+    } else if (depth < 0.9) {
+        color = mix(mid, shallow, (depth - 0.6) * 3.33);
+    } else {
+        color = mix(shallow, foam, (depth - 0.9) * 10);
+    }
+    
+    // Add wave patterns
+    float wave = sin(pos.x * 10 + pos.y * 8 + seed) * 0.5 + 0.5;
+    color = mix(color, foam, wave * 0.2);
+    
+    return color;
+}
+
+vector calculateMonochromeColors(vector pos; float seed) {
+    // Create a monochrome color scheme
+    float value = noise(pos * 2 + seed);
+    
+    // Simple black to white gradient
+    vector color = {value, value, value};
+    
+    // Add contrast
+    color = pow(color, {1.5, 1.5, 1.5});
+    
+    return color;
+} 

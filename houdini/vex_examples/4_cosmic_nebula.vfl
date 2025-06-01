@@ -1,0 +1,100 @@
+// Cosmic Nebula Generator
+// Node setup:
+// 1. Volume SOP for the base volume
+// 2. Volume Wrangle (this code) for nebula generation
+// 3. Volume Visualization SOP for rendering
+// 4. Additional Volume Wrangles for detail and color
+
+// Parameters to expose in UI
+// float seed = ch("seed");                   // Global seed
+// float density_scale = chf("density");      // Overall density
+// float detail = chf("detail");             // Detail level
+// float brightness = chf("brightness");      // Overall brightness
+// vector nebula_center = chv("center");     // Center of the nebula
+// vector primary_color = chv("color1");     // Primary nebula color
+// vector secondary_color = chv("color2");   // Secondary nebula color
+// vector accent_color = chv("color3");      // Accent color for details
+
+// Get voxel position
+vector pos = @P;
+float seed = ch("seed");
+
+// Create base nebula shape using multiple noise layers
+float density = 0;
+
+// Large scale structure
+density += noise(pos * 0.15 + seed);
+
+// Medium scale details
+density += noise(pos * 0.3 + seed + 123.4) * 0.5;
+
+// Fine details
+density += noise(pos * 0.6 + seed + 456.7) * 0.25;
+
+// Create spiral arms
+vector center = chv("center");
+vector relative_pos = pos - center;
+float angle = atan2(relative_pos.y, relative_pos.x);
+float radius = length(relative_pos);
+
+// Spiral function
+float spiral = sin(angle * 2 + radius * 0.5) * 0.5 + 0.5;
+density *= spiral;
+
+// Add turbulence for more natural look
+vector turb = turbulence(pos * chf("detail"), 
+                        chi("turb_octaves"),
+                        chf("turb_roughness"),
+                        chf("turb_attenuation"));
+density += length(turb) * 0.3;
+
+// Create void areas
+float void_mask = noise(pos * 0.2 + seed + 789.0);
+if(void_mask < 0.3) {
+    density *= smoothstep(0.0, 0.3, void_mask);
+}
+
+// Apply overall density scale
+density *= chf("density_scale");
+
+// Generate color fields
+vector color = {0,0,0};
+
+// Primary color field
+float primary_mask = noise(pos * 0.25 + seed);
+color += chv("color1") * primary_mask;
+
+// Secondary color field
+float secondary_mask = noise(pos * 0.35 + seed + 135.7);
+color += chv("color2") * secondary_mask;
+
+// Accent color for bright spots
+float accent_mask = noise(pos * 0.8 + seed + 246.8);
+if(accent_mask > 0.7) {
+    color += chv("color3") * smoothstep(0.7, 1.0, accent_mask);
+}
+
+// Create bright core
+float dist_from_center = length(pos - center);
+float core_glow = exp(-dist_from_center * 0.5);
+color += chv("core_color") * core_glow;
+
+// Apply brightness
+color *= chf("brightness");
+
+// Store final values
+f@density = density;
+v@Cd = color;
+
+// Optional: Add dust particles
+if(ch("enable_dust") > 0) {
+    float dust = noise(pos * chf("dust_scale") + seed + 357.9);
+    if(dust > 0.8) {
+        f@density += dust * chf("dust_amount");
+        v@Cd += vec(1,1,1) * dust * chf("dust_brightness");
+    }
+}
+
+// Store additional attributes for rendering
+f@temperature = length(color);  // For emission
+f@scattering = chf("scattering_amount");  // For light scattering 

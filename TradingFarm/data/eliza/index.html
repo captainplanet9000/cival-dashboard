@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ElizaOS Trading Farm - Protocols Dashboard</title>
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <!-- ApexCharts -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css">
+    <!-- Google Fonts - Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="modern_dashboard.css">
+    <style>
+        /* All styles moved to modern_dashboard.css */
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <div class="sidebar-brand">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                    <path d="M2 17l10 5 10-5"></path>
+                    <path d="M2 12l10 5 10-5"></path>
+                </svg>
+                <span>The Farm</span>
+            </div>
+            <ul class="nav-sidebar">
+                <li class="nav-item">
+                    <a href="#dashboard" class="nav-link active">
+                        <i class="bi bi-grid-1x2-fill"></i>
+                        <span>Main Dashboard</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#agents-section" class="nav-link">
+                        <i class="bi bi-cpu"></i>
+                        <span>AI Chat UI</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-file-text"></i>
+                        <span>AI Text Generator</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-image"></i>
+                        <span>AI Image Generator</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-mic"></i>
+                        <span>AI Text to Speech</span>
+                    </a>
+                </li>
+                <li class="nav-header">Management</li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-people"></i>
+                        <span>Users List</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-gear"></i>
+                        <span>Profile Settings</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-credit-card"></i>
+                        <span>Subscription</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-clock-history"></i>
+                        <span>History</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-shield-lock"></i>
+                        <span>Authentication</span>
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Top Header Bar -->
+            <div class="main-header">
+                <h2 class="header-title">Main Dashboard</h2>
+                <div class="header-actions">
+                    <div class="eliza-status-indicator">
+                        <span id="eliza-connection-status" class="badge badge-success">
+                            <i class="bi bi-cpu"></i> ElizaOS Connected
+                        </span>
+                    </div>
+                    <button class="btn btn-outline btn-icon">
+                        <i class="bi bi-arrow-repeat"></i>
+                    </button>
+                    <button class="btn btn-outline btn-icon">
+                        <i class="bi bi-gear"></i>
+                    </button>
+                    <div class="user-profile">
+                        <span>AP</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="section-container">
+                <!-- Usage Chart -->
+                <div class="mb-6">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-lg font-semibold">Credits Usage Last Year</h3>
+                        <h2 class="text-xl font-bold">149,758</h2>
+                    </div>
+                    <div class="chart-container" id="creditsChart"></div>
+                </div>
+
+                <!-- User Table -->
+                <div class="card">
+                    <div class="card-body p-0">
+                        <table class="data-table w-full">
+                            <thead>
+                                <tr>
+                                    <th width="30px">
+                                        <input type="checkbox" class="checkbox" />
+                                    </th>
+                                    <th>EMAIL ADDRESS</th>
+                                    <th>PROVIDER</th>
+                                    <th>CREATED</th>
+                                    <th>LAST SIGN IN</th>
+                                    <th>USER UID</th>
+                                    <th width="20px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox" /></td>
+                                    <td>contact@thefarm.com</td>
+                                    <td>Google</td>
+                                    <td>06 Nov, 2023 11:33</td>
+                                    <td>06 Nov, 2023 11:33</td>
+                                    <td class="text-xs">f3f121c419-ca32-486fc-92df...</td>
+                                    <td><button class="btn-icon"><i class="bi bi-three-dots-vertical"></i></button></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox" /></td>
+                                    <td>thomas@gmail.com</td>
+                                    <td>Google</td>
+                                    <td>06 Nov, 2023 11:29</td>
+                                    <td>06 Nov, 2023 11:29</td>
+                                    <td class="text-xs">f3f121c419-ca32-486fc-92df...</td>
+                                    <td><button class="btn-icon"><i class="bi bi-three-dots-vertical"></i></button></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox" /></td>
+                                    <td>mark.wilson@hotmail.com</td>
+                                    <td>Email</td>
+                                    <td>06 Nov, 2023 11:21</td>
+                                    <td>06 Nov, 2023 11:21</td>
+                                    <td class="text-xs">f3f121c419-ca32-486fc-92df...</td>
+                                    <td><button class="btn-icon"><i class="bi bi-three-dots-vertical"></i></button></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox" /></td>
+                                    <td>mark.wilson@hotmail.com</td>
+                                    <td>Email</td>
+                                    <td>06 Nov, 2023 11:21</td>
+                                    <td>06 Nov, 2023 11:21</td>
+                                    <td class="text-xs">f3f121c419-ca32-486fc-92df...</td>
+                                    <td><button class="btn-icon"><i class="bi bi-three-dots-vertical"></i></button></td>
+                                </tr>
+                                <tr>
+                                    <td><input type="checkbox" class="checkbox" /></td>
+                                    <td>example@gmail.com</td>
+                                    <td>Google</td>
+                                    <td>06 Nov, 2023 11:18</td>
+                                    <td>06 Nov, 2023 11:18</td>
+                                    <td class="text-xs">f3f121c419-ca32-486fc-92df...</td>
+                                    <td><button class="btn-icon"><i class="bi bi-three-dots-vertical"></i></button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="flex justify-between p-4 border-t">
+                            <div>0 of 5 row(s) selected.</div>
+                            <div class="flex gap-2">
+                                <button class="btn btn-outline">Previous</button>
+                                <button class="btn btn-outline">Next</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integration Cards -->
+                <div class="grid grid-cols-7 gap-4 mt-6">
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20 17l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                        </div>
+                        <span class="font-medium">NextJS 14</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 3l9 6-9 6-9-6 9-6z"></path>
+                                <path d="M12 21l-9-6 9-6 9 6-9 6z"></path>
+                                <path d="M12 3v6"></path>
+                                <path d="M12 15v6"></path>
+                            </svg>
+                        </div>
+                        <span class="font-medium">shadcn/ui</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center bg-[#38bdf8] rounded-md">
+                            <svg viewBox="0 0 24 24" fill="white" stroke="none">
+                                <path d="M20 4v12H8V4h12m0-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 9.67l1.69 2.26 2.48-3.1L19 15H9zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/>
+                            </svg>
+                        </div>
+                        <span class="font-medium">Tailwind CSS</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center bg-[#3ecf8e] rounded-md">
+                            <svg viewBox="0 0 24 24" fill="white" stroke="none">
+                                <path d="M12.001 4.8c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624C13.666 10.618 15.027 12 18.001 12c3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C16.337 6.182 14.976 4.8 12.001 4.8zm-6 7.2c-3.2 0-5.2 1.6-6 4.8 1.2-1.6 2.6-2.2 4.2-1.8.913.228 1.565.89 2.288 1.624 1.177 1.194 2.538 2.576 5.512 2.576 3.2 0 5.2-1.6 6-4.8-1.2 1.6-2.6 2.2-4.2 1.8-.913-.228-1.565-.89-2.288-1.624C10.337 13.382 8.976 12 6.001 12z"/>
+                            </svg>
+                        </div>
+                        <span class="font-medium">Supabase</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center bg-[#3ecf8e] rounded-md">
+                            <svg viewBox="0 0 24 24" fill="white" stroke="none">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                            </svg>
+                        </div>
+                        <span class="font-medium">AI Integration</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center bg-[#ff9800] rounded-md">
+                            <svg viewBox="0 0 24 24" fill="white" stroke="none">
+                                <path d="M20 17l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+                            </svg>
+                        </div>
+                        <span class="font-medium">User Auth</span>
+                    </div>
+                    
+                    <div class="card p-6 flex flex-col items-center gap-2">
+                        <div class="w-16 h-16 flex items-center justify-center bg-gradient-to-br from-purple-500 to-pink-500 rounded-md">
+                            <svg viewBox="0 0 24 24" fill="white" stroke="none">
+                                <path d="M20 4v14c0 1.1.9 2 2 2h-4v-2H4V4h16z"/>
+                            </svg>
+                        </div>
+                        <span class="font-medium">Figma</span>
+                    </div>
+                </div>
+                
+                <!-- ElizaOS Integration Status -->
+                <div class="card p-4 mt-6">
+                    <div class="card-header">
+                        <h3 class="card-title">ElizaOS Integration Status</h3>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#elizaIntegrationModal">
+                            <i class="bi bi-gear"></i> Configure
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="icon-box bg-success">
+                                <i class="bi bi-cpu-fill text-white"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold mb-1">ElizaOS Agent Framework</h4>
+                                <p class="text-sm text-muted-foreground">Connected to ElizaOS API for AI-powered trading</p>
+                            </div>
+                        </div>
+                        
+                        <div class="grid grid-cols-3 gap-4">
+                            <div class="status-card">
+                                <div class="value">5</div>
+                                <div class="label">Active Agents</div>
+                            </div>
+                            <div class="status-card">
+                                <div class="value">12</div>
+                                <div class="label">Available Models</div>
+                            </div>
+                            <div class="status-card">
+                                <div class="value">95%</div>
+                                <div class="label">System Health</div>
+                                <div class="change positive">
+                                    <i class="bi bi-arrow-up"></i> 3% from last week
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ElizaOS Agent Management Section -->
+            <div id="agents-section" class="section-container">
+                <h5 class="section-title mb-3">
+                    <i class="bi bi-cpu me-2"></i>ElizaOS Agent Management
+                </h5>
+                
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                                <h6 class="m-0 font-weight-bold">Active AI Agents</h6>
+                                <div>
+                                    <button class="btn btn-sm btn-primary me-2" data-bs-toggle="modal" data-bs-target="#newAgentModal">
+                                        <i class="bi bi-plus-circle me-1"></i>Create Agent
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#elizaIntegrationModal">
+                                        <i class="bi bi-gear me-1"></i>Configure ElizaOS
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <ul class="nav nav-tabs mb-3" id="agentsTabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="active-agents-tab" data-bs-toggle="tab" data-bs-target="#active-agents-tab-pane" type="button" role="tab">
+                                            Active Agents
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="available-agents-tab" data-bs-toggle="tab" data-bs-target="#available-agents-tab-pane" type="button" role="tab">
+                                            Available Templates
+                                        </button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="agent-activity-tab" data-bs-toggle="tab" data-bs-target="#agent-activity-tab-pane" type="button" role="tab">
+                                            Activity Log
+                                        </button>
+                                    </li>
+                                </ul>
+                                
+                                <div class="tab-content" id="agentsTabsContent">
+                                    <!-- Active Agents Tab -->
+                                    <div class="tab-pane fade show active" id="active-agents-tab-pane" role="tabpanel" aria-labelledby="active-agents-tab" tabindex="0">
+                                        <div class="row" id="agent-container">
+                                            <!-- Example Agent Cards -->
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Market Analyst</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-ma-001</small><br>
+                                                            Last Action: Analyzing ICP/USDC pair<br>
+                                                            Performance: +2.3% (24h)
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 85%;" aria-valuenow="85" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-ma-001">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-ma-001">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Execution Agent</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-ex-002</small><br>
+                                                            Last Action: Placed ICP/USDC order<br>
+                                                            Performance: +1.7% (24h)
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 75%;" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-ex-002">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-ex-002">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100 border-left-success">
+                                                    <div class="card-body">
+                                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                                            <h5 class="card-title mb-0">Risk Manager</h5>
+                                                            <span class="badge bg-success">Active</span>
+                                                        </div>
+                                                        <p class="card-text">
+                                                            <small class="text-muted">ID: agent-rm-003</small><br>
+                                                            Last Action: Updated risk parameters<br>
+                                                            Performance: N/A
+                                                        </p>
+                                                        <div class="progress mb-2" style="height: 5px;">
+                                                            <div class="progress-bar bg-success" role="progressbar" style="width: 90%;" aria-valuenow="90" aria-valuemin="0" aria-valuemax="100"></div>
+                                                        </div>
+                                                        <div class="d-flex justify-content-between mt-3">
+                                                            <button class="btn btn-sm btn-outline-primary view-agent-btn" data-agent-id="agent-rm-003">
+                                                                <i class="bi bi-eye me-1"></i>View
+                                                            </button>
+                                                            <button class="btn btn-sm btn-outline-danger stop-agent-btn" data-agent-id="agent-rm-003">
+                                                                <i class="bi bi-stop-circle me-1"></i>Stop
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Available Agent Templates Tab -->
+                                    <div class="tab-pane fade" id="available-agents-tab-pane" role="tabpanel" aria-labelledby="available-agents-tab" tabindex="0">
+                                        <div class="row">
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Market Analyst</h5>
+                                                        <div class="card-text">
+                                                            <p>Analyzes market trends and patterns to identify potential trading opportunities.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Technical analysis capability</li>
+                                                                <li>Pattern recognition</li>
+                                                                <li>Sentiment analysis</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="market-analyst">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Execution Agent</h5>
+                                                        <div class="card-text">
+                                                            <p>Executes trades based on signals from other agents or predetermined strategies.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Multi-protocol support</li>
+                                                                <li>Smart order routing</li>
+                                                                <li>Transaction optimization</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="execution-agent">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Risk Manager</h5>
+                                                        <div class="card-text">
+                                                            <p>Monitors and manages trade risk according to predefined parameters.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Risk assessment</li>
+                                                                <li>Position sizing</li>
+                                                                <li>Stop-loss management</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="risk-manager">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6 col-xl-4 mb-3">
+                                                <div class="card h-100">
+                                                    <div class="card-body">
+                                                        <h5 class="card-title">Controller Agent</h5>
+                                                        <div class="card-text">
+                                                            <p>Coordinates the activities of all other agents in the system.</p>
+                                                            <ul class="small text-muted mb-3">
+                                                                <li>Multi-agent orchestration</li>
+                                                                <li>Decision synthesis</li>
+                                                                <li>Conflict resolution</li>
+                                                            </ul>
+                                                        </div>
+                                                    </div>
+                                                    <div class="card-footer bg-transparent border-0">
+                                                        <button class="btn btn-sm btn-outline-primary w-100 deploy-agent-btn" data-agent-type="controller-agent">
+                                                            <i class="bi bi-play-fill me-1"></i>Deploy Agent
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Agent Activity Log Tab -->
+                                    <div class="tab-pane fade" id="agent-activity-tab-pane" role="tabpanel" aria-labelledby="agent-activity-tab" tabindex="0">
+                                        <div class="table-responsive">
+                                            <table class="table table-hover">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Timestamp</th>
+                                                        <th>Agent</th>
+                                                        <th>Action</th>
+                                                        <th>Details</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody id="agent-activity-log">
+                                                    <tr>
+                                                        <td>2023-10-15 14:32:45</td>
+                                                        <td>Market Analyst</td>
+                                                        <td>Analysis</td>
+                                                        <td>Completed market analysis for ICP/USDC</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 14:35:12</td>
+                                                        <td>Execution Agent</td>
+                                                        <td>Trade</td>
+                                                        <td>Executed buy order: 2.5 ICP at $9.87</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 14:42:38</td>
+                                                        <td>Risk Manager</td>
+                                                        <td>Update</td>
+                                                        <td>Updated risk parameters for volatile market</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 15:01:22</td>
+                                                        <td>Strategist</td>
+                                                        <td>Development</td>
+                                                        <td>Initiated new strategy development</td>
+                                                        <td><span class="badge bg-warning text-dark">In Progress</span></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td>2023-10-15 15:15:47</td>
+                                                        <td>Controller Agent</td>
+                                                        <td>Communication</td>
+                                                        <td>Coordinated signals between analysis and execution</td>
+                                                        <td><span class="badge bg-success">Success</span></td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div class="d-flex justify-content-between align-items-center mt-3">
+                                            <button class="btn btn-sm btn-outline-secondary" id="refresh-activity-log">
+                                                <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                                            </button>
+                                            <div class="btn-group" role="group">
+                                                <button type="button" class="btn btn-sm btn-outline-primary">Previous</button>
+                                                <button type="button" class="btn btn-sm btn-outline-primary">Next</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Performance Metrics Section -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card shadow">
+                            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                                <h6 class="m-0 font-weight-bold">Agent Performance Metrics</h6>
+                                <div class="dropdown no-arrow">
+                                    <a class="dropdown-toggle" href="#" role="button" id="agentMetricsDropdown" data-bs-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                        <i class="bi bi-three-dots-vertical"></i>
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-end" aria-labelledby="agentMetricsDropdown">
+                                        <a class="dropdown-item" href="#">Last 24 hours</a>
+                                        <a class="dropdown-item" href="#">Last 7 days</a>
+                                        <a class="dropdown-item" href="#">Last 30 days</a>
+                                        <div class="dropdown-divider"></div>
+                                        <a class="dropdown-item" href="#">Export Data</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <div id="agent-performance-chart" style="height: 300px;"></div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="mb-3">
+                                            <h6 class="font-weight-bold">Overall Performance</h6>
+                                            <div class="progress mb-2" style="height: 20px;">
+                                                <div class="progress-bar bg-success" role="progressbar" style="width: 75%;" aria-valuenow="75" aria-valuemin="0" aria-valuemax="100">75%</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Trading Accuracy</span>
+                                            <span>82%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-info" role="progressbar" style="width: 82%;" aria-valuenow="82" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Decision Speed</span>
+                                            <span>91%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-primary" role="progressbar" style="width: 91%;" aria-valuenow="91" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                        
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <span>Risk Management</span>
+                                            <span>68%</span>
+                                        </div>
+                                        <div class="progress mb-3" style="height: 10px;">
+                                            <div class="progress-bar bg-warning" role="progressbar" style="width: 68%;" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Placeholder for other content sections. The original content will be reorganized into these sections in subsequent edits -->
+            <div id="sonic-section" class="section-container">
+                <!-- Sonic Protocol content will go here -->
+            </div>
+
+            <div id="vertex-section" class="section-container">
+                <!-- Vertex Protocol content will go here -->
+            </div>
+
+            <div id="strategies-section" class="section-container">
+                <!-- Strategies content will go here -->
+            </div>
+
+            <div id="ai-integration-section" class="section-container">
+                <!-- ElizaOS AI Integration features will go here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container for Notifications -->
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 5;"></div>
+
+    <!-- Modals -->
+    <!-- Create New Agent Modal -->
+    <div class="modal fade" id="newAgentModal" tabindex="-1" aria-labelledby="newAgentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newAgentModalLabel">Create New ElizaOS Agent</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-agent-form">
+                        <div class="mb-3">
+                            <label for="agent-name" class="form-label">Agent Name</label>
+                            <input type="text" class="form-control" id="agent-name" placeholder="Enter agent name">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-type" class="form-label">Agent Type</label>
+                            <select class="form-select" id="agent-type">
+                                <option selected disabled>Select agent type</option>
+                                <option value="market-analyst">Market Analyst</option>
+                                <option value="execution-agent">Execution Agent</option>
+                                <option value="risk-manager">Risk Manager</option>
+                                <option value="controller-agent">Controller Agent</option>
+                                <option value="custom">Custom Agent</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="agent-description" rows="2" placeholder="Describe the agent's purpose"></textarea>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Agent Capabilities</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-market-analysis">
+                                        <label class="form-check-label" for="capability-market-analysis">Market Analysis</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-trade-execution">
+                                        <label class="form-check-label" for="capability-trade-execution">Trade Execution</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-risk-management">
+                                        <label class="form-check-label" for="capability-risk-management">Risk Management</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-portfolio-rebalancing">
+                                        <label class="form-check-label" for="capability-portfolio-rebalancing">Portfolio Rebalancing</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-sentiment-analysis">
+                                        <label class="form-check-label" for="capability-sentiment-analysis">Sentiment Analysis</label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="capability-multi-agent-collab">
+                                        <label class="form-check-label" for="capability-multi-agent-collab">Multi-Agent Collaboration</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="agent-model" class="form-label">AI Model</label>
+                                <select class="form-select" id="agent-model">
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <option value="claude-3-opus">Claude 3 Opus</option>
+                                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                                    <option value="llama-3-70b">Llama 3 70B</option>
+                                    <option value="gemini-pro">Gemini Pro</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="agent-frequency" class="form-label">Update Frequency</label>
+                                <select class="form-select" id="agent-frequency">
+                                    <option value="realtime">Real-time</option>
+                                    <option value="1min">Every minute</option>
+                                    <option value="5min">Every 5 minutes</option>
+                                    <option value="15min">Every 15 minutes</option>
+                                    <option value="1h">Hourly</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div id="agent-custom-params" class="d-none">
+                            <div class="mb-3">
+                                <label for="agent-custom-config" class="form-label">Custom Configuration</label>
+                                <textarea class="form-control" id="agent-custom-config" rows="4" placeholder='{"parameters": {"key": "value"}}'></textarea>
+                                <small class="form-text text-muted">Enter custom configuration in JSON format</small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Protocol Access</label>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="protocol-sonic" checked>
+                                        <label class="form-check-label" for="protocol-sonic">Sonic</label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" id="protocol-vertex" checked>
+                                        <label class="form-check-label" for="protocol-vertex">Vertex</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="agent-memory-allocation" class="form-label">Memory Allocation (MB)</label>
+                            <input type="range" class="form-range" id="agent-memory-allocation" min="128" max="2048" step="128" value="512">
+                            <div class="d-flex justify-content-between">
+                                <small>128 MB</small>
+                                <small id="memory-value">512 MB</small>
+                                <small>2048 MB</small>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="create-agent-btn">Create Agent</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sonic Swap Modal -->
+    <div class="modal fade" id="sonicSwapModal" tabindex="-1" aria-labelledby="sonicSwapModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sonicSwapModalLabel">Swap Tokens on Sonic Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sonic-swap-form">
+                        <div class="mb-3">
+                            <label for="swap-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="swap-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-from-token" class="form-label">From Token</label>
+                            <select class="form-select" id="swap-from-token" required>
+                                <!-- Tokens will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-to-token" class="form-label">To Token</label>
+                            <select class="form-select" id="swap-to-token" required>
+                                <!-- Tokens will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="swap-amount" class="form-label">Amount</label>
+                            <input type="number" class="form-control" id="swap-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated Receive</label>
+                                <span id="swap-estimate">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Price Impact</label>
+                                <span id="swap-price-impact">0.00%</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="execute-swap-btn">Swap Tokens</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sonic Liquidity Modal -->
+    <div class="modal fade" id="sonicLiquidityModal" tabindex="-1" aria-labelledby="sonicLiquidityModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sonicLiquidityModalLabel">Add Liquidity on Sonic Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="sonic-liquidity-form">
+                        <div class="mb-3">
+                            <label for="liquidity-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="liquidity-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-pool" class="form-label">Select Pool</label>
+                            <select class="form-select" id="liquidity-pool" required>
+                                <!-- Pools will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-token-a-amount" class="form-label">Token A Amount</label>
+                            <input type="number" class="form-control" id="liquidity-token-a-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="liquidity-token-b-amount" class="form-label">Token B Amount</label>
+                            <input type="number" class="form-control" id="liquidity-token-b-amount" step="0.000001" min="0" required>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated LP Tokens</label>
+                                <span id="liquidity-estimate">0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Pool Share</label>
+                                <span id="liquidity-pool-share">0.00%</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="add-liquidity-btn">Add Liquidity</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vertex Order Modal -->
+    <div class="modal fade" id="vertexOrderModal" tabindex="-1" aria-labelledby="vertexOrderModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="vertexOrderModalLabel">Place Order on Vertex Protocol</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="vertex-order-form">
+                        <div class="mb-3">
+                            <label for="order-agent" class="form-label">Select Agent</label>
+                            <select class="form-select" id="order-agent" required>
+                                <!-- Agents will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-market" class="form-label">Select Market</label>
+                            <select class="form-select" id="order-market" required>
+                                <!-- Markets will be populated dynamically -->
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-side" class="form-label">Side</label>
+                            <select class="form-select" id="order-side" required>
+                                <option value="BUY">BUY</option>
+                                <option value="SELL">SELL</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-type" class="form-label">Order Type</label>
+                            <select class="form-select" id="order-type" required>
+                                <option value="MARKET">MARKET</option>
+                                <option value="LIMIT">LIMIT</option>
+                                <option value="STOP">STOP</option>
+                                <option value="STOP_LIMIT">STOP LIMIT</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="order-size" class="form-label">Size</label>
+                            <input type="number" class="form-control" id="order-size" step="0.001" min="0" required>
+                        </div>
+                        <div class="mb-3 limit-price-field">
+                            <label for="order-price" class="form-label">Price</label>
+                            <input type="number" class="form-control" id="order-price" step="0.01" min="0">
+                        </div>
+                        <div class="mb-3 stop-price-field d-none">
+                            <label for="order-stop-price" class="form-label">Stop Price</label>
+                            <input type="number" class="form-control" id="order-stop-price" step="0.01" min="0">
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Estimated Value</label>
+                                <span id="order-value-estimate">$0.00</span>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <label class="form-label">Available Balance</label>
+                                <span id="order-available-balance">$0.00</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="execute-order-btn">Place Order</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Strategy Modal -->
+    <div class="modal fade" id="newStrategyModal" tabindex="-1" aria-labelledby="newStrategyModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="newStrategyModalLabel">Create New Trading Strategy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-strategy-form">
+                        <div class="mb-3">
+                            <label for="strategy-name" class="form-label">Strategy Name</label>
+                            <input type="text" class="form-control" id="strategy-name" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="strategy-type" class="form-label">Protocol</label>
+                            <select class="form-select" id="strategy-type" required>
+                                <option value="" selected disabled>Select Protocol</option>
+                                <option value="sonic">Sonic Protocol</option>
+                                <option value="vertex">Vertex Protocol</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="strategy-template" class="form-label">Strategy Template</label>
+                            <select class="form-select" id="strategy-template" disabled>
+                                <option value="" selected disabled>Select Template</option>
+                                <!-- Templates will be populated based on protocol -->
+                            </select>
+                        </div>
+                        <div id="strategy-parameters-container">
+                            <!-- Parameters will be added based on template -->
+                        </div>
+                        <div class="mb-3">
+                            <label for="strategy-description" class="form-label">Description</label>
+                            <textarea class="form-control" id="strategy-description" rows="3"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="create-strategy-btn">Create Strategy</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure Strategy Modal -->
+    <div class="modal fade" id="configureStrategyModal" tabindex="-1" aria-labelledby="configureStrategyModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configureStrategyModalLabel">Configure Strategy</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="configure-strategy-form">
+                        <input type="hidden" id="configure-strategy-id">
+                        <input type="hidden" id="configure-strategy-protocol">
+                        
+                        <div class="mb-3">
+                            <label for="configure-strategy-name" class="form-label">Strategy Name</label>
+                            <input type="text" class="form-control" id="configure-strategy-name" readonly>
+                        </div>
+                        
+                        <div id="configure-strategy-parameters-container">
+                            <!-- Parameters will be added based on strategy -->
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-strategy-agents" class="form-label">Assign to Agents</label>
+                            <select class="form-select" id="configure-strategy-agents" multiple>
+                                <!-- Agents will be populated based on protocol -->
+                            </select>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger me-auto" id="delete-strategy-btn">Delete Strategy</button>
+                    <button type="button" class="btn btn-primary" id="save-strategy-config-btn">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configure Agent Modal -->
+    <div class="modal fade" id="configureAgentModal" tabindex="-1" aria-labelledby="configureAgentModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="configureAgentModalLabel">Configure Agent</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="configure-agent-form">
+                        <input type="hidden" id="configure-agent-id">
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-name" class="form-label">Agent Name</label>
+                            <input type="text" class="form-control" id="configure-agent-name">
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-strategies" class="form-label">Assign Strategies</label>
+                            <select class="form-select" id="configure-agent-strategies" multiple>
+                                <!-- Strategies will be populated based on agent type -->
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-risk" class="form-label">Risk Level (% of portfolio per trade)</label>
+                            <input type="range" class="form-range" id="configure-agent-risk" min="0.1" max="10" step="0.1" value="1">
+                            <div class="d-flex justify-content-between">
+                                <span>0.1%</span>
+                                <span id="risk-value">1.0%</span>
+                                <span>10%</span>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Trading Pairs / Markets</label>
+                            <div id="configure-trading-pairs-container">
+                                <!-- Trading pairs will be added here based on protocol -->
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="configure-agent-testnet" class="form-label">Network</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="" id="configure-agent-testnet">
+                                <label class="form-check-label" for="configure-agent-testnet">
+                                    Use Testnet
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-agent-config-btn">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ElizaOS Integration Modal -->
+    <div class="modal fade" id="elizaIntegrationModal" tabindex="-1" aria-labelledby="elizaIntegrationModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="elizaIntegrationModalLabel">ElizaOS Integration Configuration</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="eliza-config-form">
+                        <div class="mb-4">
+                            <h6 class="mb-3">ElizaOS API Configuration</h6>
+                            <div class="mb-3">
+                                <label for="elizaEndpoint" class="form-label">ElizaOS API Endpoint</label>
+                                <input type="url" class="form-control" id="elizaEndpoint" value="https://api.elizaos.ai/v1" placeholder="https://api.elizaos.ai/v1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="elizaApiKey" class="form-label">API Key</label>
+                                <input type="password" class="form-control" id="elizaApiKey" placeholder="Enter your ElizaOS API key">
+                                <div class="form-text">Your API key will be stored securely in your browser's local storage.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">AI Model Configuration</h6>
+                            <div class="mb-3">
+                                <label for="defaultModel" class="form-label">Default AI Model</label>
+                                <select class="form-select" id="defaultModel">
+                                    <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                                    <option value="claude-3-opus">Claude 3 Opus</option>
+                                    <option value="claude-3-sonnet">Claude 3 Sonnet</option>
+                                    <option value="llama-3-70b">Llama 3 70B</option>
+                                    <option value="gemini-pro">Gemini Pro</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="modelTemperature" class="form-label">Temperature: <span id="tempValue">0.7</span></label>
+                                <input type="range" class="form-range" min="0" max="1" step="0.1" value="0.7" id="modelTemperature">
+                                <div class="form-text">Controls randomness in the agent's decision making. Higher values make the output more random.</div>
+                            </div>
+                            
+                            <div class="form-check mb-3">
+                                <input class="form-check-input" type="checkbox" value="" id="enableMultiAgent" checked>
+                                <label class="form-check-label" for="enableMultiAgent">
+                                    Enable Multi-Agent Collaboration
+                                </label>
+                                <div class="form-text">Allows agents to communicate and collaborate with each other.</div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">Protocol Integration</h6>
+                            <div class="mb-3">
+                                <label for="sonicEndpoint" class="form-label">Sonic Protocol API Endpoint</label>
+                                <input type="url" class="form-control" id="sonicEndpoint" value="https://mainnet-api.sonic.ooo/v1" placeholder="https://mainnet-api.sonic.ooo/v1">
+                            </div>
+                            <div class="mb-3">
+                                <label for="vertexEndpoint" class="form-label">Vertex Protocol API Endpoint</label>
+                                <input type="url" class="form-control" id="vertexEndpoint" value="https://api.vertexprotocol.com/v1" placeholder="https://api.vertexprotocol.com/v1">
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4">
+                            <h6 class="mb-3">Advanced Settings</h6>
+                            <div class="mb-3">
+                                <label for="maxAgentMemory" class="form-label">Maximum Memory per Agent: <span id="memValue">512 MB</span></label>
+                                <input type="range" class="form-range" min="128" max="2048" step="128" value="512" id="maxAgentMemory">
+                            </div>
+                            <div class="mb-3">
+                                <label for="agentLogRetention" class="form-label">Agent Log Retention</label>
+                                <select class="form-select" id="agentLogRetention">
+                                    <option value="7">7 days</option>
+                                    <option value="14">14 days</option>
+                                    <option value="30" selected>30 days</option>
+                                    <option value="90">90 days</option>
+                                </select>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="save-eliza-config">Save Configuration</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Initialize the dashboard
+        document.addEventListener("DOMContentLoaded", function() {
+            // Credit usage chart
+            const creditsChartOptions = {
+                series: [{
+                    name: 'Credits Used',
+                    data: [14250, 18650, 12500, 15780, 21350, 16800, 19400, 22100, 17500, 14980, 18900, 24300]
+                }],
+                chart: {
+                    type: 'bar',
+                    height: 320,
+                    toolbar: {
+                        show: false
+                    },
+                    fontFamily: "'Inter', sans-serif",
+                },
+                colors: ['hsl(var(--primary))'],
+                plotOptions: {
+                    bar: {
+                        borderRadius: 6,
+                        columnWidth: '30%',
+                    }
+                },
+                dataLabels: {
+                    enabled: false
+                },
+                grid: {
+                    borderColor: 'hsl(var(--border))',
+                    strokeDashArray: 4,
+                    xaxis: {
+                        lines: {
+                            show: false
+                        }
+                    },
+                },
+                xaxis: {
+                    categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    axisBorder: {
+                        show: false
+                    },
+                    axisTicks: {
+                        show: false
+                    },
+                    labels: {
+                        style: {
+                            colors: 'hsl(var(--muted-foreground))',
+                            fontSize: '12px',
+                            fontFamily: "'Inter', sans-serif",
+                        },
+                    },
+                },
+                yaxis: {
+                    labels: {
+                        formatter: function(val) {
+                            return val.toLocaleString();
+                        },
+                        style: {
+                            colors: 'hsl(var(--muted-foreground))',
+                            fontSize: '12px',
+                            fontFamily: "'Inter', sans-serif",
+                        },
+                    },
+                },
+                tooltip: {
+                    y: {
+                        formatter: function(val) {
+                            return val.toLocaleString() + ' credits';
+                        }
+                    }
+                },
+            };
+            
+            const creditsChart = new ApexCharts(document.querySelector("#creditsChart"), creditsChartOptions);
+            creditsChart.render();
+            
+            // Initialize theme toggling and other UI interactions
+            initializeUI();
+            
+            // Initialize ElizaOS connections
+            initializeElizaOSConnection();
+        });
+        
+        function initializeUI() {
+            // Toggle the sidebar
+            const sidebarToggleBtn = document.querySelector('.sidebar-toggle');
+            if (sidebarToggleBtn) {
+                sidebarToggleBtn.addEventListener('click', function() {
+                    document.querySelector('.sidebar').classList.toggle('collapsed');
+                    document.querySelector('.main-content').classList.toggle('expanded');
+                });
+            }
+            
+            // Activate the navbar links
+            const navLinks = document.querySelectorAll('.nav-link');
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    navLinks.forEach(l => l.classList.remove('active'));
+                    this.classList.add('active');
+                    
+                    // Update page title
+                    if (this.querySelector('span')) {
+                        document.querySelector('.header-title').innerText = this.querySelector('span').innerText;
+                    }
+                });
+            });
+            
+            // Initialize dark/light mode toggle if present
+            const themeToggle = document.querySelector('.theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    document.body.classList.toggle('dark');
+                    localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+                });
+                
+                // Check for saved theme preference
+                const savedTheme = localStorage.getItem('theme');
+                if (savedTheme === 'dark') {
+                    document.body.classList.add('dark');
+                }
+            }
+            
+            // Initialize dropdown functionality
+            const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
+            dropdownToggles.forEach(toggle => {
+                toggle.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const dropdown = this.nextElementSibling;
+                    if (dropdown) {
+                        dropdown.classList.toggle('show');
+                    }
+                });
+            });
+            
+            // Close dropdowns when clicking outside
+            document.addEventListener('click', function(e) {
+                const dropdowns = document.querySelectorAll('.dropdown-menu.show');
+                dropdowns.forEach(dropdown => {
+                    if (!dropdown.previousElementSibling.contains(e.target)) {
+                        dropdown.classList.remove('show');
+                    }
+                });
+            });
+        }
+        
+        function initializeElizaOSConnection() {
+            // Simulate ElizaOS connection
+            setTimeout(() => {
+                const elizaStatusElement = document.getElementById('eliza-connection-status');
+                if (elizaStatusElement) {
+                    elizaStatusElement.innerHTML = '<i class="bi bi-cpu"></i> ElizaOS Connected';
+                    elizaStatusElement.className = 'badge badge-success';
+                }
+                console.log('ElizaOS connection initialized');
+            }, 1500);
+            
+            // Simulate updating dashboard with data from ElizaOS
+            fetchElizaOSAgents();
+        }
+        
+        function fetchElizaOSAgents() {
+            // This would normally be an API call to ElizaOS
+            console.log('Fetching ElizaOS agent data...');
+            // Display agent data in the dashboard
+            
+            // Sample function to update agent status cards
+            updateAgentStatusCards();
+        }
+        
+        function updateAgentStatusCards() {
+            // This would update the agent cards with live data
+            console.log('Updating agent status cards');
+            
+            // In a real implementation, this would fetch data from the ElizaOS API
+            // and update the UI accordingly
+        }
+        
+        // Original trading farm functionality
+        function createAgentFromTemplate(templateId) {
+            console.log(`Creating agent from template: ${templateId}`);
+            // Implementation of creating an agent from a template
+            alert("Agent creation from template initiated: " + templateId);
+        }
+        
+        function toggleAgentStatus(agentId, status) {
+            console.log(`Toggling agent ${agentId} status to ${status}`);
+            // Implementation of toggling agent status
+            const statusBadge = document.querySelector(`#agent-${agentId}-status`);
+            if (statusBadge) {
+                if (status === 'active') {
+                    statusBadge.innerText = 'Active';
+                    statusBadge.className = 'badge bg-success';
+                } else {
+                    statusBadge.innerText = 'Paused';
+                    statusBadge.className = 'badge bg-warning';
+                }
+            }
+        }
+        
+        function openAgentDetailsModal(agentId) {
+            console.log(`Opening details for agent: ${agentId}`);
+            // Implementation of showing agent details in a modal
+            const modal = new bootstrap.Modal(document.getElementById('agentDetailsModal'));
+            // Here you would populate the modal with agent details
+            modal.show();
+        }
+    </script>
+</body>
+</html>
