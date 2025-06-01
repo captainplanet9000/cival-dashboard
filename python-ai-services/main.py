@@ -39,9 +39,15 @@ from models.monitoring_models import AgentTaskSummary, TaskListResponse, Depende
 # Import services
 from services.agent_task_service import AgentTaskService
 from services.memory_service import MemoryService, MemoryInitializationError
+from services.event_service import EventService, EventServiceError
 
 # Supabase client (will be initialized in lifespan or per-request)
 from supabase import create_client, Client as SupabaseClient
+
+# Models and crew for new endpoint
+from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse
+from agents.crew_setup import trading_analysis_crew
+from models.event_models import CrewLifecycleEvent
 
 # For SSE
 from sse_starlette.sse import EventSourceResponse
@@ -130,6 +136,18 @@ async def lifespan(app: FastAPI):
     for agent_name, agent_instance in services.items():
         if hasattr(agent_instance, 'register_with_a2a'):
             await agent_instance.register_with_a2a()
+
+    # Initialize EventService after redis_cache_client is available
+    app.state.event_service = None # Initialize with None
+    if app.state.redis_cache_client:
+        try:
+            app.state.event_service = EventService(redis_client=app.state.redis_cache_client)
+            logger.info("EventService initialized successfully.")
+        except Exception as e:
+            logger.error(f"Failed to initialize EventService: {e}", exc_info=True)
+            app.state.event_service = None # Ensure it's None if init fails
+    else:
+        logger.warning("Redis client not available, EventService not initialized. SSE endpoint may not function correctly.")
     
     logger.info("✅ All PydanticAI services initialized")
     yield
@@ -285,6 +303,15 @@ async def get_memory_service_for_monitoring() -> MemoryService:
     except Exception as e: # Catch any other unexpected errors during initialization
         logger.error(f"Unexpected error initializing MemoryService for monitoring: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Unexpected error initializing MemoryService.")
+
+# Dependency for EventService
+async def get_event_service(request: Request) -> Optional[EventService]:
+    if not hasattr(request.app.state, 'event_service') or request.app.state.event_service is None:
+        logger.warning("EventService not found in app.state or not initialized.")
+        # Depending on how critical EventService is for an endpoint,
+        # you might raise HTTPException here or let the endpoint handle None.
+        return None
+    return request.app.state.event_service
 
 
 # Enhanced AI Agent Endpoints
@@ -711,41 +738,81 @@ async def websocket_interactive_endpoint(websocket: WebSocket, agent_id: str):
 async def agent_updates_event_generator(request: Request):
     client_host = request.client.host if request.client else "unknown_sse_client"
     logger.info(f"SSE connection established for agent updates from {client_host}")
-    counter = 0
+
+    redis_client = getattr(request.app.state, 'redis_cache_client', None)
+    event_service = getattr(request.app.state, 'event_service', None)
+
+    if not redis_client or not event_service:
+        logger.error(f"SSE stream for {client_host} cannot start: Redis client or EventService not available.")
+        yield {
+            "event": "error",
+            "data": json.dumps({
+                "message": "SSE service not properly configured due to missing Redis/EventService.",
+                "details": "Redis client missing" if not redis_client else "EventService missing"
+            })
+        }
+        return
+
+    pubsub = redis_client.pubsub()
+    event_channel = event_service.default_channel # Or a specific channel name like "agent_events"
+
     try:
+        await pubsub.subscribe(event_channel)
+        logger.info(f"SSE client {client_host} subscribed to Redis channel: {event_channel}")
+
         while True:
-            # Check if client is still connected before attempting to send
             if await request.is_disconnected():
-                logger.info(f"SSE client {client_host} disconnected during event generation loop.")
+                logger.info(f"SSE client {client_host} disconnected.")
                 break
 
-            counter += 1
-            mock_update = {
-                "eventId": str(uuid4()), # Use existing imported uuid4
-                "timestamp": datetime.now(timezone.utc).isoformat(), # Use existing imported datetime, timezone
-                "agentId": f"agent_{counter % 3 + 1}",
-                "status": "processing" if counter % 2 == 0 else "idle",
-                "message": f"Agent {counter % 3 + 1} update event #{counter}",
-                "progress": counter % 100
-            }
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message.get("type") == "message":
+                event_data_json = message["data"]
+                if isinstance(event_data_json, bytes):
+                    event_data_json = event_data_json.decode('utf-8')
 
-            # Yielding a dictionary structure that EventSourceResponse understands
-            yield {
-                "id": str(mock_update["eventId"]),
-                "event": "agent_update", # Custom event name
-                "data": json.dumps(mock_update) # Data must be a string, typically JSON
-            }
-            await asyncio.sleep(2) # Simulate delay between events
+                try:
+                    event_dict = json.loads(event_data_json)
+                    sse_event_id = event_dict.get("event_id", str(uuid4()))
+                    sse_event_type = event_dict.get("event_type", "agent_update")
+                except json.JSONDecodeError:
+                    sse_event_id = str(uuid4())
+                    sse_event_type = "raw_agent_event"
+
+                yield {
+                    "id": sse_event_id,
+                    "event": sse_event_type,
+                    "data": event_data_json
+                }
+                logger.debug(f"SSE: Sent event from channel '{event_channel}' to client {client_host}")
 
     except asyncio.CancelledError:
-        # This occurs if the client disconnects and FastAPI cancels the task
-        logger.info(f"SSE event generator for {client_host} was cancelled (client likely disconnected).")
+        logger.info(f"SSE event generator for {client_host} was cancelled (e.g. server shutdown).")
+    except aioredis.RedisError as e:
+        logger.error(f"SSE: RedisError for client {client_host} on channel '{event_channel}': {e}", exc_info=True)
+        yield {"event": "error", "data": json.dumps({"message": "SSE stream failed due to Redis connection error."})}
     except Exception as e:
-        # Log any other unexpected errors during event generation
         logger.error(f"Error in SSE event generator for {client_host}: {e}", exc_info=True)
+        try:
+            yield {"event": "error", "data": json.dumps({"message": f"An unexpected error occurred in the SSE stream: {str(e)}."})}
+        except Exception:
+            pass
     finally:
-        # Log when the generator stops, whether normally or due to an error/cancellation
-        logger.info(f"SSE event generator for {client_host} stopped.")
+        logger.info(f"SSE event generator for {client_host} stopping. Unsubscribing from {event_channel}.")
+        if pubsub and pubsub.subscribed: # Check if pubsub is not None and still subscribed
+            try:
+                await pubsub.unsubscribe(event_channel)
+                # For redis.asyncio, close() is not typically called on pubsub object directly unless it's a connection pool.
+                # If pubsub is from a connection (e.g. redis_client.pubsub()), closing the main client handles connection cleanup.
+                # However, if pubsub itself manages a connection, it might need closing.
+                # The new redis (v4+) pubsub objects are often auto-cleaned or tied to the client lifetime.
+                # Let's assume direct close is not needed for the pubsub object from redis.pubsub()
+                # but ensure unsubscribe happens.
+                # await pubsub.close() # Re-evaluate if this is needed based on redis client library version/behavior
+                logger.info(f"SSE: Unsubscribed from channel '{event_channel}' for client {client_host}")
+            except Exception as e:
+                logger.error(f"SSE: Error during pubsub unsubscribe for {client_host} on channel '{event_channel}': {e}", exc_info=True)
+
 
 @app.get("/api/agent-updates/sse")
 async def sse_agent_updates(request: Request):
@@ -755,6 +822,136 @@ async def sse_agent_updates(request: Request):
     """
     return EventSourceResponse(agent_updates_event_generator(request))
 
+# --- Crew Execution Endpoints ---
+
+def run_trading_analysis_crew_background(
+    task_id: UUID, # Consistent with CrewRunResponse, changed from uuid.UUID to UUID
+    user_id: str,
+    inputs: Dict[str, Any],
+    task_service: AgentTaskService,
+    event_service: Optional[EventService] # Event service can be None if not initialized
+):
+    logger.info(f"Background task started for trading_analysis_crew. Task ID (Crew Run ID): {task_id}")
+
+    user_id_as_uuid: Optional[UUID] = None
+    try:
+        user_id_as_uuid = UUID(user_id)
+    except ValueError:
+        logger.error(f"Invalid user_id format: '{user_id}'. Cannot convert to UUID for AgentTask. Using a placeholder random UUID.")
+        user_id_as_uuid = uuid4() # Fallback, not ideal for production.
+
+    agent_task = None
+    try:
+        task_name = f"Trading Analysis for {inputs.get('symbol', 'N/A')}"
+        # Create AgentTask to track this crew run
+        agent_task = task_service.create_task(
+            user_id=user_id_as_uuid,
+            task_name=task_name,
+            input_parameters=inputs
+        )
+        # Align the task_id of the agent_task with our crew_run_task_id if they are different.
+        # For now, we assume the task_id passed to this function is the definitive one.
+        # If agent_task.task_id is generated by DB and differs, it's an internal reference.
+        # The external reference is `task_id`.
+        logger.info(f"AgentTask DB ID: {agent_task.task_id} created for Crew Run Task ID: {task_id}")
+
+        task_service.update_task_status(task_id=task_id, status="RUNNING") # Use the main task_id
+
+        if event_service and event_service.redis_client:
+            crew_started_event = CrewLifecycleEvent(
+                source_id=str(task_id),
+                crew_run_id=task_id,
+                status="STARTED",
+                inputs=inputs
+            )
+            # This is a sync function (BackgroundTasks run in a thread pool).
+            # To call async event_service.publish_event, we need to handle the event loop.
+            # A simple way for now, if the underlying publish can handle it or if it's quick.
+            # Proper way: use `asyncio.run_coroutine_threadsafe` with the main loop.
+            try:
+                asyncio.run(event_service.publish_event(crew_started_event))
+                logger.info(f"CREW_STARTED event published for Task ID: {task_id}")
+            except RuntimeError as e:
+                 logger.warning(f"Could not publish CREW_STARTED event via asyncio.run for Task ID {task_id} (RuntimeError: {e}). This is common if an event loop is already running in the thread.")
+                 logger.debug(f"[EventService Direct Log] Event: {crew_started_event.model_dump_json()}")
+
+        logger.info(f"Running trading_analysis_crew with inputs: {inputs} for Task ID: {task_id}")
+        result = trading_analysis_crew.kickoff(inputs=inputs)
+        logger.info(f"Trading analysis crew finished for Task ID: {task_id}. Result: {str(result)[:500]}")
+
+        task_service.update_task_status(task_id=task_id, status="COMPLETED", results={"output": str(result)})
+
+        if event_service and event_service.redis_client:
+            crew_completed_event = CrewLifecycleEvent(
+                source_id=str(task_id),
+                crew_run_id=task_id,
+                status="COMPLETED",
+                result=str(result)
+            )
+            try:
+                asyncio.run(event_service.publish_event(crew_completed_event))
+                logger.info(f"CREW_COMPLETED event published for Task ID: {task_id}")
+            except RuntimeError as e:
+                logger.warning(f"Could not publish CREW_COMPLETED event via asyncio.run for Task ID {task_id} (RuntimeError: {e}).")
+                logger.debug(f"[EventService Direct Log] Event: {crew_completed_event.model_dump_json()}")
+
+    except Exception as e:
+        logger.error(f"Error running trading_analysis_crew in background for Task ID {task_id}: {e}", exc_info=True)
+        if task_id: # Ensure task_id was set (it should be, as it's an arg)
+            task_service.update_task_status(task_id=task_id, status="FAILED", error_message=str(e))
+
+        if event_service and event_service.redis_client:
+            crew_failed_event = CrewLifecycleEvent(
+                source_id=str(task_id) if task_id else "unknown_task",
+                crew_run_id=task_id if task_id else None,
+                status="FAILED",
+                error_message=str(e)
+            )
+            try:
+                asyncio.run(event_service.publish_event(crew_failed_event))
+                logger.info(f"CREW_FAILED event published for Task ID: {task_id if task_id else 'unknown_task'}")
+            except RuntimeError as re:
+                logger.warning(f"Could not publish CREW_FAILED event via asyncio.run for Task ID {task_id if task_id else 'unknown_task'} (RuntimeError: {re}).")
+                logger.debug(f"[EventService Direct Log] Event: {crew_failed_event.model_dump_json()}")
+
+
+@app.post("/api/v1/crews/trading/analyze", response_model=CrewRunResponse, status_code=202)
+async def analyze_trading_strategy_with_crew(
+    request_data: TradingAnalysisCrewRequest, # Renamed request to request_data to avoid conflict
+    background_tasks: BackgroundTasks,
+    task_service: AgentTaskService = Depends(get_agent_task_service),
+    event_service: Optional[EventService] = Depends(get_event_service)
+):
+    """
+    Triggers the Trading Analysis Crew to analyze a symbol based on provided context.
+    This is an asynchronous operation; the API returns immediately with a task ID.
+    """
+    crew_run_task_id = uuid4() # Use uuid4() which is already imported
+
+    inputs_for_crew = {
+        "symbol": request_data.symbol,
+        "market_event_description": request_data.market_event_description,
+        "additional_context": request_data.additional_context,
+        "user_id": request_data.user_id,
+        "crew_run_id": str(crew_run_task_id)
+    }
+
+    background_tasks.add_task(
+        run_trading_analysis_crew_background,
+        task_id=crew_run_task_id,
+        user_id=request_data.user_id,
+        inputs=inputs_for_crew,
+        task_service=task_service,
+        event_service=event_service # Pass the (potentially None) event_service
+    )
+
+    logger.info(f"Trading analysis crew task enqueued. Task ID (Crew Run ID): {crew_run_task_id}")
+
+    return CrewRunResponse(
+        task_id=crew_run_task_id,
+        status="ACCEPTED",
+        message="Trading analysis crew task accepted and initiated."
+    )
 
 if __name__ == "__main__":
     # Run the enhanced AI services

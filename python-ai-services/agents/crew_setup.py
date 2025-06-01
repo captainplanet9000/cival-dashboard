@@ -1,6 +1,71 @@
-from crewai import Agent
-from .crew_llm_config import get_llm, ERROR_MSG as LLM_ERROR_MSG # Import get_llm and any error message
-from loguru import logger # Or standard logging
+from crewai import Agent, Task, Crew, Process
+from .crew_llm_config import get_llm, ERROR_MSG as LLM_ERROR_MSG
+from loguru import logger
+
+# Imports for event emission
+from ..models.event_models import AgentLogEvent
+# from ..services.event_service import EventService # Using placeholder for now
+import uuid
+from pydantic import BaseModel # For placeholder service type hint
+from typing import Optional, Any # For placeholder service type hint and callback
+import asyncio
+
+
+class PlaceholderEventService:
+    async def publish_event(self, event: BaseModel, channel: Optional[str] = None):
+        event_type_str = getattr(event, 'event_type', 'UnknownType')
+        event_id_str = getattr(event, 'event_id', 'NoID')
+        logger.info(f"[PlaceholderEventService] Would publish event: Type='{event_type_str}', ID='{event_id_str}' to channel '{channel or 'agent_events'}'")
+        logger.debug(f"[PlaceholderEventService] Event details: {event.model_dump_json(indent=2)}")
+
+placeholder_event_service = PlaceholderEventService()
+current_crew_run_id = uuid.uuid4()
+
+def agent_step_callback(step_output: Any, agent_name_for_event: str):
+    logger.debug(f"Agent Step Callback triggered for Agent: {agent_name_for_event}, Output: {str(step_output)[:200]}")
+    try:
+        log_message = f"Agent {agent_name_for_event} step executed."
+        payload_data = {}
+        if isinstance(step_output, str): # Basic handling for string output
+            log_message = f"Agent {agent_name_for_event} step output: {step_output}"
+        elif isinstance(step_output, dict): # If output is a dict, try to get a 'log' or use the whole dict
+            log_message = step_output.get("log", log_message)
+            payload_data = step_output
+        # Add more sophisticated parsing of step_output if needed based on CrewAI's AgentOutput/ToolOutput structure
+
+        event = AgentLogEvent(
+            source_id=agent_name_for_event, # Using agent_name as source_id for this log
+            agent_id=agent_name_for_event,
+            message=log_message,
+            log_level="INFO",
+            data=payload_data if payload_data else None, # Store structured output if available
+            crew_run_id=current_crew_run_id # Associate with the current (mock) crew run
+        )
+
+        # CrewAI callbacks are synchronous, but publish_event is async.
+        # This is a common challenge. For a placeholder, we can try asyncio.run,
+        # but in a real FastAPI/async app, this needs careful handling
+        # (e.g., passing to an async queue, or using a sync adapter for the event service if available).
+        original_publish_method = placeholder_event_service.publish_event
+        async def temp_sync_publish(event_to_publish, channel=None): # Wrapper to call async method
+            await original_publish_method(event_to_publish, channel)
+
+        try:
+            # Attempt to run the async publish method. This is a simplified approach.
+            # In environments with an existing event loop (like FastAPI), creating a new one with asyncio.run()
+            # can cause issues. A more robust solution would involve `asyncio.create_task` if the callback
+            # itself can be async, or using a thread to run the async code if the callback must remain sync.
+            # For now, this placeholder illustrates the intent.
+            asyncio.run(temp_sync_publish(event))
+        except RuntimeError as e:
+            # This might happen if asyncio.run() is called from an already running event loop.
+            logger.warning(f"Could not run async placeholder publish via asyncio.run for {agent_name_for_event} (RuntimeError: {e}). Logging event locally.")
+            # Fallback to just logging if async call fails in this context
+            logger.info(f"[PlaceholderEventService] Would publish event (direct log): Type='{event.event_type}', ID='{str(event.event_id)}', Agent: '{event.agent_id}'")
+
+    except Exception as e:
+        logger.error(f"Error in agent_step_callback for agent {agent_name_for_event}: {e}", exc_info=True)
+
 
 # Attempt to get the configured LLM
 # If get_llm() raises an error (e.g., API key missing), agents can't be created with it.
@@ -25,9 +90,9 @@ market_analyst_agent = Agent(
         "providing a clear outlook on potential market movements and opportunities for various assets."
     ),
     verbose=True,
-    allow_delegation=False, # Depends on whether this agent should delegate tasks
-    llm=llm_instance, # Use the centrally configured LLM
-    # tools=[] # Add specific tools for this agent later if needed
+    allow_delegation=False,
+    llm=llm_instance,
+    step_callback=lambda step_output_arg: agent_step_callback(step_output=step_output_arg, agent_name_for_event="market_analyst_agent")
 )
 
 # Define RiskManagerAgent
@@ -42,7 +107,7 @@ risk_manager_agent = Agent(
     verbose=True,
     allow_delegation=False,
     llm=llm_instance,
-    # tools=[] # Add specific tools for this agent later
+    step_callback=lambda step_output_arg: agent_step_callback(step_output=step_output_arg, agent_name_for_event="risk_manager_agent")
 )
 
 # Define TradeExecutorAgent
@@ -57,7 +122,7 @@ trade_executor_agent = Agent(
     verbose=True,
     allow_delegation=False,
     llm=llm_instance,
-    # tools=[] # Add specific tools for this agent later (e.g., trade execution tool)
+    step_callback=lambda step_output_arg: agent_step_callback(step_output=step_output_arg, agent_name_for_event="trade_executor_agent")
 )
 
 if llm_instance is None:
@@ -72,3 +137,119 @@ if llm_instance is None:
 # }
 
 logger.info("CrewAI agents (MarketAnalyst, RiskManager, TradeExecutor) defined in crew_setup.py.")
+
+# --- Task Definitions ---
+# Define tasks for each agent. These are general tasks for now.
+# Specific inputs/outputs and tool usage will be refined later.
+
+# Task for Market Analyst Agent
+market_analysis_task = Task(
+    description=(
+        "Analyze the current market conditions for a specified financial symbol (e.g., BTC/USD, AAPL). "
+        "Consider recent price movements, news sentiment (if available), and general market trends. "
+        "Provide a concise summary of the analysis, identify potential trading opportunities (e.g., bullish, bearish, ranging), "
+        "and list key support and resistance levels."
+    ),
+    expected_output=(
+        "A structured report containing: "
+        "1. Market sentiment summary (e.g., bullish, bearish, neutral). "
+        "2. Key support and resistance levels identified. "
+        "3. Potential trading opportunities or notable patterns. "
+        "4. Confidence score (0.0-1.0) for the primary identified opportunity."
+    ),
+    agent=market_analyst_agent,
+    # async_execution=False # Default is False, can be True if task involves long IO
+)
+
+# Task for Risk Manager Agent
+# This task will depend on the output of the market_analysis_task.
+# CrewAI handles passing context between tasks.
+risk_assessment_task = Task(
+    description=(
+        "Based on the provided market analysis and a proposed trading opportunity (e.g., buy, sell, hold signal from market analyst), "
+        "assess the potential risks involved. Consider factors like market volatility, "
+        "the confidence of the analysis, and general risk parameters. "
+        "Provide a risk assessment score and recommendations for managing the risk (e.g., position size, stop-loss levels)."
+    ),
+    expected_output=(
+        "A risk assessment report including: "
+        "1. Overall risk level (e.g., low, medium, high). "
+        "2. Key risks identified. "
+        "3. Recommended risk mitigation strategies (e.g., stop-loss suggestion, position sizing advice). "
+        "4. Confirmation whether the proposed opportunity aligns with predefined risk tolerance (conceptual for now)."
+    ),
+    agent=risk_manager_agent,
+    context=[market_analysis_task], # Depends on the market analyst's output
+)
+
+# Task for Trade Executor Agent
+# This task depends on the market analysis and risk assessment.
+trade_execution_preparation_task = Task(
+    description=(
+        "Given a market analysis, a risk assessment, and an approved trading signal, "
+        "prepare the preliminary details for trade execution. This does NOT involve actual execution. "
+        "Identify the symbol, action (buy/sell), potential quantity (conceptual, e.g., 'standard unit'), "
+        "and note any specific conditions from the risk assessment (e.g., 'execute only if price is above X')."
+    ),
+    expected_output=(
+        "A trade preparation summary including: "
+        "1. Symbol for trade. "
+        "2. Action (Buy/Sell). "
+        "3. Conceptual quantity or trade size. "
+        "4. Any critical execution notes or conditions from the risk assessment. "
+        "5. Confirmation that the trade is ready for (hypothetical) execution."
+    ),
+    agent=trade_executor_agent,
+    context=[risk_assessment_task], # Depends on the risk manager's output
+)
+
+# --- Crew Definition ---
+# Assemble the agents and tasks into a crew
+trading_analysis_crew = Crew(
+    agents=[market_analyst_agent, risk_manager_agent, trade_executor_agent],
+    tasks=[market_analysis_task, risk_assessment_task, trade_execution_preparation_task],
+    process=Process.sequential,  # Start with a sequential process
+    verbose=2,  # Or 1 for less output, 2 for detailed execution steps
+    # memory=True, # Optional: enable memory for the crew (requires further setup if using persistent memory)
+    # cache=True, # Optional: enable caching for tool usage
+    # manager_llm=llm_instance # Optional: if a specific LLM should manage the crew's execution flow
+)
+
+logger.info("CrewAI Tasks and Trading Analysis Crew defined in crew_setup.py.")
+
+# Example of how to run the crew (for testing purposes, not for production in this file)
+# if __name__ == '__main__':
+#     if llm_instance:
+#         logger.info("Attempting to run the trading_analysis_crew with sample input...")
+#         # To run the crew, it needs input. Tasks are defined with descriptions that imply
+#         # they expect some initial context (e.g., a financial symbol).
+#         # This input is typically passed to the crew's kickoff method.
+#         # The tasks' descriptions will need to be written to guide the LLM effectively
+#         # based on the inputs provided to crew.kickoff().
+#         inputs = {"symbol": "AAPL", "market_event_description": "Apple announced new iPhone."}
+#         try:
+#             # result = trading_analysis_crew.kickoff(inputs=inputs)
+#             # For newer versions of CrewAI, inputs might be passed directly to tasks if not using a Process manager with specific input reqs.
+#             # The tasks are defined to take general context.
+#             # A simple kickoff without inputs might work if agents are designed to seek info or use defaults.
+#             # However, the first task "Analyze the current market conditions for a specified financial symbol" implies an input is needed.
+#
+#             # CrewAI's kickoff can take inputs that are then available in the task context.
+#             # Let's assume the `description` of the first task is general enough or agents are
+#             # prompted/tooled to ask for specifics if needed.
+#             # For a structured input, you might define it on the Process or ensure tasks can receive it.
+#
+#             # A more robust way for tasks to get inputs is by defining them in the task's `description`
+#             # using placeholders like {symbol} and then passing them in `crew.kickoff(inputs={'symbol': 'BTCUSD'})`.
+#             # The current task descriptions are general.
+#
+#             logger.info(f"Kicking off trading_analysis_crew with inputs: {inputs}")
+#             # The inputs dict should contain keys that are referenced in your tasks' descriptions (e.g., {symbol})
+#             # For now, the tasks are general. The input will be available in the shared context.
+#             result = trading_analysis_crew.kickoff(inputs=inputs)
+#             logger.info("Crew execution finished.")
+#             logger.info("Result:\n%s", result)
+#         except Exception as e:
+#             logger.error(f"Error running trading_analysis_crew: {e}", exc_info=True)
+#     else:
+#         logger.warning("Cannot run crew kickoff example as LLM is not available.")
