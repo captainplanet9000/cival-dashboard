@@ -41,7 +41,7 @@ async def main():
     env_path_scripts = os.path.join(os.path.dirname(__file__), '..', '.env')
     if not os.path.exists(env_path_scripts): # Fallback to current dir .env or project root .env
         env_path_scripts = os.path.join(os.path.dirname(__file__), '..', '..', '.env') # If scripts is in python-ai-services/scripts
-
+    
     if os.path.exists(env_path_scripts):
         load_dotenv(dotenv_path=env_path_scripts)
         logger.info(f"Loaded .env file from: {env_path_scripts}")
@@ -92,7 +92,7 @@ async def main():
             "signal_func": get_renko_signals,
             # RenkoParams needs brick_size_mode, and brick_size_value if fixed, or atr_period if atr.
             # get_renko_signals defaults to ATR mode and calculates ATR if brick_size_value is not given.
-            "params": RenkoParams(brick_size_mode="atr", atr_period=14).model_dump()
+            "params": RenkoParams(brick_size_mode="atr", atr_period=14).model_dump() 
         },
         {
             "name": "SMA Crossover (20/50)",
@@ -123,10 +123,10 @@ async def main():
         strategy_name = strategy_test_config["name"]
         signal_func = strategy_test_config["signal_func"]
         params = strategy_test_config["params"]
-
+        
         logger.info(f"--- Running Backtest for: {strategy_name} ---")
         logger.info(f"Parameters: {params}")
-
+        
         try:
             performance_summary = await trade_executor.run_historical_paper_backtest(
                 user_id=user_id,
@@ -138,7 +138,7 @@ async def main():
                 initial_cash=initial_cash,
                 trade_quantity=trade_quantity
             )
-
+            
             logger.info(f"--- Results for {strategy_name} ---")
             if performance_summary.get("error"):
                 logger.error(f"Error: {performance_summary['error']}")
@@ -148,13 +148,13 @@ async def main():
                 logger.info(f"  Net Profit: ${performance_summary.get('net_profit', 0):,.2f}")
                 logger.info(f"  Final Cash: ${performance_summary.get('final_cash', 0):,.2f}")
                 logger.info(f"  Final Unrealized P&L: ${performance_summary.get('total_unrealized_pnl_final', 0):,.2f}")
-                num_trades_logged = performance_summary.get('logged_trades_count', 'N/A')
+                num_trades_logged = performance_summary.get('logged_trades_count', 'N/A') 
                 logger.info(f"  Trades Logged: {num_trades_logged}")
                 if performance_summary.get("final_open_positions"):
                     logger.info("  Final Open Positions:")
                     for pos in performance_summary["final_open_positions"]:
                         logger.info(f"    - {pos['symbol']}: Qty {pos['quantity']}, AvgPrice ${pos['average_entry_price']:.2f}, MktVal ${pos.get('current_market_value',0):.2f}, UnP&L ${pos.get('unrealized_pnl',0):.2f}")
-
+            
             # Save detailed results to JSON file
             if performance_summary: # Ensure there's something to save
                 # Sanitize strategy_name and symbol for filename
@@ -162,7 +162,7 @@ async def main():
                 safe_symbol = symbol.replace('/', '_')
                 results_filename = f"{safe_strategy_name}_{safe_symbol}_{start_date}_to_{end_date}.json"
                 full_results_path = os.path.join(backtest_results_output_dir, results_filename)
-
+                
                 try:
                     with open(full_results_path, 'w') as f:
                         # The summary from run_historical_paper_backtest is already a Dict[str, Any]

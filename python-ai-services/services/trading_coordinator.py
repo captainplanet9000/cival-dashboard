@@ -9,22 +9,22 @@ import json
 import asyncio # Added
 
 # Local imports
-from ..utils.google_sdk_bridge import GoogleSDKBridge
+from ..utils.google_sdk_bridge import GoogleSDKBridge 
 from ..utils.a2a_protocol import A2AProtocol
 # Use TradingAnalysisCrewRequest from api_models.py for consistency with new API endpoint
-from ..models.api_models import TradingAnalysisCrewRequest
+from ..models.api_models import TradingAnalysisCrewRequest 
 # Import the crew
-from ..agents.crew_setup import trading_analysis_crew
+from ..agents.crew_setup import trading_analysis_crew 
 # The original TradingAnalysisRequest and other types from trading_types might still be used by other methods
 # or might need to be reconciled. For analyze_trading_opportunity, we use TradingAnalysisCrewRequest.
-from ..types.trading_types import TradingAnalysisRequest as OriginalTradingAnalysisRequest
+from ..types.trading_types import TradingAnalysisRequest as OriginalTradingAnalysisRequest 
 
 # Add import for SimulatedTradeExecutor for type hinting
 from .simulated_trade_executor import SimulatedTradeExecutor
 
 # Add imports for PaperTradeOrder and related enums
-from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill
-from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType
+from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill 
+from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType 
 from datetime import timezone # Ensure timezone is available for datetime.now(timezone.utc)
 import uuid
 
@@ -35,9 +35,9 @@ class TradingCoordinator:
     Other functionalities like trade execution are delegated to external APIs or simulators.
     """
     
-    def __init__(self,
-                 google_bridge: GoogleSDKBridge,
-                 a2a_protocol: A2AProtocol,
+    def __init__(self, 
+                 google_bridge: GoogleSDKBridge, 
+                 a2a_protocol: A2AProtocol, 
                  simulated_trade_executor: SimulatedTradeExecutor # Added
                 ):
         self.google_bridge = google_bridge
@@ -66,7 +66,7 @@ class TradingCoordinator:
                 await self.a2a_protocol.broadcast_message(
                     message_type="trade_executed",
                     payload={
-                        "agent_id": trade_request.get("agentId", trade_request.get("agent_id")),
+                        "agent_id": trade_request.get("agentId", trade_request.get("agent_id")), 
                         "trade": result,
                         "timestamp": datetime.utcnow().isoformat()
                     }
@@ -80,7 +80,7 @@ class TradingCoordinator:
         except httpx.RequestError as e:
             logger.error(f"Request error executing trade: {str(e)}")
             raise Exception(f"Trade execution request failed: {str(e)}")
-        except Exception as e:
+        except Exception as e: 
             logger.error(f"Unexpected error executing trade: {str(e)}", exc_info=True)
             raise Exception(f"An unexpected error occurred during trade execution: {str(e)}")
 
@@ -136,7 +136,7 @@ class TradingCoordinator:
         except Exception as e:
             logger.error(f"Unexpected error getting agent status: {str(e)}", exc_info=True)
             raise Exception(f"An unexpected error occurred while fetching agent status: {str(e)}")
-
+            
     async def get_agent_trading_history(self, agent_id: str) -> Dict:
         """Get agent trading history"""
         logger.info(f"Getting trading history for agent: {agent_id}")
@@ -174,11 +174,11 @@ class TradingCoordinator:
             "symbol": request.symbol,
             "market_event_description": request.market_event_description,
             "additional_context": request.additional_context,
-            "user_id": request.user_id,
+            "user_id": request.user_id, 
             # crew_run_id could be generated here or expected in request if needed by crew directly
             # For now, crew_setup.py's example kickoff didn't strictly require it in inputs if tasks are general
         }
-
+        
         # CrewAI's kickoff is a synchronous (blocking) call.
         # Since this service method is async, we must run kickoff in an executor.
         try:

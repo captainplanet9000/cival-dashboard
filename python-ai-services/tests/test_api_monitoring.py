@@ -48,8 +48,8 @@ def test_get_tasks_summary_success(client: TestClient, mock_agent_task_service_o
     task_id = uuid4()
     # Create Pydantic models for the expected data
     expected_task_summary = AgentTaskSummary(
-        task_id=str(task_id),
-        status="COMPLETED",
+        task_id=str(task_id), 
+        status="COMPLETED", 
         agent_name="TestAgent",
         crew_name="TestCrew",
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -58,13 +58,13 @@ def test_get_tasks_summary_success(client: TestClient, mock_agent_task_service_o
         error_message=None
     )
     expected_response_model = TaskListResponse(
-        tasks=[expected_task_summary],
-        total_tasks=1,
-        page=1,
+        tasks=[expected_task_summary], 
+        total_tasks=1, 
+        page=1, 
         page_size=1
     )
     mock_ats.get_task_summaries.return_value = expected_response_model
-
+    
     app.dependency_overrides[get_agent_task_service] = lambda: mock_ats
     response = client.get("/api/v1/monitoring/tasks?page=1&page_size=1")
     app.dependency_overrides.clear()
@@ -76,7 +76,7 @@ def test_get_tasks_summary_success(client: TestClient, mock_agent_task_service_o
     expected_dict = expected_response_model.dict()
     # Timestamps can have slight precision differences if not careful,
     # but here they are generated then used, so should be exact.
-    assert response_json == expected_dict
+    assert response_json == expected_dict 
     mock_ats.get_task_summaries.assert_called_once_with(1, 1, None)
 
 
@@ -100,7 +100,7 @@ def test_get_dependencies_health_all_operational(client: TestClient, mock_memory
     app.state.supabase_client = MagicMock(spec=SupabaseClient)
     app.state.redis_cache_client = MagicMock()
     app.state.redis_cache_client.ping = AsyncMock(return_value=True)
-
+    
     app.dependency_overrides[get_memory_service_for_monitoring] = lambda: mock_memory_service_override
 
     response = client.get("/api/v1/monitoring/health/dependencies")
@@ -129,7 +129,7 @@ def test_get_dependencies_health_redis_fails(client: TestClient, mock_memory_ser
     app.state.redis_cache_client.ping = AsyncMock(side_effect=Exception("Redis connection failed"))
 
     app.dependency_overrides[get_memory_service_for_monitoring] = lambda: mock_memory_service_override
-
+    
     response = client.get("/api/v1/monitoring/health/dependencies")
     app.dependency_overrides.clear()
     app.state.supabase_client = original_supabase_client
@@ -151,7 +151,7 @@ def test_get_dependencies_health_memory_service_fails_init(client: TestClient):
     # Make the get_memory_service_for_monitoring dependency raise an HTTPException like in main.py
     mock_failing_ms_dependency = MagicMock(side_effect=HTTPException(status_code=503, detail="MS Init Failed from test"))
     app.dependency_overrides[get_memory_service_for_monitoring] = mock_failing_ms_dependency
-
+        
     response = client.get("/api/v1/monitoring/health/dependencies")
     app.dependency_overrides.clear()
     app.state.supabase_client = original_supabase_client
@@ -160,7 +160,7 @@ def test_get_dependencies_health_memory_service_fails_init(client: TestClient):
     assert response.status_code == 200 # Endpoint itself succeeds
     data = response.json()
     assert data[2]["name"] == "MemGPT (via MemoryService)"
-    assert data[2]["status"] == "unavailable"
+    assert data[2]["status"] == "unavailable" 
     assert "MS Init Failed from test" in data[2]["details"]
 
 
@@ -170,7 +170,7 @@ def test_get_system_health_all_ok(client: TestClient, mock_memory_service_overri
     app.state.supabase_client = MagicMock(spec=SupabaseClient)
     app.state.redis_cache_client = MagicMock()
     app.state.redis_cache_client.ping = AsyncMock(return_value=True)
-
+    
     app.dependency_overrides[get_memory_service_for_monitoring] = lambda: mock_memory_service_override
 
     response = client.get("/api/v1/monitoring/health/system")
@@ -197,11 +197,11 @@ def test_get_system_health_one_dependency_fails(client: TestClient, mock_memory_
     app.dependency_overrides.clear()
     app.state.supabase_client = original_supabase_client
     app.state.redis_cache_client = original_redis_client
-
+    
     assert response.status_code == 200
     data = response.json()
     # Based on logic in main.py, if redis is "unavailable", overall_status becomes "critical"
-    assert data["overall_status"] == "critical"
+    assert data["overall_status"] == "critical" 
     assert data["dependencies"][1]["status"] == "unavailable"
 
 
@@ -211,7 +211,7 @@ def test_get_memory_stats_success(client: TestClient, mock_memory_service_overri
     mock_ms.get_agent_memory_stats.return_value = {
         "status": "success", "message": "Stats retrieved", "stats": expected_stats_payload
     }
-
+    
     app.dependency_overrides[get_memory_service_for_monitoring] = lambda: mock_ms
     response = client.get("/api/v1/monitoring/memory/stats")
     app.dependency_overrides.clear()
@@ -239,10 +239,10 @@ def test_get_memory_stats_service_dependency_raises_init_error(client: TestClien
     # This tests when get_memory_service_for_monitoring itself raises an exception
     failing_dependency_mock = MagicMock(side_effect=HTTPException(status_code=503, detail="MS Dependency Init Failed"))
     app.dependency_overrides[get_memory_service_for_monitoring] = failing_dependency_mock
-
+    
     response = client.get("/api/v1/monitoring/memory/stats")
     app.dependency_overrides.clear()
-
+    
     assert response.status_code == 503
     assert "MS Dependency Init Failed" in response.json()["detail"]
 
@@ -251,10 +251,10 @@ def test_get_memory_stats_service_dependency_raises_init_error(client: TestClien
 # overall_status = "healthy"
 # for dep_status in dependency_statuses:
 #     if dep_status.status not in ["operational", "not_checked"]:
-#         overall_status = "warning"
+#         overall_status = "warning" 
 #         if dep_status.status in ["unavailable", "error", "misconfigured"]:
 #             overall_status = "critical"
-#             break
+#             break 
 # If Redis is "unavailable", overall_status should indeed be "critical".
 # The test test_get_system_health_one_dependency_fails correctly reflects this.
 # Looks good.

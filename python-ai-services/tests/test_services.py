@@ -12,11 +12,11 @@ from python_ai_services.services.trading_coordinator import TradingCoordinator
 
 # Imports for new tests
 import uuid # For task_ids and service instance IDs
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch 
 from datetime import datetime, timezone # Already available via direct import of datetime
 
 # Models and Services to test/mock
-from python_ai_services.models.agent_task_models import AgentTaskStatus
+from python_ai_services.models.agent_task_models import AgentTaskStatus 
 from python_ai_services.models.monitoring_models import TaskListResponse, AgentTaskSummary
 from python_ai_services.services.agent_task_service import AgentTaskService
 from python_ai_services.services.memory_service import MemoryService, MemoryInitializationError
@@ -413,7 +413,7 @@ async def test_analyze_trading_opportunity_delegates_to_crew(
         market_event_description="New iPhone announced.",
         additional_context={"sentiment_score": 0.75}
     )
-
+    
     expected_crew_inputs = {
         "symbol": request_payload.symbol,
         "market_event_description": request_payload.market_event_description,
@@ -446,11 +446,11 @@ async def test_analyze_trading_opportunity_crew_exception(
         symbol="TSLA",
         market_event_description="Battery day event."
     )
-
+    
     # Act & Assert
     with pytest.raises(Exception, match="Failed to analyze trading opportunity due to crew execution error: Crew failed spectacularly"):
         await trading_coordinator_instance.analyze_trading_opportunity(request_payload)
-
+    
     mock_trading_analysis_crew.kickoff.assert_called_once()
 
 
@@ -474,7 +474,7 @@ def test_get_task_summaries_success_no_filter(agent_task_service_with_mock_db: A
     task_service = agent_task_service_with_mock_db
     page = 1
     page_size = 10
-
+    
     mock_task_data = [
         {
             "task_id": uuid.uuid4(), "status": "COMPLETED", "task_name": "Agent Smith", "agent_id": uuid.uuid4(),
@@ -510,15 +510,15 @@ def test_get_task_summaries_success_no_filter(agent_task_service_with_mock_db: A
     expected_select_fields = "task_id, status, task_name, agent_id, created_at, started_at, completed_at, error_message"
     assert all(field.strip() in select_args[0] for field in expected_select_fields.split(','))
     assert select_call.call_args[1]["count"] == "exact"
-
+    
     # Check order and range calls
     order_call = mock_supabase_client.table.return_value.select.return_value.order
     order_call.assert_called_with("created_at", desc=True)
-
+    
     range_call = order_call.return_value.range
     expected_offset = (page - 1) * page_size
     range_call.assert_called_with(expected_offset, expected_offset + page_size - 1)
-
+    
     # Detailed check for one task summary
     summary1 = result.tasks[0]
     db_task1 = mock_task_data[0]
@@ -527,7 +527,7 @@ def test_get_task_summaries_success_no_filter(agent_task_service_with_mock_db: A
     assert summary1.agent_name == db_task1["task_name"] # Mapping task_name to agent_name
     assert summary1.crew_name is None
     # Timestamp in summary should be the 'created_at' from DB item, already ISO string
-    assert summary1.timestamp == db_task1["created_at"]
+    assert summary1.timestamp == db_task1["created_at"] 
     assert summary1.duration_ms == (5 * 60 * 1000) # 5 minutes in ms
     assert summary1.error_message is None
 
@@ -539,8 +539,8 @@ def test_get_task_summaries_success_no_filter(agent_task_service_with_mock_db: A
 def test_get_task_summaries_with_status_filter(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
     task_service = agent_task_service_with_mock_db
     # Using string values directly as AgentTaskStatus is a string enum
-    status_filter_values = ["COMPLETED", "PENDING"]
-
+    status_filter_values = ["COMPLETED", "PENDING"] 
+    
     # Ensure the mock is configured for the .in_() call path
     mock_execute = mock_supabase_client.table.return_value.select.return_value.in_.return_value.order.return_value.range.return_value.execute
     mock_execute.return_value = MagicMock(data=[], count=0, error=None) # No data for simplicity
@@ -553,7 +553,7 @@ def test_get_task_summaries_with_status_filter(agent_task_service_with_mock_db: 
 
 def test_get_task_summaries_supabase_error(agent_task_service_with_mock_db: AgentTaskService, mock_supabase_client: MagicMock):
     task_service = agent_task_service_with_mock_db
-
+    
     mock_error = MagicMock()
     mock_error.message = "Database connection failed"
     # Configure the execute mock for the "no status filter" path to simulate an error
@@ -646,8 +646,8 @@ async def test_memory_service_initialization_failure_propagates():
     # It does not use the memory_service_instance fixture because that fixture mocks out __init__
     with patch('python_ai_services.services.memory_service.MemGPT') as mock_memgpt_class:
         # Simulate an exception during MemGPT() instantiation within MemoryService.__init__
-        mock_memgpt_class.side_effect = Exception("MemGPT Global Init Failed")
-
+        mock_memgpt_class.side_effect = Exception("MemGPT Global Init Failed") 
+        
         with pytest.raises(MemoryInitializationError, match="Failed to initialize MemGPT: MemGPT Global Init Failed"):
             # Attempt to instantiate MemoryService, which should trigger the mocked MemGPT error
             MemoryService(user_id=uuid.uuid4(), agent_id_context=uuid.uuid4())

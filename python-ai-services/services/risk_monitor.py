@@ -3,7 +3,7 @@ from logging import getLogger
 
 # Assuming tools and models are importable relative to 'services' directory
 # Adjust paths if your project structure is different or if these are top-level packages
-from ..tools.risk_assessment_tools import calculate_position_size_tool, check_trade_risk_limit_tool
+from ..tools.risk_assessment_tools import calculate_position_size_tool, check_trade_risk_limit_tool 
 # from ..models.api_models import TradingAnalysisCrewRequest # Not directly used in this version of assess_proposed_trade_risk
 from ..utils.google_sdk_bridge import GoogleSDKBridge # As per main.py initialization
 from ..utils.a2a_protocol import A2AProtocol     # As per main.py initialization
@@ -70,7 +70,7 @@ class RiskMonitor:
 
         calculated_size = position_size_result.get("position_size")
         risk_amount_calculated = position_size_result.get("risk_amount_per_trade")
-
+        
         if calculated_size is None or calculated_size <= 0 or risk_amount_calculated is None or risk_amount_calculated <=0:
             logger.warning(
                 f"Position size calculation for {symbol} resulted in non-positive size or risk amount. "
@@ -89,7 +89,7 @@ class RiskMonitor:
             potential_loss_amount=risk_amount_calculated,
             max_acceptable_loss_per_trade=max_acceptable_account_loss_per_trade
         )
-
+        
         # Check if the tool itself reported an input error
         if risk_limit_check_result.get("error", False): # Default to False if 'error' key is missing
             logger.error(f"Risk limit check tool reported an error for {symbol}: {risk_limit_check_result.get('message')}")
@@ -102,7 +102,7 @@ class RiskMonitor:
             }
 
         assessment_passed = risk_limit_check_result.get("is_within_limit", False)
-
+        
         final_assessment = {
             "risk_assessment_passed": assessment_passed,
             "message": risk_limit_check_result.get("message", "Risk limit check inconclusive."),
@@ -111,12 +111,12 @@ class RiskMonitor:
             "position_size_details": position_size_result,
             "risk_limit_details": risk_limit_check_result
         }
-
+        
         if assessment_passed:
             logger.info(f"Proposed trade risk assessment PASSED for {symbol}.")
         else:
             logger.warning(f"Proposed trade risk assessment FAILED for {symbol}. Reason: {final_assessment['message']}")
-
+            
         return final_assessment
 
     async def get_portfolio_exposure(self, portfolio_id: str) -> Dict[str, Any]:

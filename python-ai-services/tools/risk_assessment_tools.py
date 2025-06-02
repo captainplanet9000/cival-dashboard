@@ -31,16 +31,16 @@ class RiskCheckRequest(BaseModel):
 # --- Risk Assessment Tools ---
 
 def calculate_position_size_tool(
-    account_equity: float,
-    risk_per_trade_percentage: float,
-    entry_price: float,
+    account_equity: float, 
+    risk_per_trade_percentage: float, 
+    entry_price: float, 
     stop_loss_price: float,
-    asset_price_decimals: int = 2
+    asset_price_decimals: int = 2 
 ) -> Dict[str, Any]: # Changed to Dict as it always returns a dict (with error or results)
     """
     Calculates the appropriate position size based on account equity, risk percentage,
     entry price, and stop-loss price.
-
+    
     Args:
         account_equity: Total equity in the account.
         risk_per_trade_percentage: Percentage of equity to risk (e.g., 1 for 1%).
@@ -80,28 +80,28 @@ def calculate_position_size_tool(
     risk_amount_per_trade = validated_input.account_equity * (validated_input.risk_per_trade_percentage / 100.0)
     risk_per_share = abs(validated_input.entry_price - validated_input.stop_loss_price)
 
-    if risk_per_share == 0:
+    if risk_per_share == 0: 
         logger.warning("Risk per share is zero. Cannot calculate position size.")
         return {"error": "Risk per share is zero (entry and stop-loss are effectively the same)."}
 
     position_size_raw = risk_amount_per_trade / risk_per_share
-
+    
     # Round position size to a fixed number of decimal places suitable for most assets.
     # This can be adjusted if different assets require different quantity precision.
-    position_size_final = round(position_size_raw, 8)
+    position_size_final = round(position_size_raw, 8) 
 
     logger.info(f"Calculated position size: {position_size_final:.8f} units. Risk per trade: ${risk_amount_per_trade:,.2f}")
     return {
         "position_size": position_size_final,
         "risk_amount_per_trade": round(risk_amount_per_trade, 2),
         # risk_per_share can use more precision, aligning with asset_price_decimals + typical quote precision
-        "risk_per_share": round(risk_per_share, validated_input.asset_price_decimals + 2),
+        "risk_per_share": round(risk_per_share, validated_input.asset_price_decimals + 2), 
         "notes": f"Position size calculated for risking {validated_input.risk_per_trade_percentage}% of equity (${risk_amount_per_trade:,.2f})."
     }
 
 
 def check_trade_risk_limit_tool(
-    potential_loss_amount: float,
+    potential_loss_amount: float, 
     max_acceptable_loss_per_trade: float
 ) -> Dict[str, Any]:
     """
@@ -112,7 +112,7 @@ def check_trade_risk_limit_tool(
         max_acceptable_loss_per_trade: The predefined maximum acceptable monetary loss per trade (must be positive).
 
     Returns:
-        A dictionary containing 'is_within_limit' (bool) and a 'message'.
+        A dictionary containing 'is_within_limit' (bool) and a 'message'. 
         Includes an 'error' key if inputs are invalid.
     """
     logger.info(f"Checking risk limit: Potential Loss ${potential_loss_amount:,.2f} vs Max Acceptable Loss ${max_acceptable_loss_per_trade:,.2f}")
@@ -126,7 +126,7 @@ def check_trade_risk_limit_tool(
         return {"is_within_limit": False, "message": f"Invalid input: {str(e)}", "error": True}
 
     is_within_limit = potential_loss_amount <= max_acceptable_loss_per_trade
-
+    
     message = ""
     if is_within_limit:
         message = f"Trade risk (${potential_loss_amount:,.2f}) is within the acceptable limit of ${max_acceptable_loss_per_trade:,.2f}."
@@ -134,5 +134,5 @@ def check_trade_risk_limit_tool(
     else:
         message = f"Trade risk (${potential_loss_amount:,.2f}) EXCEEDS the acceptable limit of ${max_acceptable_loss_per_trade:,.2f}."
         logger.warning(message)
-
+        
     return {"is_within_limit": is_within_limit, "message": message, "error": False} # Explicitly set error: False on success

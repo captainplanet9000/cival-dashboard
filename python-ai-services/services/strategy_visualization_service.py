@@ -31,32 +31,32 @@ class StrategyVisualizationService:
             raise StrategyVisualizationServiceError(f"Strategy config {request.strategy_config_id} not found for user.")
         if not config.symbols:
             raise StrategyVisualizationServiceError(f"Strategy config {request.strategy_config_id} has no symbols defined.")
-
+        
         symbol_to_visualize = config.symbols[0] # For now, visualize the first symbol
 
         # 2. Fetch OHLCV Data
         start_date_str = request.start_date.isoformat()
         end_date_str = request.end_date.isoformat()
-
+        
         # Assuming get_historical_price_data_tool returns a Pandas DataFrame
         # with DatetimeIndex and columns 'Open', 'High', 'Low', 'Close', 'Volume'.
         price_data_result = get_historical_price_data_tool.func( # Accessing the underlying function for direct call
-            symbol=symbol_to_visualize,
-            start_date=start_date_str,
+            symbol=symbol_to_visualize, 
+            start_date=start_date_str, 
             end_date=end_date_str
             # interval=config.timeframe # TODO: Map StrategyTimeframe to OpenBB interval string
         )
-
+        
         if isinstance(price_data_result, str) or price_data_result is None: # Error string or None
              raise StrategyVisualizationServiceError(f"Could not fetch price data for {symbol_to_visualize}: {price_data_result if price_data_result else 'No data returned'}")
-
+        
         price_df = price_data_result # Assuming it's a DataFrame if not error/None
 
         if price_df.empty:
             raise StrategyVisualizationServiceError(f"Price data for {symbol_to_visualize} is empty for the period.")
 
         ohlcv_bars = [OHLCVBar(timestamp=idx.to_pydatetime().replace(tzinfo=timezone.utc), # Ensure UTC
-                               open=row['Open'], high=row['High'], low=row['Low'],
+                               open=row['Open'], high=row['High'], low=row['Low'], 
                                close=row['Close'], volume=row.get('Volume'))
                       for idx, row in price_df.iterrows()]
 
@@ -82,20 +82,20 @@ class StrategyVisualizationService:
 
             module_path = f"python_ai_services.strategies.{mapped_module_name}"
             strategy_module = importlib.import_module(module_path)
-            signal_func_name = f"get_{mapped_module_name}_signals"
+            signal_func_name = f"get_{mapped_module_name}_signals" 
             signal_func = getattr(strategy_module, signal_func_name)
-
+            
             strategy_params = config.parameters.model_dump(exclude_none=True) if config.parameters else {}
 
-            # Call the signal function. Assume it returns a DataFrame (signals_df)
+            # Call the signal function. Assume it returns a DataFrame (signals_df) 
             # and optionally other items (like shapes for plotting, ignored here).
             signal_func_output = signal_func(
-                symbol=symbol_to_visualize,
-                start_date=start_date_str,
-                end_date=end_date_str,
+                symbol=symbol_to_visualize, 
+                start_date=start_date_str, 
+                end_date=end_date_str, 
                 **strategy_params
             )
-
+            
             signals_df = None
             if isinstance(signal_func_output, tuple) and len(signal_func_output) > 0:
                 if isinstance(signal_func_output[0], pd.DataFrame):
@@ -103,7 +103,7 @@ class StrategyVisualizationService:
                 # Potentially handle other elements if needed, e.g., signal_func_output[1] for shapes
             elif isinstance(signal_func_output, pd.DataFrame):
                 signals_df = signal_func_output
-
+            
             if signals_df is not None and not signals_df.empty:
                 # Ensure signals_df index is datetime
                 if not isinstance(signals_df.index, pd.DatetimeIndex):
@@ -111,22 +111,22 @@ class StrategyVisualizationService:
 
                 for idx, row in signals_df.iterrows():
                     ts = idx.to_pydatetime().replace(tzinfo=timezone.utc)
-                    price_at_sig = row['Close']
+                    price_at_sig = row['Close'] 
                     if row.get('entries') == True: # Some strategies use 1/-1, others True/False
                         entry_signals_list.append(SignalDataPoint(timestamp=ts, price_at_signal=price_at_sig, signal_type="entry_long"))
                     elif row.get('entries') == 1: # Handle numeric signals
                          entry_signals_list.append(SignalDataPoint(timestamp=ts, price_at_signal=price_at_sig, signal_type="entry_long"))
-
-                    if row.get('exits') == True:
+                    
+                    if row.get('exits') == True: 
                         exit_signals_list.append(SignalDataPoint(timestamp=ts, price_at_signal=price_at_sig, signal_type="exit_long"))
                     elif row.get('exits') == -1: # Handle numeric signals
                         exit_signals_list.append(SignalDataPoint(timestamp=ts, price_at_signal=price_at_sig, signal_type="exit_long"))
 
                 # Heuristic for indicator columns - needs refinement based on actual strategy outputs
                 excluded_cols = ['Open','High','Low','Close','Volume','entries','exits','signal', 'signals', # common signal names
-                                 'renko_type','renko_close','box_top','box_bottom', 'atr',
-                                 'swing_points', 'wave_label', 'wave_pattern',
-                                 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'ha_green', 'ha_red',
+                                 'renko_type','renko_close','box_top','box_bottom', 'atr', 
+                                 'swing_points', 'wave_label', 'wave_pattern', 
+                                 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'ha_green', 'ha_red', 
                                  'ha_no_lower_shadow', 'ha_no_upper_shadow']
                 indicator_cols = [col for col in signals_df.columns if col not in excluded_cols and col.lower() not in excluded_cols]
 
@@ -134,9 +134,9 @@ class StrategyVisualizationService:
                     indicator_data_dict[ind_col] = []
                     for idx, value in signals_df[ind_col].items():
                         ts = idx.to_pydatetime().replace(tzinfo=timezone.utc)
-                        if isinstance(value, dict):
+                        if isinstance(value, dict): 
                              indicator_data_dict[ind_col].append(IndicatorDataPoint(timestamp=ts, values={k: (float(v) if pd.notna(v) else None) for k,v in value.items()}))
-                        elif pd.notna(value):
+                        elif pd.notna(value): 
                              indicator_data_dict[ind_col].append(IndicatorDataPoint(timestamp=ts, value=float(value)))
             else:
                 logger.info(f"No signals or indicator data returned from {signal_func_name} for {symbol_to_visualize}")
@@ -154,7 +154,7 @@ class StrategyVisualizationService:
         try:
             # Ensure dates are in ISO format strings for Supabase query
             start_iso = request.start_date.isoformat()
-            # For end_date, Supabase range is typically exclusive for timestamp 'lte',
+            # For end_date, Supabase range is typically exclusive for timestamp 'lte', 
             # so if we want to include the whole end_date, we go to the start of the next day.
             end_iso = (request.end_date + timedelta(days=1)).isoformat()
 
@@ -166,7 +166,7 @@ class StrategyVisualizationService:
                 .lt("created_at", end_iso) \
                 .order("created_at", desc=False) \
                 .execute()
-
+            
             if trade_history_response.data:
                 paper_trades_list = [TradeRecord(**trade) for trade in trade_history_response.data]
         except Exception as e:

@@ -9,14 +9,14 @@ class RunContext(BaseModel):
     """
     run_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Unique identifier for this specific run or execution context.")
     correlation_id: Optional[uuid.UUID] = Field(default=None, description="Optional ID to correlate multiple related runs or events.")
-
+    
     user_id: Optional[str] = Field(default=None, description="Identifier for the user initiating or associated with this run. Could be a string or UUID depending on system design.")
     # If user_id is strictly UUID, use: user_id: Optional[uuid.UUID] = None
-
+    
     session_id: Optional[str] = Field(default=None, description="Identifier for the user's session, if applicable.")
-
+    
     request_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the run/request was initiated (UTC).")
-
+    
     # Context specific to trading or analysis
     market_conditions_summary: Optional[str] = Field(default=None, description="A brief textual summary of current market conditions relevant to this run.")
     relevant_symbols: Optional[List[str]] = Field(default_factory=list, description="List of financial symbols relevant to this run (e.g., ['BTC/USD', 'AAPL']).")

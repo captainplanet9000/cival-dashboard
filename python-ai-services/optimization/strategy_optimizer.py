@@ -18,7 +18,7 @@ class StrategyOptimizerError(Exception):
     pass
 
 class StrategyOptimizer:
-    def __init__(self, strategy_name: str,
+    def __init__(self, strategy_name: str, 
                  signal_func: Callable, # Requires symbol, start_date, end_date, **params
                  backtest_func: Callable, # Requires price_data_with_signals, init_cash, etc.
                  param_model: Optional[Any] = None, # Pydantic model for strategy params (e.g. DarvasBoxParams)
@@ -28,7 +28,7 @@ class StrategyOptimizer:
 
         Args:
             strategy_name (str): Name of the strategy to optimize.
-            signal_func (Callable): Function that takes symbol, start_date, end_date, and strategy parameters,
+            signal_func (Callable): Function that takes symbol, start_date, end_date, and strategy parameters, 
                                     returns a Tuple[pd.DataFrame with signals, Optional[pd.DataFrame for plotting]].
             backtest_func (Callable): Function that takes price data with signals and runs a backtest,
                                       returning performance stats (e.g., vectorbt Portfolio.stats()).
@@ -49,8 +49,8 @@ class StrategyOptimizer:
         Generates all possible parameter combinations from a grid.
         """
         if not param_grid:
-            return [{}]
-
+            return [{}] 
+        
         keys = param_grid.keys()
         values = param_grid.values()
         # Check for empty lists in values, which would lead to no combinations
@@ -63,7 +63,7 @@ class StrategyOptimizer:
             values = valid_grid.values()
 
         combinations = list(itertools.product(*values))
-
+        
         param_combinations = [dict(zip(keys, combo)) for combo in combinations]
         return param_combinations
 
@@ -72,12 +72,12 @@ class StrategyOptimizer:
         symbol: str,
         start_date: str,
         end_date: str,
-        param_grid: Dict[str, List[Any]],
-        optimization_metric: str = "Sharpe Ratio",
+        param_grid: Dict[str, List[Any]], 
+        optimization_metric: str = "Sharpe Ratio", 
         init_cash: float = 100000,
         commission_pct: float = 0.001,
         # Pass other fixed args required by signal_func or backtest_func if any
-        **kwargs
+        **kwargs 
     ) -> Optional[Dict[str, Any]]:
         logger.info(f"Starting grid search for {self.strategy_name} on {symbol} ({start_date} to {end_date})")
         logger.debug(f"Parameter grid: {param_grid}")
@@ -88,10 +88,10 @@ class StrategyOptimizer:
             logger.warning("No parameter combinations generated. Check param_grid structure and values.")
             return {"error": "No parameter combinations generated.", "all_run_results": []}
 
-        best_performance = -np.inf
+        best_performance = -np.inf 
         best_params = None
         best_stats_dict = None # Store stats as dict for easier JSON later
-
+        
         results_summary = []
 
         for i, params in enumerate(param_combinations):
@@ -99,23 +99,23 @@ class StrategyOptimizer:
             current_metric_value = -np.inf # Default for this run
             stats_for_run = None
             error_for_run = None
-
+            
             try:
                 # Merge fixed kwargs into current params for the signal function
                 signal_func_params = {**params, **kwargs.get("signal_func_kwargs", {})}
-
+                
                 # Signal function is expected to return: (signals_df, shapes_df or None)
                 price_data_with_signals, _ = self.signal_func(
-                    symbol=symbol,
-                    start_date=start_date,
-                    end_date=end_date,
-                    **signal_func_params
+                    symbol=symbol, 
+                    start_date=start_date, 
+                    end_date=end_date, 
+                    **signal_func_params 
                 )
 
                 if price_data_with_signals is None or price_data_with_signals.empty:
                     logger.warning(f"No signal data generated for params: {params}. Skipping.")
                     error_for_run = "No signal data"
-                elif price_data_with_signals['entries'].sum() == 0:
+                elif price_data_with_signals['entries'].sum() == 0: 
                     logger.warning(f"No entry signals for params: {params}. Assigning poor performance.")
                     # No error, but no trades, so metric remains -np.inf
                 else:
@@ -126,7 +126,7 @@ class StrategyOptimizer:
                         commission_pct=commission_pct,
                         **backtest_func_params
                     )
-
+                
                     if stats_vbt is None:
                         logger.warning(f"Backtest failed for params: {params}.")
                         error_for_run = "Backtest failed"
@@ -139,9 +139,9 @@ class StrategyOptimizer:
                         error_for_run = f"Metric '{optimization_metric}' not found"
                     else:
                         current_metric_value = stats_vbt[optimization_metric]
-                        if pd.isna(current_metric_value):
+                        if pd.isna(current_metric_value): 
                             logger.warning(f"Metric '{optimization_metric}' is NaN for params: {params}. Treating as poor performance.")
-                            current_metric_value = -np.inf
+                            current_metric_value = -np.inf 
                         stats_for_run = dict(stats_vbt) # Convert to dict for storing
 
                 if current_metric_value > best_performance:
@@ -153,10 +153,10 @@ class StrategyOptimizer:
             except Exception as e:
                 logger.error(f"Error during optimization run with params {params}: {e}", exc_info=True)
                 error_for_run = str(e)
-
+            
             results_summary.append({
-                "params": params,
-                "metric_value": current_metric_value if current_metric_value != -np.inf else "N/A",
+                "params": params, 
+                "metric_value": current_metric_value if current_metric_value != -np.inf else "N/A", 
                 "error": error_for_run,
                 # "full_stats_preview": {k: v for k, v in stats_for_run.items() if k in ['Total Return [%]', 'Sharpe Ratio', 'Sortino Ratio', 'Win Rate [%]', 'Total Trades']} if stats_for_run else None
             })
@@ -172,8 +172,8 @@ class StrategyOptimizer:
                 "best_parameters": best_params,
                 "optimized_metric": optimization_metric,
                 "best_metric_value": best_performance if best_performance != -np.inf else None, # Return None if still -np.inf
-                "best_stats": best_stats_dict,
-                "all_run_results": results_summary
+                "best_stats": best_stats_dict, 
+                "all_run_results": results_summary 
             }
         else:
             logger.warning(f"Grid search for {self.strategy_name} on {symbol} did not find any successful parameter combination yielding positive performance improvement.")
@@ -183,7 +183,7 @@ class StrategyOptimizer:
 # if __name__ == "__main__":
 #     # This example assumes DarvasBox strategy functions are correctly imported and work.
 #     # Also assumes OpenBB is available and configured.
-#
+#     
 #     # Note: Keys in param_grid MUST match the parameter names of the signal_func
 #     # (e.g., get_darvas_signals_func parameters like 'lookback_period', 'min_box_duration')
 #     darvas_param_grid = {
@@ -194,18 +194,18 @@ class StrategyOptimizer:
 #         # "stop_loss_atr_multiplier": [1.5, 2.0], # Matches 'stop_loss_atr_multiplier'
 #         # "atr_period": [10, 14] # Matches 'atr_period'
 #     }
-#
+# 
 #     # For DarvasBox, data_fetch_func is not needed as get_darvas_signals_func handles it.
 #     # param_model can be DarvasBoxParams from strategy_models.py if we want to use it.
 #     # from ..models.strategy_models import DarvasBoxParams
-#
+# 
 #     optimizer = StrategyOptimizer(
 #         strategy_name="DarvasBox",
 #         signal_func=get_darvas_signals_func,
 #         backtest_func=run_darvas_backtest_func,
-#         # param_model=DarvasBoxParams
+#         # param_model=DarvasBoxParams 
 #     )
-#
+# 
 #     results = optimizer.run_grid_search(
 #         symbol="AAPL",
 #         start_date="2023-01-01", # Use a longer period for meaningful optimization
@@ -213,9 +213,9 @@ class StrategyOptimizer:
 #         param_grid=darvas_param_grid,
 #         optimization_metric="Sharpe Ratio", # Ensure this matches key in vbt stats
 #         # Example of passing fixed kwargs to signal_func if needed:
-#         # signal_func_kwargs={"data_provider": "fmp"}
+#         # signal_func_kwargs={"data_provider": "fmp"} 
 #     )
-#
+# 
 #     if results and "error" not in results:
 #         print("\n--- Optimization Results ---")
 #         print(f"Strategy: {results['strategy_name']} for Symbol: {results['symbol']}")

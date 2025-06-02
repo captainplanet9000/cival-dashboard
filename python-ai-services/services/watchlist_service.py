@@ -11,7 +11,7 @@ from ..models.watchlist_models import (
     AddWatchlistItemsRequest, BatchQuotesRequest, BatchQuotesResponse, BatchQuotesResponseItem
 )
 # Assuming get_current_quote_tool is correctly exposed and importable
-from ..tools.market_data_tools import get_current_quote_tool
+from ..tools.market_data_tools import get_current_quote_tool 
 
 logger = getLogger(__name__)
 
@@ -61,7 +61,7 @@ class WatchlistService:
             response = await self.supabase.table(self.WATCHLIST_TABLE).select("*").eq("watchlist_id", str(watchlist_id)).eq("user_id", str(user_id)).maybe_single().execute()
             if not response.data:
                 return None # Watchlist not found or not owned by user
-
+            
             watchlist = Watchlist(**response.data)
             if include_items:
                 items = await self.get_items_for_watchlist(watchlist_id, user_id) # This already checks ownership
@@ -86,13 +86,13 @@ class WatchlistService:
         if not existing_watchlist:
             raise WatchlistNotFoundError(f"Watchlist {watchlist_id} not found or not owned by user {user_id}.")
 
-        update_payload = data.model_dump(exclude_unset=True)
+        update_payload = data.model_dump(exclude_unset=True) 
         if not update_payload: # If payload is empty after exclude_unset
              logger.warning(f"Update called for watchlist {watchlist_id} with no actual data fields to update.")
              return existing_watchlist # Return existing as no change
-
+        
         update_payload['updated_at'] = datetime.now(timezone.utc).isoformat()
-
+        
         try:
             response = await self.supabase.table(self.WATCHLIST_TABLE).update(update_payload).eq("watchlist_id", str(watchlist_id)).eq("user_id", str(user_id)).select("*").execute()
             if not response.data:
@@ -122,7 +122,7 @@ class WatchlistService:
         watchlist = await self.get_watchlist(watchlist_id, user_id) # Verifies ownership
         if not watchlist:
             raise WatchlistNotFoundError(f"Watchlist {watchlist_id} not found for user {user_id}.")
-
+        
         record = item_data.model_dump()
         record['watchlist_id'] = str(watchlist_id)
         record['user_id'] = str(user_id)
@@ -152,7 +152,7 @@ class WatchlistService:
         elif items_request.items:
             for item_create_data in items_request.items:
                 items_to_create_payload.append(item_create_data.model_dump())
-
+        
         if not items_to_create_payload:
             return []
 
@@ -160,7 +160,7 @@ class WatchlistService:
             payload_item['watchlist_id'] = str(watchlist_id)
             payload_item['user_id'] = str(user_id)
             payload_item['added_at'] = now_utc_iso # Consistent timestamp for batch
-
+        
         logger.info(f"User {user_id} batch adding {len(items_to_create_payload)} items to watchlist {watchlist_id}")
         try:
             # Note: Supabase insert returning "representation" is default and returns inserted rows.
@@ -180,7 +180,7 @@ class WatchlistService:
         watchlist = await self.get_watchlist(watchlist_id, user_id) # Verifies ownership
         if not watchlist:
              raise WatchlistNotFoundError(f"Watchlist {watchlist_id} not found or not owned by user {user_id}.")
-
+        
         try:
             response = await self.supabase.table(self.WATCHLIST_ITEM_TABLE).select("*").eq("watchlist_id", str(watchlist_id)).eq("user_id", str(user_id)).order("added_at", desc=False).execute()
             return [WatchlistItem(**item) for item in response.data] if response.data else []
@@ -195,7 +195,7 @@ class WatchlistService:
             raise WatchlistItemNotFoundError(f"Watchlist item {item_id} not found.")
         if str(user_id) != str(item_response.data['user_id']): # Ensure UUIDs are compared as strings or UUID objects
             raise WatchlistOperationForbiddenError(f"User {user_id} not authorized to delete item {item_id}.")
-
+            
         try:
             await self.supabase.table(self.WATCHLIST_ITEM_TABLE).delete().eq("item_id", str(item_id)).eq("user_id", str(user_id)).execute()
             logger.info(f"Watchlist item {item_id} deleted successfully.")
@@ -206,7 +206,7 @@ class WatchlistService:
     # --- Batch Quotes ---
     async def get_batch_quotes_for_symbols(self, symbols: List[str], provider: str = "yfinance") -> BatchQuotesResponse:
         logger.info(f"Fetching batch quotes for symbols: {symbols} via {provider}")
-
+        
         # Helper function to run sync tool in executor
         async def fetch_quote_async(symbol_str: str):
             loop = asyncio.get_event_loop()
@@ -224,5 +224,5 @@ class WatchlistService:
 
         tasks = [fetch_quote_async(s) for s in symbols]
         results = await asyncio.gather(*tasks)
-
+        
         return BatchQuotesResponse(results=results)

@@ -23,9 +23,9 @@ class SymbolSearchRequest(BaseModel):
     is_etf: Optional[bool] = Field(default=None, description="Whether to search specifically for ETFs.")
 
 def get_historical_price_data_tool(
-    symbol: str,
-    start_date: str,
-    end_date: str,
+    symbol: str, 
+    start_date: str, 
+    end_date: str, 
     interval: str = "1d",
     provider: str = "yfinance"
 ) -> Optional[pd.DataFrame]:
@@ -57,14 +57,14 @@ def get_current_quote_tool(symbol: str, provider: str = "yfinance") -> Optional[
     try:
         _ = QuoteRequest(symbol=symbol, provider=provider)
         data = obb.equity.price.quote(symbol=symbol, provider=provider)
-
+        
         # Handle cases where data might be a list of OBBjects or a single OBBject
         if isinstance(data, list):
             if not data: # Empty list
                 logger.warning(f"No quote data (empty list) returned by OpenBB for {symbol}.")
                 return None
             # Assuming the first item is the most relevant if multiple are returned
-            target_data = data[0]
+            target_data = data[0] 
         else: # Assuming it's a single OBBject
             target_data = data
 

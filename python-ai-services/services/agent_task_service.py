@@ -87,25 +87,25 @@ class AgentTaskService:
 
     # New method for monitoring
     def get_task_summaries(
-        self,
-        page: int = 1,
-        page_size: int = 20,
+        self, 
+        page: int = 1, 
+        page_size: int = 20, 
         status_filter: Optional[List[AgentTaskStatus]] = None,
     ) -> TaskListResponse:
         offset = (page - 1) * page_size
 
         query_builder = self.supabase.table("agent_tasks").select(
             "task_id, status, task_name, agent_id, created_at, started_at, completed_at, error_message",
-            count="exact"
+            count="exact" 
         )
 
         if status_filter:
             # Convert AgentTaskStatus enum members to their string values for the query
             status_filter_values = [status.value for status in status_filter]
             query_builder = query_builder.in_("status", status_filter_values)
-
+        
         query_builder = query_builder.order("created_at", desc=True).range(offset, offset + page_size - 1)
-
+        
         response = query_builder.execute()
 
         if hasattr(response, 'error') and response.error is not None:
@@ -114,7 +114,7 @@ class AgentTaskService:
                 error_message_detail = response.error.message
             elif isinstance(response.error, dict) and 'message' in response.error:
                 error_message_detail = response.error['message']
-
+            
             raise Exception(f"Failed to fetch task summaries: {error_message_detail}")
 
         summaries: List[AgentTaskSummary] = []
@@ -125,9 +125,9 @@ class AgentTaskService:
                     try:
                         start_at_str = item["started_at"]
                         completed_at_str = item["completed_at"]
-
+                        
                         if not isinstance(start_at_str, str):
-                           start_at_str = str(start_at_str)
+                           start_at_str = str(start_at_str) 
                         if not isinstance(completed_at_str, str):
                            completed_at_str = str(completed_at_str)
 
@@ -136,7 +136,7 @@ class AgentTaskService:
                         duration_ms = (end_time - start_time).total_seconds() * 1000
                     except (ValueError, TypeError):
                         # If parsing fails, leave duration_ms as None
-                        pass
+                        pass 
 
                 created_at_val = item.get("created_at")
                 timestamp_str: str
@@ -158,7 +158,7 @@ class AgentTaskService:
                     task_id=str(item["task_id"]),
                     status=item["status"],
                     # Use task_name from DB for agent_name in summary as per original code snippet
-                    agent_name=item.get("task_name"),
+                    agent_name=item.get("task_name"), 
                     crew_name=None, # crew_name is not directly available in agent_tasks table
                     timestamp=timestamp_str, # Use the processed created_at as the primary timestamp
                     duration_ms=duration_ms,
@@ -166,9 +166,9 @@ class AgentTaskService:
                     error_message=item.get("error_message")
                 )
                 summaries.append(summary)
-
+        
         total_tasks = response.count if response.count is not None else 0
-
+        
         return TaskListResponse(
             tasks=summaries,
             total_tasks=total_tasks,

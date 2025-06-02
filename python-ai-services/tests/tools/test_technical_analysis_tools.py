@@ -31,10 +31,10 @@ def test_calculate_sma_tool_success(mock_obb_ma, sample_price_data):
     window = 5
     mock_sma_series = pd.Series([10.0, 11.0, 12.0, 13.0, 14.0], name=f'SMA_{window}')
     mock_obb_ma.return_value = pd.DataFrame({f'SMA_{window}': mock_sma_series})
-
+    
     # Act
     result_series = calculate_sma_tool(sample_price_data, window=window)
-
+    
     # Assert
     mock_obb_ma.assert_called_once()
     call_args = mock_obb_ma.call_args
@@ -49,10 +49,10 @@ def test_calculate_sma_tool_fallback_column_name(mock_obb_ma, sample_price_data)
     window = 5
     mock_sma_series = pd.Series([10.0, 11.0, 12.0, 13.0, 14.0], name='some_other_name') # Non-standard name
     mock_obb_ma.return_value = pd.DataFrame({'some_other_name': mock_sma_series})
-
+    
     # Act
     result_series = calculate_sma_tool(sample_price_data, window=window)
-
+    
     # Assert
     pd.testing.assert_series_equal(result_series, mock_sma_series)
 
@@ -87,9 +87,9 @@ def test_calculate_ema_tool_success(mock_obb_ma, sample_price_data):
     window = 5
     mock_ema_series = pd.Series([10.1, 11.1, 12.1, 13.1, 14.1], name=f'EMA_{window}')
     mock_obb_ma.return_value = pd.DataFrame({f'EMA_{window}': mock_ema_series})
-
+    
     result_series = calculate_ema_tool(sample_price_data, window=window)
-
+    
     mock_obb_ma.assert_called_once()
     call_args = mock_obb_ma.call_args
     pd.testing.assert_series_equal(call_args.kwargs['data'], sample_price_data['close'], check_names=False)
@@ -105,10 +105,10 @@ def test_calculate_rsi_tool_success(mock_obb_rsi, sample_price_data):
     window = 14
     mock_rsi_series = pd.Series([30, 40, 50, 60, 70], name=f'RSI_{window}')
     mock_obb_rsi.return_value = pd.DataFrame({f'RSI_{window}': mock_rsi_series})
-
+        
     # Act
     result_series = calculate_rsi_tool(sample_price_data, window=window)
-
+    
     # Assert
     mock_obb_rsi.assert_called_once()
     call_args = mock_obb_rsi.call_args
@@ -121,7 +121,7 @@ def test_calculate_rsi_tool_fallback_name_RSI(mock_obb_rsi, sample_price_data):
     window = 14
     mock_rsi_series = pd.Series([30, 40, 50, 60, 70], name='RSI') # Generic 'RSI' name
     mock_obb_rsi.return_value = pd.DataFrame({'RSI': mock_rsi_series})
-
+    
     result_series = calculate_rsi_tool(sample_price_data, window=window)
     pd.testing.assert_series_equal(result_series, mock_rsi_series)
 
@@ -139,14 +139,14 @@ def test_calculate_macd_tool_success(mock_obb_macd, sample_price_data):
 
     mock_macd_df = pd.DataFrame({
         macd_col: [1, 1.2, 1.1],
-        hist_col: [0.1, 0.15, 0.05],
-        signal_col: [0.9, 1.05, 1.05]
+        hist_col: [0.1, 0.15, 0.05], 
+        signal_col: [0.9, 1.05, 1.05] 
     })
     mock_obb_macd.return_value = mock_macd_df
-
+    
     # Act
     result_df = calculate_macd_tool(sample_price_data, fast_period, slow_period, signal_period)
-
+    
     # Assert
     mock_obb_macd.assert_called_once()
     call_args = mock_obb_macd.call_args
@@ -168,9 +168,9 @@ def test_calculate_macd_tool_obb_returns_unexpected_cols(mock_obb_macd, sample_p
     }
     mock_unexpected_macd_df = pd.DataFrame(mock_data)
     mock_obb_macd.return_value = mock_unexpected_macd_df
-
+    
     result_df = calculate_macd_tool(sample_price_data, fast_period, slow_period, signal_period)
-
+    
     # The tool should return the first 3 columns as per its fallback logic
     pd.testing.assert_frame_equal(result_df, mock_unexpected_macd_df.iloc[:, :3])
 
@@ -179,6 +179,6 @@ def test_calculate_macd_tool_obb_returns_too_few_cols(mock_obb_macd, sample_pric
     # Test if fewer than 3 columns are returned (and not standard names)
     mock_unexpected_macd_df = pd.DataFrame({'MACD_custom_name_only': [1, 1.2, 1.1]})
     mock_obb_macd.return_value = mock_unexpected_macd_df
-
+    
     result_df = calculate_macd_tool(sample_price_data, 12, 26, 9)
     assert result_df is None

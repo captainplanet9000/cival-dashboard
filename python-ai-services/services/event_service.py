@@ -1,7 +1,7 @@
 import json
 from typing import Optional
 import redis.asyncio as aioredis # Ensure this matches the type in main.py
-from logging import getLogger
+from logging import getLogger 
 
 # Assuming BaseEvent and other specific event types are importable
 # from ..models.event_models import BaseEvent # This might cause circular import if models also import services.
@@ -44,7 +44,7 @@ class EventService:
             raise EventServiceError("Redis client not available. Cannot publish event.")
 
         target_channel = channel if channel else self.default_channel
-
+        
         try:
             # Ensure the event is a Pydantic model to have .model_dump_json()
             if not isinstance(event, BaseModel):
@@ -54,16 +54,16 @@ class EventService:
             # For Pydantic v2, model_dump_json() is the method.
             # For Pydantic v1, it was .json().
             # Assuming Pydantic v2 based on common modern usage.
-            event_json = event.model_dump_json()
-
+            event_json = event.model_dump_json() 
+            
             await self.redis_client.publish(target_channel, event_json)
-
+            
             # For logging, try to get event_type and event_id if they exist
             event_type_str = getattr(event, 'event_type', 'UnknownEventType')
             event_id_str = str(getattr(event, 'event_id', 'UnknownEventID')) # Ensure event_id is string for logging
-
+            
             logger.debug(f"Successfully published event to Redis channel '{target_channel}': Type='{event_type_str}', ID='{event_id_str}'")
-        except AttributeError as e:
+        except AttributeError as e: 
             # This might happen if model_dump_json() is not available (e.g. not a Pydantic model, or wrong Pydantic version)
             logger.error(f"Failed to serialize event: {e}. Ensure event is a Pydantic v2 model. Event data (partial): {str(event)[:200]}", exc_info=True)
             raise EventServiceError(f"Failed to serialize event: {e}")

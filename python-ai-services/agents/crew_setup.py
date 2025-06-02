@@ -1,6 +1,6 @@
-from crewai import Agent, Task, Crew, Process
-from .crew_llm_config import get_llm, ERROR_MSG as LLM_ERROR_MSG
-from loguru import logger
+from crewai import Agent, Task, Crew, Process 
+from .crew_llm_config import get_llm, ERROR_MSG as LLM_ERROR_MSG 
+from loguru import logger 
 
 # Imports for event emission
 from ..models.event_models import AgentLogEvent
@@ -32,7 +32,7 @@ class PlaceholderEventService:
         logger.debug(f"[PlaceholderEventService] Event details: {event.model_dump_json(indent=2)}")
 
 placeholder_event_service = PlaceholderEventService()
-current_crew_run_id = uuid.uuid4()
+current_crew_run_id = uuid.uuid4() 
 
 def agent_step_callback(step_output: Any, agent_name_for_event: str):
     logger.debug(f"Agent Step Callback triggered for Agent: {agent_name_for_event}, Output: {str(step_output)[:200]}")
@@ -45,16 +45,16 @@ def agent_step_callback(step_output: Any, agent_name_for_event: str):
             log_message = step_output.get("log", log_message)
             payload_data = step_output
         # Add more sophisticated parsing of step_output if needed based on CrewAI's AgentOutput/ToolOutput structure
-
+        
         event = AgentLogEvent(
             source_id=agent_name_for_event, # Using agent_name as source_id for this log
-            agent_id=agent_name_for_event,
+            agent_id=agent_name_for_event, 
             message=log_message,
             log_level="INFO",
             data=payload_data if payload_data else None, # Store structured output if available
             crew_run_id=current_crew_run_id # Associate with the current (mock) crew run
         )
-
+        
         # CrewAI callbacks are synchronous, but publish_event is async.
         # This is a common challenge. For a placeholder, we can try asyncio.run,
         # but in a real FastAPI/async app, this needs careful handling
@@ -62,7 +62,7 @@ def agent_step_callback(step_output: Any, agent_name_for_event: str):
         original_publish_method = placeholder_event_service.publish_event
         async def temp_sync_publish(event_to_publish, channel=None): # Wrapper to call async method
             await original_publish_method(event_to_publish, channel)
-
+        
         try:
             # Attempt to run the async publish method. This is a simplified approach.
             # In environments with an existing event loop (like FastAPI), creating a new one with asyncio.run()
@@ -104,7 +104,7 @@ market_analyst_agent = Agent(
         "data fetching and technical analysis tools to support your analysis."
     ),
     verbose=True,
-    allow_delegation=False,
+    allow_delegation=False, 
     llm=llm_instance,
     tools=[
         historical_stock_prices,
@@ -265,16 +265,16 @@ logger.info("CrewAI Tasks and Trading Analysis Crew defined in crew_setup.py.")
 #             # The tasks are defined to take general context.
 #             # A simple kickoff without inputs might work if agents are designed to seek info or use defaults.
 #             # However, the first task "Analyze the current market conditions for a specified financial symbol" implies an input is needed.
-#
+#             
 #             # CrewAI's kickoff can take inputs that are then available in the task context.
 #             # Let's assume the `description` of the first task is general enough or agents are
 #             # prompted/tooled to ask for specifics if needed.
 #             # For a structured input, you might define it on the Process or ensure tasks can receive it.
-#
+#             
 #             # A more robust way for tasks to get inputs is by defining them in the task's `description`
 #             # using placeholders like {symbol} and then passing them in `crew.kickoff(inputs={'symbol': 'BTCUSD'})`.
 #             # The current task descriptions are general.
-#
+#             
 #             logger.info(f"Kicking off trading_analysis_crew with inputs: {inputs}")
 #             # The inputs dict should contain keys that are referenced in your tasks' descriptions (e.g., {symbol})
 #             # For now, the tasks are general. The input will be available in the shared context.

@@ -12,7 +12,7 @@ from .agent_persistence_service import AgentPersistenceService, AgentPersistence
 from .event_service import EventService, EventServiceError
 from .risk_monitor import RiskMonitor, RiskMonitorError
 from .strategy_config_service import (
-    StrategyConfigService,
+    StrategyConfigService, 
     StrategyConfigServiceError,
     StrategyConfigNotFoundError,
     StrategyConfigCreationError,
@@ -21,9 +21,9 @@ from .strategy_config_service import (
 )
 from .strategy_visualization_service import StrategyVisualizationService, StrategyVisualizationServiceError
 from .watchlist_service import (
-    WatchlistService,
-    WatchlistServiceError,
-    WatchlistNotFoundError,
+    WatchlistService, 
+    WatchlistServiceError, 
+    WatchlistNotFoundError, 
     WatchlistItemNotFoundError,
     WatchlistOperationForbiddenError
 )
@@ -40,14 +40,14 @@ __all__ = [
     "VaultService",
     "MemoryService",
     "SharedKnowledgeService", # Added to __all__
-    "AgentPersistenceService",
-    "AgentPersistenceError",
+    "AgentPersistenceService", 
+    "AgentPersistenceError", 
     "AgentStateNotFoundError",
     "EventService",
     "EventServiceError",
     "RiskMonitor",
     "RiskMonitorError",
-    "StrategyConfigService",
+    "StrategyConfigService", 
     "StrategyConfigServiceError",
     "StrategyConfigNotFoundError",
     "StrategyConfigCreationError",
@@ -55,12 +55,12 @@ __all__ = [
     "StrategyConfigDeletionError",
     "StrategyVisualizationService",
     "StrategyVisualizationServiceError",
-    "WatchlistService",
-    "WatchlistServiceError",
-    "WatchlistNotFoundError",
+    "WatchlistService", 
+    "WatchlistServiceError", 
+    "WatchlistNotFoundError", 
     "WatchlistItemNotFoundError",
     "WatchlistOperationForbiddenError",
-    "UserPreferenceService",
+    "UserPreferenceService", 
     "UserPreferenceServiceError",
     # "AgentStateManager",
     # "TradingCoordinator",

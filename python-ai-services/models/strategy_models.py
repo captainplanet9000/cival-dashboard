@@ -6,8 +6,8 @@ import uuid
 # --- Base Strategy Configuration & Common Parameters ---
 
 StrategyTimeframe = Literal[
-    "1m", "3m", "5m", "15m", "30m",
-    "1h", "2h", "4h", "6h", "8h", "12h",
+    "1m", "3m", "5m", "15m", "30m", 
+    "1h", "2h", "4h", "6h", "8h", "12h", 
     "1d", "3d", "1w", "1M"
 ]
 
@@ -60,23 +60,23 @@ class ElliottWaveParams(BaseModel):
 
 # Union type for specific strategy parameters, to be used in a general strategy config model
 StrategySpecificParams = Union[
-    DarvasBoxParams,
-    WilliamsAlligatorParams,
-    RenkoParams,
-    HeikinAshiParams,
+    DarvasBoxParams, 
+    WilliamsAlligatorParams, 
+    RenkoParams, 
+    HeikinAshiParams, 
     ElliottWaveParams
 ]
 
 class StrategyConfig(BaseStrategyConfig):
     # This field will hold the specific parameters based on 'strategy_type'
-    parameters: StrategySpecificParams
+    parameters: StrategySpecificParams 
 
     @validator('parameters', pre=True, always=True) # Added pre=True, always=True
     def validate_parameters_type(cls, v, values):
         strategy_type = values.get('strategy_type')
         # This validator runs *before* Pydantic tries to validate `parameters` against the Union.
         # So, `v` here is the raw dict for parameters. We need to guide Pydantic.
-
+        
         if not strategy_type:
             # This should ideally not happen if strategy_type is processed first by Pydantic
             # or if it's a required field ensured by other means before this validator.
@@ -90,15 +90,15 @@ class StrategyConfig(BaseStrategyConfig):
             "HeikinAshi": HeikinAshiParams,
             "ElliottWave": ElliottWaveParams,
         }
-
+        
         expected_param_type = type_map.get(strategy_type)
         if expected_param_type is None:
             raise ValueError(f"Unknown strategy_type '{strategy_type}' for parameter validation.")
-
+        
         # If v is already an instance of the expected type (e.g., during model copy/revalidation), pass it through.
         if isinstance(v, expected_param_type):
             return v
-
+            
         # If v is a dict, try to parse it into the expected_param_type.
         # This is where Pydantic's discriminated union would typically handle things automatically,
         # but we are doing it semi-manually here to ensure the type matches strategy_type.
@@ -107,11 +107,11 @@ class StrategyConfig(BaseStrategyConfig):
                 return expected_param_type(**v)
             except Exception as e: # Catch Pydantic's ValidationError or others
                  raise ValueError(f"Parameters for strategy_type '{strategy_type}' are invalid for type {expected_param_type.__name__}: {e}")
-
+        
         # If v is neither a dict nor already the correct instance, it's an invalid type for parameters.
         raise ValueError(f"Parameters for strategy_type '{strategy_type}' must be a dictionary or an instance of {expected_param_type.__name__}.")
 
-
+    
     class Config:
         # For Pydantic v2, if you want to use strategy_type as discriminator
         # This is more complex with Union types and often requires custom parsing if strategy_type isn't part of the sub-model.
@@ -138,7 +138,7 @@ class PerformanceMetrics(BaseModel):
     strategy_id: uuid.UUID
     backtest_id: Optional[uuid.UUID] = None # If metrics are from a specific backtest run
     live_trading_session_id: Optional[uuid.UUID] = None # If metrics are from a live session
-
+    
     start_date: datetime
     end_date: datetime
     initial_capital: float
@@ -150,9 +150,9 @@ class PerformanceMetrics(BaseModel):
     sortino_ratio: Optional[float] = None
     cagr_percentage: Optional[float] = None # Compound Annual Growth Rate
     volatility_percentage: Optional[float] = None # Annualized volatility
-
+    
     trade_stats: TradeStats = Field(default_factory=TradeStats)
-
+    
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # --- Goal Alignment Models ---
@@ -176,7 +176,7 @@ class StrategyGoalAlignment(BaseModel):
     strategy_id: uuid.UUID
     goal_id: uuid.UUID
     # How well this strategy is expected to contribute to the goal
-    expected_contribution_score: Optional[float] = Field(default=None, ge=0, le=1)
+    expected_contribution_score: Optional[float] = Field(default=None, ge=0, le=1) 
     notes: Optional[str] = None
 
 class StrategyPerformanceTeaser(BaseModel):
@@ -185,15 +185,15 @@ class StrategyPerformanceTeaser(BaseModel):
     strategy_name: str
     strategy_type: str
     is_active: bool
-    symbols: List[str]
+    symbols: List[str] 
     timeframe: StrategyTimeframe
-
+    
     # From latest PerformanceMetrics
-    latest_performance_record_timestamp: Optional[datetime] = None
+    latest_performance_record_timestamp: Optional[datetime] = None 
     latest_net_profit_percentage: Optional[float] = None
-    latest_sharpe_ratio: Optional[float] = None
-    latest_sortino_ratio: Optional[float] = None
-    latest_max_drawdown_percentage: Optional[float] = None
+    latest_sharpe_ratio: Optional[float] = None 
+    latest_sortino_ratio: Optional[float] = None 
+    latest_max_drawdown_percentage: Optional[float] = None 
     total_trades_from_latest_metrics: Optional[int] = None
 
     class Config:

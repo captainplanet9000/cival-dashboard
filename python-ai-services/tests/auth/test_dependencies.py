@@ -39,15 +39,15 @@ async def test_get_current_active_user_success(mock_jwt_decode: MagicMock, mock_
             return TEST_SUPABASE_URL
         return None
     mock_os_getenv.side_effect = os_getenv_side_effect
-
+    
     # Must re-evaluate EXPECTED_ISSUER inside the test or ensure module is reloaded if it's top-level
     # For simplicity, we can assume the dependency function re-evaluates it or it's correctly patched.
     # The dependency function itself constructs EXPECTED_ISSUER from the mocked os.getenv("SUPABASE_URL").
-
+    
     user_id = uuid.uuid4()
     email = "test@example.com"
     roles = ["user", "editor"]
-
+    
     decoded_payload = {
         "sub": str(user_id),
         "email": email,
@@ -57,7 +57,7 @@ async def test_get_current_active_user_success(mock_jwt_decode: MagicMock, mock_
         "app_metadata": {"roles": roles}
     }
     mock_jwt_decode.return_value = decoded_payload
-
+    
     mock_auth_creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="dummy_token_string")
 
     # Act
@@ -67,7 +67,7 @@ async def test_get_current_active_user_success(mock_jwt_decode: MagicMock, mock_
     # The current dependency code defines SUPABASE_JWT_SECRET, SUPABASE_URL, EXPECTED_ISSUER at module level.
     # To make os.getenv effective for them, we need to patch where they are defined or reload the module.
     # A simpler way for testing is to ensure the dependency directly calls os.getenv for these values, which it does.
-
+    
     current_user = await get_current_active_user(token=mock_auth_creds)
 
     # Assert
@@ -127,16 +127,16 @@ async def test_get_current_active_user_missing_sub_claim(mock_jwt_decode: MagicM
 
     with pytest.raises(HTTPException) as exc_info:
         await get_current_active_user(token=mock_auth_creds)
-    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED 
 
 @pytest.mark.asyncio
 @patch('python_ai_services.auth.dependencies.os.getenv')
 @patch('python_ai_services.auth.dependencies.jwt.decode')
 async def test_get_current_active_user_pydantic_validation_error(mock_jwt_decode: MagicMock, mock_os_getenv: MagicMock):
     mock_os_getenv.side_effect = lambda key: TEST_SUPABASE_JWT_SECRET if key == "SUPABASE_JWT_SECRET" else (TEST_SUPABASE_URL if key == "SUPABASE_URL" else None)
-
+    
     invalid_user_id_payload = {
-        "sub": "not-a-uuid",
+        "sub": "not-a-uuid", 
         "email": "test@example.com",
         "exp": (datetime.now(timezone.utc) + timedelta(hours=1)).timestamp(),
         "aud": TEST_EXPECTED_AUDIENCE,
@@ -148,6 +148,6 @@ async def test_get_current_active_user_pydantic_validation_error(mock_jwt_decode
 
     with pytest.raises(HTTPException) as exc_info:
         await get_current_active_user(token=mock_auth_creds)
-    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED 
     assert "Invalid user data structure in token" in exc_info.value.detail
 ```

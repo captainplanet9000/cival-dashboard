@@ -17,7 +17,7 @@ DEFAULT_RENKO_ATR_PERIOD = 14
 DEFAULT_RENKO_FIXED_BRICK_SIZE = None # Must be set if mode is 'fixed'
 
 def calculate_renko_bricks(
-    price_series: pd.Series,
+    price_series: pd.Series, 
     brick_size: float # Brick size must be pre-calculated and positive
 ) -> pd.DataFrame:
     """
@@ -39,7 +39,7 @@ def calculate_renko_bricks(
     # or simply from the first price, and the first brick forms after a move of `brick_size`.
     # For this implementation, we'll use the first price as the initial reference point (last_brick_close).
     # The first actual brick will be plotted once the price moves `brick_size` away from this.
-
+    
     # More robust: start with the first price as the effective 'close' of a hypothetical zeroth brick.
     last_brick_close = price_series.iloc[0]
     brick_type = 0 # 0: no direction yet, 1: up, -1: down
@@ -52,7 +52,7 @@ def calculate_renko_bricks(
                 for i in range(num_bricks):
                     brick_open = last_brick_close + i * brick_size
                     brick_close = brick_open + brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close, 
                                          'low': brick_open, 'close': brick_close, 'type': 1})
                 last_brick_close = brick_close # Update to the close of the last formed brick
             elif current_price <= last_brick_close - brick_size:
@@ -61,7 +61,7 @@ def calculate_renko_bricks(
                 for i in range(num_bricks):
                     brick_open = last_brick_close - i * brick_size
                     brick_close = brick_open - brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open, 
                                          'low': brick_close, 'close': brick_close, 'type': -1})
                 last_brick_close = brick_close
             # If no brick formed yet, last_brick_close remains the initial price.
@@ -75,15 +75,15 @@ def calculate_renko_bricks(
                 for _ in range(num_bricks):
                     brick_open = last_brick_close
                     brick_close = last_brick_close + brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close, 
                                          'low': brick_open, 'close': brick_close, 'type': 1})
                     last_brick_close = brick_close
             elif current_price <= last_brick_close - 2 * brick_size: # Reversal to DOWN brick(s)
                 brick_type = -1
                 # First reversal brick opens one level down from previous close of the up brick
-                brick_open = last_brick_close - brick_size
-                brick_close = brick_open - brick_size
-                renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open,
+                brick_open = last_brick_close - brick_size 
+                brick_close = brick_open - brick_size 
+                renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open, 
                                      'low': brick_close, 'close': brick_close, 'type': -1})
                 last_brick_close = brick_close
                 # Check for further down bricks if the drop was large enough
@@ -91,31 +91,31 @@ def calculate_renko_bricks(
                 for _ in range(num_additional_bricks):
                     brick_open = last_brick_close
                     brick_close = last_brick_close - brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open, 
                                          'low': brick_close, 'close': brick_close, 'type': -1})
                     last_brick_close = brick_close
-
+        
         elif brick_type == -1: # Last brick was DOWN
             if current_price <= last_brick_close - brick_size: # New DOWN brick(s)
                 num_bricks = int((last_brick_close - current_price) / brick_size)
                 for _ in range(num_bricks):
                     brick_open = last_brick_close
                     brick_close = last_brick_close - brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_open, 
                                          'low': brick_close, 'close': brick_close, 'type': -1})
                     last_brick_close = brick_close
             elif current_price >= last_brick_close + 2 * brick_size: # Reversal to UP brick(s)
                 brick_type = 1
                 brick_open = last_brick_close + brick_size
                 brick_close = brick_open + brick_size
-                renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close,
+                renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close, 
                                      'low': brick_open, 'close': brick_close, 'type': 1})
                 last_brick_close = brick_close
                 num_additional_bricks = int(np.floor((current_price - last_brick_close) / brick_size)) # Use floor
                 for _ in range(num_additional_bricks):
                     brick_open = last_brick_close
                     brick_close = last_brick_close + brick_size
-                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close,
+                    renko_bricks_list.append({'timestamp': timestamp, 'open': brick_open, 'high': brick_close, 
                                          'low': brick_open, 'close': brick_close, 'type': 1})
                     last_brick_close = brick_close
 
@@ -129,8 +129,8 @@ def get_renko_signals(
     start_date: str,
     end_date: str,
     brick_size_mode: Literal["fixed", "atr"] = DEFAULT_RENKO_BRICK_SIZE_MODE,
-    brick_size_value: Optional[float] = None,
-    atr_period: int = DEFAULT_RENKO_ATR_PERIOD,
+    brick_size_value: Optional[float] = None, 
+    atr_period: int = DEFAULT_RENKO_ATR_PERIOD, 
     data_provider: str = "yfinance"
 ) -> Optional[pd.DataFrame]:
     logger.info(f"Generating Renko signals for {symbol} from {start_date} to {end_date}, mode: {brick_size_mode}")
@@ -148,19 +148,19 @@ def get_renko_signals(
         if price_df_orig.empty:
             logger.warning(f"No data for {symbol} from {start_date} to {end_date}")
             return None
-
+        
         rename_map = {}
         for col_map_from, col_map_to in {'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}.items():
             if col_map_from in price_df_orig.columns: rename_map[col_map_from] = col_map_to
             elif col_map_to not in price_df_orig.columns and col_map_from.title() in price_df_orig.columns: rename_map[col_map_from.title()] = col_map_to
         price_df_orig.rename(columns=rename_map, inplace=True)
-
+        
         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] # Ensure these are present after rename
         if not all(col in price_df_orig.columns for col in required_cols):
             logger.error(f"DataFrame for {symbol} is missing required OHLCV columns. Available: {price_df_orig.columns.tolist()}")
             return None
         price_df_orig = price_df_orig[required_cols].copy()
-
+        
         close_prices = price_df_orig['Close']
         if close_prices.empty:
             logger.warning(f"Close price series is empty for {symbol}")
@@ -168,10 +168,10 @@ def get_renko_signals(
 
         current_brick_size = 0.0
         if brick_size_mode == "atr":
-            if brick_size_value is not None:
+            if brick_size_value is not None: 
                 current_brick_size = brick_size_value
                 logger.info(f"Using provided ATR value as brick size: {current_brick_size}")
-            else:
+            else: 
                 atr_series = vbt.ATR.run(price_df_orig['High'], price_df_orig['Low'], price_df_orig['Close'], window=atr_period, ewm=False).atr # Use SMA for ATR
                 if atr_series.empty or np.isnan(atr_series.iloc[-1]) or atr_series.iloc[-1] == 0:
                     logger.error(f"ATR calculation failed or resulted in zero/NaN for {symbol}. Cannot use ATR mode.")
@@ -186,7 +186,7 @@ def get_renko_signals(
         else:
             logger.error(f"Invalid brick_size_mode: {brick_size_mode}")
             return None
-
+        
         if current_brick_size <= 0: # Should be caught above, but defense
             logger.error(f"Calculated or provided brick size is not positive: {current_brick_size}")
             return None
@@ -209,14 +209,14 @@ def get_renko_signals(
         price_df_orig['exits'] = False
 
         renko_type_shifted = price_df_orig['renko_type'].shift(1).fillna(0)
-
+        
         # Entry: Current brick is UP (1) and previous brick was DOWN (-1)
         price_df_orig.loc[(price_df_orig['renko_type'] == 1) & (renko_type_shifted == -1), 'entries'] = True
         # Exit (or Short Entry): Current brick is DOWN (-1) and previous brick was UP (1)
         price_df_orig.loc[(price_df_orig['renko_type'] == -1) & (renko_type_shifted == 1), 'exits'] = True
-
+        
         price_df_orig.loc[price_df_orig['entries'], 'exits'] = False
-
+        
         logger.info(f"Generated {price_df_orig['entries'].sum()} Renko entry signals and {price_df_orig['exits'].sum()} exit signals for {symbol}.")
         return price_df_orig
 
@@ -246,7 +246,7 @@ def run_renko_backtest(
             size=size,
             size_type='percentequity',
             fees=commission_pct,
-            freq=freq
+            freq=freq 
         )
         logger.info("Renko backtest portfolio created successfully.")
         return portfolio.stats()
@@ -256,13 +256,13 @@ def run_renko_backtest(
 
 # Example Usage (commented out):
 # if __name__ == '__main__':
-#     symbol_to_test = "BTC-USD"
+#     symbol_to_test = "BTC-USD" 
 #     start_date_test = "2023-01-01" # Shorter period for faster testing
 #     end_date_test = "2023-06-30"
 #     logger.info(f"--- Running Renko Example for {symbol_to_test} ---")
-#
+#     
 #     # Test with fixed brick size
-#     # signals_df_fixed = get_renko_signals(symbol_to_test, start_date_test, end_date_test,
+#     # signals_df_fixed = get_renko_signals(symbol_to_test, start_date_test, end_date_test, 
 #     #                                   brick_size_mode="fixed", brick_size_value=500.0) # Brick size for BTC
 #     # if signals_df_fixed is not None and not signals_df_fixed.empty:
 #     #     print("\nSignals DataFrame with Renko info (Fixed Brick Size):")
@@ -271,9 +271,9 @@ def run_renko_backtest(
 #     #     if stats_fixed: print("\nBacktest Stats (Fixed Brick):\n", stats_fixed)
 #     # else:
 #     #     logger.warning("Could not generate Renko signals with fixed brick size.")
-#
+# 
 #     # Test with ATR brick size (function calculates ATR internally)
-#     signals_df_atr = get_renko_signals(symbol_to_test, start_date_test, end_date_test,
+#     signals_df_atr = get_renko_signals(symbol_to_test, start_date_test, end_date_test, 
 #                                        brick_size_mode="atr", atr_period=14)
 #     if signals_df_atr is not None and not signals_df_atr.empty:
 #         print("\nSignals DataFrame with Renko info (ATR Brick Size):")
@@ -282,5 +282,5 @@ def run_renko_backtest(
 #         if stats_atr: print("\nBacktest Stats (ATR Brick):\n", stats_atr)
 #     else:
 #         logger.warning("Could not generate Renko signals with ATR brick size.")
-#
+# 
 #     logger.info(f"--- End of Renko Example for {symbol_to_test} ---")

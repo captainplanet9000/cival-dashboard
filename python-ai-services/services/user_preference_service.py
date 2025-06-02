@@ -33,7 +33,7 @@ class UserPreferenceService:
                 .eq("user_id", str(user_id)) \
                 .maybe_single() \
                 .execute()
-
+            
             if response.data:
                 return UserPreferences(**response.data)
             else:
@@ -41,7 +41,7 @@ class UserPreferenceService:
                 logger.info(f"No preferences found for user {user_id}, returning default.")
                 # Ensure the default UserPreferences instance has its last_updated_at set,
                 # which the default_factory in the model should handle.
-                return UserPreferences(user_id=user_id)
+                return UserPreferences(user_id=user_id) 
         except Exception as e:
             logger.error(f"Database error fetching preferences for user {user_id}: {e}", exc_info=True)
             raise UserPreferenceServiceError(f"Database error fetching preferences: {str(e)}")
@@ -52,7 +52,7 @@ class UserPreferenceService:
         The preferences_payload is the dictionary that will become the 'preferences' JSONB field.
         """
         logger.info(f"Updating preferences for user ID {user_id}")
-
+        
         now_utc = datetime.now(timezone.utc)
         record_to_upsert = {
             "user_id": str(user_id),
@@ -65,7 +65,7 @@ class UserPreferenceService:
                 .upsert(record_to_upsert, on_conflict="user_id") \
                 .select("*") \
                 .execute()
-
+            
             if response.data and len(response.data) > 0:
                 logger.info(f"Preferences updated successfully for user {user_id}")
                 # The response.data[0] should already have the correct last_updated_at from the DB

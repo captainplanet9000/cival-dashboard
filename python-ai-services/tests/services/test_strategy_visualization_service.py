@@ -58,9 +58,9 @@ def get_sample_signals_df(price_df: pd.DataFrame) -> pd.DataFrame:
     signals['entries'] = False
     signals['exits'] = False
     if len(signals) > 1:
-        signals.loc[signals.index[1], 'entries'] = True
+        signals.loc[signals.index[1], 'entries'] = True 
     if len(signals) > 3:
-        signals.loc[signals.index[3], 'exits'] = True
+        signals.loc[signals.index[3], 'exits'] = True   
     return signals
 
 # --- Tests for get_strategy_visualization_data ---
@@ -90,14 +90,14 @@ async def test_get_strategy_visualization_data_success(
     # The service's get_strategy_config method takes user_id for ownership check.
     mock_config = StrategyConfig(
         strategy_id=strategy_config_id, strategy_name="Test Darvas", strategy_type="DarvasBox",
-        symbols=["AAPL"], timeframe=StrategyTimeframe("1d"), parameters=DarvasBoxParams()
+        symbols=["AAPL"], timeframe=StrategyTimeframe("1d"), parameters=DarvasBoxParams() 
         # user_id would be on the DB record, not necessarily the Pydantic model unless adapted
     )
     mock_strategy_config_service_viz.get_strategy_config.return_value = mock_config
 
     start_datetime = datetime.combine(start_date_obj, datetime.min.time(), tzinfo=timezone.utc)
     # Ensure num_days results in data up to and including end_date_obj
-    num_days = (end_date_obj - start_date_obj).days + 1
+    num_days = (end_date_obj - start_date_obj).days + 1 
     price_df = get_sample_price_df(start_datetime, num_days)
     # Access the .func attribute if get_historical_price_data_tool is a patched Tool object
     # If it's patched as a direct function, just .return_value
@@ -106,15 +106,15 @@ async def test_get_strategy_visualization_data_success(
     else:
         mock_get_historical_data.return_value = price_df
 
-
+    
     signals_df = get_sample_signals_df(price_df.copy())
-
+    
     mock_strategy_module = MagicMock()
     # Service uses strategy_module_name_map.get("DarvasBox") -> "darvas_box"
     # and then constructs signal_func_name = f"get_{mapped_module_name}_signals"
     mock_strategy_module.get_darvas_box_signals = MagicMock(return_value=(signals_df, None)) # Func returns (df, shapes)
     mock_import_module.return_value = mock_strategy_module
-
+    
     mock_trades_db_response = AsyncMock() # This should be the return value of .execute()
     mock_trades_db_response.data = [
         TradeRecord(trade_id=uuid.uuid4(), user_id=user_id, symbol="AAPL", side=TradeSide.BUY, order_type=OrderType.MARKET, status=OrderStatus.FILLED, quantity_ordered=10.0, quantity_filled=10.0, price=101.0, created_at=price_df.index[1].to_pydatetime().replace(tzinfo=timezone.utc), updated_at=price_df.index[1].to_pydatetime().replace(tzinfo=timezone.utc), order_id=str(uuid.uuid4())).model_dump()
@@ -136,7 +136,7 @@ async def test_get_strategy_visualization_data_success(
 
     assert "SMA_20" in result.indicator_data
     # Exact length can vary due to rolling window NaNs. Check if list is non-empty if SMA_20 is expected.
-    assert len(result.indicator_data["SMA_20"]) <= num_days
+    assert len(result.indicator_data["SMA_20"]) <= num_days 
     if num_days >=1: # Check first point if data exists
          assert isinstance(result.indicator_data["SMA_20"][0], IndicatorDataPoint)
 
@@ -145,13 +145,13 @@ async def test_get_strategy_visualization_data_success(
     assert result.entry_signals[0].signal_type == "entry_long"
     assert len(result.exit_signals) == 1
     assert result.exit_signals[0].signal_type == "exit_long"
-
+    
     assert result.paper_trades is not None
     assert len(result.paper_trades) == 1
     assert result.paper_trades[0].price == 101.0
 
     mock_strategy_config_service_viz.get_strategy_config.assert_called_once_with(strategy_config_id, user_id)
-
+    
     if hasattr(mock_get_historical_data, 'func'):
          mock_get_historical_data.func.assert_called_once()
     else:
@@ -164,7 +164,7 @@ async def test_get_strategy_visualization_data_success(
 @pytest.mark.asyncio
 @patch('python_ai_services.services.strategy_visualization_service.get_historical_price_data_tool')
 async def test_get_strategy_visualization_data_config_not_found(
-    mock_get_historical_data: MagicMock,
+    mock_get_historical_data: MagicMock, 
     visualization_service: StrategyVisualizationService,
     mock_strategy_config_service_viz: MagicMock
 ):
@@ -187,7 +187,7 @@ async def test_get_strategy_visualization_data_no_price_data(
     mock_user_id = uuid.uuid4()
     mock_config = StrategyConfig(strategy_id=mock_config_id, strategy_name="Test", strategy_type="DarvasBox", symbols=["FAIL"], timeframe=StrategyTimeframe("1d"), parameters=DarvasBoxParams())
     mock_strategy_config_service_viz.get_strategy_config.return_value = mock_config
-
+    
     if hasattr(mock_get_historical_data, 'func'):
         mock_get_historical_data.func.return_value = None # Simulate price data fetch failure
     else:

@@ -29,24 +29,24 @@ def calculate_heikin_ashi_candles(ohlc_df: pd.DataFrame) -> pd.DataFrame:
 
 
     ha_df = pd.DataFrame(index=ohlc_df.index)
-
+    
     # HA Close: (Open + High + Low + Close) / 4
     ha_df['ha_close'] = (ohlc_df['Open'] + ohlc_df['High'] + ohlc_df['Low'] + ohlc_df['Close']) / 4.0
-
+    
     # HA Open: (Previous HA Open + Previous HA Close) / 2
     ha_df['ha_open'] = np.nan # Initialize column
-    if not ohlc_df.empty:
+    if not ohlc_df.empty: 
         ha_df.loc[ha_df.index[0], 'ha_open'] = (ohlc_df['Open'].iloc[0] + ohlc_df['Close'].iloc[0]) / 2.0
         for i in range(1, len(ohlc_df)):
             ha_df.loc[ha_df.index[i], 'ha_open'] = (ha_df['ha_open'].iloc[i-1] + ha_df['ha_close'].iloc[i-1]) / 2.0
-
+            
     # HA High: Max(Original High, HA Open, HA Close)
     # Ensure ha_open and ha_close are not NaN for max/min calculation; they should be filled by this point.
     ha_df['ha_high'] = ha_df[['ha_open', 'ha_close']].join(ohlc_df['High']).max(axis=1)
-
+    
     # HA Low: Min(Original Low, HA Open, HA Close)
     ha_df['ha_low'] = ha_df[['ha_open', 'ha_close']].join(ohlc_df['Low']).min(axis=1)
-
+    
     return ha_df[['ha_open', 'ha_high', 'ha_low', 'ha_close']].copy()
 
 
@@ -75,26 +75,26 @@ def get_heikin_ashi_signals(
         if price_data.empty:
             logger.warning(f"No data returned (empty DataFrame) for {symbol} from {start_date} to {end_date}")
             return None
-
+        
         rename_map = {}
         for col_map_from, col_map_to in {'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}.items():
             if col_map_from in price_data.columns: rename_map[col_map_from] = col_map_to
             elif col_map_to not in price_data.columns and col_map_from.title() in price_data.columns: rename_map[col_map_from.title()] = col_map_to
         price_data.rename(columns=rename_map, inplace=True)
-
+        
         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
         if not all(col in price_data.columns for col in required_cols):
             logger.error(f"DataFrame for {symbol} is missing required columns {required_cols}. Available: {price_data.columns.tolist()}")
             return None
-
+        
         # Keep original OHLC for backtesting close price and other potential uses
         original_ohlcv = price_data[required_cols].copy()
-
+        
         ha_candles = calculate_heikin_ashi_candles(original_ohlcv[['Open', 'High', 'Low', 'Close']])
-
+        
         price_data = original_ohlcv.join(ha_candles) # Join HA candles to the original data
         price_data.dropna(subset=['ha_open', 'ha_close', 'ha_high', 'ha_low'], inplace=True) # Remove NaNs from initial HA calculation
-
+        
         if price_data.empty:
             logger.warning(f"Data became empty after Heikin Ashi calculations for {symbol}. Insufficient data for HA generation.")
             return None
@@ -118,7 +118,7 @@ def get_heikin_ashi_signals(
     # Long Entry: N consecutive green HA candles, ideally with no lower shadows
     buy_condition = price_data['ha_green'] & price_data['ha_no_lower_shadow']
     entry_signal_active = buy_condition.rolling(window=trend_confirmation_candles, min_periods=trend_confirmation_candles).apply(lambda x: x.all(), raw=True).fillna(0).astype(bool)
-
+    
     # Trigger entry on the bar *after* the confirmation
     # Shift signals by 1 to enter on the open of the next bar after confirmation
     shifted_entry_signal = entry_signal_active.shift(1).fillna(False)
@@ -126,9 +126,9 @@ def get_heikin_ashi_signals(
 
 
     # Long Exit: N consecutive red HA candles (signifying trend change)
-    sell_condition = price_data['ha_red']
+    sell_condition = price_data['ha_red'] 
     exit_signal_active = sell_condition.rolling(window=exit_change_candles, min_periods=exit_change_candles).apply(lambda x: x.all(), raw=True).fillna(0).astype(bool)
-
+    
     # Trigger exit on the bar *after* exit confirmation
     shifted_exit_signal = exit_signal_active.shift(1).fillna(False)
     # Only exit if an entry signal was active previously (conceptual: must be in a trade)
@@ -136,11 +136,11 @@ def get_heikin_ashi_signals(
     # We are providing signals. If an entry signal was active, and now an exit condition is met.
     # This requires a state machine or more complex logic to ensure we only exit if in a position.
     # For vectorbt, providing entry and exit signals separately is fine.
-    price_data.loc[shifted_exit_signal, 'exits'] = True
+    price_data.loc[shifted_exit_signal, 'exits'] = True 
 
     # Ensure no exit on the same bar as entry
     price_data.loc[price_data['entries'], 'exits'] = False
-
+    
     # Ensure Close and Volume are present for backtesting (they should be from original_ohlcv join)
     if 'Close' not in price_data.columns and 'Close' in original_ohlcv.columns:
         price_data['Close'] = original_ohlcv['Close']
@@ -168,7 +168,7 @@ def run_heikin_ashi_backtest(
 
     try:
         portfolio = vbt.Portfolio.from_signals(
-            close=price_data_with_signals['Close'],
+            close=price_data_with_signals['Close'], 
             entries=price_data_with_signals['entries'],
             exits=price_data_with_signals['exits'],
             init_cash=init_cash,
@@ -189,7 +189,7 @@ def run_heikin_ashi_backtest(
 #     start_date_test = "2022-01-01"
 #     end_date_test = "2023-12-31"
 #     logger.info(f"--- Running Heikin Ashi Example for {symbol_to_test} ---")
-#     signals_df = get_heikin_ashi_signals(symbol_to_test, start_date_test, end_date_test,
+#     signals_df = get_heikin_ashi_signals(symbol_to_test, start_date_test, end_date_test, 
 #                                          trend_confirmation_candles=3, exit_change_candles=1)
 #     if signals_df is not None and not signals_df.empty:
 #         print("\nSignals DataFrame head (showing HA and original close):")
@@ -197,12 +197,12 @@ def run_heikin_ashi_backtest(
 #         print(signals_df[['Close', 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'ha_green', 'ha_no_lower_shadow', 'entries', 'exits']].head(30))
 #         print(f"\nTotal Entry Signals: {signals_df['entries'].sum()}")
 #         print(f"Total Exit Signals: {signals_df['exits'].sum()}")
-#
+#         
 #         stats = run_heikin_ashi_backtest(signals_df, freq='D') # Ensure freq matches data
 #         if stats is not None:
 #             print("\nBacktest Stats:")
 #             print(stats)
-#
+#         
 #         # Plotting example (requires plotly and graphical environment)
 #         # import plotly.graph_objects as go
 #         # try:
@@ -217,14 +217,14 @@ def run_heikin_ashi_backtest(
 #         #     )
 #         #     entry_points = signals_df[signals_df['entries']]
 #         #     exit_points = signals_df[signals_df['exits']]
-#         #     fig.add_trace(go.Scatter(x=entry_points.index, y=entry_points['Close'], mode='markers',
+#         #     fig.add_trace(go.Scatter(x=entry_points.index, y=entry_points['Close'], mode='markers', 
 #         #                              marker=dict(symbol='triangle-up', color='green', size=10), name='Entry'))
-#         #     fig.add_trace(go.Scatter(x=exit_points.index, y=exit_points['Close'], mode='markers',
+#         #     fig.add_trace(go.Scatter(x=exit_points.index, y=exit_points['Close'], mode='markers', 
 #         #                              marker=dict(symbol='triangle-down', color='red', size=10), name='Exit'))
 #         #     fig.show()
 #         # except Exception as plot_e:
 #         #     print(f"Plotting failed: {plot_e}")
-#
+#             
 #     else:
 #         logger.warning("Could not generate Heikin Ashi signals.")
 #     logger.info(f"--- End of Heikin Ashi Example for {symbol_to_test} ---")

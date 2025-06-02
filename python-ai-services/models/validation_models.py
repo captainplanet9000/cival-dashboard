@@ -12,7 +12,7 @@ except ImportError:
     # This is a fallback type. If PerformanceMetrics is not found,
     # validated_metrics_summary will be a Dict.
     # In a well-structured project, this import should succeed.
-    PerformanceMetrics = Dict[str, Any]
+    PerformanceMetrics = Dict[str, Any] 
 
 ValidationStatus = Literal["PASS", "FAIL", "WARN", "NOT_APPLICABLE", "PENDING"]
 
@@ -28,17 +28,17 @@ class ValidationCheckResult(BaseModel):
 class ValidationReport(BaseModel):
     report_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Unique identifier for this validation report.")
     strategy_config_id: uuid.UUID = Field(..., description="ID of the StrategyConfig that was backtested.")
-
+    
     strategy_name: str = Field(..., description="Name of the strategy validated.")
     symbol: str = Field(..., description="Symbol on which the strategy was validated.")
     period_start_date: date = Field(..., description="Start date of the backtest period.")
     period_end_date: date = Field(..., description="End date of the backtest period.")
-
+    
     # Store a summary or the full metrics that were validated.
     validated_metrics_summary: PerformanceMetrics | Dict[str, Any] = Field(..., description="The performance metrics snapshot that was subjected to validation.")
-
+    
     validation_checks: List[ValidationCheckResult] = Field(default_factory=list, description="List of individual validation checks performed.")
-
+    
     overall_validation_status: ValidationStatus = Field(default="PENDING", description="Overall outcome of the validation for this backtest run.")
     report_generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when this validation report was generated.")
     notes: Optional[str] = Field(default=None, description="Overall notes or summary for this validation report.")
