@@ -5,6 +5,8 @@ from fastapi.testclient import TestClient
 import uuid
 from datetime import date, datetime, timezone, timedelta # Added timedelta
 from typing import List, Dict, Any, Optional
+import json # For serializing/deserializing cache data
+import redis.asyncio as aioredis # For RedisError
 
 # Assuming main.app is the FastAPI instance
 from python_ai_services.main import app
@@ -31,6 +33,12 @@ from python_ai_services.services.strategy_config_service import StrategyConfigSe
 
 # Import actual dependency injector functions to use as keys for overrides
 from python_ai_services.main import get_strategy_visualization_service, get_strategy_config_service
+from python_ai_services.main import get_user_preference_service, get_current_active_user # Added for User Preferences
+
+# Import models and services for User Preferences tests
+from python_ai_services.services.user_preference_service import UserPreferenceService, UserPreferenceServiceError
+from python_ai_services.models.user_models import UserPreferences
+from python_ai_services.models.auth_models import AuthenticatedUser
 
 
 # --- Test Client Fixture ---
@@ -579,4 +587,323 @@ def test_remove_item_from_watchlist_forbidden(client: TestClient, mock_watchlist
     response = client.delete(f"/api/v1/watchlists/items/{uuid.uuid4()}/user/{uuid.uuid4()}")
     app.dependency_overrides.clear()
     assert response.status_code == 403
+
+# --- Mock Fixture for UserPreferenceService (if a distinct one is needed for API tests) ---
+@pytest_asyncio.fixture
+async def mock_user_preference_service_api():
+    service = MagicMock(spec=UserPreferenceService)
+    service.get_user_preferences = AsyncMock()
+    service.update_user_preferences = AsyncMock()
+    return service
+
+# --- Tests for User Preferences API Endpoints ---
+
+def test_get_my_user_preferences_success(client: TestClient, mock_user_preference_service_api: MagicMock):
+    user_id = uuid.uuid4()
+    mock_auth_user = AuthenticatedUser(id=user_id, email="test@example.com", roles=["user"])
+
+    expected_prefs = UserPreferences(user_id=user_id, preferences={"theme": "dark"})
+    mock_user_preference_service_api.get_user_preferences.return_value = expected_prefs
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_user_preference_service] = lambda: mock_user_preference_service_api
+
+    response = client.get("/api/v1/users/me/preferences")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    # Assuming UserPreferences model can parse the response directly for validation
+    prefs_data = UserPreferences(**response.json())
+    assert prefs_data.user_id == user_id
+    assert prefs_data.preferences == {"theme": "dark"}
+    mock_user_preference_service_api.get_user_preferences.assert_called_once_with(user_id=user_id)
+
+def test_update_my_user_preferences_success(client: TestClient, mock_user_preference_service_api: MagicMock):
+    user_id = uuid.uuid4()
+    mock_auth_user = AuthenticatedUser(id=user_id, email="test@example.com", roles=["user"])
+
+    request_payload = {"theme": "light", "notifications": True}
+    # Ensure the mock service returns a UserPreferences object
+    expected_response_prefs = UserPreferences(user_id=user_id, preferences=request_payload, last_updated_at=datetime.now(timezone.utc))
+    mock_user_preference_service_api.update_user_preferences.return_value = expected_response_prefs
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_user_preference_service] = lambda: mock_user_preference_service_api
+
+    response = client.put("/api/v1/users/me/preferences", json=request_payload)
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    prefs_data = UserPreferences(**response.json())
+    assert prefs_data.preferences == request_payload
+    assert prefs_data.user_id == user_id
+    mock_user_preference_service_api.update_user_preferences.assert_called_once_with(user_id=user_id, preferences_payload=request_payload)
+
+def test_update_my_user_preferences_service_error(client: TestClient, mock_user_preference_service_api: MagicMock):
+    user_id = uuid.uuid4()
+    mock_auth_user = AuthenticatedUser(id=user_id, email="test@example.com", roles=["user"])
+
+    request_payload = {"theme": "funky"}
+    mock_user_preference_service_api.update_user_preferences.side_effect = UserPreferenceServiceError("Update failed in DB")
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_user_preference_service] = lambda: mock_user_preference_service_api
+
+    response = client.put("/api/v1/users/me/preferences", json=request_payload)
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 400 # As mapped in main.py for UserPreferenceServiceError on PUT
+    assert "Update failed in DB" in response.json()["detail"]
+
+# --- Tests for Caching on GET /api/v1/strategies/performance-teasers ---
+
+@pytest.mark.asyncio
+async def test_get_performance_teasers_cache_miss_then_hit(
+    client: TestClient,
+    mock_strategy_config_service_for_api: MagicMock # Existing fixture
+):
+    user_id = uuid.uuid4()
+    mock_auth_user = AuthenticatedUser(id=user_id, email="cache@example.com", roles=["user"])
+
+    # Mock Redis client on app.state for this test
+    mock_redis_client = AsyncMock(spec=aioredis.Redis)
+    mock_redis_client.get = AsyncMock(return_value=None) # Cache miss on first call
+    mock_redis_client.set = AsyncMock()
+
+    original_redis_client = getattr(app.state, 'redis_cache_client', None)
+    app.state.redis_cache_client = mock_redis_client
+
+    # Mock service response for cache miss
+    # Data as it would be after .model_dump(mode='json') for caching
+    mock_teasers_data_as_dicts = [
+        StrategyPerformanceTeaser(
+            strategy_id=uuid.uuid4(), strategy_name="Cached Strat", strategy_type="DarvasBox",
+            is_active=True, symbols=["GOOG"], timeframe=StrategyTimeframe.d1,
+            latest_performance_record_timestamp=datetime.now(timezone.utc)
+        ).model_dump(mode='json')
+    ]
+    # Service method returns list of Pydantic models
+    mock_service_return_models = [
+        StrategyPerformanceTeaser(**data) for data in mock_teasers_data_as_dicts
+    ]
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.return_value = mock_service_return_models
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_strategy_config_service] = lambda: mock_strategy_config_service_for_api
+
+    # 1. First call (cache miss)
+    response_miss = client.get("/api/v1/strategies/performance-teasers")
+    assert response_miss.status_code == 200
+    # Service should be called
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.assert_called_once_with(user_id=user_id)
+    # Redis get should be called
+    mock_redis_client.get.assert_called_once()
+    # Redis set should be called to store the result
+    mock_redis_client.set.assert_called_once()
+
+    # Ensure the data set to cache is what the service returned, serialized
+    # The value passed to redis_client.set should be a JSON string representation of mock_teasers_data_as_dicts
+    assert json.loads(mock_redis_client.set.call_args[0][1]) == mock_teasers_data_as_dicts
+
+
+    # 2. Second call (cache hit)
+    # Reset service mock call count to ensure it's not called again
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.reset_mock()
+    # Simulate Redis get now returns the cached data
+    # The data is stored as a JSON string of a list of dicts
+    mock_redis_client.get.return_value = json.dumps(mock_teasers_data_as_dicts)
+
+    response_hit = client.get("/api/v1/strategies/performance-teasers")
+    assert response_hit.status_code == 200
+    # The endpoint returns a list of Pydantic models, which TestClient serializes to JSON.
+    # So, response_hit.json() will be a list of dicts.
+    assert response_hit.json() == mock_teasers_data_as_dicts
+
+    # Service should NOT be called again
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.assert_not_called()
+    # Redis get was called again (total 2 times)
+    assert mock_redis_client.get.call_count == 2
+    # Redis set should NOT be called again (total 1 time)
+    assert mock_redis_client.set.call_count == 1
+
+    # Cleanup
+    app.dependency_overrides.clear()
+    if original_redis_client is not None:
+        app.state.redis_cache_client = original_redis_client
+    elif hasattr(app.state, 'redis_cache_client'): # If it was set to None by this test initially
+        delattr(app.state, 'redis_cache_client')
+
+
+@pytest.mark.asyncio
+async def test_get_performance_teasers_redis_get_error(
+    client: TestClient,
+    mock_strategy_config_service_for_api: MagicMock
+):
+    user_id = uuid.uuid4()
+    mock_auth_user = AuthenticatedUser(id=user_id, email="cache_err@example.com", roles=["user"])
+
+    mock_redis_client = AsyncMock(spec=aioredis.Redis)
+    mock_redis_client.get = AsyncMock(side_effect=aioredis.RedisError("Simulated Redis GET error"))
+    mock_redis_client.set = AsyncMock() # Mock set as it might be called if get fails then service succeeds
+
+    original_redis_client = getattr(app.state, 'redis_cache_client', None)
+    app.state.redis_cache_client = mock_redis_client
+
+    # Prepare service return data (list of Pydantic models)
+    mock_service_return_models = [StrategyPerformanceTeaser(strategy_id=uuid.uuid4(), strategy_name="NoCache Strat", strategy_type="SMACrossover", is_active=True, symbols=["GE"], timeframe=StrategyTimeframe.h1)]
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.return_value = mock_service_return_models
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_strategy_config_service] = lambda: mock_strategy_config_service_for_api
+
+    response = client.get("/api/v1/strategies/performance-teasers")
+
+    assert response.status_code == 200 # Should fall back to service call
+
+    # The response.json() will be a list of dicts, so compare fields
+    response_json = response.json()
+    assert len(response_json) == 1
+    assert response_json[0]['strategy_name'] == "NoCache Strat"
+
+    mock_strategy_config_service_for_api.get_all_user_strategies_with_performance_teasers.assert_called_once() # Service was called
+    mock_redis_client.set.assert_called_once() # Attempted to cache fresh data
+
+    # Cleanup
+    app.dependency_overrides.clear()
+    if original_redis_client is not None:
+        app.state.redis_cache_client = original_redis_client
+    elif hasattr(app.state, 'redis_cache_client'):
+        delattr(app.state, 'redis_cache_client')
+
+# TODO: Add test for Redis SET error (data fetched from service, but fails to cache)
+# TODO: Add test for JSONDecodeError if cached data is malformed (should fetch fresh)
+
+# --- Tests for Caching on GET /api/v1/visualizations/strategy ---
+
+@pytest.mark.asyncio
+async def test_get_strategy_chart_data_cache_miss_then_hit(
+    client: TestClient,
+    mock_viz_service: MagicMock # Existing fixture from previous tests for this endpoint
+):
+    user_id = uuid.uuid4()
+    strategy_config_id = uuid.uuid4()
+    start_date_str = "2023-02-01"
+    end_date_str = "2023-02-10"
+
+    mock_auth_user = AuthenticatedUser(id=user_id, email="vizcache@example.com", roles=["user"])
+
+    # Mock Redis client
+    mock_redis_client = AsyncMock(spec=aioredis.Redis)
+    mock_redis_client.get = AsyncMock(return_value=None) # Cache miss on first call
+    mock_redis_client.set = AsyncMock()
+
+    original_redis_client = getattr(app.state, 'redis_cache_client', None)
+    app.state.redis_cache_client = mock_redis_client
+
+    # Mock service response for cache miss
+    mock_viz_response_data = StrategyVisualizationDataResponse(
+        strategy_config_id=strategy_config_id,
+        symbol_visualized="TSLA",
+        period_start_date=date.fromisoformat(start_date_str),
+        period_end_date=date.fromisoformat(end_date_str),
+        ohlcv_data=[OHLCVBar(timestamp=datetime.now(timezone.utc), open=200,high=202,low=198,close=201,volume=2000)],
+        generated_at=datetime.now(timezone.utc)
+    )
+    # The service method is what's called when cache misses
+    mock_viz_service.get_strategy_visualization_data.return_value = mock_viz_response_data
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_strategy_visualization_service] = lambda: mock_viz_service
+
+    query_params = {
+        "strategy_config_id": str(strategy_config_id),
+        "start_date": start_date_str,
+        "end_date": end_date_str
+        # user_id is not in query_params as it comes from current_user for service_request construction
+    }
+
+    # 1. First call (cache miss)
+    response_miss = client.get("/api/v1/visualizations/strategy", params=query_params)
+    assert response_miss.status_code == 200
+
+    mock_viz_service.get_strategy_visualization_data.assert_called_once()
+    # Check the service_request argument passed to the service
+    service_call_args = mock_viz_service.get_strategy_visualization_data.call_args[1]['request']
+    assert service_call_args.strategy_config_id == strategy_config_id
+    assert service_call_args.user_id == user_id # User ID from token
+    assert service_call_args.start_date == date.fromisoformat(start_date_str)
+
+    mock_redis_client.get.assert_called_once() # Check specific key later if needed
+    mock_redis_client.set.assert_called_once()
+    # Assert data set to cache is the JSON dump of the Pydantic model
+    # model_dump_json() is for Pydantic v2
+    cached_value_json = mock_redis_client.set.call_args[0][1]
+    assert json.loads(cached_value_json) == mock_viz_response_data.model_dump(mode='json')
+
+
+    # 2. Second call (cache hit)
+    mock_viz_service.get_strategy_visualization_data.reset_mock() # Reset call count for service
+    # Simulate Redis get now returns the cached data
+    mock_redis_client.get.return_value = mock_viz_response_data.model_dump_json()
+
+    response_hit = client.get("/api/v1/visualizations/strategy", params=query_params)
+    assert response_hit.status_code == 200
+    # Compare dicts after Pydantic parsing by endpoint from cached JSON
+    assert response_hit.json() == mock_viz_response_data.model_dump(mode='json')
+
+    mock_viz_service.get_strategy_visualization_data.assert_not_called() # Service not called
+    assert mock_redis_client.get.call_count == 2 # Get called again
+    assert mock_redis_client.set.call_count == 1 # Set not called again
+
+    # Cleanup
+    app.dependency_overrides.clear()
+    if original_redis_client is not None:
+        app.state.redis_cache_client = original_redis_client
+    elif hasattr(app.state, 'redis_cache_client'):
+        delattr(app.state, 'redis_cache_client')
+
+
+@pytest.mark.asyncio
+async def test_get_strategy_chart_data_redis_get_error(
+    client: TestClient,
+    mock_viz_service: MagicMock
+):
+    user_id = uuid.uuid4()
+    strategy_config_id = uuid.uuid4()
+    start_date_str="2023-03-01"; end_date_str="2023-03-10"
+    mock_auth_user = AuthenticatedUser(id=user_id, email="viz_err@example.com", roles=["user"])
+
+    mock_redis_client = AsyncMock(spec=aioredis.Redis)
+    mock_redis_client.get = AsyncMock(side_effect=aioredis.RedisError("Simulated Redis GET error for viz"))
+    mock_redis_client.set = AsyncMock()
+
+    original_redis_client = getattr(app.state, 'redis_cache_client', None)
+    app.state.redis_cache_client = mock_redis_client
+
+    mock_viz_response_data = StrategyVisualizationDataResponse(
+        strategy_config_id=strategy_config_id, symbol_visualized="GE",
+        period_start_date=date.fromisoformat(start_date_str), period_end_date=date.fromisoformat(end_date_str),
+        ohlcv_data=[], generated_at=datetime.now(timezone.utc)
+    )
+    mock_viz_service.get_strategy_visualization_data.return_value = mock_viz_response_data
+
+    app.dependency_overrides[get_current_active_user] = lambda: mock_auth_user
+    app.dependency_overrides[get_strategy_visualization_service] = lambda: mock_viz_service
+
+    query_params = {"strategy_config_id": str(strategy_config_id), "start_date": start_date_str, "end_date": end_date_str}
+    response = client.get("/api/v1/visualizations/strategy", params=query_params)
+
+    assert response.status_code == 200 # Falls back to service
+    assert response.json()['symbol_visualized'] == "GE" # Check data from service
+    mock_viz_service.get_strategy_visualization_data.assert_called_once() # Service was called
+    mock_redis_client.set.assert_called_once() # Attempted to cache fresh data
+
+    # Cleanup
+    app.dependency_overrides.clear()
+    if original_redis_client is not None:
+        app.state.redis_cache_client = original_redis_client
+    elif hasattr(app.state, 'redis_cache_client'):
+        delattr(app.state, 'redis_cache_client')
+
+# TODO: Add tests for Redis SET error and JSONDecodeError for visualization endpoint cache.
 ```

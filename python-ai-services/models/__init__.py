@@ -64,6 +64,16 @@ try:
 except ImportError:
     pass
 
+# Export models from user_models.py
+try:
+    from .user_models import UserPreferences
+    if '__all__' in globals():
+        __all__.append("UserPreferences")
+    else:
+        __all__ = ["UserPreferences"]
+except ImportError:
+    pass
+
 # Export models from strategy_models.py
 try:
     from .strategy_models import (

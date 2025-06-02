@@ -89,6 +89,10 @@ from sse_starlette.sse import EventSourceResponse
 from auth.dependencies import get_current_active_user
 from models.auth_models import AuthenticatedUser
 
+# User Preferences
+from models.user_models import UserPreferences
+from services.user_preference_service import UserPreferenceService, UserPreferenceServiceError
+
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -277,6 +281,15 @@ async def lifespan(app: FastAPI):
     for service_instance in services.values():
         if hasattr(service_instance, 'cleanup'):
             await service_instance.cleanup()
+
+async def get_user_preference_service(
+    # request: Request, # Not strictly needed if supabase_client comes from its own injector
+    supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client) # Ensure SupabaseClient is imported
+) -> UserPreferenceService:
+    if not supabase_client:
+        logger.error("Supabase client not available for UserPreferenceService.")
+        raise HTTPException(status_code=503, detail="Database client not available.")
+    return UserPreferenceService(supabase_client=supabase_client)
 
 # Create FastAPI app with lifespan
 app = FastAPI(
@@ -558,6 +571,10 @@ async def list_a2a_agents():
 CACHE_KEY_CREW_BLUEPRINTS = "crew-blueprints-cache"
 CACHE_KEY_CONFIG_LLMS = "config-llms-cache" # New cache key
 CACHE_EXPIRATION_SECONDS = 3600  # 1 hour (reused for both)
+CACHE_KEY_PERFORMANCE_TEASERS_USER_PREFIX = "performance_teasers_user_"
+CACHE_PERFORMANCE_TEASERS_EXPIRATION_SECONDS = 300  # 5 minutes, adjust as needed
+CACHE_KEY_STRATEGY_VIZ_PREFIX = "strategy_viz_"
+CACHE_STRATEGY_VIZ_EXPIRATION_SECONDS = 600  # 10 minutes, adjust as needed
 
 # Crew Blueprints Endpoint
 @app.get("/crew-blueprints", response_model=List[CrewBlueprint])
@@ -1188,35 +1205,36 @@ def run_trading_analysis_crew_background(
 
 @app.post("/api/v1/crews/trading/analyze", response_model=CrewRunResponse, status_code=202)
 async def analyze_trading_strategy_with_crew(
-    request_data: TradingAnalysisCrewRequest, # Renamed request to request_data to avoid conflict
+    request_data: TradingAnalysisCrewRequest, # Request model no longer has user_id
     background_tasks: BackgroundTasks,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     task_service: AgentTaskService = Depends(get_agent_task_service),
     event_service: Optional[EventService] = Depends(get_event_service)
 ):
     """
-    Triggers the Trading Analysis Crew to analyze a symbol based on provided context.
+    Triggers the Trading Analysis Crew to analyze a symbol based on provided context for the authenticated user.
     This is an asynchronous operation; the API returns immediately with a task ID.
     """
-    crew_run_task_id = uuid4() # Use uuid4() which is already imported
+    crew_run_task_id = uuid4()
 
     inputs_for_crew = {
         "symbol": request_data.symbol,
         "market_event_description": request_data.market_event_description,
         "additional_context": request_data.additional_context,
-        "user_id": request_data.user_id,
+        "user_id": str(current_user.id), # Use authenticated user's ID as string
         "crew_run_id": str(crew_run_task_id)
     }
 
     background_tasks.add_task(
         run_trading_analysis_crew_background,
         task_id=crew_run_task_id,
-        user_id=request_data.user_id,
+        user_id=str(current_user.id), # Pass user_id as string
         inputs=inputs_for_crew,
         task_service=task_service,
-        event_service=event_service # Pass the (potentially None) event_service
+        event_service=event_service
     )
 
-    logger.info(f"Trading analysis crew task enqueued. Task ID (Crew Run ID): {crew_run_task_id}")
+    logger.info(f"Trading analysis crew task for user {current_user.id} enqueued. Task ID (Crew Run ID): {crew_run_task_id}")
 
     return CrewRunResponse(
         task_id=crew_run_task_id,
@@ -1406,26 +1424,68 @@ async def get_strategy_trade_history_for_current_user( # Renamed function
 @app.get(
     f"{STRATEGY_CONFIG_API_PREFIX}/performance-teasers",  # Path changed
     response_model=List[StrategyPerformanceTeaser],
-    summary="Get a summary list of all strategies with performance teasers for the authenticated user", # Summary updated
+    summary="Get a summary list of all strategies for the authenticated user with performance teasers", # Updated summary
     tags=["Strategy Configurations", "Performance Analytics"]
 )
-async def get_user_strategies_performance_teasers_for_current_user( # Function name updated
-    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
+async def get_user_strategies_performance_teasers(
+    request: Request, # Added Request to access app.state.redis_cache_client
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     """
     Retrieves a list of all strategy configurations for the authenticated user,
     each augmented with key performance indicators from their latest metrics record.
-    Useful for overview dashboards.
+    Results are cached for a short period.
     """
+    redis_client = getattr(request.app.state, 'redis_cache_client', None)
+    cache_key = f"{CACHE_KEY_PERFORMANCE_TEASERS_USER_PREFIX}{current_user.id}"
+
+    if redis_client:
+        try:
+            cached_data_json = await redis_client.get(cache_key)
+            if cached_data_json:
+                logger.info(f"Cache hit for performance teasers: User {current_user.id}, Key: {cache_key}")
+                # Deserialize JSON string to list of dicts, then parse with Pydantic model
+                cached_list_of_dicts = json.loads(cached_data_json)
+                return [StrategyPerformanceTeaser(**data) for data in cached_list_of_dicts]
+            else:
+                logger.info(f"Cache miss for performance teasers: User {current_user.id}, Key: {cache_key}")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error getting cache for performance teasers (User {current_user.id}): {e}. Serving fresh data.", exc_info=True)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for cached performance teasers (User {current_user.id}): {e}. Serving fresh data.", exc_info=True)
+        # Fall through to fetch fresh data on Redis error or JSON decode error
+
+    # Cache miss or Redis error, fetch fresh data
     try:
-        return await service.get_all_user_strategies_with_performance_teasers(user_id=user_id)
+        fresh_data = await service.get_all_user_strategies_with_performance_teasers(user_id=current_user.id)
+
+        if redis_client and fresh_data is not None: # fresh_data can be []
+            try:
+                # Serialize list of Pydantic models to JSON string for caching
+                # Each item in fresh_data is already a StrategyPerformanceTeaser instance
+                list_of_dicts_to_cache = [item.model_dump(mode='json') for item in fresh_data]
+                serialized_data_to_cache = json.dumps(list_of_dicts_to_cache)
+
+                await redis_client.set(
+                    cache_key,
+                    serialized_data_to_cache,
+                    ex=CACHE_PERFORMANCE_TEASERS_EXPIRATION_SECONDS
+                )
+                logger.info(f"Successfully cached performance teasers for User {current_user.id}, Key: {cache_key}")
+            except aioredis.RedisError as e:
+                logger.error(f"Redis error setting cache for performance teasers (User {current_user.id}): {e}", exc_info=True)
+            except json.JSONEncodeError as e: # Should not happen with .model_dump()
+                logger.error(f"JSON encode error caching performance teasers (User {current_user.id}): {e}", exc_info=True)
+
+        return fresh_data
+
     except StrategyConfigServiceError as e:
-        logger.error(f"Service error fetching strategy performance teasers for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Service error fetching strategy performance teasers for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-    except Exception as e:
-        logger.error(f"Unexpected error fetching strategy performance teasers for user {user_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+    except Exception as e: # Catch-all for other unexpected errors
+        logger.error(f"Unexpected error fetching strategy performance teasers for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching performance teasers.")
 
 # --- Strategy Configuration Form Metadata Endpoint ---
 SUPPORTED_STRATEGY_TYPES_FOR_FORMS = [
@@ -1457,43 +1517,85 @@ VISUALIZATION_API_PREFIX = "/api/v1/visualizations"
 @app.get(
     f"{VISUALIZATION_API_PREFIX}/strategy",
     response_model=StrategyVisualizationDataResponse,
-    summary="Get data for strategy visualization charts",
+    summary="Get data for strategy visualization charts (with Caching)", # Updated summary
     tags=["Visualizations", "Strategies"]
 )
-async def get_strategy_chart_data( # Function name can remain the same or be updated
+async def get_strategy_chart_data(
+    request_http: Request, # Changed name to avoid clash with service_request
     query_params: StrategyVisualizationQueryParams = Depends(),
     current_user: AuthenticatedUser = Depends(get_current_active_user),
     viz_service: StrategyVisualizationService = Depends(get_strategy_visualization_service)
 ):
     """
-    Provides aggregated data needed to render strategy visualization charts,
-    including OHLCV, indicator values, signals, and paper trades for a
-    specific strategy configuration and time period for the authenticated user.
+    Provides aggregated data for strategy visualization charts. Results are cached.
     Query parameters: strategy_config_id, start_date, end_date.
+    User ID is from authentication token.
     """
-    # Construct the full StrategyVisualizationRequest for the service
+    redis_client = getattr(request_http.app.state, 'redis_cache_client', None)
+    # Cache key needs to be unique for the combination of user and request parameters
+    cache_key = (
+        f"{CACHE_KEY_STRATEGY_VIZ_PREFIX}"
+        f"user_{current_user.id}_"
+        f"cfg_{query_params.strategy_config_id}_"
+        f"sd_{query_params.start_date.isoformat()}_"
+        f"ed_{query_params.end_date.isoformat()}"
+    )
+
+    if redis_client:
+        try:
+            cached_data_json = await redis_client.get(cache_key)
+            if cached_data_json:
+                logger.info(f"Cache hit for strategy visualization: Key {cache_key}")
+                # Deserialize JSON string to Pydantic model
+                return StrategyVisualizationDataResponse(**json.loads(cached_data_json))
+            else:
+                logger.info(f"Cache miss for strategy visualization: Key {cache_key}")
+        except aioredis.RedisError as e:
+            logger.error(f"Redis error getting cache for strategy viz (Key {cache_key}): {e}. Serving fresh data.", exc_info=True)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON decode error for cached strategy viz (Key {cache_key}): {e}. Serving fresh data.", exc_info=True)
+
+    # Cache miss or Redis error, construct service request and fetch fresh data
     service_request = StrategyVisualizationRequest(
         strategy_config_id=query_params.strategy_config_id,
-        user_id=current_user.id, # Use authenticated user's ID
+        user_id=current_user.id,
         start_date=query_params.start_date,
         end_date=query_params.end_date
     )
+
     try:
-        chart_data = await viz_service.get_strategy_visualization_data(request=service_request)
-        return chart_data
+        fresh_data: StrategyVisualizationDataResponse = await viz_service.get_strategy_visualization_data(request=service_request)
+
+        if redis_client and fresh_data: # fresh_data is a Pydantic model instance
+            try:
+                serialized_data_to_cache = fresh_data.model_dump_json() # Pydantic v2
+                await redis_client.set(
+                    cache_key,
+                    serialized_data_to_cache,
+                    ex=CACHE_STRATEGY_VIZ_EXPIRATION_SECONDS
+                )
+                logger.info(f"Successfully cached strategy visualization data: Key {cache_key}")
+            except aioredis.RedisError as e:
+                logger.error(f"Redis error setting cache for strategy viz (Key {cache_key}): {e}", exc_info=True)
+            except Exception as e: # Catch potential Pydantic model_dump_json errors
+                logger.error(f"Serialization error caching strategy viz (Key {cache_key}): {e}", exc_info=True)
+
+        return fresh_data
+
     except StrategyConfigNotFoundError as e:
-        logger.warning(f"Strategy config not found for visualization request: {service_request.strategy_config_id}, User: {current_user.id}. Error: {e}")
+        logger.warning(f"Strategy config not found for viz request: {service_request.strategy_config_id}, User: {current_user.id}. Error: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except StrategyVisualizationServiceError as e:
         logger.error(f"Visualization service error for strat_cfg_id {service_request.strategy_config_id}, User: {current_user.id}: {e}", exc_info=True)
-        if "not found" in str(e).lower() or "Could not fetch price data" in str(e).lower() or "price data for" in str(e).lower() and "is empty" in str(e).lower():
+        if "not found" in str(e).lower() or "Could not fetch price data" in str(e):
             raise HTTPException(status_code=404, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error fetching visualization data for strat_cfg_id {service_request.strategy_config_id}, User: {current_user.id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching viz data for strat_cfg_id {service_request.strategy_config_id}, User: {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching visualization data.")
 
 # --- Paper Trading Endpoints ---
+# Already refactored in previous step, this is just for context if needed.
 PAPER_TRADING_API_PREFIX = "/api/v1/paper-trading"
 
 @app.get(
@@ -1502,8 +1604,8 @@ PAPER_TRADING_API_PREFIX = "/api/v1/paper-trading"
     summary="Get all open paper trading orders for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def list_open_paper_orders_for_current_user( # Renamed
-    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
+async def list_open_paper_orders_for_current_user(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1524,12 +1626,12 @@ async def list_open_paper_orders_for_current_user( # Renamed
     f"{PAPER_TRADING_API_PREFIX}/orders",
     response_model=SubmitPaperOrderResponse,
     status_code=202,
-    summary="Submit a new paper trading order for the authenticated user", # Updated summary
+    summary="Submit a new paper trading order for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def submit_new_paper_order_for_current_user( # Renamed
-    order_request: CreatePaperTradeOrderRequest, # Request model no longer has user_id
-    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
+async def submit_new_paper_order_for_current_user(
+    order_request: CreatePaperTradeOrderRequest,
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1540,7 +1642,7 @@ async def submit_new_paper_order_for_current_user( # Renamed
         raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
 
     paper_order_to_submit = PaperTradeOrder(
-        user_id=current_user.id, # Use authenticated user's ID
+        user_id=current_user.id,
         symbol=order_request.symbol,
         side=order_request.side,
         order_type=order_request.order_type,
@@ -1583,9 +1685,9 @@ async def submit_new_paper_order_for_current_user( # Renamed
     summary="Cancel a pending paper trading order for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def cancel_paper_order_for_current_user( # Renamed
+async def cancel_paper_order_for_current_user(
     order_id: UUID,
-    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1772,6 +1874,55 @@ async def get_batch_quotes(
     except Exception as e:
         logger.error(f"API Error fetching batch quotes: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch batch quotes.")
+
+# --- User Preferences API Endpoints ---
+USER_PREFERENCES_API_PREFIX = "/api/v1/users/me/preferences"
+
+@app.get(
+    USER_PREFERENCES_API_PREFIX,
+    response_model=UserPreferences,
+    summary="Get preferences for the authenticated user",
+    tags=["User Preferences"]
+)
+async def get_my_user_preferences(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
+    service: UserPreferenceService = Depends(get_user_preference_service)
+):
+    try:
+        return await service.get_user_preferences(user_id=current_user.id)
+    except UserPreferenceServiceError as e:
+        logger.error(f"API Error getting preferences for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected API error getting preferences for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to get user preferences.")
+
+@app.put(
+    USER_PREFERENCES_API_PREFIX,
+    response_model=UserPreferences,
+    summary="Update preferences for the authenticated user",
+    tags=["User Preferences"]
+)
+async def update_my_user_preferences(
+    new_preferences: Dict[str, Any] = Body(...), # Request body is the new preferences dictionary
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
+    service: UserPreferenceService = Depends(get_user_preference_service)
+):
+    """
+    Updates the 'preferences' field for the authenticated user.
+    The request body should be a JSON object representing the new preferences dictionary.
+    Example: `{"theme": "dark", "notifications_enabled": false}`
+    """
+    try:
+        # Ensure new_preferences is treated as the payload for the 'preferences' field in the DB
+        return await service.update_user_preferences(user_id=current_user.id, preferences_payload=new_preferences)
+    except UserPreferenceServiceError as e:
+        logger.error(f"API Error updating preferences for user {current_user.id}: {e}", exc_info=True)
+        # For updates, a 400 might be more appropriate for validation or service logic errors
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected API error updating preferences for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update user preferences.")
 
 if __name__ == "__main__":
     # Run the enhanced AI services

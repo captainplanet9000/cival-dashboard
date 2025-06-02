@@ -27,6 +27,7 @@ from .watchlist_service import (
     WatchlistItemNotFoundError,
     WatchlistOperationForbiddenError
 )
+from .user_preference_service import UserPreferenceService, UserPreferenceServiceError
 # from .agent_state_manager import AgentStateManager # If exists and needed
 # from .trading_coordinator import TradingCoordinator # If exists and needed
 
@@ -59,6 +60,8 @@ __all__ = [
     "WatchlistNotFoundError",
     "WatchlistItemNotFoundError",
     "WatchlistOperationForbiddenError",
+    "UserPreferenceService",
+    "UserPreferenceServiceError",
     # "AgentStateManager",
     # "TradingCoordinator",
 ]
