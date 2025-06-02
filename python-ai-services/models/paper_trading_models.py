@@ -44,6 +44,36 @@ class PaperTradeOrder(BaseModel):
         validate_assignment = True
         extra = 'forbid'
 
+class CreatePaperTradeOrderRequest(BaseModel):
+    # Fields expected from the client when creating a new paper order.
+    # user_id will likely come from auth context in a real app, but passed in request for now.
+    user_id: uuid.UUID = Field(..., description="Identifier of the user placing the paper order.")
+
+    symbol: str = Field(..., description="Financial symbol to trade (e.g., BTC/USD, AAPL).")
+    side: TradeSide = Field(..., description="Side of the trade: BUY or SELL.") # Reuses TradeSide enum
+    order_type: PaperOrderType = Field(..., description="Type of order (MARKET, LIMIT, etc.).") # Reuses PaperOrderType enum
+    quantity: float = Field(..., gt=0, description="Quantity of the asset to trade.")
+
+    limit_price: Optional[float] = Field(default=None, description="Limit price for LIMIT or STOP_LIMIT orders. Must be > 0 if set.")
+    stop_price: Optional[float] = Field(default=None, description="Stop price for STOP or STOP_LIMIT orders. Must be > 0 if set.")
+
+    time_in_force: str = Field(default="GTC", description="Time in force for the order (e.g., GTC, IOC, FOK).")
+    notes: Optional[str] = Field(default=None, description="Optional client notes for this paper order.")
+
+    @field_validator('limit_price', 'stop_price') # Pydantic v2 style
+    @classmethod
+    def check_positive_prices(cls, value: Optional[float]): # Added type hint for value
+        if value is not None and value <= 0:
+            raise ValueError('Price must be positive if provided.')
+        return value
+
+    class Config:
+        from_attributes = True
+        validate_assignment = True
+        extra = 'forbid'
+
+# This model is a subset of PaperTradeOrder, excluding server-set fields like order_id, status, timestamps.
+
 class PaperPosition(BaseModel):
     position_id: uuid.UUID = Field(default_factory=uuid.uuid4, description="Unique identifier for this paper trading position record.")
     user_id: uuid.UUID = Field(..., description="Identifier of the user who owns this position.")

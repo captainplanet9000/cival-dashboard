@@ -49,13 +49,33 @@ from services.strategy_config_service import ( # Added
     StrategyConfigDeletionError,
     StrategyConfigServiceError
 )
+from services.strategy_visualization_service import StrategyVisualizationService, StrategyVisualizationServiceError
+from models.visualization_models import StrategyVisualizationRequest, StrategyVisualizationDataResponse
+
 
 # Supabase client (will be initialized in lifespan or per-request)
 from supabase import create_client, Client as SupabaseClient
 
 # Strategy Config Models
-from models.strategy_models import StrategyConfig, BaseStrategyConfig, PerformanceMetrics # Added PerformanceMetrics
-from models.trading_history_models import TradeRecord # Added TradeRecord
+from models.strategy_models import StrategyConfig, BaseStrategyConfig, PerformanceMetrics, StrategyTimeframe, StrategyPerformanceTeaser
+from models.trading_history_models import TradeRecord, OrderStatus as TradingHistoryOrderStatus
+from models.paper_trading_models import PaperTradeOrder, PaperTradeFill, CreatePaperTradeOrderRequest, PaperOrderStatus
+from models.watchlist_models import ( # Watchlist models
+    Watchlist, WatchlistCreate, WatchlistItem, WatchlistItemCreate, WatchlistWithItems,
+    AddWatchlistItemsRequest,
+    BatchQuotesRequest, BatchQuotesResponse # BatchQuotesResponseItem not directly used in endpoint response model
+)
+
+# Services
+# ... (other service imports)
+from services.watchlist_service import ( # Watchlist service and exceptions
+    WatchlistService,
+    WatchlistNotFoundError,
+    WatchlistItemNotFoundError,
+    WatchlistOperationForbiddenError,
+    WatchlistServiceError
+)
+
 
 # Models and crew for new endpoint
 from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse
@@ -69,7 +89,7 @@ from sse_starlette.sse import EventSourceResponse
 # Global services registry
 services: Dict[str, Any] = {}
 
-# Pydantic Models for API responses
+# Pydantic Models for API responses and utility endpoints
 class CrewBlueprint(BaseModel):
     id: str = Field(..., example="crew_bp_1")
     name: str = Field(..., example="Trading Analysis Crew")
@@ -88,6 +108,15 @@ class LLMConfig(BaseModel):
     model_name: str = Field(..., example="gemini-1.5-pro")
     api_key_env_var: Optional[str] = Field(None, example="GEMINI_API_KEY", description="Environment variable for the API key.")
     parameters: LLMParameter = Field(..., description="Specific parameters for the LLM.")
+
+class StrategyFormMetadataResponse(BaseModel):
+    available_strategy_types: List[str]
+    available_timeframes: List[str]
+
+class SubmitPaperOrderResponse(BaseModel):
+    updated_order: PaperTradeOrder
+    fills: List[PaperTradeFill]
+    message: str
 
 
 @asynccontextmanager
@@ -397,6 +426,29 @@ async def get_strategy_config_service(
         raise HTTPException(status_code=503, detail="Database client not available. Cannot manage strategy configurations.")
     return StrategyConfigService(supabase_client=supabase_client)
 
+async def get_strategy_visualization_service(
+    supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client),
+    strategy_config_service: StrategyConfigService = Depends(get_strategy_config_service)
+) -> StrategyVisualizationService:
+    if not supabase_client:
+        logger.error("Supabase client not available for StrategyVisualizationService.")
+        raise HTTPException(status_code=503, detail="Database client not available.")
+    if not strategy_config_service:
+        logger.error("StrategyConfigService not available for StrategyVisualizationService.")
+        raise HTTPException(status_code=503, detail="StrategyConfigService not available.")
+
+    return StrategyVisualizationService(
+        supabase_client=supabase_client,
+        strategy_config_service=strategy_config_service
+    )
+
+async def get_watchlist_service(
+    supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client)
+) -> WatchlistService:
+    if not supabase_client:
+        logger.error("Supabase client not available for WatchlistService.")
+        raise HTTPException(status_code=503, detail="Database client not available.")
+    return WatchlistService(supabase_client=supabase_client)
 
 # Enhanced AI Agent Endpoints
 @app.post("/api/agents/trading-coordinator/analyze")
@@ -906,6 +958,88 @@ async def sse_agent_updates(request: Request):
     """
     return EventSourceResponse(agent_updates_event_generator(request))
 
+# --- SSE Endpoint for Alert Events ---
+async def alert_event_stream_generator(request: Request):
+    client_host = request.client.host if request.client else "unknown_alert_sse_client"
+    logger.info(f"SSE connection established for alerts from {client_host}")
+
+    redis_client = getattr(request.app.state, 'redis_cache_client', None)
+    # EventService isn't strictly needed here if we know the channel name
+    # event_service = getattr(request.app.state, 'event_service', None)
+
+    alert_channel = "alert_events"
+
+    if not redis_client:
+        logger.error(f"SSE alert stream for {client_host} cannot start: Redis client not available.")
+        yield {
+            "event": "error", "id": str(uuid4()), # Ensure uuid4 is available (imported as from uuid import UUID, uuid4)
+            "data": json.dumps({"message": "SSE service not properly configured due to missing Redis client."})
+        }
+        return
+
+    pubsub = redis_client.pubsub()
+    try:
+        await pubsub.subscribe(alert_channel)
+        logger.info(f"SSE client {client_host} subscribed to Redis alert channel: {alert_channel}")
+
+        while True:
+            if await request.is_disconnected():
+                logger.info(f"SSE alert client {client_host} disconnected.")
+                break
+
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message.get("type") == "message":
+                alert_data_json = message["data"]
+                if isinstance(alert_data_json, bytes):
+                    alert_data_json = alert_data_json.decode('utf-8')
+
+                try:
+                    alert_dict = json.loads(alert_data_json)
+                    sse_event_id = alert_dict.get("event_id", str(uuid4()))
+                    sse_event_type = alert_dict.get("event_type", "alert_notification")
+                except json.JSONDecodeError:
+                    sse_event_id = str(uuid4())
+                    sse_event_type = "raw_alert_event" # Fallback event type
+
+                yield {
+                    "id": sse_event_id,
+                    "event": sse_event_type,
+                    "data": alert_data_json
+                }
+                logger.debug(f"SSE: Sent alert from channel '{alert_channel}' to client {client_host}")
+
+    except asyncio.CancelledError:
+        logger.info(f"SSE alert event generator for {client_host} was cancelled.")
+    except aioredis.RedisError as e: # Ensure aioredis is imported
+        logger.error(f"SSE: RedisError for alert client {client_host} on channel '{alert_channel}': {e}", exc_info=True)
+        yield {"event": "error", "id": str(uuid4()), "data": json.dumps({"message": "SSE alert stream failed due to Redis connection error."})}
+    except Exception as e:
+        logger.error(f"Error in SSE alert event generator for {client_host}: {e}", exc_info=True)
+        try:
+            yield {"event": "error", "id": str(uuid4()), "data": json.dumps({"message": f"An error occurred in the SSE alert stream: {str(e)}."})}
+        except Exception: pass # Avoid error in error reporting
+    finally:
+        logger.info(f"SSE alert event generator for {client_host} stopping. Unsubscribing from {alert_channel}.")
+        if pubsub and pubsub.subscribed:
+            try:
+                await pubsub.unsubscribe(alert_channel)
+                # await pubsub.close() # See previous notes on closing pubsub object
+                logger.info(f"SSE: Unsubscribed from alert channel '{alert_channel}' for client {client_host}")
+            except Exception as e:
+                logger.error(f"SSE: Error during pubsub cleanup for alerts on channel '{alert_channel}': {e}", exc_info=True)
+
+@app.get(
+    "/api/alerts/sse",
+    summary="Server-Sent Events endpoint to stream alert notifications",
+    tags=["Alerts", "SSE"]
+)
+async def sse_alert_notifications(request: Request):
+    """
+    Provides a stream of alert events (e.g., trade signals, system warnings)
+    published by backend services.
+    """
+    return EventSourceResponse(alert_event_stream_generator(request))
+
 # --- Crew Execution Endpoints ---
 
 def run_trading_analysis_crew_background(
@@ -1260,6 +1394,383 @@ async def get_strategy_trade_history(
         logger.error(f"Unexpected error fetching trade history for strategy {strategy_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}/performance-teasers",
+    response_model=List[StrategyPerformanceTeaser],
+    summary="Get a summary list of all strategies for a user with performance teasers",
+    tags=["Strategy Configurations", "Performance Analytics"]
+)
+async def get_user_strategies_performance_teasers(
+    user_id: UUID,
+    service: StrategyConfigService = Depends(get_strategy_config_service)
+):
+    """
+    Retrieves a list of all strategy configurations for the specified user,
+    each augmented with key performance indicators from their latest metrics record.
+    Useful for overview dashboards.
+    """
+    try:
+        return await service.get_all_user_strategies_with_performance_teasers(user_id=user_id)
+    except StrategyConfigServiceError as e:
+        logger.error(f"Service error fetching strategy performance teasers for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error fetching strategy performance teasers for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+# --- Strategy Configuration Form Metadata Endpoint ---
+SUPPORTED_STRATEGY_TYPES_FOR_FORMS = [
+    "DarvasBox", "WilliamsAlligator", "HeikinAshi", "Renko", "SMACrossover", "ElliottWave"
+]
+
+@app.get(
+    f"{STRATEGY_CONFIG_API_PREFIX}/form-metadata",
+    response_model=StrategyFormMetadataResponse,
+    summary="Get metadata for building strategy configuration forms",
+    tags=["Strategy Configurations", "Metadata"]
+)
+async def get_strategy_form_metadata():
+    """
+    Provides lists of available strategy types and timeframes to help populate
+    selection fields in strategy configuration forms on the frontend.
+    """
+    # StrategyTimeframe is a Literal, get its literal values
+    timeframe_values = list(StrategyTimeframe.__args__)
+
+    return StrategyFormMetadataResponse(
+        available_strategy_types=SUPPORTED_STRATEGY_TYPES_FOR_FORMS,
+        available_timeframes=timeframe_values
+    )
+
+# --- Strategy Visualization Endpoints ---
+VISUALIZATION_API_PREFIX = "/api/v1/visualizations"
+
+@app.get(
+    f"{VISUALIZATION_API_PREFIX}/strategy",
+    response_model=StrategyVisualizationDataResponse,
+    summary="Get data for strategy visualization charts",
+    tags=["Visualizations", "Strategies"]
+)
+async def get_strategy_chart_data(
+    # FastAPI will populate request_params from query parameters
+    request_params: StrategyVisualizationRequest = Depends(),
+    viz_service: StrategyVisualizationService = Depends(get_strategy_visualization_service)
+):
+    """
+    Provides aggregated data needed to render strategy visualization charts,
+    including OHLCV, indicator values, signals, and paper trades for a
+    specific strategy configuration and time period.
+    Query parameters should match the fields in StrategyVisualizationRequest model
+    (strategy_config_id, user_id, start_date, end_date).
+    """
+    try:
+        chart_data = await viz_service.get_strategy_visualization_data(request=request_params)
+        return chart_data
+    except StrategyConfigNotFoundError as e: # Specific error from underlying service
+        logger.warning(f"Strategy config not found for visualization request: {request_params.strategy_config_id}, User: {request_params.user_id}. Error: {e}")
+        raise HTTPException(status_code=404, detail=str(e))
+    except StrategyVisualizationServiceError as e:
+        logger.error(f"Visualization service error for strat_cfg_id {request_params.strategy_config_id}, User: {request_params.user_id}: {e}", exc_info=True)
+        if "not found" in str(e).lower() or "Could not fetch price data" in str(e).lower() or "price data for" in str(e).lower() and "is empty" in str(e).lower(): # More specific error checking
+            raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error fetching visualization data for strat_cfg_id {request_params.strategy_config_id}, User: {request_params.user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching visualization data.")
+
+# --- Paper Trading Endpoints ---
+PAPER_TRADING_API_PREFIX = "/api/v1/paper-trading"
+
+@app.get(
+    f"{PAPER_TRADING_API_PREFIX}/orders/open/user/{{user_id}}",
+    response_model=List[TradeRecord],
+    summary="Get all open paper trading orders for a user",
+    tags=["Paper Trading", "Orders"]
+)
+async def list_open_paper_orders_for_user(
+    user_id: UUID,
+    executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
+):
+    """
+    Retrieves a list of all paper trading orders for the specified user
+    that are in an open state (e.g., NEW, PARTIALLY_FILLED).
+    """
+    if not executor:
+        # This check might be redundant if get_simulated_trade_executor raises if STE is None.
+        # However, if get_simulated_trade_executor can return None (e.g., if STE failed init),
+        # then this check is important.
+        logger.error("SimulatedTradeExecutor service not available for list_open_paper_orders_for_user.")
+        raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
+    try:
+        open_orders = await executor.get_open_paper_orders(user_id=user_id)
+        return open_orders
+    except Exception as e:
+        logger.error(f"API error fetching open paper orders for user {user_id}: {e}", exc_info=True)
+        # Consider more specific error codes if service raises custom exceptions
+        raise HTTPException(status_code=500, detail=f"Failed to fetch open paper orders: {str(e)}")
+
+@app.post(
+    f"{PAPER_TRADING_API_PREFIX}/orders",
+    response_model=SubmitPaperOrderResponse,
+    status_code=202,
+    summary="Submit a new paper trading order for simulation",
+    tags=["Paper Trading", "Orders"]
+)
+async def submit_new_paper_order(
+    order_request: CreatePaperTradeOrderRequest,
+    executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
+):
+    """
+    Submits a new paper trading order to the simulator.
+    The simulator will attempt to fill it based on market conditions.
+    """
+    if not executor:
+        raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
+
+    paper_order_to_submit = PaperTradeOrder(
+        user_id=order_request.user_id,
+        symbol=order_request.symbol,
+        side=order_request.side,
+        order_type=order_request.order_type,
+        quantity=order_request.quantity,
+        limit_price=order_request.limit_price,
+        stop_price=order_request.stop_price,
+        time_in_force=order_request.time_in_force,
+        notes=order_request.notes,
+        # order_id, order_request_timestamp, and status have defaults in PaperTradeOrder
+    )
+
+    try:
+        updated_order, fills = await executor.submit_paper_order(paper_order_to_submit)
+
+        # Orchestration: Apply fill and log trade if filled
+        if updated_order.status == PaperOrderStatus.FILLED and fills:
+            for fill in fills: # Typically one fill for simple market/limit from current simulator
+                await executor.apply_fill_to_position(fill)
+
+            # Log the trade to trading_history table.
+            # The _log_paper_trade_to_history method in SimulatedTradeExecutor is suitable.
+            # It handles mapping to TradeRecord fields and saving.
+            # Making it public or having a public wrapper would be ideal.
+            # For now, assuming it can be called if it were named, e.g., log_executed_paper_order.
+            # Let's call the existing private-like method for now, acknowledging it's not ideal.
+            if hasattr(executor, '_log_paper_trade_to_history') and callable(getattr(executor, '_log_paper_trade_to_history')):
+                 await executor._log_paper_trade_to_history(updated_order, fills[0] if fills else None) # Pass first fill
+                 logger.info(f"Order {updated_order.order_id} and its fill(s) logged to trading_history via API.")
+            else:
+                 logger.warning(f"Method _log_paper_trade_to_history not found or callable on executor for order {updated_order.order_id}.")
+
+
+        message = f"Paper order {updated_order.order_id} submitted. Status: {updated_order.status.value}."
+        if fills:
+            message += f" {len(fills)} fill(s) generated."
+
+        return SubmitPaperOrderResponse(
+            updated_order=updated_order,
+            fills=fills,
+            message=message
+        )
+    except Exception as e:
+        logger.error(f"API error submitting paper order for user {order_request.user_id}, symbol {order_request.symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to submit paper order: {str(e)}")
+
+@app.post(
+    f"{PAPER_TRADING_API_PREFIX}/orders/{{order_id}}/user/{{user_id}}/cancel",
+    response_model=PaperTradeOrder,
+    summary="Cancel a pending paper trading order for a user",
+    tags=["Paper Trading", "Orders"]
+)
+async def cancel_user_paper_order(
+    order_id: UUID,
+    user_id: UUID,
+    executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
+):
+    """
+    Attempts to cancel a specific pending paper trading order for the user.
+    """
+    if not executor:
+        raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
+    try:
+        canceled_order = await executor.cancel_paper_order(user_id=user_id, order_id=order_id)
+        return canceled_order
+    except ValueError as e:
+        logger.warning(f"Failed to cancel paper order {order_id} for user {user_id}: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"API error canceling paper order {order_id} for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to cancel paper order: {str(e)}")
+
+# --- Watchlist API Endpoints ---
+WATCHLIST_API_PREFIX = "/api/v1/watchlists"
+QUOTE_API_PREFIX = "/api/v1/quotes"
+
+@app.post(
+    f"{WATCHLIST_API_PREFIX}/user/{{user_id}}",
+    response_model=Watchlist,
+    status_code=201,
+    summary="Create a new watchlist for a user",
+    tags=["Watchlists"]
+)
+async def create_new_watchlist(
+    user_id: UUID,
+    watchlist_data: WatchlistCreate,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        return await service.create_watchlist(user_id=user_id, data=watchlist_data)
+    except WatchlistServiceError as e:
+        logger.error(f"API Error creating watchlist for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected API error creating watchlist for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to create watchlist.")
+
+@app.get(
+    f"{WATCHLIST_API_PREFIX}/user/{{user_id}}",
+    response_model=List[Watchlist],
+    summary="Get all watchlists for a user",
+    tags=["Watchlists"]
+)
+async def get_user_watchlists(
+    user_id: UUID,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        return await service.get_watchlists_by_user(user_id=user_id)
+    except Exception as e:
+        logger.error(f"API Error fetching watchlists for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch watchlists.")
+
+@app.get(
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    response_model=WatchlistWithItems,
+    summary="Get a specific watchlist and its items for a user",
+    tags=["Watchlists"]
+)
+async def get_user_watchlist_details(
+    watchlist_id: UUID,
+    user_id: UUID,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        watchlist_details = await service.get_watchlist(watchlist_id=watchlist_id, user_id=user_id, include_items=True)
+        if not watchlist_details:
+            raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
+        return watchlist_details
+    except WatchlistNotFoundError:
+        raise HTTPException(status_code=404, detail="Watchlist not found.")
+    except Exception as e:
+        logger.error(f"API Error fetching watchlist {watchlist_id} for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch watchlist details.")
+
+@app.put(
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    response_model=Watchlist,
+    summary="Update a watchlist's name or description",
+    tags=["Watchlists"]
+)
+async def update_user_watchlist(
+    watchlist_id: UUID,
+    user_id: UUID,
+    update_data: WatchlistCreate,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        return await service.update_watchlist(watchlist_id=watchlist_id, user_id=user_id, data=update_data)
+    except WatchlistNotFoundError:
+        raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
+    except WatchlistServiceError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"API Error updating watchlist {watchlist_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to update watchlist.")
+
+@app.delete(
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    status_code=204,
+    summary="Delete a watchlist for a user",
+    tags=["Watchlists"]
+)
+async def delete_user_watchlist(
+    watchlist_id: UUID,
+    user_id: UUID,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        await service.delete_watchlist(watchlist_id=watchlist_id, user_id=user_id)
+        # No content to return for 204
+    except WatchlistNotFoundError:
+        raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
+    except Exception as e:
+        logger.error(f"API Error deleting watchlist {watchlist_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to delete watchlist.")
+
+@app.post(
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}/items",
+    response_model=List[WatchlistItem],
+    status_code=201,
+    summary="Add one or more items (symbols) to a watchlist",
+    tags=["Watchlists"]
+)
+async def add_items_to_user_watchlist(
+    watchlist_id: UUID,
+    user_id: UUID,
+    items_request: AddWatchlistItemsRequest,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        created_items = await service.add_multiple_items_to_watchlist(
+            watchlist_id=watchlist_id, user_id=user_id, items_request=items_request
+        )
+        return created_items
+    except WatchlistNotFoundError:
+        raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
+    except WatchlistServiceError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"API Error adding items to watchlist {watchlist_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to add items to watchlist.")
+
+@app.delete(
+    f"{WATCHLIST_API_PREFIX}/items/{{item_id}}/user/{{user_id}}",
+    status_code=204,
+    summary="Remove an item from a watchlist",
+    tags=["Watchlists"]
+)
+async def remove_item_from_user_watchlist(
+    item_id: UUID,
+    user_id: UUID,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        await service.remove_item_from_watchlist(item_id=item_id, user_id=user_id)
+        # No content for 204
+    except WatchlistItemNotFoundError:
+        raise HTTPException(status_code=404, detail="Watchlist item not found.")
+    except WatchlistOperationForbiddenError:
+        raise HTTPException(status_code=403, detail="User not authorized to remove this watchlist item.")
+    except Exception as e:
+        logger.error(f"API Error removing item {item_id} from watchlist: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to remove item from watchlist.")
+
+# --- Batch Quotes Endpoint ---
+@app.post(
+    f"{QUOTE_API_PREFIX}/batch",
+    response_model=BatchQuotesResponse,
+    summary="Get current quotes for a batch of symbols",
+    tags=["Quotes", "Watchlists"]
+)
+async def get_batch_quotes(
+    request_data: BatchQuotesRequest,
+    service: WatchlistService = Depends(get_watchlist_service)
+):
+    try:
+        return await service.get_batch_quotes_for_symbols(
+            symbols=request_data.symbols, provider=request_data.provider
+        )
+    except Exception as e:
+        logger.error(f"API Error fetching batch quotes: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch batch quotes.")
 
 if __name__ == "__main__":
     # Run the enhanced AI services

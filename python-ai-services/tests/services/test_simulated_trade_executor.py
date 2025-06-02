@@ -832,3 +832,128 @@ async def test_submit_paper_order_unsupported_type(trade_executor: SimulatedTrad
     mock_event_service_ste.publish_event.assert_called_once()
     alert_arg = mock_event_service_ste.publish_event.call_args[0][0]
     assert alert_arg.alert_level == AlertLevel.WARNING
+
+
+# --- Tests for get_open_paper_orders ---
+
+@pytest.mark.asyncio
+async def test_get_open_paper_orders_success(trade_executor: SimulatedTradeExecutor, mock_supabase_client_ste: MagicMock):
+    user_id = uuid.uuid4()
+    # Ensure PaperOrderType and PaperOrderStatus are used when creating PaperTradeOrder instances if those are the enums defined in that model
+    # However, TradeRecord uses TradingHistoryOrderStatus and TradingHistoryOrderType from trading_history_models.
+    # The service method get_open_paper_orders returns List[TradeRecord].
+    # So, mock_order_data should be List[Dict] that can be parsed into TradeRecord.
+    # Also, ensure all required fields for TradeRecord are present in the mock data.
+    from python_ai_services.models.trading_history_models import TradeRecord, TradeSide, OrderType as TradingHistoryOrderType, OrderStatus as TradingHistoryOrderStatus
+
+    mock_order_data = [
+        {"user_id": str(user_id), "order_id": str(uuid.uuid4()), "symbol": "AAPL", "side": TradeSide.BUY.value, "order_type": TradingHistoryOrderType.MARKET.value, "status": TradingHistoryOrderStatus.NEW.value, "quantity_ordered": 10.0, "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(), "exchange": "PAPER_BACKTEST", "trade_id": str(uuid.uuid4()), "quantity_filled": 0.0},
+        {"user_id": str(user_id), "order_id": str(uuid.uuid4()), "symbol": "MSFT", "side": TradeSide.SELL.value, "order_type": TradingHistoryOrderType.LIMIT.value, "status": TradingHistoryOrderStatus.PARTIALLY_FILLED.value, "quantity_ordered": 5.0, "quantity_filled": 2.0, "limit_price": 300.0, "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(), "exchange": "PAPER_BACKTEST", "trade_id": str(uuid.uuid4())}
+    ]
+
+    mock_execute = AsyncMock(return_value=MagicMock(data=mock_order_data, error=None))
+    # .table("trading_history").select("*").eq("user_id",...).in_("status",...).eq("exchange",...).order(...).execute()
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.in_.return_value.eq.return_value.order.return_value.execute = mock_execute
+
+    result = await trade_executor.get_open_paper_orders(user_id)
+
+    assert len(result) == 2
+    assert isinstance(result[0], TradeRecord)
+    assert result[0].symbol == "AAPL"
+    assert result[1].symbol == "MSFT"
+
+    mock_supabase_client_ste.table.assert_called_with("trading_history")
+    open_statuses = [
+        TradingHistoryOrderStatus.NEW.value,
+        TradingHistoryOrderStatus.PARTIALLY_FILLED.value,
+        TradingHistoryOrderStatus.PENDING_CANCEL.value
+    ]
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.in_.assert_called_with("status", open_statuses)
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.in_.return_value.eq.assert_called_with("exchange", "PAPER_BACKTEST")
+
+
+@pytest.mark.asyncio
+async def test_get_open_paper_orders_no_orders_found(trade_executor: SimulatedTradeExecutor, mock_supabase_client_ste: MagicMock):
+    user_id = uuid.uuid4()
+    mock_execute = AsyncMock(return_value=MagicMock(data=[], error=None))
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.in_.return_value.eq.return_value.order.return_value.execute = mock_execute
+
+    result = await trade_executor.get_open_paper_orders(user_id)
+    assert len(result) == 0
+
+# --- Tests for cancel_paper_order ---
+
+@pytest.mark.asyncio
+async def test_cancel_paper_order_success(trade_executor: SimulatedTradeExecutor, mock_supabase_client_ste: MagicMock):
+    user_id = uuid.uuid4()
+    order_id_to_cancel = uuid.uuid4()
+    from python_ai_services.models.trading_history_models import TradeSide, OrderType as TradingHistoryOrderType, OrderStatus as TradingHistoryOrderStatus
+    from python_ai_services.models.paper_trading_models import PaperTradeOrder, PaperOrderStatus
+    from python_ai_services.models.event_models import AlertEvent, AlertLevel
+
+
+    original_trade_record_data = {
+        "id": str(uuid.uuid4()),
+        "user_id": str(user_id), "order_id": str(order_id_to_cancel),
+        "symbol": "GOOG", "side": TradeSide.BUY.value, "order_type": TradingHistoryOrderType.LIMIT.value,
+        "status": TradingHistoryOrderStatus.NEW.value, "quantity_ordered": 10.0, "limit_price": 150.0,
+        "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(),
+        "exchange": "PAPER_BACKTEST", "metadata": {"time_in_force": "GTC"}, "quantity_filled": 0.0 # ensure all fields for TradeRecord
+    }
+    mock_fetch_execute = AsyncMock(return_value=MagicMock(data=original_trade_record_data, error=None))
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute = mock_fetch_execute
+
+    updated_trade_record_data = {**original_trade_record_data, "status": TradingHistoryOrderStatus.CANCELED.value, "notes": " [User Canceled]"}
+    mock_update_execute = AsyncMock(return_value=MagicMock(data=[updated_trade_record_data], error=None))
+    mock_supabase_client_ste.table.return_value.update.return_value.eq.return_value.select.return_value.execute = mock_update_execute
+
+    if trade_executor.event_service:
+        trade_executor.event_service.publish_event = AsyncMock()
+
+    result_order = await trade_executor.cancel_paper_order(user_id, order_id_to_cancel)
+
+    assert isinstance(result_order, PaperTradeOrder)
+    assert result_order.order_id == order_id_to_cancel
+    assert result_order.status == PaperOrderStatus.CANCELED
+    assert "User Canceled" in result_order.notes
+
+    update_payload = mock_supabase_client_ste.table.return_value.update.call_args[0][0]
+    assert update_payload["status"] == TradingHistoryOrderStatus.CANCELED.value
+
+    if trade_executor.event_service:
+        trade_executor.event_service.publish_event.assert_called_once()
+        alert_arg = trade_executor.event_service.publish_event.call_args[0][0]
+        assert isinstance(alert_arg, AlertEvent)
+        assert alert_arg.alert_level == AlertLevel.INFO
+        assert "CANCELED" in alert_arg.message
+
+
+@pytest.mark.asyncio
+async def test_cancel_paper_order_not_found(trade_executor: SimulatedTradeExecutor, mock_supabase_client_ste: MagicMock):
+    user_id = uuid.uuid4()
+    order_id_to_cancel = uuid.uuid4()
+    mock_fetch_execute = AsyncMock(return_value=MagicMock(data=None, error=None))
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute = mock_fetch_execute
+
+    with pytest.raises(ValueError, match=f"Paper order {order_id_to_cancel} not found or does not belong to user."):
+        await trade_executor.cancel_paper_order(user_id, order_id_to_cancel)
+
+
+@pytest.mark.asyncio
+async def test_cancel_paper_order_not_cancellable_status(trade_executor: SimulatedTradeExecutor, mock_supabase_client_ste: MagicMock):
+    user_id = uuid.uuid4()
+    order_id_to_cancel = uuid.uuid4()
+    from python_ai_services.models.trading_history_models import TradeSide, OrderType as TradingHistoryOrderType, OrderStatus as TradingHistoryOrderStatus
+
+    original_trade_record_data = {
+        "id": str(uuid.uuid4()), "user_id": str(user_id), "order_id": str(order_id_to_cancel),
+        "symbol": "GOOG", "side": TradeSide.BUY.value, "order_type": TradingHistoryOrderType.MARKET.value,
+        "status": TradingHistoryOrderStatus.FILLED.value,
+        "quantity_ordered": 10.0, "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat(),
+        "exchange": "PAPER_BACKTEST", "quantity_filled": 10.0
+    }
+    mock_fetch_execute = AsyncMock(return_value=MagicMock(data=original_trade_record_data, error=None))
+    mock_supabase_client_ste.table.return_value.select.return_value.eq.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute = mock_fetch_execute
+
+    with pytest.raises(ValueError, match=f"Order {order_id_to_cancel} cannot be canceled. Current status: FILLED"):
+        await trade_executor.cancel_paper_order(user_id, order_id_to_cancel)

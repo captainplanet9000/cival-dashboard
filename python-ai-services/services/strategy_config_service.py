@@ -7,7 +7,7 @@ from logging import getLogger
 
 # Assuming StrategyConfig is importable from models.strategy_models
 # Adjust path if necessary based on actual project structure.
-from ..models.strategy_models import StrategyConfig, BaseStrategyConfig, PerformanceMetrics # Add PerformanceMetrics
+from ..models.strategy_models import StrategyConfig, BaseStrategyConfig, PerformanceMetrics, StrategyPerformanceTeaser # Add StrategyPerformanceTeaser
 from ..models.trading_history_models import TradeRecord # Add TradeRecord
 # Also import specific param models if needed for validation during update, though StrategyConfig handles it.
 
@@ -291,3 +291,53 @@ class StrategyConfigService:
         except Exception as e:
             logger.error(f"Database error fetching trade history for strategy ID {strategy_id}: {e}", exc_info=True)
             raise StrategyConfigServiceError(f"Database error fetching trade history: {str(e)}")
+
+    async def get_all_user_strategies_with_performance_teasers(self, user_id: uuid.UUID) -> List[StrategyPerformanceTeaser]:
+        """
+        Retrieves all strategy configurations for a user, augmented with key teaser info
+        from their latest performance metrics record.
+        """
+        logger.debug(f"Fetching all strategy configs with performance teasers for user {user_id}")
+
+        # 1. Get all strategy configurations for the user
+        strategy_configs = await self.get_strategy_configs_by_user(user_id)
+        if not strategy_configs:
+            return []
+
+        teasers: List[StrategyPerformanceTeaser] = []
+        for config in strategy_configs:
+            # 2. For each config, get its latest performance metrics
+            latest_metrics: Optional[PerformanceMetrics] = None
+            try:
+                latest_metrics = await self.get_latest_performance_metrics(strategy_id=config.strategy_id, user_id=user_id)
+            except StrategyConfigServiceError as e:
+                logger.warning(f"Could not fetch performance metrics for strategy {config.strategy_id} while building teasers: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error fetching performance for strategy {config.strategy_id}: {e}", exc_info=True)
+
+            teaser_data = {
+                "strategy_id": config.strategy_id,
+                "strategy_name": config.strategy_name,
+                "strategy_type": config.strategy_type,
+                "is_active": config.is_active,
+                "symbols": config.symbols,
+                "timeframe": config.timeframe,
+                "latest_performance_record_timestamp": None,
+                "latest_net_profit_percentage": None,
+                "latest_sharpe_ratio": None,
+                "latest_sortino_ratio": None,
+                "latest_max_drawdown_percentage": None,
+                "total_trades_from_latest_metrics": None
+            }
+            if latest_metrics:
+                teaser_data["latest_performance_record_timestamp"] = latest_metrics.generated_at
+                teaser_data["latest_net_profit_percentage"] = latest_metrics.net_profit_percentage
+                teaser_data["latest_sharpe_ratio"] = latest_metrics.sharpe_ratio
+                teaser_data["latest_sortino_ratio"] = latest_metrics.sortino_ratio
+                teaser_data["latest_max_drawdown_percentage"] = latest_metrics.max_drawdown_percentage
+                if latest_metrics.trade_stats:
+                    teaser_data["total_trades_from_latest_metrics"] = latest_metrics.trade_stats.total_trades
+
+            teasers.append(StrategyPerformanceTeaser(**teaser_data))
+
+        return teasers

@@ -40,6 +40,36 @@ class SimulatedTradeExecutor:
         else:
             logger.warning("SimulatedTradeExecutor initialized without EventService. Alert event publishing will be disabled.")
 
+    async def get_open_paper_orders(self, user_id: uuid.UUID) -> List[TradeRecord]:
+        """
+        Fetches all paper trade orders for a user that are currently in an open state
+        (e.g., NEW, PARTIALLY_FILLED, PENDING_CANCEL).
+        Orders are retrieved from the 'trading_history' table.
+        """
+        logger.info(f"Fetching open paper orders for user {user_id}")
+        open_statuses = [
+            TradingHistoryOrderStatus.NEW.value,
+            TradingHistoryOrderStatus.PARTIALLY_FILLED.value,
+            TradingHistoryOrderStatus.PENDING_CANCEL.value
+            # Add other statuses considered "open" if any, e.g., PENDING_NEW if that exists
+        ]
+        try:
+            response = await self.supabase.table("trading_history") \
+                .select("*") \
+                .eq("user_id", str(user_id)) \
+                .in_("status", open_statuses) \
+                .eq("exchange", "PAPER_BACKTEST") \
+                .order("created_at", desc=True) \
+                .execute()
+
+            if response.data:
+                return [TradeRecord(**order_data) for order_data in response.data]
+            return []
+        except Exception as e:
+            logger.error(f"Error fetching open paper orders for user {user_id}: {e}", exc_info=True)
+            # Re-raise a generic exception or a custom one
+            raise Exception(f"Database error fetching open paper orders: {str(e)}")
+
     async def _get_market_data_for_fill(self, symbol: str, around_time: datetime, window_minutes: int = 5) -> Optional[pd.DataFrame]:
         """
         Fetches a small window of market data around a specific time for fill simulation.
@@ -221,6 +251,100 @@ class SimulatedTradeExecutor:
                 logger.error(f"Failed to publish alert for order {order.order_id}: {e_pub}", exc_info=True)
 
         return order, fills
+
+    async def cancel_paper_order(self, user_id: uuid.UUID, order_id: uuid.UUID) -> PaperTradeOrder:
+        """
+        Attempts to cancel a pending paper trade order.
+        Orders are fetched from 'trading_history' based on their original paper_order_id.
+        """
+        logger.info(f"Attempting to cancel paper order {order_id} for user {user_id}")
+
+        # Fetch the trade record from trading_history using the paper order's ID
+        trade_record_response = await self.supabase.table("trading_history") \
+            .select("*") \
+            .eq("order_id", str(order_id)) \
+            .eq("user_id", str(user_id)) \
+            .eq("exchange", "PAPER_BACKTEST") \
+            .maybe_single() \
+            .execute()
+
+        if not trade_record_response.data:
+            logger.warning(f"Paper order {order_id} not found in trading_history for user {user_id}.")
+            raise ValueError(f"Paper order {order_id} not found or does not belong to user.")
+
+        trade_record_data = trade_record_response.data
+        current_status_val = trade_record_data.get("status")
+        try:
+            current_status = TradingHistoryOrderStatus(current_status_val)
+        except ValueError:
+            logger.error(f"Invalid status '{current_status_val}' for order {order_id} in trading_history.")
+            raise ValueError(f"Order {order_id} has an invalid status: {current_status_val}")
+
+        if current_status not in [TradingHistoryOrderStatus.NEW, TradingHistoryOrderStatus.PARTIALLY_FILLED, TradingHistoryOrderStatus.PENDING_CANCEL]:
+            logger.warning(f"Paper order {order_id} for user {user_id} is not in a cancellable state. Status: {current_status.value}")
+            raise ValueError(f"Order {order_id} cannot be canceled. Current status: {current_status.value}")
+
+        update_payload = {
+            "status": TradingHistoryOrderStatus.CANCELED.value,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "notes": (trade_record_data.get("notes") or "") + " [User Canceled]"
+        }
+
+        # Use the primary key of trading_history table, which is 'trade_id' (or 'id' if that's the case)
+        # Assuming 'trade_id' is the primary key based on previous log_simulated_trade and _log_paper_trade_to_history.
+        # If 'id' is the PK, this should be 'id'. Let's assume 'trade_id' for now as per typical DB naming.
+        # The previous log_simulated_trade used `response.data[0]['trade_id']`.
+        # The _log_paper_trade_to_history used `response.data[0].get('trade_id', 'N/A')` or `id`.
+        # Need to be consistent. Let's assume 'id' is the actual PK in 'trading_history'.
+        pk_column_name = 'id' # Defaulting to 'id' as it's common for Supabase default PKs.
+                                # This should match the actual primary key of 'trading_history' table.
+        if pk_column_name not in trade_record_data:
+             logger.error(f"Primary key '{pk_column_name}' not found in fetched trade_record_data for order {order_id}. Available keys: {trade_record_data.keys()}")
+             raise Exception(f"Internal error: Primary key for trading_history record not found for order {order_id}.")
+
+
+        update_response = await self.supabase.table("trading_history") \
+            .update(update_payload) \
+            .eq(pk_column_name, trade_record_data[pk_column_name]) \
+            .select("*") \
+            .execute()
+
+        if not update_response.data or len(update_response.data) == 0:
+            err_msg = update_response.error.message if hasattr(update_response, 'error') and update_response.error else "Update failed"
+            logger.error(f"Failed to update paper order {order_id} status to CANCELED: {err_msg}")
+            raise Exception(f"Failed to cancel order {order_id}: {err_msg}")
+
+        logger.info(f"Paper order {order_id} for user {user_id} successfully canceled.")
+
+        updated_trade_record = TradeRecord(**update_response.data[0])
+
+        if self.event_service:
+            alert = AlertEvent(
+                source_id=f"SimulatedTradeExecutor_Order_{order_id}",
+                alert_level=AlertLevel.INFO,
+                message=f"Paper trade order CANCELED for {updated_trade_record.symbol}.",
+                details={"order_id": str(order_id), "user_id": str(user_id), "symbol": updated_trade_record.symbol}
+            )
+            try:
+                await self.event_service.publish_event(alert, channel="alert_events")
+                logger.info(f"Published CANCELED alert for order {order_id}")
+            except Exception as e_pub:
+                logger.error(f"Failed to publish CANCELED alert for order {order_id}: {e_pub}", exc_info=True)
+
+        return PaperTradeOrder(
+            order_id=uuid.UUID(updated_trade_record.order_id),
+            user_id=updated_trade_record.user_id,
+            symbol=updated_trade_record.symbol,
+            side=TradeSide(updated_trade_record.side),
+            order_type=PaperOrderType(updated_trade_record.order_type), # Assumes PaperOrderType enum matches values
+            quantity=updated_trade_record.quantity_ordered,
+            limit_price=updated_trade_record.limit_price,
+            stop_price=updated_trade_record.stop_price,
+            time_in_force=updated_trade_record.metadata.get("time_in_force", "GTC") if updated_trade_record.metadata else "GTC",
+            order_request_timestamp=updated_trade_record.created_at,
+            status=PaperOrderStatus.CANCELED, # Explicitly set to CANCELED
+            notes=updated_trade_record.notes
+        )
 
     # --- Legacy Methods ---
     def execute_trade(self, agent_id: str, user_id: str, symbol: str, direction: str, 

@@ -33,6 +33,61 @@ try:
 except ImportError:
     pass
 
+# Export models from watchlist_models.py
+try:
+    from .watchlist_models import (
+        WatchlistItemBase, WatchlistItemCreate, WatchlistItem,
+        WatchlistBase, WatchlistCreate, Watchlist, WatchlistWithItems,
+        AddWatchlistItemsRequest,
+        BatchQuotesRequest, BatchQuotesResponseItem, BatchQuotesResponse
+    )
+    new_watchlist_exports = [
+        "WatchlistItemBase", "WatchlistItemCreate", "WatchlistItem",
+        "WatchlistBase", "WatchlistCreate", "Watchlist", "WatchlistWithItems",
+        "AddWatchlistItemsRequest",
+        "BatchQuotesRequest", "BatchQuotesResponseItem", "BatchQuotesResponse"
+    ]
+    if '__all__' in globals():
+        __all__.extend(new_watchlist_exports)
+    else:
+        __all__ = new_watchlist_exports
+except ImportError:
+    pass
+
+# Export models from strategy_models.py
+try:
+    from .strategy_models import (
+        StrategyTimeframe, BaseStrategyConfig,
+        DarvasBoxParams, WilliamsAlligatorParams, RenkoParams, HeikinAshiParams, ElliottWaveParams,
+        StrategySpecificParams, StrategyConfig,
+        TradeStats, PerformanceMetrics,
+        Goal, StrategyGoalAlignment, StrategyPerformanceTeaser
+    )
+    strategy_model_exports = [
+        "StrategyTimeframe", "BaseStrategyConfig",
+        "DarvasBoxParams", "WilliamsAlligatorParams", "RenkoParams", "HeikinAshiParams", "ElliottWaveParams",
+        "StrategySpecificParams", "StrategyConfig",
+        "TradeStats", "PerformanceMetrics",
+        "Goal", "StrategyGoalAlignment", "StrategyPerformanceTeaser"
+    ]
+    if '__all__' in globals():
+        __all__.extend(strategy_model_exports)
+    else:
+        __all__ = strategy_model_exports
+except ImportError:
+    pass
+
+# Export models from visualization_models.py
+try:
+    from .visualization_models import StrategyVisualizationRequest, StrategyVisualizationDataResponse, OHLCVBar, IndicatorDataPoint, SignalDataPoint
+    new_visualization_exports = ["StrategyVisualizationRequest", "StrategyVisualizationDataResponse", "OHLCVBar", "IndicatorDataPoint", "SignalDataPoint"]
+    if '__all__' in globals():
+        __all__.extend(new_visualization_exports)
+    else:
+        __all__ = new_visualization_exports
+except ImportError:
+    pass
+
 # Export models from agent_config_models.py
 try:
     from .agent_config_models import CrewAgentConfig
@@ -95,14 +150,15 @@ except ImportError:
 
 # Export models from paper_trading_models.py
 try:
-    from .paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperPosition
+    from .paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperPosition, CreatePaperTradeOrderRequest
     # Note: TradeSide, PaperOrderType, PaperOrderStatus are typically not re-exported
     # if they are just aliases of types already exported from trading_history_models.py
     # If they were unique types, they would be added here.
+    paper_trading_exports = ["PaperTradeOrder", "PaperTradeFill", "PaperPosition", "CreatePaperTradeOrderRequest"]
     if '__all__' in globals():
-        __all__.extend(["PaperTradeOrder", "PaperTradeFill", "PaperPosition"])
+        __all__.extend(paper_trading_exports)
     else:
-        __all__ = ["PaperTradeOrder", "PaperTradeFill", "PaperPosition"]
+        __all__ = paper_trading_exports
 except ImportError:
     pass
 

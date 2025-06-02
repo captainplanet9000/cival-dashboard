@@ -178,3 +178,23 @@ class StrategyGoalAlignment(BaseModel):
     # How well this strategy is expected to contribute to the goal
     expected_contribution_score: Optional[float] = Field(default=None, ge=0, le=1)
     notes: Optional[str] = None
+
+class StrategyPerformanceTeaser(BaseModel):
+    # From StrategyConfig
+    strategy_id: uuid.UUID
+    strategy_name: str
+    strategy_type: str
+    is_active: bool
+    symbols: List[str]
+    timeframe: StrategyTimeframe
+
+    # From latest PerformanceMetrics
+    latest_performance_record_timestamp: Optional[datetime] = None
+    latest_net_profit_percentage: Optional[float] = None
+    latest_sharpe_ratio: Optional[float] = None
+    latest_sortino_ratio: Optional[float] = None
+    latest_max_drawdown_percentage: Optional[float] = None
+    total_trades_from_latest_metrics: Optional[int] = None
+
+    class Config:
+        from_attributes = True

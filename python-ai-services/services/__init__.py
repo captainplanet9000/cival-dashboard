@@ -19,6 +19,14 @@ from .strategy_config_service import (
     StrategyConfigUpdateError,
     StrategyConfigDeletionError
 )
+from .strategy_visualization_service import StrategyVisualizationService, StrategyVisualizationServiceError
+from .watchlist_service import (
+    WatchlistService,
+    WatchlistServiceError,
+    WatchlistNotFoundError,
+    WatchlistItemNotFoundError,
+    WatchlistOperationForbiddenError
+)
 # from .agent_state_manager import AgentStateManager # If exists and needed
 # from .trading_coordinator import TradingCoordinator # If exists and needed
 
@@ -44,6 +52,13 @@ __all__ = [
     "StrategyConfigCreationError",
     "StrategyConfigUpdateError",
     "StrategyConfigDeletionError",
+    "StrategyVisualizationService",
+    "StrategyVisualizationServiceError",
+    "WatchlistService",
+    "WatchlistServiceError",
+    "WatchlistNotFoundError",
+    "WatchlistItemNotFoundError",
+    "WatchlistOperationForbiddenError",
     # "AgentStateManager",
     # "TradingCoordinator",
 ]
