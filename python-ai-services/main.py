@@ -85,6 +85,10 @@ from models.event_models import CrewLifecycleEvent, AlertEvent, AlertLevel # Add
 # For SSE
 from sse_starlette.sse import EventSourceResponse
 
+# Auth
+from auth.dependencies import get_current_active_user
+from models.auth_models import AuthenticatedUser
+
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -117,6 +121,11 @@ class SubmitPaperOrderResponse(BaseModel):
     updated_order: PaperTradeOrder
     fills: List[PaperTradeFill]
     message: str
+
+class StrategyVisualizationQueryParams(BaseModel): # For the refactored visualization endpoint
+    strategy_config_id: uuid.UUID
+    start_date: date # Ensure date is imported from datetime
+    end_date: date
 
 
 @asynccontextmanager
@@ -1219,64 +1228,65 @@ async def analyze_trading_strategy_with_crew(
 STRATEGY_CONFIG_API_PREFIX = "/api/v1/strategies"
 
 @app.post(
-    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}",
+    f"{STRATEGY_CONFIG_API_PREFIX}/",
     response_model=StrategyConfig,
     status_code=201,
-    summary="Create a new strategy configuration for a user",
+    summary="Create a new strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def create_user_strategy_config(
-    user_id: UUID,
+async def create_strategy_config_for_current_user(
     config_payload: StrategyConfig,
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
-        created_config = await service.create_strategy_config(user_id=user_id, config_data=config_payload)
+        created_config = await service.create_strategy_config(user_id=current_user.id, config_data=config_payload)
         return created_config
     except StrategyConfigCreationError as e:
-        logger.error(f"Failed to create strategy config for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Failed to create strategy config for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error creating strategy config for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error creating strategy config for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the strategy configuration.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}",
+    f"{STRATEGY_CONFIG_API_PREFIX}/",
     response_model=List[StrategyConfig],
-    summary="Get all strategy configurations for a specific user",
+    summary="Get all strategy configurations for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def get_all_strategy_configs_for_user(
-    user_id: UUID,
+async def get_all_strategy_configs_for_current_user(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
-        return await service.get_strategy_configs_by_user(user_id=user_id)
+        return await service.get_strategy_configs_by_user(user_id=current_user.id)
     except Exception as e:
-        logger.error(f"Unexpected error fetching strategy configs for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching strategy configs for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
     response_model=StrategyConfig,
-    summary="Get a specific strategy configuration by ID for a user",
+    summary="Get a specific strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def get_single_strategy_config(
+async def get_single_strategy_config_for_current_user(
     strategy_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
-        config = await service.get_strategy_config(strategy_id=strategy_id, user_id=user_id)
+        config = await service.get_strategy_config(strategy_id=strategy_id, user_id=current_user.id)
         if not config:
-            raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
+            # Service method already checks ownership by user_id, so if not found, it's either truly not there or not owned.
+            raise HTTPException(status_code=404, detail="Strategy configuration not found or not accessible by user.")
         return config
-    except StrategyConfigNotFoundError:
+    except StrategyConfigNotFoundError: # This might be redundant if service's get_strategy_config doesn't raise it but returns None
         raise HTTPException(status_code=404, detail="Strategy configuration not found.")
     except Exception as e:
-        logger.error(f"Unexpected error fetching strategy config {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 # Define a Pydantic model for partial updates. All fields should be optional.
@@ -1293,119 +1303,118 @@ async def get_single_strategy_config(
 #     # of parameters field if it is.
 
 @app.put(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
     response_model=StrategyConfig,
-    summary="Update an existing strategy configuration for a user",
+    summary="Update an existing strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def update_user_strategy_config(
+async def update_strategy_config_for_current_user(
     strategy_id: UUID,
-    user_id: UUID,
-    update_payload: Dict[str, Any], # Using Dict for partial updates
+    update_payload: Dict[str, Any],
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     if not update_payload:
         raise HTTPException(status_code=400, detail="Update payload cannot be empty.")
     try:
         updated_config = await service.update_strategy_config(
-            strategy_id=strategy_id, user_id=user_id, update_payload=update_payload
+            strategy_id=strategy_id, user_id=current_user.id, update_payload=update_payload
         )
         return updated_config
     except StrategyConfigNotFoundError:
         raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
-    except (StrategyConfigUpdateError, ValueError) as e: # Catch both service and Pydantic validation errors
+    except (StrategyConfigUpdateError, ValueError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error updating strategy config {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error updating strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.delete(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}",
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
     status_code=204,
-    summary="Delete a strategy configuration for a user",
+    summary="Delete a strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def delete_user_strategy_config(
+async def delete_strategy_config_for_current_user(
     strategy_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
-        await service.delete_strategy_config(strategy_id=strategy_id, user_id=user_id)
-        return # FastAPI handles 204 No Content response automatically
+        await service.delete_strategy_config(strategy_id=strategy_id, user_id=current_user.id)
+        return
     except StrategyConfigNotFoundError:
         raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
     except StrategyConfigDeletionError as e:
-        logger.error(f"Failed to delete strategy config {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Failed to delete strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error deleting strategy config {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error deleting strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}/performance/latest",
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/performance/latest",
     response_model=Optional[PerformanceMetrics],
-    summary="Get the latest performance metrics for a specific strategy configuration",
+    summary="Get the latest performance metrics for a specific strategy (authenticated user)",
     tags=["Strategy Configurations", "Performance Analytics"]
 )
-async def get_latest_strategy_performance(
+async def get_latest_strategy_performance_for_current_user( # Renamed function
     strategy_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Added auth
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
-        metrics = await service.get_latest_performance_metrics(strategy_id=strategy_id, user_id=user_id)
+        # Service method get_latest_performance_metrics already includes user_id for ownership check
+        metrics = await service.get_latest_performance_metrics(strategy_id=strategy_id, user_id=current_user.id)
         if not metrics:
             raise HTTPException(status_code=404, detail="Performance metrics not found for this strategy, or strategy does not exist/belong to user.")
         return metrics
     except StrategyConfigServiceError as e:
-        logger.error(f"Service error fetching performance for strategy {strategy_id}: {e}", exc_info=True)
-        # Check if the error message implies "not found" for the strategy itself
-        if "not found for user" in str(e).lower(): # Basic check, might need refinement based on actual error messages
+        logger.error(f"Service error fetching performance for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
+        if "not found for user" in str(e).lower():
             raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error fetching performance for strategy {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching performance for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/user/{{user_id}}/trade_history",
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/trade_history",
     response_model=List[TradeRecord],
-    summary="Get trade history for a specific strategy configuration",
+    summary="Get trade history for a specific strategy (authenticated user)",
     tags=["Strategy Configurations", "Performance Analytics"]
 )
-async def get_strategy_trade_history(
+async def get_strategy_trade_history_for_current_user( # Renamed function
     strategy_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Added auth
     limit: int = Query(100, ge=1, le=1000, description="Number of trades to return."),
     offset: int = Query(0, ge=0, description="Offset for pagination."),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     try:
         trades = await service.get_trade_history_for_strategy(
-            strategy_id=strategy_id, user_id=user_id, limit=limit, offset=offset
+            strategy_id=strategy_id, user_id=current_user.id, limit=limit, offset=offset
         )
-        # The service method returns [] if strategy config not found for user, which is acceptable (no trades).
         return trades
     except StrategyConfigServiceError as e:
-        logger.error(f"Service error fetching trade history for strategy {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Service error fetching trade history for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error fetching trade history for strategy {strategy_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching trade history for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/user/{{user_id}}/performance-teasers",
+    f"{STRATEGY_CONFIG_API_PREFIX}/performance-teasers",  # Path changed
     response_model=List[StrategyPerformanceTeaser],
-    summary="Get a summary list of all strategies for a user with performance teasers",
+    summary="Get a summary list of all strategies with performance teasers for the authenticated user", # Summary updated
     tags=["Strategy Configurations", "Performance Analytics"]
 )
-async def get_user_strategies_performance_teasers(
-    user_id: UUID,
+async def get_user_strategies_performance_teasers_for_current_user( # Function name updated
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
     """
-    Retrieves a list of all strategy configurations for the specified user,
+    Retrieves a list of all strategy configurations for the authenticated user,
     each augmented with key performance indicators from their latest metrics record.
     Useful for overview dashboards.
     """
@@ -1451,84 +1460,87 @@ VISUALIZATION_API_PREFIX = "/api/v1/visualizations"
     summary="Get data for strategy visualization charts",
     tags=["Visualizations", "Strategies"]
 )
-async def get_strategy_chart_data(
-    # FastAPI will populate request_params from query parameters
-    request_params: StrategyVisualizationRequest = Depends(),
+async def get_strategy_chart_data( # Function name can remain the same or be updated
+    query_params: StrategyVisualizationQueryParams = Depends(),
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     viz_service: StrategyVisualizationService = Depends(get_strategy_visualization_service)
 ):
     """
     Provides aggregated data needed to render strategy visualization charts,
     including OHLCV, indicator values, signals, and paper trades for a
-    specific strategy configuration and time period.
-    Query parameters should match the fields in StrategyVisualizationRequest model
-    (strategy_config_id, user_id, start_date, end_date).
+    specific strategy configuration and time period for the authenticated user.
+    Query parameters: strategy_config_id, start_date, end_date.
     """
+    # Construct the full StrategyVisualizationRequest for the service
+    service_request = StrategyVisualizationRequest(
+        strategy_config_id=query_params.strategy_config_id,
+        user_id=current_user.id, # Use authenticated user's ID
+        start_date=query_params.start_date,
+        end_date=query_params.end_date
+    )
     try:
-        chart_data = await viz_service.get_strategy_visualization_data(request=request_params)
+        chart_data = await viz_service.get_strategy_visualization_data(request=service_request)
         return chart_data
-    except StrategyConfigNotFoundError as e: # Specific error from underlying service
-        logger.warning(f"Strategy config not found for visualization request: {request_params.strategy_config_id}, User: {request_params.user_id}. Error: {e}")
+    except StrategyConfigNotFoundError as e:
+        logger.warning(f"Strategy config not found for visualization request: {service_request.strategy_config_id}, User: {current_user.id}. Error: {e}")
         raise HTTPException(status_code=404, detail=str(e))
     except StrategyVisualizationServiceError as e:
-        logger.error(f"Visualization service error for strat_cfg_id {request_params.strategy_config_id}, User: {request_params.user_id}: {e}", exc_info=True)
-        if "not found" in str(e).lower() or "Could not fetch price data" in str(e).lower() or "price data for" in str(e).lower() and "is empty" in str(e).lower(): # More specific error checking
+        logger.error(f"Visualization service error for strat_cfg_id {service_request.strategy_config_id}, User: {current_user.id}: {e}", exc_info=True)
+        if "not found" in str(e).lower() or "Could not fetch price data" in str(e).lower() or "price data for" in str(e).lower() and "is empty" in str(e).lower():
             raise HTTPException(status_code=404, detail=str(e))
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected error fetching visualization data for strat_cfg_id {request_params.strategy_config_id}, User: {request_params.user_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected error fetching visualization data for strat_cfg_id {service_request.strategy_config_id}, User: {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while fetching visualization data.")
 
 # --- Paper Trading Endpoints ---
 PAPER_TRADING_API_PREFIX = "/api/v1/paper-trading"
 
 @app.get(
-    f"{PAPER_TRADING_API_PREFIX}/orders/open/user/{{user_id}}",
+    f"{PAPER_TRADING_API_PREFIX}/orders/open",
     response_model=List[TradeRecord],
-    summary="Get all open paper trading orders for a user",
+    summary="Get all open paper trading orders for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def list_open_paper_orders_for_user(
-    user_id: UUID,
+async def list_open_paper_orders_for_current_user( # Renamed
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
-    Retrieves a list of all paper trading orders for the specified user
+    Retrieves a list of all paper trading orders for the authenticated user
     that are in an open state (e.g., NEW, PARTIALLY_FILLED).
     """
     if not executor:
-        # This check might be redundant if get_simulated_trade_executor raises if STE is None.
-        # However, if get_simulated_trade_executor can return None (e.g., if STE failed init),
-        # then this check is important.
-        logger.error("SimulatedTradeExecutor service not available for list_open_paper_orders_for_user.")
+        logger.error("SimulatedTradeExecutor service not available for list_open_paper_orders_for_current_user.")
         raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
     try:
-        open_orders = await executor.get_open_paper_orders(user_id=user_id)
+        open_orders = await executor.get_open_paper_orders(user_id=current_user.id)
         return open_orders
     except Exception as e:
-        logger.error(f"API error fetching open paper orders for user {user_id}: {e}", exc_info=True)
-        # Consider more specific error codes if service raises custom exceptions
+        logger.error(f"API error fetching open paper orders for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch open paper orders: {str(e)}")
 
 @app.post(
     f"{PAPER_TRADING_API_PREFIX}/orders",
     response_model=SubmitPaperOrderResponse,
     status_code=202,
-    summary="Submit a new paper trading order for simulation",
+    summary="Submit a new paper trading order for the authenticated user", # Updated summary
     tags=["Paper Trading", "Orders"]
 )
-async def submit_new_paper_order(
-    order_request: CreatePaperTradeOrderRequest,
+async def submit_new_paper_order_for_current_user( # Renamed
+    order_request: CreatePaperTradeOrderRequest, # Request model no longer has user_id
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
-    Submits a new paper trading order to the simulator.
+    Submits a new paper trading order to the simulator for the authenticated user.
     The simulator will attempt to fill it based on market conditions.
     """
     if not executor:
         raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
 
     paper_order_to_submit = PaperTradeOrder(
-        user_id=order_request.user_id,
+        user_id=current_user.id, # Use authenticated user's ID
         symbol=order_request.symbol,
         side=order_request.side,
         order_type=order_request.order_type,
@@ -1536,32 +1548,23 @@ async def submit_new_paper_order(
         limit_price=order_request.limit_price,
         stop_price=order_request.stop_price,
         time_in_force=order_request.time_in_force,
-        notes=order_request.notes,
-        # order_id, order_request_timestamp, and status have defaults in PaperTradeOrder
+        notes=order_request.notes
     )
 
     try:
         updated_order, fills = await executor.submit_paper_order(paper_order_to_submit)
 
-        # Orchestration: Apply fill and log trade if filled
         if updated_order.status == PaperOrderStatus.FILLED and fills:
-            for fill in fills: # Typically one fill for simple market/limit from current simulator
+            for fill in fills:
                 await executor.apply_fill_to_position(fill)
 
-            # Log the trade to trading_history table.
-            # The _log_paper_trade_to_history method in SimulatedTradeExecutor is suitable.
-            # It handles mapping to TradeRecord fields and saving.
-            # Making it public or having a public wrapper would be ideal.
-            # For now, assuming it can be called if it were named, e.g., log_executed_paper_order.
-            # Let's call the existing private-like method for now, acknowledging it's not ideal.
             if hasattr(executor, '_log_paper_trade_to_history') and callable(getattr(executor, '_log_paper_trade_to_history')):
-                 await executor._log_paper_trade_to_history(updated_order, fills[0] if fills else None) # Pass first fill
-                 logger.info(f"Order {updated_order.order_id} and its fill(s) logged to trading_history via API.")
+                 await executor._log_paper_trade_to_history(updated_order, fills[0] if fills else None)
+                 logger.info(f"Order {updated_order.order_id} for user {current_user.id} and its fill(s) logged to trading_history via API.")
             else:
-                 logger.warning(f"Method _log_paper_trade_to_history not found or callable on executor for order {updated_order.order_id}.")
+                 logger.warning(f"Method _log_paper_trade_to_history not found or callable on executor for order {updated_order.order_id} (user {current_user.id}).")
 
-
-        message = f"Paper order {updated_order.order_id} submitted. Status: {updated_order.status.value}."
+        message = f"Paper order {updated_order.order_id} for user {current_user.id} submitted. Status: {updated_order.status.value}."
         if fills:
             message += f" {len(fills)} fill(s) generated."
 
@@ -1571,156 +1574,155 @@ async def submit_new_paper_order(
             message=message
         )
     except Exception as e:
-        logger.error(f"API error submitting paper order for user {order_request.user_id}, symbol {order_request.symbol}: {e}", exc_info=True)
+        logger.error(f"API error submitting paper order for user {current_user.id}, symbol {order_request.symbol}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to submit paper order: {str(e)}")
 
 @app.post(
-    f"{PAPER_TRADING_API_PREFIX}/orders/{{order_id}}/user/{{user_id}}/cancel",
+    f"{PAPER_TRADING_API_PREFIX}/orders/{{order_id}}/cancel",
     response_model=PaperTradeOrder,
-    summary="Cancel a pending paper trading order for a user",
+    summary="Cancel a pending paper trading order for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def cancel_user_paper_order(
+async def cancel_paper_order_for_current_user( # Renamed
     order_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
-    Attempts to cancel a specific pending paper trading order for the user.
+    Attempts to cancel a specific pending paper trading order for the authenticated user.
     """
     if not executor:
         raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
     try:
-        canceled_order = await executor.cancel_paper_order(user_id=user_id, order_id=order_id)
+        canceled_order = await executor.cancel_paper_order(user_id=current_user.id, order_id=order_id)
         return canceled_order
     except ValueError as e:
-        logger.warning(f"Failed to cancel paper order {order_id} for user {user_id}: {e}")
+        logger.warning(f"Failed to cancel paper order {order_id} for user {current_user.id}: {e}")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"API error canceling paper order {order_id} for user {user_id}: {e}", exc_info=True)
+        logger.error(f"API error canceling paper order {order_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to cancel paper order: {str(e)}")
 
 # --- Watchlist API Endpoints ---
 WATCHLIST_API_PREFIX = "/api/v1/watchlists"
-QUOTE_API_PREFIX = "/api/v1/quotes"
+QUOTE_API_PREFIX = "/api/v1/quotes" # Should remain if batch quotes are general, or move under watchlists if specific
 
 @app.post(
-    f"{WATCHLIST_API_PREFIX}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/",
     response_model=Watchlist,
     status_code=201,
-    summary="Create a new watchlist for a user",
+    summary="Create a new watchlist for the authenticated user",
     tags=["Watchlists"]
 )
-async def create_new_watchlist(
-    user_id: UUID,
+async def create_new_watchlist_for_current_user( # Renamed
     watchlist_data: WatchlistCreate,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        return await service.create_watchlist(user_id=user_id, data=watchlist_data)
+        return await service.create_watchlist(user_id=current_user.id, data=watchlist_data)
     except WatchlistServiceError as e:
-        logger.error(f"API Error creating watchlist for user {user_id}: {e}", exc_info=True)
+        logger.error(f"API Error creating watchlist for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Unexpected API error creating watchlist for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Unexpected API error creating watchlist for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to create watchlist.")
 
 @app.get(
-    f"{WATCHLIST_API_PREFIX}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/",
     response_model=List[Watchlist],
-    summary="Get all watchlists for a user",
+    summary="Get all watchlists for the authenticated user",
     tags=["Watchlists"]
 )
-async def get_user_watchlists(
-    user_id: UUID,
+async def get_current_user_watchlists( # Renamed
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        return await service.get_watchlists_by_user(user_id=user_id)
+        return await service.get_watchlists_by_user(user_id=current_user.id)
     except Exception as e:
-        logger.error(f"API Error fetching watchlists for user {user_id}: {e}", exc_info=True)
+        logger.error(f"API Error fetching watchlists for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch watchlists.")
 
 @app.get(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
     response_model=WatchlistWithItems,
-    summary="Get a specific watchlist and its items for a user",
+    summary="Get a specific watchlist and its items for the authenticated user",
     tags=["Watchlists"]
 )
-async def get_user_watchlist_details(
+async def get_watchlist_details_for_current_user( # Renamed
     watchlist_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        watchlist_details = await service.get_watchlist(watchlist_id=watchlist_id, user_id=user_id, include_items=True)
+        watchlist_details = await service.get_watchlist(watchlist_id=watchlist_id, user_id=current_user.id, include_items=True)
         if not watchlist_details:
             raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
         return watchlist_details
     except WatchlistNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist not found.")
     except Exception as e:
-        logger.error(f"API Error fetching watchlist {watchlist_id} for user {user_id}: {e}", exc_info=True)
+        logger.error(f"API Error fetching watchlist {watchlist_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch watchlist details.")
 
 @app.put(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
     response_model=Watchlist,
-    summary="Update a watchlist's name or description",
+    summary="Update a watchlist's name or description for the authenticated user",
     tags=["Watchlists"]
 )
-async def update_user_watchlist(
+async def update_watchlist_for_current_user( # Renamed
     watchlist_id: UUID,
-    user_id: UUID,
     update_data: WatchlistCreate,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        return await service.update_watchlist(watchlist_id=watchlist_id, user_id=user_id, data=update_data)
+        return await service.update_watchlist(watchlist_id=watchlist_id, user_id=current_user.id, data=update_data)
     except WatchlistNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
     except WatchlistServiceError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"API Error updating watchlist {watchlist_id}: {e}", exc_info=True)
+        logger.error(f"API Error updating watchlist {watchlist_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update watchlist.")
 
 @app.delete(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
     status_code=204,
-    summary="Delete a watchlist for a user",
+    summary="Delete a watchlist for the authenticated user",
     tags=["Watchlists"]
 )
-async def delete_user_watchlist(
+async def delete_watchlist_for_current_user( # Renamed
     watchlist_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        await service.delete_watchlist(watchlist_id=watchlist_id, user_id=user_id)
-        # No content to return for 204
+        await service.delete_watchlist(watchlist_id=watchlist_id, user_id=current_user.id)
     except WatchlistNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
     except Exception as e:
-        logger.error(f"API Error deleting watchlist {watchlist_id}: {e}", exc_info=True)
+        logger.error(f"API Error deleting watchlist {watchlist_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to delete watchlist.")
 
 @app.post(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/user/{{user_id}}/items",
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/items",
     response_model=List[WatchlistItem],
     status_code=201,
-    summary="Add one or more items (symbols) to a watchlist",
+    summary="Add one or more items (symbols) to a watchlist for the authenticated user",
     tags=["Watchlists"]
 )
-async def add_items_to_user_watchlist(
+async def add_items_to_watchlist_for_current_user( # Renamed
     watchlist_id: UUID,
-    user_id: UUID,
     items_request: AddWatchlistItemsRequest,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
         created_items = await service.add_multiple_items_to_watchlist(
-            watchlist_id=watchlist_id, user_id=user_id, items_request=items_request
+            watchlist_id=watchlist_id, user_id=current_user.id, items_request=items_request
         )
         return created_items
     except WatchlistNotFoundError:
@@ -1728,29 +1730,28 @@ async def add_items_to_user_watchlist(
     except WatchlistServiceError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
-        logger.error(f"API Error adding items to watchlist {watchlist_id}: {e}", exc_info=True)
+        logger.error(f"API Error adding items to watchlist {watchlist_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to add items to watchlist.")
 
 @app.delete(
-    f"{WATCHLIST_API_PREFIX}/items/{{item_id}}/user/{{user_id}}",
+    f"{WATCHLIST_API_PREFIX}/items/{{item_id}}",
     status_code=204,
-    summary="Remove an item from a watchlist",
+    summary="Remove an item from a watchlist for the authenticated user",
     tags=["Watchlists"]
 )
-async def remove_item_from_user_watchlist(
+async def remove_item_from_watchlist_for_current_user( # Renamed
     item_id: UUID,
-    user_id: UUID,
+    current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
     try:
-        await service.remove_item_from_watchlist(item_id=item_id, user_id=user_id)
-        # No content for 204
+        await service.remove_item_from_watchlist(item_id=item_id, user_id=current_user.id)
     except WatchlistItemNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist item not found.")
     except WatchlistOperationForbiddenError:
         raise HTTPException(status_code=403, detail="User not authorized to remove this watchlist item.")
     except Exception as e:
-        logger.error(f"API Error removing item {item_id} from watchlist: {e}", exc_info=True)
+        logger.error(f"API Error removing item {item_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to remove item from watchlist.")
 
 # --- Batch Quotes Endpoint ---

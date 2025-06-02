@@ -62,10 +62,15 @@ class SignalDataPoint(BaseModel):
 
 class StrategyVisualizationRequest(BaseModel):
     strategy_config_id: uuid.UUID = Field(..., description="ID of the strategy configuration to visualize.")
-    user_id: uuid.UUID = Field(..., description="ID of the user owning the strategy configuration.") # For verification
+    # user_id: uuid.UUID Field is REMOVED - will come from authenticated token
     start_date: date = Field(..., description="Start date for the visualization period.")
     end_date: date = Field(..., description="End date for the visualization period.")
     # symbol: Optional[str] = Field(None, description="Specific symbol if strategy has multiple; defaults to first.") # StrategyConfig has symbols list
+    user_id: Optional[uuid.UUID] = Field(default=None, description="User ID, to be populated from authenticated context, not client request.") # Added for service layer compatibility
+
+    class Config: # Added Config to allow extra fields if needed, or validate assignment
+        validate_assignment = True
+        # extra = 'ignore' # Or 'forbid' depending on how strictly you want to handle incoming query params
 
 class StrategyVisualizationDataResponse(BaseModel):
     strategy_config_id: uuid.UUID

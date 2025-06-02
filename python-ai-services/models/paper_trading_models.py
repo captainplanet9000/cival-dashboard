@@ -45,9 +45,7 @@ class PaperTradeOrder(BaseModel):
         extra = 'forbid'
 
 class CreatePaperTradeOrderRequest(BaseModel):
-    # Fields expected from the client when creating a new paper order.
-    # user_id will likely come from auth context in a real app, but passed in request for now.
-    user_id: uuid.UUID = Field(..., description="Identifier of the user placing the paper order.")
+    # user_id: uuid.UUID Field is REMOVED - will be derived from authenticated user context
 
     symbol: str = Field(..., description="Financial symbol to trade (e.g., BTC/USD, AAPL).")
     side: TradeSide = Field(..., description="Side of the trade: BUY or SELL.") # Reuses TradeSide enum

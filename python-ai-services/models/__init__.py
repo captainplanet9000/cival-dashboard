@@ -54,6 +54,16 @@ try:
 except ImportError:
     pass
 
+# Export models from auth_models.py
+try:
+    from .auth_models import AuthenticatedUser
+    if '__all__' in globals():
+        __all__.append("AuthenticatedUser")
+    else:
+        __all__ = ["AuthenticatedUser"]
+except ImportError:
+    pass
+
 # Export models from strategy_models.py
 try:
     from .strategy_models import (

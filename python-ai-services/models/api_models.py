@@ -56,7 +56,7 @@ class AgentMemoryResponseItem(BaseModel):
     # For now, this matches the current output of list_memories which wraps strings.
 
 class TradingAnalysisCrewRequest(BaseModel):
-    user_id: str # Or uuid.UUID if you have user UUIDs
+    # user_id: str Field is REMOVED - will be derived from authenticated user context
     symbol: str = Field(..., description="The financial symbol to analyze, e.g., 'BTC/USD', 'AAPL'.")
     market_event_description: Optional[str] = Field(default=None, description="Optional description of a specific market event or news to consider.")
     # Add any other specific inputs the trading_analysis_crew might need
