@@ -218,3 +218,24 @@ try:
         __all__ = new_validation_exports
 except ImportError:
     pass
+
+# Export models from hyperliquid_models.py
+try:
+    from .hyperliquid_models import (
+        HyperliquidCredentials, HyperliquidPlaceOrderParams, HyperliquidOrderResponseData,
+        HyperliquidOrderStatusInfo, HyperliquidAssetPosition, HyperliquidOpenOrderItem,
+        HyperliquidMarginSummary, HyperliquidAccountSnapshot,
+        HyperliquidOrderType, HyperliquidOrderSide, HyperliquidOrderStatus
+    )
+    new_hyperliquid_exports = [
+        "HyperliquidCredentials", "HyperliquidPlaceOrderParams", "HyperliquidOrderResponseData",
+        "HyperliquidOrderStatusInfo", "HyperliquidAssetPosition", "HyperliquidOpenOrderItem",
+        "HyperliquidMarginSummary", "HyperliquidAccountSnapshot",
+        "HyperliquidOrderType", "HyperliquidOrderSide", "HyperliquidOrderStatus"
+    ]
+    if '__all__' in globals():
+        __all__.extend(new_hyperliquid_exports)
+    else:
+        __all__ = new_hyperliquid_exports
+except ImportError:
+    pass

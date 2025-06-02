@@ -28,6 +28,7 @@ from .watchlist_service import (
     WatchlistOperationForbiddenError
 )
 from .user_preference_service import UserPreferenceService, UserPreferenceServiceError
+from .hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
 # from .agent_state_manager import AgentStateManager # If exists and needed
 # from .trading_coordinator import TradingCoordinator # If exists and needed
 
@@ -62,6 +63,8 @@ __all__ = [
     "WatchlistOperationForbiddenError",
     "UserPreferenceService", 
     "UserPreferenceServiceError",
+    "HyperliquidExecutionService",
+    "HyperliquidExecutionServiceError",
     # "AgentStateManager",
     # "TradingCoordinator",
 ]
