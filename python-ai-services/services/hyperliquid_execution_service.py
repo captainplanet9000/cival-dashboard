@@ -373,19 +373,225 @@ class HyperliquidExecutionService:
 
     async def get_asset_contexts(self) -> List[Dict[str, Any]]:
         """Gets meta data for all actively traded assets."""
-        logger.info("Fetching asset contexts (market metadata)")
+        logger.info("Attempting to fetch asset contexts (market metadata)...")
         if not self.info_client:
+            logger.error("Hyperliquid Info client not initialized. Cannot fetch asset contexts.")
             raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
-        # return self.info_client.meta() # .meta() returns list of asset contexts
-        raise NotImplementedError("get_asset_contexts method not fully implemented.")
+
+        try:
+            # The SDK's info.meta() is a synchronous method.
+            # To call it from an async method, run it in an executor.
+            loop = asyncio.get_event_loop()
+            asset_contexts = await loop.run_in_executor(None, self.info_client.meta)
+
+            if asset_contexts is not None: # meta() usually returns a list, could be empty.
+                logger.info(f"Successfully fetched {len(asset_contexts)} asset contexts.")
+                return asset_contexts
+            else:
+                # This case might indicate an issue if meta() is expected to always return a list.
+                # However, based on typical SDK behavior, an empty list is more common than None for "no data".
+                # If meta() can return None, this logging is appropriate.
+                logger.warning("Received None for asset contexts from Hyperliquid SDK.")
+                return [] # Return empty list if None is received, to maintain type consistency.
+        except Exception as e:
+            logger.error(f"Error fetching asset contexts from Hyperliquid: {e}", exc_info=True)
+            # Specific error handling can be added here if certain exceptions from the SDK are known
+            raise HyperliquidExecutionServiceError(f"Failed to fetch asset contexts: {e}")
 
     async def get_funding_history(self, user_address: str, start_time: int, end_time: Optional[int] = None) -> List[Dict[str, Any]]:
         """Gets funding payment history for a user."""
-        logger.info(f"Fetching funding history for {user_address} from {start_time} to {end_time}")
+        logger.info(f"Attempting to fetch funding history for {user_address} from timestamp {start_time} to {end_time if end_time else 'latest'}...")
         if not self.info_client:
+            logger.error("Hyperliquid Info client not initialized. Cannot fetch funding history.")
             raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
-        # return self.info_client.funding_history(user_address, start_time, end_time)
-        raise NotImplementedError("get_funding_history method not fully implemented.")
+
+        try:
+            # The SDK's info.funding_history() is a synchronous method.
+            # To call it from an async method, run it in an executor.
+            loop = asyncio.get_event_loop()
+            funding_history_data = await loop.run_in_executor(
+                None,
+                lambda: self.info_client.funding_history(user_address, start_time, end_time)
+            )
+
+            # The SDK returns a list of funding payment dicts.
+            # Example: [{'coin': 'BTC', 'time': 1672531200000, 'usdc': '-0.00123', ...}, ...]
+            if isinstance(funding_history_data, list):
+                logger.info(f"Successfully fetched {len(funding_history_data)} funding history entries for {user_address}.")
+                return funding_history_data
+            else:
+                # This case might indicate an unexpected response type from the SDK.
+                logger.warning(f"Received non-list data for funding history from Hyperliquid SDK: {type(funding_history_data)}. Expected list.")
+                # Depending on strictness, could raise error or return empty list.
+                # Returning empty list for now to maintain type consistency.
+                return []
+        except Exception as e:
+            logger.error(f"Error fetching funding history for {user_address} from Hyperliquid: {e}", exc_info=True)
+            # Specific error handling can be added here if certain exceptions from the SDK are known
+            raise HyperliquidExecutionServiceError(f"Failed to fetch funding history: {e}")
+
+    async def get_account_margin_summary(self) -> Optional[HyperliquidMarginSummary]:
+        """
+        Fetches the account's margin summary (cross or spot) for the service's wallet_address.
+        """
+        logger.info(f"Attempting to fetch account margin summary for {self.wallet_address}...")
+        if not self.info_client:
+            logger.error("Hyperliquid Info client not initialized. Cannot fetch margin summary.")
+            raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
+
+        try:
+            user_state_data = await self.get_user_state(self.wallet_address) # Uses run_in_executor internally
+            if not user_state_data:
+                logger.warning(f"No user state data returned for {self.wallet_address}, cannot extract margin summary.")
+                return None
+
+            margin_summary_raw = user_state_data.get("crossMarginSummary")
+            if not margin_summary_raw:
+                margin_summary_raw = user_state_data.get("spotMarginSummary") # Fallback to spot if cross is not present
+                if margin_summary_raw:
+                    logger.info(f"Using spotMarginSummary for {self.wallet_address}.")
+                else:
+                    logger.warning(f"No crossMarginSummary or spotMarginSummary found for {self.wallet_address} in user state.")
+                    return None
+            else:
+                logger.info(f"Using crossMarginSummary for {self.wallet_address}.")
+
+
+            # Ensure all required fields for HyperliquidMarginSummary are present or provide defaults
+            # The Pydantic model HyperliquidMarginSummary expects:
+            # account_value (alias="accountValue")
+            # total_raw_usd (alias="totalRawUsd")
+            # total_ntl_pos (alias="totalNtlPos")
+            # total_margin_used (alias="totalMarginUsed")
+            # Optional: total_pnl_on_positions, available_balance_for_new_orders
+
+            # Basic check for essential fields
+            required_fields = ["accountValue", "totalRawUsd", "totalNtlPos", "totalMarginUsed"]
+            for field in required_fields:
+                if field not in margin_summary_raw:
+                    logger.error(f"Missing required field '{field}' in margin summary data: {margin_summary_raw}")
+                    raise HyperliquidExecutionServiceError(f"Margin summary data is incomplete. Missing: {field}")
+
+            margin_summary = HyperliquidMarginSummary(**margin_summary_raw)
+            logger.info(f"Successfully fetched and parsed account margin summary for {self.wallet_address}.")
+            return margin_summary
+
+        except HyperliquidExecutionServiceError: # Re-raise our specific errors
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching or parsing account margin summary for {self.wallet_address}: {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"Failed to get account margin summary: {e}")
+
+    async def get_asset_leverage(self, asset_symbol: str, user_address: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Fetches leverage settings for a specific asset for a given user_address.
+        Defaults to self.wallet_address if user_address is not provided.
+        """
+        target_address = user_address if user_address else self.wallet_address
+        logger.info(f"Attempting to fetch asset leverage for {asset_symbol} for user {target_address}...")
+
+        if not self.info_client:
+            logger.error("Hyperliquid Info client not initialized. Cannot fetch asset leverage.")
+            raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
+
+        try:
+            user_state_data = await self.get_user_state(target_address) # Uses run_in_executor internally
+            if not user_state_data:
+                logger.warning(f"No user state data returned for {target_address}, cannot extract asset leverage.")
+                return None
+
+            asset_positions = user_state_data.get("assetPositions")
+            if not isinstance(asset_positions, list):
+                logger.warning(f"No 'assetPositions' list found in user state for {target_address} or it's not a list.")
+                return None
+
+            for asset_pos_data in asset_positions:
+                if isinstance(asset_pos_data, dict) and \
+                   asset_pos_data.get("asset") == asset_symbol and \
+                   "position" in asset_pos_data and \
+                   isinstance(asset_pos_data["position"], dict):
+
+                    position_details = asset_pos_data["position"]
+                    leverage_info = position_details.get("leverage") # Leverage info is usually a dict itself
+
+                    if leverage_info:
+                        logger.info(f"Successfully fetched leverage for asset {asset_symbol} for user {target_address}: {leverage_info}")
+                        # Example leverage_info: {"type": "cross", "value": 10} or {"type": "isolated", "value": 5}
+                        return leverage_info
+                    else:
+                        logger.info(f"Asset {asset_symbol} found, but no leverage information present in position details for user {target_address}.")
+                        return None # No specific leverage info for this asset
+
+            logger.info(f"Asset {asset_symbol} not found in positions for user {target_address}.")
+            return None # Asset not found in positions
+
+        except HyperliquidExecutionServiceError: # Re-raise our specific errors
+            raise
+        except Exception as e:
+            logger.error(f"Error fetching asset leverage for {asset_symbol} (user {target_address}): {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"Failed to get asset leverage: {e}")
+
+    async def set_asset_leverage(self, asset_symbol: str, leverage: int, is_cross_margin: bool) -> Dict[str, Any]:
+        """
+        Sets the leverage for a given asset.
+        Args:
+            asset_symbol: The asset symbol (e.g., "ETH").
+            leverage: The desired leverage value (integer).
+            is_cross_margin: True for cross-margin, False for isolated.
+        Returns:
+            A dictionary representing the outcome from the Hyperliquid SDK.
+        """
+        logger.info(f"Attempting to set leverage for asset {asset_symbol} to {leverage}x {'cross-margin' if is_cross_margin else 'isolated-margin'}...")
+
+        if not self.exchange_client:
+            logger.error("Hyperliquid Exchange client not initialized. Cannot set leverage.")
+            raise HyperliquidExecutionServiceError("Hyperliquid Exchange client not initialized.")
+
+        if not isinstance(leverage, int) or leverage < 1: # Basic validation
+            logger.error(f"Invalid leverage value: {leverage}. Must be a positive integer.")
+            raise HyperliquidExecutionServiceError("Invalid leverage value provided.")
+
+        try:
+            loop = asyncio.get_event_loop()
+            # SDK's update_leverage: update_leverage(coin: str, is_cross_margin: bool, leverage: int)
+            sdk_response = await loop.run_in_executor(
+                None,
+                lambda: self.exchange_client.update_leverage(
+                    coin=asset_symbol,
+                    is_cross_margin=is_cross_margin,
+                    leverage=leverage
+                )
+            )
+
+            logger.info(f"Hyperliquid SDK set_asset_leverage response for {asset_symbol}: {sdk_response}")
+
+            # Example success: {'status': 'ok', 'response': {'type': 'updateLeverage', 'data': 'Successfully updated margin'}}
+            # Example error: {'status': 'error', 'error': 'Leverage too high'}
+            if isinstance(sdk_response, dict) and "status" in sdk_response:
+                if sdk_response["status"] == "ok":
+                    data_field = sdk_response.get("response", {}).get("data")
+                    if isinstance(data_field, list) and len(data_field) > 0 and isinstance(data_field[0], dict) and "name" in data_field[0] and "cross" in data_field[0] and "leverage" in data_field[0]:
+                        # This seems to be the new response structure as of some SDK versions
+                        # e.g. [{'name': 'ETH', 'cross': True, 'leverage': 20}]
+                        logger.info(f"Leverage for {asset_symbol} successfully updated to {data_field[0]['leverage']}x, cross_margin={data_field[0]['cross']}.")
+                    elif isinstance(data_field, str): # Older response style
+                         logger.info(f"Leverage for {asset_symbol} successfully updated. Message: {data_field}")
+                    else: # Other potential success structures
+                        logger.info(f"Leverage for {asset_symbol} update reported as 'ok', but data format is unexpected: {data_field}")
+                else: # status == "error"
+                    error_message = sdk_response.get("error", f"Leverage update failed with status: {sdk_response['status']}")
+                    logger.error(f"Failed to set leverage for {asset_symbol} on Hyperliquid: {error_message}")
+                    raise HyperliquidExecutionServiceError(f"Hyperliquid API error on set_leverage: {error_message}")
+                return sdk_response # Return the full SDK response dict
+            else:
+                logger.error(f"Unexpected response structure from Hyperliquid SDK on set_asset_leverage for {asset_symbol}: {sdk_response}")
+                raise HyperliquidExecutionServiceError("Unexpected response from Hyperliquid SDK on set_leverage.")
+
+        except HyperliquidExecutionServiceError: # Re-raise our specific errors
+            raise
+        except Exception as e:
+            logger.error(f"Error setting leverage for {asset_symbol}: {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"Failed to set asset leverage: {e}")
 
     # Add other methods as needed: get_balance, get_leverage, modify_leverage, etc.
     # Remember to handle Hyperliquid's specific data types (e.g. numbers as strings)

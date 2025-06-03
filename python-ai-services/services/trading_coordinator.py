@@ -82,44 +82,163 @@ class TradingCoordinator:
         logger.info(f"Current trade execution mode: {self.trade_execution_mode}")
 
         if self.trade_execution_mode == "live":
-            if self.hyperliquid_execution_service:
-                logger.info("Attempting LIVE trade execution via HyperliquidExecutionService.")
-                try:
-                    is_buy = trade_params["action"].lower() == "buy"
-
-                    order_type_params: Dict[str, Any]
-                    if trade_params["order_type"].lower() == "limit":
-                        if "price" not in trade_params or trade_params["price"] is None:
-                            raise ValueError("Price is required for limit order.")
-                        order_type_params = {"limit": {"tif": "Gtc"}}
-                        limit_px_for_sdk = trade_params["price"]
-                    elif trade_params["order_type"].lower() == "market":
-                        order_type_params = {"market": {"tif": "Ioc"}}
-                        limit_px_for_sdk = trade_params.get("price", 0.0)
-                    else:
-                        raise ValueError(f"Unsupported order type for Hyperliquid: {trade_params['order_type']}")
-
-                    hl_order_params = HyperliquidPlaceOrderParams(
-                        asset=trade_params["symbol"].upper(),
-                        is_buy=is_buy,
-                        sz=float(trade_params["quantity"]),
-                        limit_px=float(limit_px_for_sdk),
-                        order_type=order_type_params,
-                        reduce_only=False
-                    )
-
-                    logger.debug(f"Constructed HyperliquidPlaceOrderParams: {hl_order_params.model_dump_json()}")
-                    result = await self.hyperliquid_execution_service.place_order(hl_order_params)
-                    logger.info(f"Live trade executed via Hyperliquid. Response: {result.model_dump_json()}")
-                    return {"status": "live_executed", "details": result.model_dump()}
-                except (HyperliquidExecutionServiceError, ValueError) as e:
-                    logger.error(f"Live trade execution failed: {e}", exc_info=True)
-                    return {"status": "live_failed", "error": str(e)}
-                except Exception as e:
-                    logger.error(f"Unexpected error during live trade execution: {e}", exc_info=True)
-                    return {"status": "live_failed", "error": f"Unexpected error: {str(e)}"}
-            else:
+            if not self.hyperliquid_execution_service:
                 logger.warning("Live trade mode selected, but HyperliquidExecutionService is not available.")
+                return {"status": "live_skipped", "reason": "Hyperliquid service unavailable."}
+
+            logger.info("Attempting LIVE trade execution via HyperliquidExecutionService.")
+            main_order_result_dict = None
+            sl_order_result_dict_or_error = None
+            tp_order_result_dict_or_error = None
+            risk_percentage = 0.01 # Configurable: 1% risk per trade
+
+            try:
+                # 1. Account Balance Check & Position Sizing Information
+                margin_summary = await self.hyperliquid_execution_service.get_account_margin_summary()
+                if not margin_summary or not margin_summary.account_value:
+                    logger.error("Failed to fetch account margin summary or account_value is missing.")
+                    return {"status": "live_failed", "error": "Failed to fetch account balance for risk management."}
+
+                account_value_float = 0.0
+                try:
+                    account_value_float = float(margin_summary.account_value)
+                except ValueError:
+                    logger.error(f"Could not convert account_value '{margin_summary.account_value}' to float.")
+                    return {"status": "live_failed", "error": "Invalid account_value format for risk management."}
+
+                logger.info(f"Account value for risk check: {account_value_float} USD")
+
+                entry_price_for_sizing = trade_params.get("price") # This is limit_px for limit, or estimated market price
+                stop_loss_price_for_sizing = trade_params.get("stop_loss_price")
+
+                if entry_price_for_sizing is not None and stop_loss_price_for_sizing is not None:
+                    risk_per_unit = abs(float(entry_price_for_sizing) - float(stop_loss_price_for_sizing))
+                    if risk_per_unit > 0:
+                        max_allowed_risk_usd = account_value_float * risk_percentage
+                        max_position_size_units = max_allowed_risk_usd / risk_per_unit
+                        logger.info(f"Informational Position Sizing: risk_per_unit={risk_per_unit}, max_allowed_risk_usd={max_allowed_risk_usd}, max_position_size_units={max_position_size_units:.8f}")
+                        if float(trade_params["quantity"]) > max_position_size_units:
+                            logger.warning(f"Requested quantity {trade_params['quantity']} exceeds SL-based max size {max_position_size_units:.8f}")
+                    else:
+                        logger.info("SL-based position sizing skipped: risk_per_unit is zero (entry and SL price are the same).")
+                else:
+                    logger.info("SL-based position sizing skipped: stop_loss_price or entry price not available in trade_params.")
+
+                # 2. Main Order Placement
+                is_buy = trade_params["action"].lower() == "buy"
+                order_type_params: Dict[str, Any]
+                if trade_params["order_type"].lower() == "limit":
+                    if "price" not in trade_params or trade_params["price"] is None:
+                        raise ValueError("Price is required for limit order.")
+                    order_type_params = {"limit": {"tif": "Gtc"}}
+                    limit_px_for_sdk = trade_params["price"]
+                elif trade_params["order_type"].lower() == "market":
+                    order_type_params = {"market": {"tif": "Ioc"}}
+                    # Use a valid price for market orders if required by Pydantic model (ge=0),
+                    # or the entry_price_for_sizing if available, else 0.0
+                    limit_px_for_sdk = float(entry_price_for_sizing if entry_price_for_sizing is not None else 0.0)
+                else:
+                    raise ValueError(f"Unsupported order type for Hyperliquid: {trade_params['order_type']}")
+
+                main_order_hl_params = HyperliquidPlaceOrderParams(
+                    asset=trade_params["symbol"].upper(),
+                    is_buy=is_buy,
+                    sz=float(trade_params["quantity"]),
+                    limit_px=float(limit_px_for_sdk),
+                    order_type=order_type_params,
+                    reduce_only=False # Main order is not reduce_only
+                )
+
+                logger.debug(f"Constructed Main Order HyperliquidPlaceOrderParams: {main_order_hl_params.model_dump_json()}")
+                main_order_result = await self.hyperliquid_execution_service.place_order(main_order_hl_params)
+                main_order_result_dict = main_order_result.model_dump()
+                logger.info(f"Main live trade executed. Response: {main_order_result_dict}")
+
+                # 3. Stop-Loss (SL) and Take-Profit (TP) Order Placement
+                # Check if main order was successful enough to place SL/TP (e.g. "resting", "filled", or general "ok")
+                # HyperliquidOrderResponseData has 'status' (e.g. "resting") and 'oid'
+                if main_order_result.oid is not None and main_order_result.status in ["resting", "filled", "ok"]: # "ok" might be a general success status
+                    stop_loss_price = trade_params.get("stop_loss_price")
+                    if stop_loss_price is not None:
+                        try:
+                            sl_params = HyperliquidPlaceOrderParams(
+                                asset=trade_params["symbol"].upper(),
+                                is_buy=not is_buy, # Opposite side
+                                sz=float(trade_params["quantity"]),
+                                limit_px=float(stop_loss_price),
+                                order_type={"limit": {"tif": "Gtc"}}, # Could be other types e.g. stop market
+                                reduce_only=True
+                            )
+                            logger.info(f"Attempting to place Stop-Loss order: {sl_params.model_dump_json()}")
+                            sl_order_result = await self.hyperliquid_execution_service.place_order(sl_params)
+                            sl_order_result_dict_or_error = sl_order_result.model_dump()
+                            logger.info(f"Stop-Loss order placed successfully: {sl_order_result_dict_or_error}")
+                        except (HyperliquidExecutionServiceError, ValueError) as e:
+                            logger.error(f"Failed to place Stop-Loss order: {e}", exc_info=True)
+                            sl_order_result_dict_or_error = {"error": str(e)}
+                        except Exception as e:
+                            logger.error(f"Unexpected error placing Stop-Loss order: {e}", exc_info=True)
+                            sl_order_result_dict_or_error = {"error": f"Unexpected SL error: {str(e)}"}
+
+
+                    take_profit_price = trade_params.get("take_profit_price")
+                    if take_profit_price is not None:
+                        try:
+                            tp_params = HyperliquidPlaceOrderParams(
+                                asset=trade_params["symbol"].upper(),
+                                is_buy=not is_buy, # Opposite side
+                                sz=float(trade_params["quantity"]),
+                                limit_px=float(take_profit_price),
+                                order_type={"limit": {"tif": "Gtc"}},
+                                reduce_only=True
+                            )
+                            logger.info(f"Attempting to place Take-Profit order: {tp_params.model_dump_json()}")
+                            tp_order_result = await self.hyperliquid_execution_service.place_order(tp_params)
+                            tp_order_result_dict_or_error = tp_order_result.model_dump()
+                            logger.info(f"Take-Profit order placed successfully: {tp_order_result_dict_or_error}")
+                        except (HyperliquidExecutionServiceError, ValueError) as e:
+                            logger.error(f"Failed to place Take-Profit order: {e}", exc_info=True)
+                            tp_order_result_dict_or_error = {"error": str(e)}
+                        except Exception as e:
+                            logger.error(f"Unexpected error placing Take-Profit order: {e}", exc_info=True)
+                            tp_order_result_dict_or_error = {"error": f"Unexpected TP error: {str(e)}"}
+                else:
+                    logger.warning(f"Main order was not successful (status: {main_order_result.status}, oid: {main_order_result.oid}). Skipping SL/TP placement.")
+
+                return {
+                    "status": "live_executed_with_risk_management",
+                    "details": {
+                        "main_order": main_order_result_dict,
+                        "stop_loss_order": sl_order_result_dict_or_error,
+                        "take_profit_order": tp_order_result_dict_or_error
+                    }
+                }
+
+            except (HyperliquidExecutionServiceError, ValueError) as e:
+                logger.error(f"Live trade execution process failed: {e}", exc_info=True)
+                # Ensure main_order_result_dict exists for consistent return structure if error happens post main order but pre SL/TP
+                return {
+                    "status": "live_failed",
+                    "error": str(e),
+                    "details": { # Partial details if main order was attempted
+                        "main_order": main_order_result_dict,
+                        "stop_loss_order": sl_order_result_dict_or_error,
+                        "take_profit_order": tp_order_result_dict_or_error
+                    }
+                }
+            except Exception as e:
+                logger.error(f"Unexpected error during live trade execution process: {e}", exc_info=True)
+                return {
+                    "status": "live_failed",
+                    "error": f"Unexpected error: {str(e)}",
+                    "details": {
+                         "main_order": main_order_result_dict,
+                         "stop_loss_order": sl_order_result_dict_or_error,
+                         "take_profit_order": tp_order_result_dict_or_error
+                    }
+                }
+            # else: # This was removed because the check for hyperliquid_execution_service is now at the top
+            #     logger.warning("Live trade mode selected, but HyperliquidExecutionService is not available.")
                 return {"status": "live_skipped", "reason": "Hyperliquid service unavailable."}
 
         elif self.trade_execution_mode == "paper":

@@ -517,4 +517,399 @@ async def test_get_all_open_orders_delegates_to_summary(mock_hl_init_bypass):
     assert len(orders) == 1
     assert orders[0].asset == "BTC"
     service.get_detailed_account_summary.assert_called_once_with(TEST_WALLET_ADDRESS)
+
+# --- Tests for get_asset_contexts ---
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_contexts_success():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    mock_contexts = [{"name": "ETH", "maxLeverage": 20}, {"name": "BTC", "maxLeverage": 10}]
+    service.info_client.meta = MagicMock(return_value=mock_contexts)
+
+    contexts = await service.get_asset_contexts()
+
+    assert contexts == mock_contexts
+    service.info_client.meta.assert_called_once()
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_contexts_sdk_returns_none():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    service.info_client.meta = MagicMock(return_value=None)
+
+    contexts = await service.get_asset_contexts()
+
+    assert contexts == [] # Service method should convert None to empty list
+    service.info_client.meta.assert_called_once()
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_contexts_sdk_error():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    service.info_client.meta = MagicMock(side_effect=Exception("SDK Network Error"))
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Failed to fetch asset contexts: SDK Network Error"):
+        await service.get_asset_contexts()
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_contexts_client_not_initialized():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = None
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid Info client not initialized."):
+        await service.get_asset_contexts()
+
+# --- Tests for get_funding_history ---
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_funding_history_success():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    mock_history = [{"coin": "ETH", "time": 1234567890, "usdc": "0.5"}]
+    service.info_client.funding_history = MagicMock(return_value=mock_history)
+    user_address = "0xUser1"
+    start_time = 1234500000
+    end_time = 1234600000
+
+    history = await service.get_funding_history(user_address, start_time, end_time)
+
+    assert history == mock_history
+    service.info_client.funding_history.assert_called_once_with(user_address, start_time, end_time)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_funding_history_sdk_returns_non_list():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    service.info_client.funding_history = MagicMock(return_value={"error": "unexpected response"}) # Non-list
+    user_address = "0xUser1"
+    start_time = 1234500000
+
+    history = await service.get_funding_history(user_address, start_time)
+    assert history == [] # Service method should convert non-list to empty list
+    service.info_client.funding_history.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_funding_history_sdk_error():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    service.info_client.funding_history = MagicMock(side_effect=Exception("SDK Funding Error"))
+    user_address = "0xUser1"
+    start_time = 1234500000
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Failed to fetch funding history: SDK Funding Error"):
+        await service.get_funding_history(user_address, start_time)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_funding_history_client_not_initialized():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = None
+    user_address = "0xUser1"
+    start_time = 1234500000
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid Info client not initialized."):
+        await service.get_funding_history(user_address, start_time)
+
+
+# --- Tests for get_account_margin_summary ---
+from python_ai_services.models.hyperliquid_models import HyperliquidMarginSummary # Ensure imported
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_success_cross():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS # Crucial for this method
+    mock_margin_data = {"accountValue": "1000", "totalRawUsd": "1000", "totalNtlPos": "100", "totalMarginUsed": "50"}
+    mock_user_state = {"crossMarginSummary": mock_margin_data}
+    # Patch get_user_state directly on the instance for this test
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    # Mock info_client just to satisfy the initial check in the method
+    service.info_client = MagicMock()
+
+
+    summary = await service.get_account_margin_summary()
+
+    assert isinstance(summary, HyperliquidMarginSummary)
+    assert summary.account_value == "1000"
+    assert summary.total_margin_used == "50"
+    service.get_user_state.assert_called_once_with(TEST_WALLET_ADDRESS)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_success_spot_fallback():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    mock_margin_data = {"accountValue": "900", "totalRawUsd": "900", "totalNtlPos": "90", "totalMarginUsed": "40"}
+    # No crossMarginSummary, only spotMarginSummary
+    mock_user_state = {"spotMarginSummary": mock_margin_data}
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+
+    summary = await service.get_account_margin_summary()
+
+    assert isinstance(summary, HyperliquidMarginSummary)
+    assert summary.account_value == "900"
+    service.get_user_state.assert_called_once_with(TEST_WALLET_ADDRESS)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_no_margin_data():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    mock_user_state = {} # No margin summary data
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+
+    summary = await service.get_account_margin_summary()
+    assert summary is None
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_get_user_state_returns_none():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    service.get_user_state = MagicMock(return_value=None) # get_user_state fails
+    service.info_client = MagicMock()
+
+
+    summary = await service.get_account_margin_summary()
+    assert summary is None
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_sdk_error_via_get_user_state():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    # Simulate get_user_state raising an error (as if info_client.user_state failed)
+    service.get_user_state = MagicMock(side_effect=HyperliquidExecutionServiceError("SDK Error from user_state"))
+    service.info_client = MagicMock() # Still need this for the initial check
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="SDK Error from user_state"):
+        await service.get_account_margin_summary()
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_client_not_initialized():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = None
+    service.wallet_address = TEST_WALLET_ADDRESS
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid Info client not initialized."):
+        await service.get_account_margin_summary()
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_account_margin_summary_malformed_data():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    # Missing 'totalRawUsd', which is required by HyperliquidMarginSummary
+    mock_margin_data = {"accountValue": "1000", "totalNtlPos": "100", "totalMarginUsed": "50"}
+    mock_user_state = {"crossMarginSummary": mock_margin_data}
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    # Pydantic validation error will be wrapped by HyperliquidExecutionServiceError
+    with pytest.raises(HyperliquidExecutionServiceError, match="Margin summary data is incomplete. Missing: totalRawUsd"):
+        await service.get_account_margin_summary()
+
+
+# --- Tests for get_asset_leverage ---
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_success():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    asset_symbol = "ETH"
+    mock_leverage_info = {"type": "cross", "value": 20}
+    mock_user_state = {
+        "assetPositions": [
+            {"asset": "BTC", "position": {"leverage": {"type": "isolated", "value": 10}}},
+            {"asset": "ETH", "position": {"leverage": mock_leverage_info}}
+        ]
+    }
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    leverage = await service.get_asset_leverage(asset_symbol)
+
+    assert leverage == mock_leverage_info
+    service.get_user_state.assert_called_once_with(TEST_WALLET_ADDRESS)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_asset_not_found():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    mock_user_state = {"assetPositions": [{"asset": "BTC", "position": {"leverage": {"type": "isolated", "value": 10}}}]}
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    leverage = await service.get_asset_leverage("NONEXISTENT_ASSET")
+    assert leverage is None
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_no_leverage_info():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    mock_user_state = {"assetPositions": [{"asset": "ETH", "position": {}}]} # No leverage key
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    leverage = await service.get_asset_leverage("ETH")
+    assert leverage is None
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_no_asset_positions():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    mock_user_state = {} # No assetPositions key
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    leverage = await service.get_asset_leverage("ETH")
+    assert leverage is None
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_user_address_override():
+    service = HyperliquidExecutionService("addr", "key")
+    # service.wallet_address is not used if user_address is provided
+    custom_address = "0xCustomUser"
+    mock_leverage_info = {"type": "cross", "value": 5}
+    mock_user_state = {"assetPositions": [{"asset": "ETH", "position": {"leverage": mock_leverage_info}}]}
+    service.get_user_state = MagicMock(return_value=mock_user_state)
+    service.info_client = MagicMock()
+
+    leverage = await service.get_asset_leverage("ETH", user_address=custom_address)
+    assert leverage == mock_leverage_info
+    service.get_user_state.assert_called_once_with(custom_address)
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_sdk_error():
+    service = HyperliquidExecutionService("addr", "key")
+    service.wallet_address = TEST_WALLET_ADDRESS
+    service.get_user_state = MagicMock(side_effect=HyperliquidExecutionServiceError("SDK Error"))
+    service.info_client = MagicMock()
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="SDK Error"):
+        await service.get_asset_leverage("ETH")
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_asset_leverage_client_not_initialized():
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = None
+    service.wallet_address = TEST_WALLET_ADDRESS
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid Info client not initialized."):
+        await service.get_asset_leverage("ETH")
+
+
+# --- Tests for set_asset_leverage ---
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_success():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock()
+    asset_symbol = "ETH"
+    leverage = 20
+    is_cross_margin = True
+    sdk_response = {"status": "ok", "response": {"type": "updateLeverage", "data": "Successfully updated margin"}}
+    service.exchange_client.update_leverage = MagicMock(return_value=sdk_response)
+
+    response = await service.set_asset_leverage(asset_symbol, leverage, is_cross_margin)
+
+    assert response == sdk_response
+    service.exchange_client.update_leverage.assert_called_once_with(
+        coin=asset_symbol, is_cross_margin=is_cross_margin, leverage=leverage
+    )
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_success_new_response_format():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock()
+    asset_symbol = "BTC"
+    leverage = 10
+    is_cross_margin = False
+    # Example of the newer list-based success response for data field
+    sdk_response_new_format = {
+        "status": "ok",
+        "response": {
+            "type": "updateLeverage",
+            "data": [{"name": "BTC", "cross": False, "leverage": 10}]
+        }
+    }
+    service.exchange_client.update_leverage = MagicMock(return_value=sdk_response_new_format)
+
+    response = await service.set_asset_leverage(asset_symbol, leverage, is_cross_margin)
+
+    assert response == sdk_response_new_format
+    service.exchange_client.update_leverage.assert_called_once_with(
+        coin=asset_symbol, is_cross_margin=is_cross_margin, leverage=leverage
+    )
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_sdk_returns_error_status():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock()
+    sdk_error_response = {"status": "error", "error": "Leverage too high"}
+    service.exchange_client.update_leverage = MagicMock(return_value=sdk_error_response)
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid API error on set_leverage: Leverage too high"):
+        await service.set_asset_leverage("ETH", 100, True)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_sdk_raises_exception():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock()
+    service.exchange_client.update_leverage = MagicMock(side_effect=Exception("SDK Update Error"))
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Failed to set asset leverage: SDK Update Error"):
+        await service.set_asset_leverage("ETH", 10, True)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_client_not_initialized():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = None
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Hyperliquid Exchange client not initialized."):
+        await service.set_asset_leverage("ETH", 10, True)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_set_asset_leverage_invalid_leverage_value():
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock() # Needs to be mocked even if not called
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Invalid leverage value provided."):
+        await service.set_asset_leverage("ETH", 0, True) # Leverage 0 is invalid
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Invalid leverage value provided."):
+        await service.set_asset_leverage("ETH", -5, True) # Negative leverage
+
+    # Check that it's not called if validation fails
+    service.exchange_client.update_leverage.assert_not_called()
 ```

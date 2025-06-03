@@ -16,7 +16,10 @@ class HyperliquidCredentials(BaseModel):
 class HyperliquidPlaceOrderParams(BaseModel):
     asset: str = Field(..., description="Asset symbol (e.g., 'ETH').")
     is_buy: bool = Field(..., description="True for buy, False for sell.")
-    limit_px: float = Field(..., gt=0, description="Limit price for the order.")
+    # Allow limit_px = 0, e.g. for market orders if API uses 0 as convention.
+    # Actual price limits for limit orders should still be > 0.
+    # The coordinator logic ensures a valid price for limit orders.
+    limit_px: float = Field(..., ge=0, description="Limit price for the order. For market orders, this might be a conventional value like 0 or ignored by the exchange if the order_type specifies market.")
     sz: float = Field(..., gt=0, description="Size of the order (number of contracts or units).")
     cloid: Optional[uuid.UUID] = Field(default_factory=uuid.uuid4, description="Client Order ID (UUID).")
     reduce_only: bool = Field(default=False)
@@ -75,10 +78,21 @@ class HyperliquidOpenOrderItem(BaseModel):
     timestamp: int = Field(..., description="Order creation timestamp (milliseconds since epoch).")
     raw_order_data: Dict[str, Any] = Field(..., description="The raw dictionary representing the open order from user_state.")
 
-class HyperliquidMarginSummary(BaseModel): # Potentially part of AccountSnapshot or standalone
-    total_margin_used: str
-    total_pnl: str # Total PnL (realized + unrealized for the session/day)
-    # Add other fields like initial_margin, maintenance_margin, available_balance etc. from user_state.marginSummary
+class HyperliquidMarginSummary(BaseModel):
+    account_value: str = Field(..., alias="accountValue", description="Total value of the account in USD collateral.")
+    total_raw_usd: str = Field(..., alias="totalRawUsd", description="Total raw USD value, often same as accountValue.")
+    total_ntl_pos: str = Field(..., alias="totalNtlPos", description="Total notional position value in USD.")
+    total_margin_used: str = Field(..., alias="totalMarginUsed", description="Total margin currently used by open positions and orders.")
+    # These fields are typically part of the margin summary; adding them as optional
+    # as their presence might vary or they might be named differently (e.g. cross vs spot)
+    total_pnl_on_positions: Optional[str] = Field(default=None, alias="totalNtlPos", description="Redundant if totalNtlPos is already capturing this. Typically, total PnL from positions.") # totalNtlPos often represents this.
+    available_balance_for_new_orders: Optional[str] = Field(default=None, alias="withdrawable", description="Withdrawable amount, often used as available balance.") # 'withdrawable' is a common field name
+    # Add other specific fields if they are consistently available and needed
+    # For example, 'initial_margin_on_positions', 'maintenance_margin_on_positions'
+
+    @validator('*', pre=True, allow_reuse=True)
+    def ensure_str(cls, v):
+        return str(v) if v is not None else None
 
 class HyperliquidAccountSnapshot(BaseModel): # Replaces old HyperliquidAccountSummary
     timestamp_ms: int = Field(..., alias="time", description="Timestamp of the snapshot in milliseconds since epoch.")
