@@ -894,3 +894,918 @@ The integration will follow this architecture:
 3. Dashboard integrates seamlessly with Agent Zero
 4. System maintains security and isolation
 5. Performance meets or exceeds existing implementation
+  cp python-ai-services/models/market_data.py temp_transfer/models/
+  cp python-ai-services/tools/trading_tools.py temp_transfer/tools/
+  cp python-ai-services/tools/research_tools.py temp_transfer/tools/
+  cp python-ai-services/utils/config.py temp_transfer/
+  
+  # Copy files to Agent Zero container
+  docker cp temp_transfer/. cival-agent0:/a0/trading_farm/
+  ```
+
+### 2.2 Adapt Code for Agent Zero Environment
+
+- [ ] Update import paths in all files to match the new structure:
+  ```bash
+  # SSH into the Agent Zero container
+  docker exec -it cival-agent0 bash
+  
+  # Navigate to the trading directory
+  cd /a0/trading_farm
+  
+  # Use sed to replace import paths (example, adjust as needed)
+  find . -type f -name "*.py" -exec sed -i 's/from python_ai_services/from trading_farm/g' {} \;
+  ```
+
+- [ ] Create a configuration file for the trading module:
+  ```python
+  # /a0/trading_farm/config.py
+  import os
+  from dotenv import load_dotenv
+  
+  # Load environment variables from .env file in /a0
+  load_dotenv('/a0/.env')
+  
+  # API Keys
+  OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+  ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
+  
+  # Trading Configuration
+  DEFAULT_MARKET = "BTC/USD"
+  DEFAULT_TIMEFRAME = "1d"
+  DEFAULT_EXCHANGE = "binance"
+  
+  # LLM Configuration
+  DEFAULT_MODEL = "gpt-4-1106-preview"
+  ANTHROPIC_MODEL = "claude-3-opus-20240229"
+  
+  # Logging
+  LOG_LEVEL = "INFO"
+  LOG_FILE = "/a0/trading_farm/logs/trading.log"
+  ```
+
+### 2.3 Create FastAPI Trading Server
+
+- [ ] Implement a FastAPI server to expose trading functionality:
+  ```python
+  # /a0/trading_farm/api/trading_api.py
+  from fastapi import FastAPI, HTTPException, Depends, Header
+  from pydantic import BaseModel
+  import asyncio
+  import logging
+  import os
+  from typing import Optional, Dict, Any, List
+  
+  # Import your trading crew and tools
+  from trading_farm.agents.trading_crew import TradingCrew
+  
+  # Configure logging
+  logging.basicConfig(
+      level=logging.INFO,
+      format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+      handlers=[
+          logging.FileHandler("/a0/trading_farm/logs/api.log"),
+          logging.StreamHandler()
+      ]
+  )
+  logger = logging.getLogger("trading_api")
+  
+  app = FastAPI(title="Trading Farm API", 
+                description="AI-powered trading analysis and signals API")
+  
+  # Simple API key validation for security
+  API_KEY = os.getenv("AGENT_ZERO_API_KEY", "default_api_key_change_me")
+  
+  def verify_api_key(x_api_key: str = Header(None)):
+      if not x_api_key or x_api_key != API_KEY:
+          raise HTTPException(status_code=401, detail="Invalid API key")
+      return x_api_key
+  
+  class TradingRequest(BaseModel):
+      symbol: str
+      timeframe: str = "1d"
+      risk_tolerance: str = "medium"  # low, medium, high
+      trading_style: str = "swing"    # day, swing, position
+      initial_capital: float = 10000.0
+      additional_context: Optional[str] = None
+  
+  @app.get("/health")
+  def health_check():
+      return {"status": "healthy", "service": "trading_api"}
+  
+  @app.post("/analyze", dependencies=[Depends(verify_api_key)])
+  async def analyze_market(request: TradingRequest):
+      try:
+          logger.info(f"Received trading analysis request for {request.symbol}")
+          
+          # Create trading crew instance
+          crew = TradingCrew(
+              symbol=request.symbol,
+              timeframe=request.timeframe,
+              risk_tolerance=request.risk_tolerance,
+              trading_style=request.trading_style,
+              initial_capital=request.initial_capital
+          )
+          
+          # Run the analysis
+          result = await asyncio.to_thread(crew.run_analysis, request.additional_context)
+          
+          return {
+              "signal": result.get("signal", "neutral"),
+              "entryPrice": float(result.get("entry_price", 0)),
+              "stopLoss": float(result.get("stop_loss", 0)),
+              "takeProfit": float(result.get("take_profit", 0)),
+              "timeframe": request.timeframe,
+              "confidence": float(result.get("confidence", 0.5)),
+              "rationale": result.get("rationale", ""),
+              "riskRewardRatio": float(result.get("risk_reward_ratio", 0)),
+              "agentAnalysis": {
+                  "marketAnalyst": result.get("market_analysis", ""),
+                  "riskManager": result.get("risk_analysis", ""),
+                  "strategyDeveloper": result.get("strategy_analysis", ""),
+                  "executionSpecialist": result.get("execution_plan", "")
+              }
+          }
+      except Exception as e:
+          logger.error(f"Error analyzing market: {str(e)}", exc_info=True)
+          raise HTTPException(
+              status_code=500, 
+              detail=f"Failed to analyze market: {str(e)}"
+          )
+  
+  # Run the server when module is executed directly
+  if __name__ == "__main__":
+      import uvicorn
+      uvicorn.run("trading_api:app", host="0.0.0.0", port=8000, reload=True)
+  ```
+
+- [ ] Create a startup script to run the API server:
+  ```bash
+  # /a0/trading_farm/run_api.sh
+  #!/bin/bash
+  cd /a0/trading_farm
+  python -m api.trading_api
+  ```
+
+- [ ] Make the script executable and run it:
+  ```bash
+  # Inside the container
+  chmod +x /a0/trading_farm/run_api.sh
+  
+  # Start the API server
+  /a0/trading_farm/run_api.sh &
+  ```
+
+## Phase 3: Next.js Dashboard Integration (Days 6-8)
+
+### 3.1 Create API Communication Service
+
+- [ ] Implement a service to communicate with the Agent Zero trading API in your Next.js dashboard:
+  ```typescript
+  // src/services/agentZeroService.ts
+  import axios from 'axios';
+
+  const AGENT_ZERO_API_URL = process.env.NEXT_PUBLIC_AGENT_ZERO_API_URL || 'http://localhost:8000';
+  const AGENT_ZERO_API_KEY = process.env.AGENT_ZERO_API_KEY;
+
+  const agentZeroApi = axios.create({
+    baseURL: AGENT_ZERO_API_URL,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': AGENT_ZERO_API_KEY,
+    },
+  });
+
+  export interface TradingAnalysisRequest {
+    symbol: string;
+    timeframe: string;
+    risk_tolerance: string;
+    trading_style: string;
+    initial_capital: number;
+    additional_context?: string;
+  }
+
+  export interface TradingAnalysisResponse {
+    signal: string;
+    entryPrice: number;
+    stopLoss: number;
+    takeProfit: number;
+    timeframe: string;
+    confidence: number;
+    rationale: string;
+    riskRewardRatio: number;
+    agentAnalysis: {
+      marketAnalyst: string;
+      riskManager: string;
+      strategyDeveloper: string;
+      executionSpecialist: string;
+    };
+  }
+
+  export const getTradingAnalysis = async (
+    params: TradingAnalysisRequest
+  ): Promise<TradingAnalysisResponse> => {
+    try {
+      const response = await agentZeroApi.post('/analyze', params);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching trading analysis:', error);
+      throw error;
+    }
+  };
+
+  export const checkAgentZeroHealth = async (): Promise<boolean> => {
+    try {
+      const response = await agentZeroApi.get('/health');
+      return response.data.status === 'healthy';
+    } catch (error) {
+      console.error('Agent Zero health check failed:', error);
+      return false;
+    }
+  };
+  ```### 3.2 Create Trading Analysis UI Components
+
+- [ ] Create a TradingAnalysisForm component:
+  ```tsx
+  // src/components/TradingAnalysisForm.tsx
+  'use client';
+  
+  import { useState } from 'react';
+  import { useForm } from 'react-hook-form';
+  import { zodResolver } from '@hookform/resolvers/zod';
+  import * as z from 'zod';
+  import { Button } from '@/components/ui/button';
+  import { Card, CardContent } from '@/components/ui/card';
+  import { Input } from '@/components/ui/input';
+  import { Select } from '@/components/ui/select';
+  import { Textarea } from '@/components/ui/textarea';
+  import { useToast } from '@/components/ui/use-toast';
+  import { 
+    getTradingAnalysis, 
+    TradingAnalysisRequest 
+  } from '@/services/agentZeroService';
+  
+  const formSchema = z.object({
+    symbol: z.string().min(1, "Symbol is required"),
+    timeframe: z.string().min(1, "Timeframe is required"),
+    risk_tolerance: z.string().min(1, "Risk tolerance is required"),
+    trading_style: z.string().min(1, "Trading style is required"),
+    initial_capital: z.number().positive("Initial capital must be positive"),
+    additional_context: z.string().optional(),
+  });
+  
+  type FormValues = z.infer<typeof formSchema>;
+  
+  export function TradingAnalysisForm() {
+    const { toast } = useToast();
+    const [isLoading, setIsLoading] = useState(false);
+    const [analysisResult, setAnalysisResult] = useState<any>(null);
+    
+    const form = useForm<FormValues>({
+      resolver: zodResolver(formSchema),
+      defaultValues: {
+        symbol: 'BTC/USD',
+        timeframe: '1d',
+        risk_tolerance: 'medium',
+        trading_style: 'swing',
+        initial_capital: 10000,
+        additional_context: '',
+      },
+    });
+    
+    const onSubmit = async (data: FormValues) => {
+      setIsLoading(true);
+      
+      try {
+        const result = await getTradingAnalysis({
+          symbol: data.symbol,
+          timeframe: data.timeframe,
+          risk_tolerance: data.risk_tolerance,
+          trading_style: data.trading_style,
+          initial_capital: data.initial_capital,
+          additional_context: data.additional_context,
+        });
+        
+        setAnalysisResult(result);
+        toast({
+          title: 'Analysis Complete',
+          description: `Trading analysis for ${data.symbol} completed successfully.`,
+        });
+      } catch (error) {
+        console.error('Error:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Analysis Failed',
+          description: 'Failed to get trading analysis. Please try again.',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    return (
+      <Card>
+        <CardContent className="pt-6">
+          {/* Form implementation with shadcn/ui components */}
+        </CardContent>
+      </Card>
+    );
+  }
+  ```
+
+- [ ] Implement a TradingResultDisplay component:
+  ```tsx
+  // src/components/TradingResultDisplay.tsx
+  'use client';
+  
+  import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+  import { Badge } from '@/components/ui/badge';
+  import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+  import { TradingAnalysisResponse } from '@/services/agentZeroService';
+  
+  interface TradingResultDisplayProps {
+    result: TradingAnalysisResponse;
+    onReset: () => void;
+  }
+  
+  export function TradingResultDisplay({ result, onReset }: TradingResultDisplayProps) {
+    return (
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>
+              Trading Analysis: {result.signal.toUpperCase()} {result.timeframe}
+            </CardTitle>
+            <Badge variant={result.signal === 'buy' ? 'success' : 
+                            result.signal === 'sell' ? 'danger' : 'warning'}>
+              {result.signal.toUpperCase()}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue="summary">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+              <TabsTrigger value="details">Agent Details</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="summary">
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div>
+                  <h4 className="font-medium text-sm">Entry Price</h4>
+                  <p className="text-2xl">${result.entryPrice.toLocaleString()}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Confidence</h4>
+                  <p className="text-2xl">{(result.confidence * 100).toFixed(0)}%</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Stop Loss</h4>
+                  <p className="text-2xl text-red-600">${result.stopLoss.toLocaleString()}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm">Take Profit</h4>
+                  <p className="text-2xl text-green-600">${result.takeProfit.toLocaleString()}</p>
+                </div>
+              </div>
+              
+              <div className="mt-6">
+                <h4 className="font-medium text-sm mb-2">Rationale</h4>
+                <p className="text-sm">{result.rationale}</p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="details">
+              <div className="space-y-4 mt-4">
+                <div>
+                  <h4 className="font-medium text-sm mb-1">Market Analyst</h4>
+                  <p className="text-sm p-3 bg-muted rounded-md">{result.agentAnalysis.marketAnalyst}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm mb-1">Risk Manager</h4>
+                  <p className="text-sm p-3 bg-muted rounded-md">{result.agentAnalysis.riskManager}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm mb-1">Strategy Developer</h4>
+                  <p className="text-sm p-3 bg-muted rounded-md">{result.agentAnalysis.strategyDeveloper}</p>
+                </div>
+                <div>
+                  <h4 className="font-medium text-sm mb-1">Execution Specialist</h4>
+                  <p className="text-sm p-3 bg-muted rounded-md">{result.agentAnalysis.executionSpecialist}</p>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <div className="flex justify-between mt-6">
+            <Button variant="outline" onClick={onReset}>New Analysis</Button>
+            <Button>Save to History</Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  ```
+
+### 3.3 Create Next.js API Route for Agent Zero Proxy
+
+- [ ] Implement a server-side proxy to securely communicate with Agent Zero:
+  ```typescript
+  // src/app/api/trading-analysis/route.ts
+  import { NextRequest, NextResponse } from 'next/server';
+  import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+
+  export async function POST(request: NextRequest) {
+    try {
+      // Get authenticated user from Supabase
+      const supabase = createRouteHandlerClient({ cookies: () => cookies() });
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        return NextResponse.json(
+          { error: 'Unauthorized' },
+          { status: 401 }
+        );
+      }
+      
+      // Get request data
+      const requestData = await request.json();
+      
+      // Call Agent Zero API
+      const response = await fetch(`${process.env.AGENT_ZERO_API_URL}/analyze`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': process.env.AGENT_ZERO_API_KEY!,
+        },
+        body: JSON.stringify(requestData),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Agent Zero API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      // Log the analysis to Supabase for history tracking
+      await supabase.from('trading_signals').insert({
+        user_id: session.user.id,
+        symbol: requestData.symbol,
+        timeframe: requestData.timeframe,
+        signal: data.signal,
+        entry_price: data.entryPrice,
+        stop_loss: data.stopLoss,
+        take_profit: data.takeProfit,
+        rationale: data.rationale,
+        confidence: data.confidence,
+        risk_reward_ratio: data.riskRewardRatio,
+        status: 'open',
+        agent_analysis: data.agentAnalysis,
+      });
+      
+      return NextResponse.json(data);
+    } catch (error: any) {
+      console.error('Trading analysis error:', error);
+      return NextResponse.json(
+        { error: error.message || 'Internal server error' },
+        { status: 500 }
+      );
+    }
+  }
+  ```## Phase 4: Testing and Validation (Days 9-10)
+
+### 4.1 Component Testing
+
+- [ ] Test Agent Zero API endpoints:
+  ```bash
+  # Test the health endpoint
+  curl http://localhost:8000/health
+  
+  # Test the analyze endpoint (with API key)
+  curl -X POST http://localhost:8000/analyze \
+    -H "Content-Type: application/json" \
+    -H "X-API-Key: your_api_key" \
+    -d '{
+      "symbol": "BTC/USD",
+      "timeframe": "1d",
+      "risk_tolerance": "medium",
+      "trading_style": "swing",
+      "initial_capital": 10000
+    }'
+  ```
+
+- [ ] Create Jest tests for the Next.js components:
+  ```typescript
+  // __tests__/components/TradingAnalysisForm.test.tsx
+  import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+  import { TradingAnalysisForm } from '@/components/TradingAnalysisForm';
+  import { getTradingAnalysis } from '@/services/agentZeroService';
+  
+  // Mock the service
+  jest.mock('@/services/agentZeroService', () => ({
+    getTradingAnalysis: jest.fn(),
+  }));
+  
+  describe('TradingAnalysisForm', () => {
+    beforeEach(() => {
+      jest.resetAllMocks();
+    });
+    
+    test('renders form elements correctly', () => {
+      render(<TradingAnalysisForm />);
+      
+      expect(screen.getByLabelText(/symbol/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/timeframe/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/risk tolerance/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/trading style/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /analyze/i })).toBeInTheDocument();
+    });
+    
+    test('submits form and shows results on success', async () => {
+      const mockResult = {
+        signal: 'buy',
+        entryPrice: 50000,
+        stopLoss: 48000,
+        takeProfit: 55000,
+        timeframe: '1d',
+        confidence: 0.85,
+        rationale: 'Test rationale',
+        riskRewardRatio: 2.5,
+        agentAnalysis: {
+          marketAnalyst: 'Market analysis',
+          riskManager: 'Risk analysis',
+          strategyDeveloper: 'Strategy analysis',
+          executionSpecialist: 'Execution plan',
+        },
+      };
+      
+      (getTradingAnalysis as jest.Mock).mockResolvedValue(mockResult);
+      
+      render(<TradingAnalysisForm />);
+      
+      fireEvent.change(screen.getByLabelText(/symbol/i), { 
+        target: { value: 'ETH/USD' } 
+      });
+      
+      fireEvent.click(screen.getByRole('button', { name: /analyze/i }));
+      
+      await waitFor(() => {
+        expect(getTradingAnalysis).toHaveBeenCalledWith(expect.objectContaining({
+          symbol: 'ETH/USD',
+        }));
+      });
+      
+      // Verify results are displayed
+      expect(screen.getByText('BUY')).toBeInTheDocument();
+      expect(screen.getByText('$50,000')).toBeInTheDocument();
+    });
+  });
+  ```
+
+### 4.2 Integration Testing
+
+- [ ] Test full flow from UI to Agent Zero and back:
+  ```typescript
+  // cypress/e2e/trading-flow.cy.ts
+  describe('Trading Analysis Flow', () => {
+    beforeEach(() => {
+      // Mock the API response
+      cy.intercept('POST', '/api/trading-analysis', {
+        statusCode: 200,
+        body: {
+          signal: 'buy',
+          entryPrice: 50000,
+          stopLoss: 48000,
+          takeProfit: 55000,
+          timeframe: '1d',
+          confidence: 0.85,
+          rationale: 'Test rationale',
+          riskRewardRatio: 2.5,
+          agentAnalysis: {
+            marketAnalyst: 'Market analysis',
+            riskManager: 'Risk analysis',
+            strategyDeveloper: 'Strategy analysis',
+            executionSpecialist: 'Execution plan',
+          },
+        },
+      }).as('tradingAnalysis');
+      
+      // Visit the trading page
+      cy.visit('/trading');
+    });
+    
+    it('should submit form and display results', () => {
+      // Fill out the form
+      cy.get('input[name="symbol"]').clear().type('BTC/USD');
+      cy.get('select[name="timeframe"]').select('1d');
+      cy.get('select[name="risk_tolerance"]').select('medium');
+      cy.get('select[name="trading_style"]').select('swing');
+      
+      // Submit the form
+      cy.get('button[type="submit"]').click();
+      
+      // Wait for API call
+      cy.wait('@tradingAnalysis');
+      
+      // Verify results are displayed
+      cy.contains('BUY').should('be.visible');
+      cy.contains('$50,000').should('be.visible');
+      cy.contains('$48,000').should('be.visible');
+      cy.contains('$55,000').should('be.visible');
+      
+      // Check tab switching works
+      cy.get('button').contains('Agent Details').click();
+      cy.contains('Market analysis').should('be.visible');
+    });
+  });
+  ```
+
+## Phase 5: Deployment and Documentation (Days 11-14)
+
+### 5.1 Production Deployment
+
+- [ ] Update docker-compose for production environment:
+  ```yaml
+  # docker-compose.prod.yml
+  version: '3.8'
+  
+  services:
+    agent-zero:
+      image: frdel/agent-zero-run
+      container_name: cival-agent0
+      ports:
+        - "8000:8000"  # Only expose API port
+      volumes:
+        - ./agent-zero-data:/a0
+      environment:
+        - NODE_ENV=production
+      restart: unless-stopped
+      networks:
+        - cival-network
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+    
+    nextjs-dashboard:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      ports:
+        - "3000:3000"
+      environment:
+        - NODE_ENV=production
+        - AGENT_ZERO_API_URL=http://agent-zero:8000
+        - AGENT_ZERO_API_KEY=${AGENT_ZERO_API_KEY}
+        - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+        - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      depends_on:
+        - agent-zero
+      networks:
+        - cival-network
+      restart: unless-stopped
+    
+    nginx:
+      image: nginx:alpine
+      ports:
+        - "80:80"
+        - "443:443"
+      volumes:
+        - ./nginx/conf.d:/etc/nginx/conf.d
+        - ./nginx/ssl:/etc/nginx/ssl
+        - ./nginx/www:/var/www/html
+      depends_on:
+        - nextjs-dashboard
+      networks:
+        - cival-network
+      restart: unless-stopped
+  
+  networks:
+    cival-network:
+      driver: bridge
+  ```
+
+- [ ] Create a startup script for the production environment:
+  ```bash
+  #!/bin/bash
+  # start-production.sh
+  
+  # Load environment variables
+  set -a
+  source .env.production
+  set +a
+  
+  # Start with Docker Compose
+  docker-compose -f docker-compose.prod.yml up -d
+  
+  # Verify all services are running
+  docker-compose -f docker-compose.prod.yml ps
+  
+  echo "Trading Farm is now running in production mode!"
+  ```
+
+### 5.2 Documentation
+
+- [ ] Create API documentation for Agent Zero API:
+  ```markdown
+  # Agent Zero Trading API Documentation
+  
+  ## Authentication
+  
+  All API requests require the `X-API-Key` header with a valid API key.
+  
+  ## Endpoints
+  
+  ### Health Check
+  
+  ```
+  GET /health
+  ```
+  
+  Returns the health status of the API.
+  
+  ### Trading Analysis
+  
+  ```
+  POST /analyze
+  ```
+  
+  Request a trading analysis for a specific market.
+  
+  #### Request Body
+  
+  ```json
+  {
+    "symbol": "BTC/USD",
+    "timeframe": "1d",
+    "risk_tolerance": "medium",
+    "trading_style": "swing",
+    "initial_capital": 10000,
+    "additional_context": "Looking for swing trading opportunities"
+  }
+  ```
+  
+  #### Response
+  
+  ```json
+  {
+    "signal": "buy",
+    "entryPrice": 50000,
+    "stopLoss": 48000,
+    "takeProfit": 55000,
+    "timeframe": "1d",
+    "confidence": 0.85,
+    "rationale": "Strong bullish momentum with support...",
+    "riskRewardRatio": 2.5,
+    "agentAnalysis": {
+      "marketAnalyst": "BTC/USD shows positive momentum...",
+      "riskManager": "Given your medium risk tolerance...",
+      "strategyDeveloper": "For your swing trading style...",
+      "executionSpecialist": "For optimal execution, consider..."
+    }
+  }
+  ```
+  ```
+  
+- [ ] Create a comprehensive README.md:
+  ```markdown
+  # Trading Farm Dashboard with Agent Zero Integration
+  
+  This project integrates CrewAI trading agents with a Next.js dashboard through Agent Zero, creating a powerful AI-powered trading analysis platform.
+  
+  ## Architecture
+  
+  - **Agent Zero Container**: Runs CrewAI trading agents and exposes a FastAPI server
+  - **Next.js Dashboard**: Frontend interface with trading analysis forms and results display
+  - **Supabase**: Database for storing trading signals and user data
+  
+  ## Features
+  
+  - AI trading analysis with multiple specialized agents (market analyst, risk manager, etc.)
+  - Real-time trading signal generation and display
+  - Historical signal tracking and analysis
+  - User authentication and personalized recommendations
+  
+  ## Setup and Installation
+  
+  ### Prerequisites
+  
+  - Docker and Docker Compose
+  - Node.js 18+ and npm/yarn
+  - Supabase account
+  - OpenAI and/or Anthropic API keys
+  
+  ### Quick Start
+  
+  1. Clone the repository
+  2. Copy `.env.example` to `.env.local` and fill in required values
+  3. Run `docker-compose up -d` to start the Agent Zero container
+  4. Run `npm install` to install Next.js dependencies
+  5. Run `npm run dev` to start the dashboard in development mode
+  
+  ## Development
+  
+  See full documentation in the `/docs` directory.
+  ```
+
+## Phase 6: Monitoring and Maintenance (Ongoing)
+
+### 6.1 Setup Monitoring
+
+- [ ] Implement basic logging and monitoring:
+  ```typescript
+  // src/middleware.ts
+  import { NextResponse } from 'next/server';
+  import type { NextRequest } from 'next/server';
+  
+  export function middleware(request: NextRequest) {
+    const startTime = Date.now();
+    
+    // Process the request
+    const response = NextResponse.next();
+    
+    // Add timing header
+    const endTime = Date.now();
+    response.headers.set('Server-Timing', `total;dur=${endTime - startTime}`);
+    
+    // Log requests in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[${request.method}] ${request.url} - ${endTime - startTime}ms`);
+    }
+    
+    return response;
+  }
+  
+  export const config = {
+    matcher: [
+      '/api/:path*',
+      '/((?!_next/static|_next/image|favicon.ico).*)',
+    ],
+  };
+  ```
+
+- [ ] Add error tracking and reporting:
+  ```typescript
+  // src/lib/errorReporting.ts
+  export function captureError(error: Error, context?: Record<string, any>) {
+    // In a real application, this would send to Sentry, LogRocket, etc.
+    console.error('[ERROR]', error, context);
+    
+    // Log to server
+    fetch('/api/log-error', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        context,
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(e => console.error('Failed to log error:', e));
+  }
+  ```
+
+### 6.2 Implement Regular Maintenance Tasks
+
+- [ ] Create a script for regular health checks:
+  ```bash
+  #!/bin/bash
+  # healthcheck.sh
+  
+  echo "Running Trading Farm health check..."
+  
+  # Check if Agent Zero container is running
+  AGENT_ZERO_STATUS=$(docker inspect --format='{{.State.Status}}' cival-agent0 2>/dev/null)
+  if [ "$AGENT_ZERO_STATUS" != "running" ]; then
+    echo "⚠️ Agent Zero container is not running. Status: $AGENT_ZERO_STATUS"
+    echo "Attempting to restart..."
+    docker start cival-agent0
+  else
+    echo "✅ Agent Zero container is running"
+    
+    # Check API health
+    HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
+    if [ "$HEALTH_STATUS" != "200" ]; then
+      echo "⚠️ Agent Zero API health check failed with status $HEALTH_STATUS"
+    else
+      echo "✅ Agent Zero API is healthy"
+    fi
+  fi
+  
+  # Check Next.js dashboard
+  NEXTJS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
+  if [ "$NEXTJS_STATUS" != "200" ]; then
+    echo "⚠️ Next.js dashboard health check failed with status $NEXTJS_STATUS"
+  else
+    echo "✅ Next.js dashboard is healthy"
+  fi
+  
+  echo "Health check completed at $(date)"
+  ```
+
+---
+
+This comprehensive integration plan provides a step-by-step guide to migrate your existing CrewAI trading analysis code into the Agent Zero container and integrate it with your Next.js dashboard. The timeline is approximate and can be adjusted based on your team's velocity and any challenges encountered during implementation.
+
+Remember to test thoroughly at each phase and maintain proper documentation to ensure a smooth integration process. Good luck with your project!
