@@ -77,7 +77,7 @@ except ImportError:
 # Export models from strategy_models.py
 try:
     from .strategy_models import (
-        StrategyTimeframe, BaseStrategyConfig, 
+        StrategyTimeframe, BaseStrategyConfig,
         DarvasBoxParams, WilliamsAlligatorParams, RenkoParams, HeikinAshiParams, ElliottWaveParams,
         StrategySpecificParams, StrategyConfig,
         TradeStats, PerformanceMetrics,
@@ -189,7 +189,7 @@ try:
     # Assuming specific event types are what users of the package will import.
     new_event_exports = ["AgentCallbackEvent", "AgentTaskExecutionEvent", "AgentLogEvent", "CrewLifecycleEvent", "AlertEvent", "AlertLevel"]
     # Also BaseEvent if it's meant to be subclassed externally by users of the package
-    # new_event_exports.append("BaseEvent") 
+    # new_event_exports.append("BaseEvent")
     if '__all__' in globals():
         __all__.extend(new_event_exports)
     else:

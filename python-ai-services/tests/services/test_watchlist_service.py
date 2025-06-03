@@ -7,11 +7,11 @@ from typing import List, Dict, Any, Optional
 
 # Models and Services to test/mock
 from python_ai_services.services.watchlist_service import (
-    WatchlistService, 
-    WatchlistNotFoundError, 
+    WatchlistService,
+    WatchlistNotFoundError,
     WatchlistServiceError,
-    WatchlistItemNotFoundError, 
-    WatchlistOperationForbiddenError 
+    WatchlistItemNotFoundError,
+    WatchlistOperationForbiddenError
 )
 from python_ai_services.models.watchlist_models import (
     Watchlist, WatchlistCreate, WatchlistItem, WatchlistItemCreate, WatchlistWithItems,
@@ -23,8 +23,8 @@ from python_ai_services.models.watchlist_models import (
 # --- Fixtures ---
 @pytest_asyncio.fixture
 async def mock_supabase_client_ws(): # ws for WatchlistService tests
-    client = MagicMock() 
-    
+    client = MagicMock()
+
     # Configure deeply nested mocks for various call chains
     # For single select: .select().eq().eq().maybe_single().execute()
     single_execute_mock = AsyncMock()
@@ -33,7 +33,7 @@ async def mock_supabase_client_ws(): # ws for WatchlistService tests
     # For select with order: .select().eq().order().execute()
     list_execute_mock = AsyncMock()
     client.table.return_value.select.return_value.eq.return_value.order.return_value.execute = list_execute_mock
-    
+
     # For insert: .insert().select().execute()
     insert_execute_mock = AsyncMock()
     client.table.return_value.insert.return_value.select.return_value.execute = insert_execute_mock
@@ -45,14 +45,14 @@ async def mock_supabase_client_ws(): # ws for WatchlistService tests
     # For delete: .delete().eq().eq().execute()
     delete_execute_mock = AsyncMock()
     client.table.return_value.delete.return_value.eq.return_value.eq.return_value.execute = delete_execute_mock
-    
+
     # For item deletion (simplified for this fixture, might need more specific if paths diverge)
     # .delete().eq("item_id", ...).eq("user_id", ...).execute()
     # This reuses the delete_execute_mock if the chain matches delete().eq().eq().execute()
     # If item deletion uses a different chain, it would need its own mock setup.
     # The current service uses .delete().eq("item_id", ...).execute() after an ownership check,
     # so a simpler mock for item deletion might be client.table.return_value.delete.return_value.eq.return_value.execute
-    
+
     # For item select (ownership check in remove_item_from_watchlist)
     # .select("user_id").eq("item_id", ...).maybe_single().execute()
     item_select_execute_mock = AsyncMock()
@@ -80,13 +80,13 @@ async def watchlist_service(mock_supabase_client_ws: MagicMock):
 async def test_create_watchlist_success(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     user_id = uuid.uuid4()
     watchlist_data = WatchlistCreate(name="My Crypto", description="Track crypto prices")
-    
+
     watchlist_id = uuid.uuid4() # For consistent ID in return
     now_iso = datetime.now(timezone.utc).isoformat()
     db_return_data = {
-        "watchlist_id": str(watchlist_id), "user_id": str(user_id), "name": watchlist_data.name, 
-        "description": watchlist_data.description, 
-        "created_at": now_iso, 
+        "watchlist_id": str(watchlist_id), "user_id": str(user_id), "name": watchlist_data.name,
+        "description": watchlist_data.description,
+        "created_at": now_iso,
         "updated_at": now_iso
     }
     mock_supabase_client_ws.table.return_value.insert.return_value.select.return_value.execute.return_value = MagicMock(data=[db_return_data], error=None)
@@ -98,7 +98,7 @@ async def test_create_watchlist_success(watchlist_service: WatchlistService, moc
     assert created_watchlist.user_id == user_id
     assert created_watchlist.watchlist_id == watchlist_id
     mock_supabase_client_ws.table.return_value.insert.return_value.select.return_value.execute.assert_called_once()
-    
+
     insert_call_args = mock_supabase_client_ws.table.return_value.insert.call_args[0][0]
     assert insert_call_args['user_id'] == str(user_id)
     assert 'created_at' in insert_call_args # Check if service adds timestamps
@@ -109,7 +109,7 @@ async def test_create_watchlist_success(watchlist_service: WatchlistService, moc
 async def test_create_watchlist_db_error_no_data(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     user_id = uuid.uuid4()
     watchlist_data = WatchlistCreate(name="Test")
-    
+
     # Simulate no data returned, which service interprets as error
     mock_supabase_client_ws.table.return_value.insert.return_value.select.return_value.execute.return_value = MagicMock(data=None, error=None)
 
@@ -120,7 +120,7 @@ async def test_create_watchlist_db_error_no_data(watchlist_service: WatchlistSer
 async def test_create_watchlist_db_explicit_error(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     user_id = uuid.uuid4()
     watchlist_data = WatchlistCreate(name="Test")
-    
+
     mock_error = MagicMock()
     mock_error.message = "DB insert failed"
     mock_supabase_client_ws.table.return_value.insert.return_value.select.return_value.execute.return_value = MagicMock(data=None, error=mock_error)
@@ -134,7 +134,7 @@ async def test_get_watchlist_success_no_items(watchlist_service: WatchlistServic
     user_id = uuid.uuid4()
     watchlist_id = uuid.uuid4()
     db_return_data = {"watchlist_id": str(watchlist_id), "user_id": str(user_id), "name": "Fetched List", "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()}
-    
+
     mock_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
     mock_execute.return_value = MagicMock(data=db_return_data, error=None)
 
@@ -144,7 +144,7 @@ async def test_get_watchlist_success_no_items(watchlist_service: WatchlistServic
     assert isinstance(watchlist, Watchlist) # Should not be WatchlistWithItems
     assert watchlist.watchlist_id == watchlist_id
     assert watchlist.name == "Fetched List"
-    
+
     eq_calls = mock_supabase_client_ws.table.return_value.select.return_value.eq.call_args_list
     assert any(call[0] == ("watchlist_id", str(watchlist_id)) for call in eq_calls)
     assert any(call[0] == ("user_id", str(user_id)) for call in eq_calls)
@@ -153,7 +153,7 @@ async def test_get_watchlist_success_no_items(watchlist_service: WatchlistServic
 @pytest.mark.asyncio
 async def test_get_watchlist_not_found(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     mock_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
-    mock_execute.return_value = MagicMock(data=None, error=None) 
+    mock_execute.return_value = MagicMock(data=None, error=None)
 
     watchlist = await watchlist_service.get_watchlist(uuid.uuid4(), uuid.uuid4())
     assert watchlist is None
@@ -170,7 +170,7 @@ async def test_get_watchlists_by_user_success(watchlist_service: WatchlistServic
     mock_execute.return_value = MagicMock(data=db_return_data, error=None)
 
     watchlists = await watchlist_service.get_watchlists_by_user(user_id)
-    
+
     assert len(watchlists) == 2
     assert watchlists[0].name == "List 1"
     mock_supabase_client_ws.table.return_value.select.return_value.eq.assert_called_once_with("user_id", str(user_id))
@@ -181,7 +181,7 @@ async def test_update_watchlist_success(watchlist_service: WatchlistService, moc
     user_id = uuid.uuid4()
     watchlist_id = uuid.uuid4()
     update_data = WatchlistCreate(name="Updated Name", description="New Desc")
-    
+
     existing_data = {"watchlist_id": str(watchlist_id), "user_id": str(user_id), "name": "Old Name", "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()}
     mock_get_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
     mock_get_execute.return_value = MagicMock(data=existing_data, error=None)
@@ -194,7 +194,7 @@ async def test_update_watchlist_success(watchlist_service: WatchlistService, moc
 
     assert updated_watchlist.name == update_data.name
     assert updated_watchlist.description == update_data.description
-    
+
     update_call_payload = mock_supabase_client_ws.table.return_value.update.call_args[0][0]
     assert update_call_payload['name'] == update_data.name
     assert 'updated_at' in update_call_payload
@@ -204,7 +204,7 @@ async def test_update_watchlist_success(watchlist_service: WatchlistService, moc
 async def test_update_watchlist_not_found_or_not_owned(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     mock_get_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
     mock_get_execute.return_value = MagicMock(data=None, error=None)
-    
+
     with pytest.raises(WatchlistNotFoundError):
         await watchlist_service.update_watchlist(uuid.uuid4(), uuid.uuid4(), WatchlistCreate(name="Fail Update"))
 
@@ -222,7 +222,7 @@ async def test_update_watchlist_no_actual_update_fields(watchlist_service: Watch
     existing_data = {"watchlist_id": str(watchlist_id), "user_id": str(user_id), "name": "Old Name", "description": None, "created_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()}
     mock_get_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
     mock_get_execute.return_value = MagicMock(data=existing_data, error=None)
-    
+
     # update_payload in service will be {'name': 'Old Name', 'updated_at': '...'}
     # if exclude_unset=True and 'Old Name' was the only field set and it matches,
     # then actual fields to change might be just 'updated_at'.
@@ -233,18 +233,18 @@ async def test_update_watchlist_no_actual_update_fields(watchlist_service: Watch
     # The current service code returns `existing_watchlist` if `update_payload` (after exclude_unset) is empty.
     # If update_data has name="Old Name", description=None (matching existing), then
     # update_payload becomes {} before updated_at is added.
-    
+
     # To test the specific "no actual data fields" path, we need WatchlistBase with all Optional.
     # Let's assume WatchlistCreate is used and the service's check handles it.
     # If `update_data.model_dump(exclude_unset=True)` is empty, it returns existing.
     # This test path is tricky with current models. For now, expect it to return existing.
-    
+
     watchlist_service.supabase.table.return_value.update.return_value.eq.return_value.eq.return_value.select.return_value.execute = AsyncMock(return_value=MagicMock(data=[existing_data]))
 
     # Using WatchlistBase for update_data to allow empty payload effectively
     from python_ai_services.models.watchlist_models import WatchlistBase
     empty_update_data = WatchlistBase(name=existing_data['name']) # No actual change
-    
+
     updated_watchlist = await watchlist_service.update_watchlist(watchlist_id, user_id, empty_update_data)
     assert updated_watchlist.name == existing_data['name']
     # Assert that the DB update method was NOT called if only updated_at would change
@@ -254,10 +254,10 @@ async def test_update_watchlist_no_actual_update_fields(watchlist_service: Watch
     # it will return `existing_watchlist`.
     # Let's test that path.
     empty_update_payload_for_service = WatchlistBase(name=existing_data['name'], description=existing_data['description']) # no actual change
-    
+
     # Re-mock get_watchlist for this specific test case
     mock_get_execute.return_value = MagicMock(data=existing_data, error=None)
-    
+
     updated_watchlist_no_change = await watchlist_service.update_watchlist(watchlist_id, user_id, empty_update_payload_for_service)
     assert updated_watchlist_no_change.watchlist_id == watchlist_id # It's the existing one
     # Check that the actual DB update method was not called if exclude_unset resulted in no changes other than updated_at
@@ -297,7 +297,7 @@ async def test_add_item_to_watchlist_success(watchlist_service: WatchlistService
     mock_watchlist = Watchlist(watchlist_id=watchlist_id, user_id=user_id, name="Tech Stocks", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     # Configure the specific mock chain for get_watchlist call
     watchlist_service.get_watchlist = AsyncMock(return_value=mock_watchlist)
-    
+
     # Mock insert for watchlist_items
     item_id = uuid.uuid4()
     db_item_return_data = {
@@ -324,7 +324,7 @@ async def test_add_item_to_watchlist_success(watchlist_service: WatchlistService
 async def test_add_item_to_watchlist_watchlist_not_found(watchlist_service: WatchlistService):
     watchlist_service.get_watchlist = AsyncMock(return_value=None) # Simulate watchlist not found
     item_data = WatchlistItemCreate(symbol="MSFT")
-    
+
     with pytest.raises(WatchlistNotFoundError):
         await watchlist_service.add_item_to_watchlist(uuid.uuid4(), uuid.uuid4(), item_data)
 
@@ -349,7 +349,7 @@ async def test_add_item_to_watchlist_item_already_exists(watchlist_service: Watc
 async def test_get_items_for_watchlist_success(watchlist_service: WatchlistService, mock_supabase_client_ws: MagicMock):
     user_id = uuid.uuid4()
     watchlist_id = uuid.uuid4()
-    
+
     mock_watchlist = Watchlist(watchlist_id=watchlist_id, user_id=user_id, name="My Watchlist", created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc))
     watchlist_service.get_watchlist = AsyncMock(return_value=mock_watchlist)
 
@@ -365,7 +365,7 @@ async def test_get_items_for_watchlist_success(watchlist_service: WatchlistServi
 
     watchlist_service.get_watchlist.assert_called_once_with(watchlist_id, user_id)
     mock_get_items_execute.assert_called_once()
-    
+
     # Check .eq calls for fetching items
     # First .eq is on select(...).eq(...)
     # Second .eq is on select(...).eq(...).eq(...)
@@ -374,13 +374,13 @@ async def test_get_items_for_watchlist_success(watchlist_service: WatchlistServi
 
     assert first_eq_call_args == ("watchlist_id", str(watchlist_id))
     assert second_eq_call_args == ("user_id", str(user_id))
-    
+
     assert len(items) == 2
     assert items[0].symbol == "NVDA"
 
 @pytest.mark.asyncio
 async def test_get_items_for_watchlist_not_found(watchlist_service: WatchlistService):
-    watchlist_service.get_watchlist = AsyncMock(return_value=None) 
+    watchlist_service.get_watchlist = AsyncMock(return_value=None)
     with pytest.raises(WatchlistNotFoundError):
         await watchlist_service.get_items_for_watchlist(uuid.uuid4(), uuid.uuid4())
 
@@ -390,14 +390,14 @@ async def test_remove_item_from_watchlist_success(watchlist_service: WatchlistSe
     user_id = uuid.uuid4()
     item_id = uuid.uuid4()
 
-    mock_item_db_data = {"user_id": str(user_id), "item_id": str(item_id)} 
+    mock_item_db_data = {"user_id": str(user_id), "item_id": str(item_id)}
     # Mock for: .table(WI_TABLE).select("user_id").eq("item_id", ...).maybe_single().execute()
     mock_item_fetch_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute
     mock_item_fetch_execute.return_value = MagicMock(data=mock_item_db_data, error=None)
-    
+
     # Mock for: .table(WI_TABLE).delete().eq("item_id", ...).eq("user_id", ...).execute()
     mock_delete_item_execute = mock_supabase_client_ws.table.return_value.delete.return_value.eq.return_value.eq.return_value.execute
-    mock_delete_item_execute.return_value = MagicMock(error=None) 
+    mock_delete_item_execute.return_value = MagicMock(error=None)
 
     await watchlist_service.remove_item_from_watchlist(item_id, user_id)
 
@@ -405,7 +405,7 @@ async def test_remove_item_from_watchlist_success(watchlist_service: WatchlistSe
     mock_item_fetch_execute.assert_called_once()
     select_eq_call = mock_supabase_client_ws.table.return_value.select.return_value.eq.call_args
     assert select_eq_call[0] == ("item_id", str(item_id))
-    
+
     # Check delete call filters
     mock_delete_item_execute.assert_called_once()
     delete_eq_calls = mock_supabase_client_ws.table.return_value.delete.return_value.eq.call_args_list
@@ -427,7 +427,7 @@ async def test_remove_item_from_watchlist_forbidden(watchlist_service: Watchlist
     user_id_attacker = uuid.uuid4()
     item_id = uuid.uuid4()
 
-    mock_item_db_data = {"user_id": str(user_id_owner), "item_id": str(item_id)} 
+    mock_item_db_data = {"user_id": str(user_id_owner), "item_id": str(item_id)}
     mock_item_fetch_execute = mock_supabase_client_ws.table.return_value.select.return_value.eq.return_value.maybe_single.return_value.execute
     mock_item_fetch_execute.return_value = MagicMock(data=mock_item_db_data, error=None)
 
@@ -452,10 +452,10 @@ async def test_add_multiple_items_to_watchlist_success_from_symbols(watchlist_se
     mock_insert_items_execute.return_value = MagicMock(data=db_return_data, error=None)
 
     created_items = await watchlist_service.add_multiple_items_to_watchlist(watchlist_id, user_id, items_request)
-    
+
     assert len(created_items) == 2
     assert created_items[0].symbol == "MSFT"
-    insert_payload_list = mock_supabase_client_ws.table.return_value.insert.call_args[0][0] 
+    insert_payload_list = mock_supabase_client_ws.table.return_value.insert.call_args[0][0]
     assert len(insert_payload_list) == 2
     assert insert_payload_list[0]['symbol'] == "MSFT"
 
@@ -477,14 +477,14 @@ async def test_get_batch_quotes_for_symbols_success(mock_get_quote: MagicMock, w
             return {"last_price": 300.0, "symbol": "MSFT"}
         return None # Default case
     mock_get_quote.side_effect = quote_side_effect
-    
+
     # Act
     response = await watchlist_service.get_batch_quotes_for_symbols(symbols, provider)
 
     # Assert
     assert isinstance(response, BatchQuotesResponse)
     assert len(response.results) == 2
-    
+
     # Check calls (optional, as it can be tricky with run_in_executor)
     # from unittest.mock import call # Ensure this import is at the top of the file
     # expected_calls = [call("AAPL", provider), call("MSFT", provider)]
@@ -514,7 +514,7 @@ async def test_get_batch_quotes_for_symbols_one_fails(mock_get_quote: MagicMock,
         if symbol == "FAIL":
             # Service's fetch_quote_async catches exception and returns error item
             # Or if tool returns None, service maps it to "Failed to fetch quote."
-            return None 
+            return None
         return None
     mock_get_quote.side_effect = quote_side_effect
 

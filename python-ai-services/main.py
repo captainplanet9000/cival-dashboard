@@ -39,15 +39,16 @@ from models.monitoring_models import AgentTaskSummary, TaskListResponse, Depende
 # Import services
 from services.agent_task_service import AgentTaskService
 from services.memory_service import MemoryService, MemoryInitializationError
-from services.event_service import EventService, EventServiceError 
-from services.simulated_trade_executor import SimulatedTradeExecutor 
+from services.event_service import EventService, EventServiceError
+from services.simulated_trade_executor import SimulatedTradeExecutor
+from services.hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError # Added
 from services.strategy_config_service import ( # Added
-    StrategyConfigService, 
-    StrategyConfigNotFoundError, 
-    StrategyConfigCreationError, 
+    StrategyConfigService,
+    StrategyConfigNotFoundError,
+    StrategyConfigCreationError,
     StrategyConfigUpdateError,
     StrategyConfigDeletionError,
-    StrategyConfigServiceError 
+    StrategyConfigServiceError
 )
 from services.strategy_visualization_service import StrategyVisualizationService, StrategyVisualizationServiceError
 from models.visualization_models import StrategyVisualizationRequest, StrategyVisualizationDataResponse
@@ -69,8 +70,8 @@ from models.watchlist_models import ( # Watchlist models
 # Services
 # ... (other service imports)
 from services.watchlist_service import ( # Watchlist service and exceptions
-    WatchlistService, 
-    WatchlistNotFoundError, 
+    WatchlistService,
+    WatchlistNotFoundError,
     WatchlistItemNotFoundError,
     WatchlistOperationForbiddenError,
     WatchlistServiceError
@@ -78,8 +79,8 @@ from services.watchlist_service import ( # Watchlist service and exceptions
 
 
 # Models and crew for new endpoint
-from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse 
-from agents.crew_setup import trading_analysis_crew 
+from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse
+from agents.crew_setup import trading_analysis_crew
 from models.event_models import CrewLifecycleEvent, AlertEvent, AlertLevel # Added AlertEvent, AlertLevel
 
 # For SSE
@@ -92,6 +93,13 @@ from models.auth_models import AuthenticatedUser
 # User Preferences
 from models.user_models import UserPreferences
 from services.user_preference_service import UserPreferenceService, UserPreferenceServiceError
+
+# Hyperliquid Models (for new endpoints)
+from models.hyperliquid_models import (
+    HyperliquidAccountSnapshot,
+    HyperliquidOpenOrderItem,
+    HyperliquidOrderStatusInfo
+)
 
 
 # Global services registry
@@ -138,7 +146,8 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Starting PydanticAI Enhanced Services")
     app.state.redis_cache_client = None
     app.state.supabase_client = None # Initialize with None
-    
+    app.state.hyperliquid_execution_service = None # Initialize Hyperliquid service state
+
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         app.state.redis_cache_client = await aioredis.from_url(redis_url)
@@ -159,7 +168,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize Supabase client: {e}. Supabase dependent services may fail.")
         app.state.supabase_client = None
-    
+
     # Initialize Google SDK Bridge
     google_bridge = GoogleSDKBridge(
         project_id=os.getenv("GOOGLE_CLOUD_PROJECT_ID", "cival-dashboard-dev"),
@@ -186,7 +195,7 @@ async def lifespan(app: FastAPI):
         if app.state.supabase_client: # Check if Supabase client itself was initialized
             try:
                 app.state.simulated_trade_executor = SimulatedTradeExecutor(
-                    supabase_url=supabase_url_env, 
+                    supabase_url=supabase_url_env,
                     supabase_key=supabase_key_env,
                     event_service=event_service_instance # Pass the EventService instance
                 )
@@ -199,49 +208,70 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("SUPABASE_URL or SUPABASE_KEY not set in environment. SimulatedTradeExecutor not initialized.")
 
+    # Initialize HyperliquidExecutionService
+    hl_wallet_address = os.getenv("HYPERLIQUID_WALLET_ADDRESS")
+    hl_private_key = os.getenv("HYPERLIQUID_PRIVATE_KEY")
+    hl_network_mode = os.getenv("HYPERLIQUID_NETWORK_MODE", "testnet") # Default to testnet
+    hl_api_url = os.getenv("HYPERLIQUID_API_URL") # Optional, can override network_mode default
+
+    if hl_private_key and hl_wallet_address: # Wallet address is used for verification against derived one
+        try:
+            app.state.hyperliquid_execution_service = HyperliquidExecutionService(
+                wallet_address=hl_wallet_address,
+                private_key=hl_private_key,
+                api_url=hl_api_url, # Pass None if not set, service will use default based on network_mode
+                network_mode=hl_network_mode if hl_network_mode in ["mainnet", "testnet"] else "testnet"
+            )
+            logger.info(f"HyperliquidExecutionService initialized for address {app.state.hyperliquid_execution_service.wallet_address} on network {hl_network_mode}.")
+        except HyperliquidExecutionServiceError as e:
+            logger.error(f"Failed to initialize HyperliquidExecutionService: {e}", exc_info=True)
+            app.state.hyperliquid_execution_service = None
+        except Exception as e:
+            logger.error(f"Unexpected error initializing HyperliquidExecutionService: {e}", exc_info=True)
+            app.state.hyperliquid_execution_service = None
+    else:
+        logger.warning("Hyperliquid credentials (HYPERLIQUID_WALLET_ADDRESS, HYPERLIQUID_PRIVATE_KEY) not fully set. HyperliquidExecutionService not initialized.")
+        app.state.hyperliquid_execution_service = None
+
+
     # Initialize enhanced AI agents/services dictionary
     # Clear any existing services to ensure fresh init with all dependencies
-    services.clear() 
+    services.clear()
     services["google_bridge"] = google_bridge
     services["a2a_protocol"] = a2a_protocol
-    
+
+    # Add other core services to the global dict if they are initialized and might be used directly
+    if app.state.simulated_trade_executor:
+        services["simulated_trade_executor"] = app.state.simulated_trade_executor
+    if app.state.hyperliquid_execution_service:
+        services["hyperliquid_execution_service"] = app.state.hyperliquid_execution_service
+
     # Initialize services that depend on google_bridge and a2a_protocol
     services["market_analyst"] = MarketAnalyst(google_bridge, a2a_protocol)
-    services["risk_monitor"] = RiskMonitor(google_bridge, a2a_protocol) # Assuming RiskMonitor takes these two
-    services["vault_manager"] = VaultManager(google_bridge, a2a_protocol) # Assuming VaultManager takes these two
-    services["strategy_optimizer"] = StrategyOptimizer(google_bridge, a2a_protocol) # Assuming StrategyOptimizer takes these two
+    services["risk_monitor"] = RiskMonitor(google_bridge, a2a_protocol)
+    services["vault_manager"] = VaultManager(google_bridge, a2a_protocol)
+    services["strategy_optimizer"] = StrategyOptimizer(google_bridge, a2a_protocol)
 
-    # Initialize TradingCoordinator with SimulatedTradeExecutor
-    if app.state.simulated_trade_executor:
+    # Initialize TradingCoordinator with available execution services
+    # TradingCoordinator's __init__ expects simulated_trade_executor.
+    # It now also takes hyperliquid_execution_service (optional).
+    if services.get("google_bridge") and services.get("a2a_protocol") and services.get("simulated_trade_executor"):
         services["trading_coordinator"] = TradingCoordinator(
-            google_bridge=google_bridge, 
+            google_bridge=google_bridge,
             a2a_protocol=a2a_protocol,
-            simulated_trade_executor=app.state.simulated_trade_executor
+            simulated_trade_executor=services["simulated_trade_executor"], # Must exist from check above
+            hyperliquid_execution_service=getattr(app.state, 'hyperliquid_execution_service', None)
         )
+    elif services.get("google_bridge") and services.get("a2a_protocol"): # If only STE is missing
+        logger.error("SimulatedTradeExecutor not available. TradingCoordinator cannot be fully initialized and will lack paper trading capabilities.")
+        # TradingCoordinator might still be partially useful or its __init__ might need to allow None STE
+        # For now, if STE is critical, TC might not be added to services, or a limited version.
+        # Based on current TC __init__, STE is mandatory.
+        # So, if STE is missing, TC cannot be initialized as per its current constructor.
+        # This means no "trading_coordinator" in services dict.
     else:
-        logger.error("SimulatedTradeExecutor not available. TradingCoordinator will not have paper trading capabilities.")
-        # Optionally, initialize TradingCoordinator without simulated_trade_executor or handle this state
-        # For now, if STE is missing, TC that uses it for paper trading won't be fully functional.
-        # One might decide to not add it to services dict, or add a version with limited functionality.
-        # To keep it simple, we'll assume if STE fails, TC that needs it might not be added or will error on use.
-        # However, the prompt implies TC is always there, so let's log a severe warning.
-        # services["trading_coordinator"] = TradingCoordinator(google_bridge, a2a_protocol, None) # If TC can handle None STE
-    elif services.get("google_bridge") and services.get("a2a_protocol"): # If STE is None, but other deps are there
-        logger.error("SimulatedTradeExecutor not available. Initializing TradingCoordinator without paper trading capabilities or it might fail if STE is mandatory.")
-        # Decide if TradingCoordinator should be initialized at all if STE is critical for its core functions.
-        # For now, assuming TradingCoordinator might still have other roles or can handle a None STE.
-        # If TradingCoordinator's __init__ was updated to make simulated_trade_executor non-optional, this would fail.
-        # The current __init__ for TradingCoordinator makes it non-optional.
-        # So, if app.state.simulated_trade_executor is None, TC init will fail here unless TC is updated.
-        # This part of the logic needs to be robust based on whether TC *requires* STE.
-        # Given the prompt, TC does require it in its __init__.
-        # So, if STE is None, TC will not be correctly initialized with it.
-        # The `else` block for TC initialization needs to reflect this.
-        # The current code for TC init is *inside* the `if app.state.simulated_trade_executor:` block
-        # which is correct: TC is only initialized with STE if STE is available.
-        # If TC *must* be in services dict, then it needs to handle STE being None.
-        # For now, if STE is None, TC that *requires* it won't be in services dict.
-        pass # trading_coordinator will not be (re)set in services if STE is None.
+        logger.error("Core dependencies (Google Bridge, A2A, or STE) for TradingCoordinator are missing. TradingCoordinator not initialized.")
+
 
     # Register agents with A2A protocol
     # Renamed agent to agent_instance to avoid potential conflicts
@@ -287,7 +317,7 @@ async def get_user_preference_service(
     supabase_client: Optional[SupabaseClient] = Depends(get_supabase_client) # Ensure SupabaseClient is imported
 ) -> UserPreferenceService:
     if not supabase_client:
-        logger.error("Supabase client not available for UserPreferenceService.") 
+        logger.error("Supabase client not available for UserPreferenceService.")
         raise HTTPException(status_code=503, detail="Database client not available.")
     return UserPreferenceService(supabase_client=supabase_client)
 
@@ -414,7 +444,7 @@ async def get_agent_task_service(
 async def get_memory_service_for_monitoring() -> MemoryService:
     try:
         # Using dummy IDs for monitoring purposes as actual user/agent context might not be relevant
-        dummy_user_id = uuid4() 
+        dummy_user_id = uuid4()
         dummy_agent_id = uuid4()
         # Ensure MemoryService is correctly imported and its __init__ is compatible
         return MemoryService(user_id=dummy_user_id, agent_id_context=dummy_agent_id)
@@ -455,10 +485,10 @@ async def get_strategy_visualization_service(
     if not supabase_client:
         logger.error("Supabase client not available for StrategyVisualizationService.")
         raise HTTPException(status_code=503, detail="Database client not available.")
-    if not strategy_config_service: 
+    if not strategy_config_service:
         logger.error("StrategyConfigService not available for StrategyVisualizationService.")
         raise HTTPException(status_code=503, detail="StrategyConfigService not available.")
-    
+
     return StrategyVisualizationService(
         supabase_client=supabase_client,
         strategy_config_service=strategy_config_service
@@ -471,6 +501,13 @@ async def get_watchlist_service(
         logger.error("Supabase client not available for WatchlistService.")
         raise HTTPException(status_code=503, detail="Database client not available.")
     return WatchlistService(supabase_client=supabase_client)
+
+async def get_hyperliquid_execution_service(request: Request) -> HyperliquidExecutionService:
+    hl_service = getattr(request.app.state, 'hyperliquid_execution_service', None)
+    if not hl_service:
+        logger.error("HyperliquidExecutionService not available or not configured in app state.")
+        raise HTTPException(status_code=503, detail="Hyperliquid service not available or not configured.")
+    return hl_service
 
 # Enhanced AI Agent Endpoints
 @app.post("/api/agents/trading-coordinator/analyze")
@@ -702,7 +739,7 @@ async def websocket_agent_updates(websocket):
 MONITORING_API_PREFIX = "/api/v1/monitoring"
 
 @app.get(
-    f"{MONITORING_API_PREFIX}/tasks", 
+    f"{MONITORING_API_PREFIX}/tasks",
     response_model=TaskListResponse,
     summary="Get Paginated List of Agent Tasks",
     tags=["Monitoring"]
@@ -717,9 +754,9 @@ async def get_tasks_summary(
         loop = asyncio.get_event_loop()
         task_list_response = await loop.run_in_executor(
             None,  # Uses the default thread pool executor
-            task_service.get_task_summaries, 
-            page, 
-            page_size, 
+            task_service.get_task_summaries,
+            page,
+            page_size,
             None  # status_filter is None for now, can be added as a Query param later
         )
         return task_list_response
@@ -731,14 +768,14 @@ async def get_tasks_summary(
         raise HTTPException(status_code=500, detail=f"Failed to fetch task summaries: {str(e)}")
 
 @app.get(
-    f"{MONITORING_API_PREFIX}/health/dependencies", 
+    f"{MONITORING_API_PREFIX}/health/dependencies",
     response_model=List[DependencyStatus],
     summary="Get Status of External Dependencies",
     tags=["Monitoring", "Health"]
 )
 async def get_dependencies_health(request: Request):
     dependencies: List[DependencyStatus] = []
-    
+
     # Check Supabase client
     supabase_client = await get_supabase_client(request) # Use the dependency
     if supabase_client:
@@ -746,14 +783,14 @@ async def get_dependencies_health(request: Request):
         # For now, if client object exists from lifespan, assume 'configured'.
         # Actual operational status would need a ping/query.
         dependencies.append(DependencyStatus(
-            name="Supabase (PostgreSQL)", 
+            name="Supabase (PostgreSQL)",
             status="operational", # Simplified status based on client configuration
             details="Supabase client is configured. Actual DB connection health not deeply checked by this endpoint.",
             last_checked=datetime.now(timezone.utc).isoformat()
         ))
     else:
          dependencies.append(DependencyStatus(
-            name="Supabase (PostgreSQL)", 
+            name="Supabase (PostgreSQL)",
             status="misconfigured", # Or "unavailable" if init failed
             details="Supabase client not initialized or connection details missing.",
             last_checked=datetime.now(timezone.utc).isoformat()
@@ -765,19 +802,19 @@ async def get_dependencies_health(request: Request):
         try:
             await redis_client.ping()
             dependencies.append(DependencyStatus(
-                name="Redis", status="operational", 
+                name="Redis", status="operational",
                 details="Connection to Redis is active.",
                 last_checked=datetime.now(timezone.utc).isoformat()
             ))
         except Exception as e:
             dependencies.append(DependencyStatus(
-                name="Redis", status="unavailable", 
+                name="Redis", status="unavailable",
                 details=f"Failed to connect to Redis: {str(e)}",
                 last_checked=datetime.now(timezone.utc).isoformat()
             ))
     else:
         dependencies.append(DependencyStatus(
-            name="Redis", status="misconfigured", 
+            name="Redis", status="misconfigured",
             details="Redis client not configured or not initialized.",
             last_checked=datetime.now(timezone.utc).isoformat()
         ))
@@ -785,7 +822,7 @@ async def get_dependencies_health(request: Request):
     # Check MemoryService (MemGPT)
     try:
         # Attempt to get (and thus initialize) the MemoryService
-        await get_memory_service_for_monitoring() 
+        await get_memory_service_for_monitoring()
         dependencies.append(DependencyStatus(
             name="MemGPT (via MemoryService)", status="operational",
             details="MemoryService initialized (configuration seems ok). Runtime health of MemGPT itself not deeply checked.",
@@ -803,18 +840,18 @@ async def get_dependencies_health(request: Request):
             details=f"MemoryService encountered an unexpected error during initialization check: {str(e)}",
             last_checked=datetime.now(timezone.utc).isoformat()
         ))
-        
+
     return dependencies
 
 @app.get(
-    f"{MONITORING_API_PREFIX}/health/system", 
+    f"{MONITORING_API_PREFIX}/health/system",
     response_model=SystemHealthSummary,
     summary="Get Overall System Health Summary",
     tags=["Monitoring", "Health"]
 )
 async def get_system_health(request: Request):
     dependency_statuses = await get_dependencies_health(request)
-    
+
     overall_status = "healthy"
     # Determine overall status based on dependencies
     for dep_status in dependency_statuses:
@@ -822,24 +859,24 @@ async def get_system_health(request: Request):
             overall_status = "warning" # If any dependency is not fully operational
             if dep_status.status in ["unavailable", "error", "misconfigured"]:
                 overall_status = "critical" # If any critical dependency is down/misconfigured
-                break 
-    
+                break
+
     # Mock system metrics (replace with actual metrics if available)
     mock_system_metrics = {
         "cpu_load_percentage": 0.0, # Example: psutil.cpu_percent()
         "memory_usage_mb": 0.0,     # Example: psutil.virtual_memory().used / (1024 * 1024)
         "active_tasks": 0 # Example: Could query AgentTaskService for active tasks
     }
-    
+
     return SystemHealthSummary(
         overall_status=overall_status,
         timestamp=datetime.now(timezone.utc).isoformat(),
         dependencies=dependency_statuses,
-        system_metrics=mock_system_metrics 
+        system_metrics=mock_system_metrics
     )
 
 @app.get(
-    f"{MONITORING_API_PREFIX}/memory/stats", 
+    f"{MONITORING_API_PREFIX}/memory/stats",
     # response_model=Optional[Dict[str,Any]], # Return type is Dict[str, Any] from service
     summary="Get Agent Memory Statistics (Stubbed)",
     tags=["Monitoring", "Memory"]
@@ -868,12 +905,12 @@ async def get_memory_stats(
 async def websocket_interactive_endpoint(websocket: WebSocket, agent_id: str):
     await websocket.accept()
     logger.info(f"WebSocket connection established for agent_id: {agent_id} from {websocket.client.host if websocket.client else 'Unknown Client'}")
-    
+
     try:
         while True:
-            data = await websocket.receive_text() 
+            data = await websocket.receive_text()
             logger.info(f"Received message for agent {agent_id}: {data}")
-            
+
             # Placeholder for processing and agent interaction
             response_message = f"Agent {agent_id} received your message: '{data}'"
             await websocket.send_text(response_message)
@@ -926,16 +963,16 @@ async def agent_updates_event_generator(request: Request):
             if await request.is_disconnected():
                 logger.info(f"SSE client {client_host} disconnected.")
                 break
-            
+
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message and message.get("type") == "message":
                 event_data_json = message["data"]
                 if isinstance(event_data_json, bytes):
                     event_data_json = event_data_json.decode('utf-8')
-                
+
                 try:
                     event_dict = json.loads(event_data_json)
-                    sse_event_id = event_dict.get("event_id", str(uuid4())) 
+                    sse_event_id = event_dict.get("event_id", str(uuid4()))
                     sse_event_type = event_dict.get("event_type", "agent_update")
                 except json.JSONDecodeError:
                     sse_event_id = str(uuid4())
@@ -943,11 +980,11 @@ async def agent_updates_event_generator(request: Request):
 
                 yield {
                     "id": sse_event_id,
-                    "event": sse_event_type, 
-                    "data": event_data_json 
+                    "event": sse_event_type,
+                    "data": event_data_json
                 }
                 logger.debug(f"SSE: Sent event from channel '{event_channel}' to client {client_host}")
-            
+
     except asyncio.CancelledError:
         logger.info(f"SSE event generator for {client_host} was cancelled (e.g. server shutdown).")
     except aioredis.RedisError as e:
@@ -957,7 +994,7 @@ async def agent_updates_event_generator(request: Request):
         logger.error(f"Error in SSE event generator for {client_host}: {e}", exc_info=True)
         try:
             yield {"event": "error", "data": json.dumps({"message": f"An unexpected error occurred in the SSE stream: {str(e)}."})}
-        except Exception: 
+        except Exception:
             pass
     finally:
         logger.info(f"SSE event generator for {client_host} stopping. Unsubscribing from {event_channel}.")
@@ -991,9 +1028,9 @@ async def alert_event_stream_generator(request: Request):
 
     redis_client = getattr(request.app.state, 'redis_cache_client', None)
     # EventService isn't strictly needed here if we know the channel name
-    # event_service = getattr(request.app.state, 'event_service', None) 
-    
-    alert_channel = "alert_events" 
+    # event_service = getattr(request.app.state, 'event_service', None)
+
+    alert_channel = "alert_events"
 
     if not redis_client:
         logger.error(f"SSE alert stream for {client_host} cannot start: Redis client not available.")
@@ -1012,28 +1049,28 @@ async def alert_event_stream_generator(request: Request):
             if await request.is_disconnected():
                 logger.info(f"SSE alert client {client_host} disconnected.")
                 break
-            
+
             message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
             if message and message.get("type") == "message":
                 alert_data_json = message["data"]
                 if isinstance(alert_data_json, bytes):
                     alert_data_json = alert_data_json.decode('utf-8')
-                
+
                 try:
                     alert_dict = json.loads(alert_data_json)
                     sse_event_id = alert_dict.get("event_id", str(uuid4()))
-                    sse_event_type = alert_dict.get("event_type", "alert_notification") 
+                    sse_event_type = alert_dict.get("event_type", "alert_notification")
                 except json.JSONDecodeError:
                     sse_event_id = str(uuid4())
                     sse_event_type = "raw_alert_event" # Fallback event type
 
                 yield {
                     "id": sse_event_id,
-                    "event": sse_event_type, 
-                    "data": alert_data_json 
+                    "event": sse_event_type,
+                    "data": alert_data_json
                 }
                 logger.debug(f"SSE: Sent alert from channel '{alert_channel}' to client {client_host}")
-            
+
     except asyncio.CancelledError:
         logger.info(f"SSE alert event generator for {client_host} was cancelled.")
     except aioredis.RedisError as e: # Ensure aioredis is imported
@@ -1055,7 +1092,7 @@ async def alert_event_stream_generator(request: Request):
                 logger.error(f"SSE: Error during pubsub cleanup for alerts on channel '{alert_channel}': {e}", exc_info=True)
 
 @app.get(
-    "/api/alerts/sse", 
+    "/api/alerts/sse",
     summary="Server-Sent Events endpoint to stream alert notifications",
     tags=["Alerts", "SSE"]
 )
@@ -1070,13 +1107,13 @@ async def sse_alert_notifications(request: Request):
 
 def run_trading_analysis_crew_background(
     task_id: UUID, # Consistent with CrewRunResponse, changed from uuid.UUID to UUID
-    user_id: str, 
-    inputs: Dict[str, Any], 
+    user_id: str,
+    inputs: Dict[str, Any],
     task_service: AgentTaskService,
     event_service: Optional[EventService] # Event service can be None if not initialized
 ):
     logger.info(f"Background task started for trading_analysis_crew. Task ID (Crew Run ID): {task_id}")
-    
+
     user_id_as_uuid: Optional[UUID] = None
     try:
         user_id_as_uuid = UUID(user_id)
@@ -1089,21 +1126,21 @@ def run_trading_analysis_crew_background(
         task_name = f"Trading Analysis for {inputs.get('symbol', 'N/A')}"
         # Create AgentTask to track this crew run
         agent_task = task_service.create_task(
-            user_id=user_id_as_uuid, 
+            user_id=user_id_as_uuid,
             task_name=task_name,
-            input_parameters=inputs 
+            input_parameters=inputs
         )
         # Align the task_id of the agent_task with our crew_run_task_id if they are different.
         # For now, we assume the task_id passed to this function is the definitive one.
         # If agent_task.task_id is generated by DB and differs, it's an internal reference.
         # The external reference is `task_id`.
         logger.info(f"AgentTask DB ID: {agent_task.task_id} created for Crew Run Task ID: {task_id}")
-        
+
         task_service.update_task_status(task_id=task_id, status="RUNNING") # Use the main task_id
 
         if event_service and event_service.redis_client:
             crew_started_event = CrewLifecycleEvent(
-                source_id=str(task_id), 
+                source_id=str(task_id),
                 crew_run_id=task_id,
                 status="STARTED",
                 inputs=inputs
@@ -1118,7 +1155,7 @@ def run_trading_analysis_crew_background(
         logger.info(f"Running trading_analysis_crew with inputs: {inputs} for Task ID: {task_id}")
         result = trading_analysis_crew.kickoff(inputs=inputs) # This is a string result
         logger.info(f"Trading analysis crew finished for Task ID: {task_id}. Result: {str(result)[:500]}")
-        
+
         # Attempt to parse result and potentially publish actionable signal alert
         try:
             crew_result_dict = json.loads(result if isinstance(result, str) else "{}")
@@ -1136,7 +1173,7 @@ def run_trading_analysis_crew_background(
                             message=f"Actionable trade signal by crew for {inputs.get('symbol')}: {action_type}",
                             details={
                                 "symbol": inputs.get('symbol'), "action": action_type, "confidence": confidence,
-                                "opportunity_details": opportunity_details 
+                                "opportunity_details": opportunity_details
                             }
                         )
                         try:
@@ -1169,9 +1206,9 @@ def run_trading_analysis_crew_background(
 
     except Exception as e:
         logger.error(f"Error running trading_analysis_crew in background for Task ID {task_id}: {e}", exc_info=True)
-        if task_id: 
+        if task_id:
             task_service.update_task_status(task_id=task_id, status="FAILED", error_message=str(e))
-        
+
         if event_service and event_service.redis_client:
             # Publish CrewLifecycleEvent for FAILED
             crew_lifecycle_failed_event = CrewLifecycleEvent( # Renamed to avoid conflict with AlertEvent
@@ -1191,7 +1228,7 @@ def run_trading_analysis_crew_background(
             crew_failure_alert = AlertEvent(
                 source_id=f"TradingCoordinator_CrewRun_{task_id}",
                 crew_run_id=task_id,
-                alert_level=AlertLevel.ERROR, 
+                alert_level=AlertLevel.ERROR,
                 message=f"Trading analysis crew execution FAILED for symbol {inputs.get('symbol', 'N/A')}.",
                 details={"error": str(e), "inputs": inputs}
             )
@@ -1209,36 +1246,36 @@ async def analyze_trading_strategy_with_crew(
     background_tasks: BackgroundTasks,
     current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     task_service: AgentTaskService = Depends(get_agent_task_service),
-    event_service: Optional[EventService] = Depends(get_event_service) 
+    event_service: Optional[EventService] = Depends(get_event_service)
 ):
     """
     Triggers the Trading Analysis Crew to analyze a symbol based on provided context for the authenticated user.
     This is an asynchronous operation; the API returns immediately with a task ID.
     """
-    crew_run_task_id = uuid4() 
+    crew_run_task_id = uuid4()
 
     inputs_for_crew = {
         "symbol": request_data.symbol,
         "market_event_description": request_data.market_event_description,
         "additional_context": request_data.additional_context,
         "user_id": str(current_user.id), # Use authenticated user's ID as string
-        "crew_run_id": str(crew_run_task_id) 
+        "crew_run_id": str(crew_run_task_id)
     }
-    
+
     background_tasks.add_task(
         run_trading_analysis_crew_background,
         task_id=crew_run_task_id,
         user_id=str(current_user.id), # Pass user_id as string
         inputs=inputs_for_crew,
         task_service=task_service,
-        event_service=event_service 
+        event_service=event_service
     )
-    
+
     logger.info(f"Trading analysis crew task for user {current_user.id} enqueued. Task ID (Crew Run ID): {crew_run_task_id}")
-    
+
     return CrewRunResponse(
         task_id=crew_run_task_id,
-        status="ACCEPTED", 
+        status="ACCEPTED",
         message="Trading analysis crew task accepted and initiated."
     )
 
@@ -1246,14 +1283,14 @@ async def analyze_trading_strategy_with_crew(
 STRATEGY_CONFIG_API_PREFIX = "/api/v1/strategies"
 
 @app.post(
-    f"{STRATEGY_CONFIG_API_PREFIX}/", 
-    response_model=StrategyConfig, 
+    f"{STRATEGY_CONFIG_API_PREFIX}/",
+    response_model=StrategyConfig,
     status_code=201,
     summary="Create a new strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
-async def create_strategy_config_for_current_user( 
-    config_payload: StrategyConfig, 
+async def create_strategy_config_for_current_user(
+    config_payload: StrategyConfig,
     current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
@@ -1263,12 +1300,12 @@ async def create_strategy_config_for_current_user(
     except StrategyConfigCreationError as e:
         logger.error(f"Failed to create strategy config for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e: 
+    except Exception as e:
         logger.error(f"Unexpected error creating strategy config for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred while creating the strategy configuration.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/", 
+    f"{STRATEGY_CONFIG_API_PREFIX}/",
     response_model=List[StrategyConfig],
     summary="Get all strategy configurations for the authenticated user",
     tags=["Strategy Configurations"]
@@ -1279,13 +1316,13 @@ async def get_all_strategy_configs_for_current_user(
 ):
     try:
         return await service.get_strategy_configs_by_user(user_id=current_user.id)
-    except Exception as e: 
+    except Exception as e:
         logger.error(f"Unexpected error fetching strategy configs for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}", 
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
     response_model=StrategyConfig,
     summary="Get a specific strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
@@ -1315,20 +1352,20 @@ async def get_single_strategy_config_for_current_user(
 #     description: Optional[str] = None
 #     symbols: Optional[List[str]] = Field(default=None, min_items=1)
 #     timeframe: Optional[str] = None # Ideally StrategyTimeframe, but needs to be importable here
-#     parameters: Optional[Dict[str, Any]] = None 
+#     parameters: Optional[Dict[str, Any]] = None
 #     is_active: Optional[bool] = None
 #     # strategy_type typically should not be updatable once set, or requires careful handling
 #     # of parameters field if it is.
 
 @app.put(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}", 
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
     response_model=StrategyConfig,
     summary="Update an existing strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
 async def update_strategy_config_for_current_user(
     strategy_id: UUID,
-    update_payload: Dict[str, Any], 
+    update_payload: Dict[str, Any],
     current_user: AuthenticatedUser = Depends(get_current_active_user),
     service: StrategyConfigService = Depends(get_strategy_config_service)
 ):
@@ -1341,15 +1378,15 @@ async def update_strategy_config_for_current_user(
         return updated_config
     except StrategyConfigNotFoundError:
         raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
-    except (StrategyConfigUpdateError, ValueError) as e: 
-        raise HTTPException(status_code=400, detail=str(e)) 
+    except (StrategyConfigUpdateError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error updating strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.delete(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}", 
-    status_code=204, 
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}",
+    status_code=204,
     summary="Delete a strategy configuration for the authenticated user",
     tags=["Strategy Configurations"]
 )
@@ -1360,19 +1397,19 @@ async def delete_strategy_config_for_current_user(
 ):
     try:
         await service.delete_strategy_config(strategy_id=strategy_id, user_id=current_user.id)
-        return 
+        return
     except StrategyConfigNotFoundError:
         raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
-    except StrategyConfigDeletionError as e: 
+    except StrategyConfigDeletionError as e:
         logger.error(f"Failed to delete strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error deleting strategy config {strategy_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/performance/latest", 
-    response_model=Optional[PerformanceMetrics], 
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/performance/latest",
+    response_model=Optional[PerformanceMetrics],
     summary="Get the latest performance metrics for a specific strategy (authenticated user)",
     tags=["Strategy Configurations", "Performance Analytics"]
 )
@@ -1387,17 +1424,17 @@ async def get_latest_strategy_performance_for_current_user( # Renamed function
         if not metrics:
             raise HTTPException(status_code=404, detail="Performance metrics not found for this strategy, or strategy does not exist/belong to user.")
         return metrics
-    except StrategyConfigServiceError as e: 
+    except StrategyConfigServiceError as e:
         logger.error(f"Service error fetching performance for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
-        if "not found for user" in str(e).lower(): 
+        if "not found for user" in str(e).lower():
             raise HTTPException(status_code=404, detail="Strategy configuration not found or not owned by user.")
-        raise HTTPException(status_code=500, detail=str(e)) 
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected error fetching performance for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An unexpected error occurred.")
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/trade_history", 
+    f"{STRATEGY_CONFIG_API_PREFIX}/{{strategy_id}}/trade_history",
     response_model=List[TradeRecord],
     summary="Get trade history for a specific strategy (authenticated user)",
     tags=["Strategy Configurations", "Performance Analytics"]
@@ -1413,7 +1450,7 @@ async def get_strategy_trade_history_for_current_user( # Renamed function
         trades = await service.get_trade_history_for_strategy(
             strategy_id=strategy_id, user_id=current_user.id, limit=limit, offset=offset
         )
-        return trades 
+        return trades
     except StrategyConfigServiceError as e:
         logger.error(f"Service error fetching trade history for strategy {strategy_id} (user {current_user.id}): {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1459,17 +1496,17 @@ async def get_user_strategies_performance_teasers(
     # Cache miss or Redis error, fetch fresh data
     try:
         fresh_data = await service.get_all_user_strategies_with_performance_teasers(user_id=current_user.id)
-        
+
         if redis_client and fresh_data is not None: # fresh_data can be []
             try:
                 # Serialize list of Pydantic models to JSON string for caching
                 # Each item in fresh_data is already a StrategyPerformanceTeaser instance
                 list_of_dicts_to_cache = [item.model_dump(mode='json') for item in fresh_data]
                 serialized_data_to_cache = json.dumps(list_of_dicts_to_cache)
-                
+
                 await redis_client.set(
-                    cache_key, 
-                    serialized_data_to_cache, 
+                    cache_key,
+                    serialized_data_to_cache,
                     ex=CACHE_PERFORMANCE_TEASERS_EXPIRATION_SECONDS
                 )
                 logger.info(f"Successfully cached performance teasers for User {current_user.id}, Key: {cache_key}")
@@ -1477,9 +1514,9 @@ async def get_user_strategies_performance_teasers(
                 logger.error(f"Redis error setting cache for performance teasers (User {current_user.id}): {e}", exc_info=True)
             except json.JSONEncodeError as e: # Should not happen with .model_dump()
                 logger.error(f"JSON encode error caching performance teasers (User {current_user.id}): {e}", exc_info=True)
-        
+
         return fresh_data
-        
+
     except StrategyConfigServiceError as e:
         logger.error(f"Service error fetching strategy performance teasers for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -1493,7 +1530,7 @@ SUPPORTED_STRATEGY_TYPES_FOR_FORMS = [
 ]
 
 @app.get(
-    f"{STRATEGY_CONFIG_API_PREFIX}/form-metadata", 
+    f"{STRATEGY_CONFIG_API_PREFIX}/form-metadata",
     response_model=StrategyFormMetadataResponse,
     summary="Get metadata for building strategy configuration forms",
     tags=["Strategy Configurations", "Metadata"]
@@ -1505,24 +1542,24 @@ async def get_strategy_form_metadata():
     """
     # StrategyTimeframe is a Literal, get its literal values
     timeframe_values = list(StrategyTimeframe.__args__)
-    
+
     return StrategyFormMetadataResponse(
         available_strategy_types=SUPPORTED_STRATEGY_TYPES_FOR_FORMS,
         available_timeframes=timeframe_values
     )
 
 # --- Strategy Visualization Endpoints ---
-VISUALIZATION_API_PREFIX = "/api/v1/visualizations" 
+VISUALIZATION_API_PREFIX = "/api/v1/visualizations"
 
 @app.get(
-    f"{VISUALIZATION_API_PREFIX}/strategy", 
+    f"{VISUALIZATION_API_PREFIX}/strategy",
     response_model=StrategyVisualizationDataResponse,
     summary="Get data for strategy visualization charts (with Caching)", # Updated summary
     tags=["Visualizations", "Strategies"]
 )
 async def get_strategy_chart_data(
     request_http: Request, # Changed name to avoid clash with service_request
-    query_params: StrategyVisualizationQueryParams = Depends(), 
+    query_params: StrategyVisualizationQueryParams = Depends(),
     current_user: AuthenticatedUser = Depends(get_current_active_user),
     viz_service: StrategyVisualizationService = Depends(get_strategy_visualization_service)
 ):
@@ -1562,16 +1599,16 @@ async def get_strategy_chart_data(
         start_date=query_params.start_date,
         end_date=query_params.end_date
     )
-    
+
     try:
         fresh_data: StrategyVisualizationDataResponse = await viz_service.get_strategy_visualization_data(request=service_request)
-        
+
         if redis_client and fresh_data: # fresh_data is a Pydantic model instance
             try:
                 serialized_data_to_cache = fresh_data.model_dump_json() # Pydantic v2
                 await redis_client.set(
-                    cache_key, 
-                    serialized_data_to_cache, 
+                    cache_key,
+                    serialized_data_to_cache,
                     ex=CACHE_STRATEGY_VIZ_EXPIRATION_SECONDS
                 )
                 logger.info(f"Successfully cached strategy visualization data: Key {cache_key}")
@@ -1579,9 +1616,9 @@ async def get_strategy_chart_data(
                 logger.error(f"Redis error setting cache for strategy viz (Key {cache_key}): {e}", exc_info=True)
             except Exception as e: # Catch potential Pydantic model_dump_json errors
                 logger.error(f"Serialization error caching strategy viz (Key {cache_key}): {e}", exc_info=True)
-        
+
         return fresh_data
-        
+
     except StrategyConfigNotFoundError as e:
         logger.warning(f"Strategy config not found for viz request: {service_request.strategy_config_id}, User: {current_user.id}. Error: {e}")
         raise HTTPException(status_code=404, detail=str(e))
@@ -1599,13 +1636,13 @@ async def get_strategy_chart_data(
 PAPER_TRADING_API_PREFIX = "/api/v1/paper-trading"
 
 @app.get(
-    f"{PAPER_TRADING_API_PREFIX}/orders/open", 
+    f"{PAPER_TRADING_API_PREFIX}/orders/open",
     response_model=List[TradeRecord],
     summary="Get all open paper trading orders for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def list_open_paper_orders_for_current_user( 
-    current_user: AuthenticatedUser = Depends(get_current_active_user), 
+async def list_open_paper_orders_for_current_user(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1623,15 +1660,15 @@ async def list_open_paper_orders_for_current_user(
         raise HTTPException(status_code=500, detail=f"Failed to fetch open paper orders: {str(e)}")
 
 @app.post(
-    f"{PAPER_TRADING_API_PREFIX}/orders", 
-    response_model=SubmitPaperOrderResponse, 
-    status_code=202, 
-    summary="Submit a new paper trading order for the authenticated user", 
+    f"{PAPER_TRADING_API_PREFIX}/orders",
+    response_model=SubmitPaperOrderResponse,
+    status_code=202,
+    summary="Submit a new paper trading order for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def submit_new_paper_order_for_current_user( 
-    order_request: CreatePaperTradeOrderRequest, 
-    current_user: AuthenticatedUser = Depends(get_current_active_user), 
+async def submit_new_paper_order_for_current_user(
+    order_request: CreatePaperTradeOrderRequest,
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1642,7 +1679,7 @@ async def submit_new_paper_order_for_current_user(
         raise HTTPException(status_code=503, detail="SimulatedTradeExecutor service not available.")
 
     paper_order_to_submit = PaperTradeOrder(
-        user_id=current_user.id, 
+        user_id=current_user.id,
         symbol=order_request.symbol,
         side=order_request.side,
         order_type=order_request.order_type,
@@ -1652,16 +1689,16 @@ async def submit_new_paper_order_for_current_user(
         time_in_force=order_request.time_in_force,
         notes=order_request.notes
     )
-    
+
     try:
         updated_order, fills = await executor.submit_paper_order(paper_order_to_submit)
-        
+
         if updated_order.status == PaperOrderStatus.FILLED and fills:
-            for fill in fills: 
+            for fill in fills:
                 await executor.apply_fill_to_position(fill)
-            
+
             if hasattr(executor, '_log_paper_trade_to_history') and callable(getattr(executor, '_log_paper_trade_to_history')):
-                 await executor._log_paper_trade_to_history(updated_order, fills[0] if fills else None) 
+                 await executor._log_paper_trade_to_history(updated_order, fills[0] if fills else None)
                  logger.info(f"Order {updated_order.order_id} for user {current_user.id} and its fill(s) logged to trading_history via API.")
             else:
                  logger.warning(f"Method _log_paper_trade_to_history not found or callable on executor for order {updated_order.order_id} (user {current_user.id}).")
@@ -1669,7 +1706,7 @@ async def submit_new_paper_order_for_current_user(
         message = f"Paper order {updated_order.order_id} for user {current_user.id} submitted. Status: {updated_order.status.value}."
         if fills:
             message += f" {len(fills)} fill(s) generated."
-        
+
         return SubmitPaperOrderResponse(
             updated_order=updated_order,
             fills=fills,
@@ -1680,14 +1717,14 @@ async def submit_new_paper_order_for_current_user(
         raise HTTPException(status_code=500, detail=f"Failed to submit paper order: {str(e)}")
 
 @app.post(
-    f"{PAPER_TRADING_API_PREFIX}/orders/{{order_id}}/cancel", 
-    response_model=PaperTradeOrder, 
+    f"{PAPER_TRADING_API_PREFIX}/orders/{{order_id}}/cancel",
+    response_model=PaperTradeOrder,
     summary="Cancel a pending paper trading order for the authenticated user",
     tags=["Paper Trading", "Orders"]
 )
-async def cancel_paper_order_for_current_user( 
+async def cancel_paper_order_for_current_user(
     order_id: UUID,
-    current_user: AuthenticatedUser = Depends(get_current_active_user), 
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
     executor: SimulatedTradeExecutor = Depends(get_simulated_trade_executor)
 ):
     """
@@ -1698,9 +1735,9 @@ async def cancel_paper_order_for_current_user(
     try:
         canceled_order = await executor.cancel_paper_order(user_id=current_user.id, order_id=order_id)
         return canceled_order
-    except ValueError as e: 
+    except ValueError as e:
         logger.warning(f"Failed to cancel paper order {order_id} for user {current_user.id}: {e}")
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"API error canceling paper order {order_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to cancel paper order: {str(e)}")
@@ -1710,8 +1747,8 @@ WATCHLIST_API_PREFIX = "/api/v1/watchlists"
 QUOTE_API_PREFIX = "/api/v1/quotes" # Should remain if batch quotes are general, or move under watchlists if specific
 
 @app.post(
-    f"{WATCHLIST_API_PREFIX}/", 
-    response_model=Watchlist, 
+    f"{WATCHLIST_API_PREFIX}/",
+    response_model=Watchlist,
     status_code=201,
     summary="Create a new watchlist for the authenticated user",
     tags=["Watchlists"]
@@ -1731,7 +1768,7 @@ async def create_new_watchlist_for_current_user( # Renamed
         raise HTTPException(status_code=500, detail="Failed to create watchlist.")
 
 @app.get(
-    f"{WATCHLIST_API_PREFIX}/", 
+    f"{WATCHLIST_API_PREFIX}/",
     response_model=List[Watchlist],
     summary="Get all watchlists for the authenticated user",
     tags=["Watchlists"]
@@ -1747,8 +1784,8 @@ async def get_current_user_watchlists( # Renamed
         raise HTTPException(status_code=500, detail="Failed to fetch watchlists.")
 
 @app.get(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}", 
-    response_model=WatchlistWithItems, 
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
+    response_model=WatchlistWithItems,
     summary="Get a specific watchlist and its items for the authenticated user",
     tags=["Watchlists"]
 )
@@ -1769,14 +1806,14 @@ async def get_watchlist_details_for_current_user( # Renamed
         raise HTTPException(status_code=500, detail="Failed to fetch watchlist details.")
 
 @app.put(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}", 
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
     response_model=Watchlist,
     summary="Update a watchlist's name or description for the authenticated user",
     tags=["Watchlists"]
 )
 async def update_watchlist_for_current_user( # Renamed
     watchlist_id: UUID,
-    update_data: WatchlistCreate, 
+    update_data: WatchlistCreate,
     current_user: AuthenticatedUser = Depends(get_current_active_user), # Auth added
     service: WatchlistService = Depends(get_watchlist_service)
 ):
@@ -1791,7 +1828,7 @@ async def update_watchlist_for_current_user( # Renamed
         raise HTTPException(status_code=500, detail="Failed to update watchlist.")
 
 @app.delete(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}", 
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}",
     status_code=204,
     summary="Delete a watchlist for the authenticated user",
     tags=["Watchlists"]
@@ -1810,8 +1847,8 @@ async def delete_watchlist_for_current_user( # Renamed
         raise HTTPException(status_code=500, detail="Failed to delete watchlist.")
 
 @app.post(
-    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/items", 
-    response_model=List[WatchlistItem], 
+    f"{WATCHLIST_API_PREFIX}/{{watchlist_id}}/items",
+    response_model=List[WatchlistItem],
     status_code=201,
     summary="Add one or more items (symbols) to a watchlist for the authenticated user",
     tags=["Watchlists"]
@@ -1829,14 +1866,14 @@ async def add_items_to_watchlist_for_current_user( # Renamed
         return created_items
     except WatchlistNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist not found or not owned by user.")
-    except WatchlistServiceError as e: 
-        raise HTTPException(status_code=409, detail=str(e)) 
+    except WatchlistServiceError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         logger.error(f"API Error adding items to watchlist {watchlist_id} for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to add items to watchlist.")
 
 @app.delete(
-    f"{WATCHLIST_API_PREFIX}/items/{{item_id}}", 
+    f"{WATCHLIST_API_PREFIX}/items/{{item_id}}",
     status_code=204,
     summary="Remove an item from a watchlist for the authenticated user",
     tags=["Watchlists"]
@@ -1850,7 +1887,7 @@ async def remove_item_from_watchlist_for_current_user( # Renamed
         await service.remove_item_from_watchlist(item_id=item_id, user_id=current_user.id)
     except WatchlistItemNotFoundError:
         raise HTTPException(status_code=404, detail="Watchlist item not found.")
-    except WatchlistOperationForbiddenError: 
+    except WatchlistOperationForbiddenError:
         raise HTTPException(status_code=403, detail="User not authorized to remove this watchlist item.")
     except Exception as e:
         logger.error(f"API Error removing item {item_id} for user {current_user.id}: {e}", exc_info=True)
@@ -1858,7 +1895,7 @@ async def remove_item_from_watchlist_for_current_user( # Renamed
 
 # --- Batch Quotes Endpoint ---
 @app.post(
-    f"{QUOTE_API_PREFIX}/batch", 
+    f"{QUOTE_API_PREFIX}/batch",
     response_model=BatchQuotesResponse,
     summary="Get current quotes for a batch of symbols",
     tags=["Quotes", "Watchlists"]
@@ -1879,7 +1916,7 @@ async def get_batch_quotes(
 USER_PREFERENCES_API_PREFIX = "/api/v1/users/me/preferences"
 
 @app.get(
-    USER_PREFERENCES_API_PREFIX, 
+    USER_PREFERENCES_API_PREFIX,
     response_model=UserPreferences,
     summary="Get preferences for the authenticated user",
     tags=["User Preferences"]
@@ -1898,7 +1935,7 @@ async def get_my_user_preferences(
         raise HTTPException(status_code=500, detail="Failed to get user preferences.")
 
 @app.put(
-    USER_PREFERENCES_API_PREFIX, 
+    USER_PREFERENCES_API_PREFIX,
     response_model=UserPreferences,
     summary="Update preferences for the authenticated user",
     tags=["User Preferences"]
@@ -1919,7 +1956,7 @@ async def update_my_user_preferences(
     except UserPreferenceServiceError as e:
         logger.error(f"API Error updating preferences for user {current_user.id}: {e}", exc_info=True)
         # For updates, a 400 might be more appropriate for validation or service logic errors
-        raise HTTPException(status_code=400, detail=str(e)) 
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Unexpected API error updating preferences for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update user preferences.")
@@ -1933,3 +1970,140 @@ if __name__ == "__main__":
         reload=True,
         log_level="info"
     )
+
+# --- Trading Coordinator Specific Endpoints ---
+TRADING_COORDINATOR_API_PREFIX = "/api/v1/trading/coordinator"
+
+@app.put(
+    f"{TRADING_COORDINATOR_API_PREFIX}/execution-mode/{{mode}}",
+    summary="Set the trade execution mode for the Trading Coordinator",
+    tags=["Trading Coordinator", "Configuration"],
+    response_model=Dict[str, str]
+)
+async def set_trading_coordinator_execution_mode(
+    mode: str, # Path parameter for "paper" or "live"
+    current_user: AuthenticatedUser = Depends(get_current_active_user) # Protected endpoint
+):
+    """
+    Sets the trade execution mode for the Trading Coordinator.
+    Allowed modes: 'paper', 'live'.
+    Requires authentication. (Further role-based access can be added later).
+    """
+    logger.info(f"User {current_user.id} attempting to set trade execution mode to: {mode}")
+    coordinator = services.get("trading_coordinator")
+    if not coordinator:
+        logger.error("TradingCoordinator service not available to set execution mode.")
+        raise HTTPException(status_code=503, detail="Trading Coordinator service not available.")
+
+    try:
+        result = await coordinator.set_trade_execution_mode(mode)
+        logger.info(f"Trade execution mode successfully set to {mode} by user {current_user.id}.")
+        return result
+    except ValueError as e:
+        logger.warning(f"Failed to set trade execution mode for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error setting trade execution mode for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.get(
+    f"{TRADING_COORDINATOR_API_PREFIX}/execution-mode",
+    summary="Get the current trade execution mode of the Trading Coordinator",
+    tags=["Trading Coordinator", "Configuration"],
+    response_model=Dict[str, str]
+)
+async def get_trading_coordinator_execution_mode(
+    current_user: AuthenticatedUser = Depends(get_current_active_user) # Protected endpoint
+):
+    """
+    Retrieves the current trade execution mode of the Trading Coordinator.
+    Requires authentication.
+    """
+    coordinator = services.get("trading_coordinator")
+    if not coordinator:
+        logger.error("TradingCoordinator service not available to get execution mode.")
+        raise HTTPException(status_code=503, detail="Trading Coordinator service not available.")
+
+    try:
+        mode_info = await coordinator.get_trade_execution_mode()
+        return mode_info
+    except Exception as e:
+        logger.error(f"Error retrieving trade execution mode for user {current_user.id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+# --- Hyperliquid Live Trading Data Endpoints ---
+HYPERLIQUID_API_PREFIX = "/api/v1/live/hyperliquid"
+
+@app.get(
+    f"{HYPERLIQUID_API_PREFIX}/account-summary",
+    response_model=HyperliquidAccountSnapshot,
+    summary="Get live Hyperliquid account summary (positions, open orders, balances)",
+    tags=["Live Trading", "Hyperliquid"]
+)
+async def get_hyperliquid_account_summary(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
+    hl_service: HyperliquidExecutionService = Depends(get_hyperliquid_execution_service)
+):
+    try:
+        # The service method get_detailed_account_summary requires the user_address,
+        # which is hl_service.wallet_address based on its initialization.
+        summary = await hl_service.get_detailed_account_summary(user_address=hl_service.wallet_address)
+        if summary is None:
+            # This case might occur if get_user_state returned None or empty.
+            logger.warning(f"No account summary data found for user {current_user.id} via Hyperliquid service.")
+            raise HTTPException(status_code=404, detail="Account summary data not found.")
+        return summary
+    except HyperliquidExecutionServiceError as e:
+        logger.error(f"Hyperliquid service error for user {current_user.id} getting account summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error for user {current_user.id} getting Hyperliquid account summary: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.get(
+    f"{HYPERLIQUID_API_PREFIX}/open-orders",
+    response_model=List[HyperliquidOpenOrderItem],
+    summary="Get all open orders from Hyperliquid for the configured account",
+    tags=["Live Trading", "Hyperliquid"]
+)
+async def get_hyperliquid_open_orders(
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
+    hl_service: HyperliquidExecutionService = Depends(get_hyperliquid_execution_service)
+):
+    try:
+        # Assumes get_all_open_orders uses the service's configured wallet address
+        open_orders = await hl_service.get_all_open_orders(user_address=hl_service.wallet_address)
+        return open_orders
+    except HyperliquidExecutionServiceError as e:
+        logger.error(f"Hyperliquid service error for user {current_user.id} getting open orders: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error for user {current_user.id} getting Hyperliquid open orders: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")
+
+@app.get(
+    f"{HYPERLIQUID_API_PREFIX}/orders/{{order_id}}/status",
+    response_model=HyperliquidOrderStatusInfo,
+    summary="Get the status of a specific order from Hyperliquid",
+    tags=["Live Trading", "Hyperliquid"]
+)
+async def get_hyperliquid_order_status(
+    order_id: int, # Hyperliquid order IDs are integers
+    current_user: AuthenticatedUser = Depends(get_current_active_user),
+    hl_service: HyperliquidExecutionService = Depends(get_hyperliquid_execution_service)
+):
+    try:
+        # Assumes get_order_status uses the service's configured wallet address for context if needed,
+        # or if it's a public query for any order by ID. Service method takes user_address.
+        order_status = await hl_service.get_order_status(user_address=hl_service.wallet_address, oid=order_id)
+        return order_status
+    except HyperliquidExecutionServiceError as e:
+        # Specific error handling if order not found vs other service error
+        if "not found" in str(e).lower(): # Basic check, service might provide better error codes/types
+            logger.warning(f"Order OID {order_id} not found for user {current_user.id} via Hyperliquid. Error: {e}")
+            raise HTTPException(status_code=404, detail=f"Order OID {order_id} not found.")
+        logger.error(f"Hyperliquid service error for user {current_user.id} getting order status for OID {order_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error for user {current_user.id} getting Hyperliquid order status for OID {order_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An unexpected error occurred.")

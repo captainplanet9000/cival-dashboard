@@ -56,11 +56,11 @@ AlertLevel = Literal["INFO", "WARNING", "ERROR", "CRITICAL"]
 
 class AlertEvent(BaseEvent):
     event_type: Literal["AlertEvent"] = Field(default="AlertEvent", description="The fixed type for alert events.")
-    
+
     alert_level: AlertLevel = Field(..., description="Severity level of the alert (e.g., INFO, WARNING, ERROR, CRITICAL).")
     message: str = Field(..., description="A human-readable message describing the alert.")
     details: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Optional dictionary for structured data related to the alert.")
-    
+
     # source_id from BaseEvent can be used to indicate the component generating the alert,
     # e.g., "TradingCoordinator", "SimulatedTradeExecutor", or a specific strategy_id/agent_id.
 

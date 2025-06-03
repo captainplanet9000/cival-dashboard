@@ -34,9 +34,9 @@ class HyperliquidExecutionServiceError(Exception):
     pass
 
 class HyperliquidExecutionService:
-    def __init__(self, 
-                 wallet_address: str, 
-                 private_key: str, 
+    def __init__(self,
+                 wallet_address: str,
+                 private_key: str,
                  api_url: Optional[str] = None, # Defaults to mainnet if None
                  network_mode: Literal["mainnet", "testnet"] = "mainnet"
                 ):
@@ -44,7 +44,7 @@ class HyperliquidExecutionService:
             raise HyperliquidExecutionServiceError("Hyperliquid SDK or eth_account not installed/imported correctly.")
 
         self.private_key = private_key # Store for creating account object
-        
+
         try:
             # Create an eth_account object from the private key
             # Account.enable_unaudited_hdwallet_features() # May not be needed for from_key
@@ -60,14 +60,14 @@ class HyperliquidExecutionService:
                 f"Provided wallet_address {wallet_address} does not match address "
                 f"derived from private_key {self.wallet_address}. Using derived address."
             )
-        
+
         self.api_url = api_url or (HL_CONSTANTS.MAINNET_API_URL if network_mode == "mainnet" else HL_CONSTANTS.TESTNET_API_URL)
-        
+
         try:
             self.info_client = Info(self.api_url, skip_ws=True)
             # The Hyperliquid SDK's Exchange class constructor takes an eth_account object as the first argument (the signer).
-            self.exchange_client = Exchange(self.account, self.api_url) 
-            
+            self.exchange_client = Exchange(self.account, self.api_url)
+
             logger.info(f"HyperliquidExecutionService initialized for wallet {self.wallet_address} on {self.api_url}.")
             logger.info("Successfully initialized Hyperliquid Info and Exchange SDK clients.")
         except Exception as e:
@@ -91,18 +91,18 @@ class HyperliquidExecutionService:
         logger.info(f"Fetching user state for address: {user_address}")
         if not self.info_client:
             raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
-        
+
         try:
             # The SDK's info.user_state() is a synchronous method.
             # To call it from an async method, run it in an executor.
             loop = asyncio.get_event_loop()
             user_state_data = await loop.run_in_executor(None, self.info_client.user_state, user_address)
-            
+
             if user_state_data:
                 logger.debug(f"Successfully fetched user state for {user_address}.")
                 # The user_state_data is a complex dictionary.
                 # For now, return it directly. Later, it can be mapped to Pydantic models (e.g., HyperliquidAccountSummary).
-                return user_state_data 
+                return user_state_data
             else:
                 logger.warning(f"No user state data returned for {user_address}.")
                 return {} # Return empty dict if no data
@@ -116,7 +116,7 @@ class HyperliquidExecutionService:
         Places an order on Hyperliquid using the Exchange client.
         """
         logger.info(f"Placing Hyperliquid order for asset {order_params.asset}: Buy={order_params.is_buy}, Size={order_params.sz}, LimitPx={order_params.limit_px}, Type={order_params.order_type}")
-        
+
         if not self.exchange_client:
             logger.error("Hyperliquid Exchange client not initialized. Cannot place order.")
             # This should ideally not happen if __init__ succeeded.
@@ -127,7 +127,7 @@ class HyperliquidExecutionService:
             # The Hyperliquid SDK's exchange.order method is synchronous.
             # Call it in an executor from this async service method.
             loop = asyncio.get_event_loop()
-            
+
             # Ensure cloid is passed as str if SDK expects str, or UUID if it handles it.
             # SDK docs/examples show cloid as optional and can be UUID.
             cloid_to_pass = order_params.cloid if order_params.cloid else None
@@ -139,12 +139,12 @@ class HyperliquidExecutionService:
             # Corrected call to reflect typical SDK signature for order placement
             # The `order_type` field in `HyperliquidPlaceOrderParams` is already the `order_type_info` dict.
             # The `reduce_only` field is also in `HyperliquidPlaceOrderParams`.
-            
+
             # The SDK's `order` method returns a dictionary like:
             # {'status': 'ok', 'response': {'type': 'order', 'data': {'statuses': [{'resting': {'oid': 12345}}, ...]}}}
             # or {'status': 'error', 'error': 'message'}
             # We need to parse this to fit HyperliquidOrderResponseData.
-            
+
             sdk_response_dict = await loop.run_in_executor(
                 None,
                 lambda: self.exchange_client.order(
@@ -169,7 +169,7 @@ class HyperliquidExecutionService:
                     first_status_info = statuses[0]
                     order_status_key = next(iter(first_status_info)) # e.g., "resting"
                     oid_info = first_status_info[order_status_key]
-                    
+
                     parsed_response = HyperliquidOrderResponseData(
                         status=order_status_key, # "resting", "filled", etc.
                         oid=oid_info.get("oid") if isinstance(oid_info, dict) else None,
@@ -214,9 +214,9 @@ class HyperliquidExecutionService:
                 None,
                 lambda: self.exchange_client.cancel(coin=asset, oid=oid)
             )
-            
+
             logger.info(f"Hyperliquid SDK cancel_order response for OID {oid}: {sdk_response}")
-            
+
             # The SDK's cancel typically returns a dict like:
             # {'status': 'ok', 'response': {'type': 'cancel', 'data': {'statuses': ['success']}}}
             # or {'status': 'error', 'error': 'reason'}
@@ -282,7 +282,7 @@ class HyperliquidExecutionService:
                 if isinstance(sdk_response, dict) and "error" in sdk_response:
                      raise HyperliquidExecutionServiceError(f"Hyperliquid API error: {sdk_response['error']}")
                 raise HyperliquidExecutionServiceError("Unexpected response structure for order status.")
-        
+
         except HyperliquidExecutionServiceError:
             raise
         except Exception as e:
@@ -297,7 +297,7 @@ class HyperliquidExecutionService:
         if user_address.lower() != self.wallet_address.lower():
             logger.warning(f"Request for account summary of {user_address} but service is for {self.wallet_address}.")
             # Potentially raise error or return None based on desired security/behavior for this method
-        
+
         user_state_raw = await self.get_user_state(user_address)
         if not user_state_raw:
             logger.warning(f"No raw user state data returned for {user_address} to build account summary.")
@@ -306,12 +306,12 @@ class HyperliquidExecutionService:
         try:
             # --- Parse Positions ---
             parsed_positions: List[HyperliquidAssetPosition] = []
-            raw_asset_contexts = user_state_raw.get("assetPositions") 
+            raw_asset_contexts = user_state_raw.get("assetPositions")
             if isinstance(raw_asset_contexts, list):
                 for asset_context in raw_asset_contexts:
                     if isinstance(asset_context, dict) and "position" in asset_context and isinstance(asset_context["position"], dict):
                         pos_data = asset_context["position"]
-                        pos_data["asset"] = asset_context.get("asset") 
+                        pos_data["asset"] = asset_context.get("asset")
                         if pos_data.get("szi") != "0": # Only include if size is not zero
                              parsed_positions.append(HyperliquidAssetPosition(**pos_data))
 
@@ -328,7 +328,7 @@ class HyperliquidExecutionService:
                             "limit_px": order_data.get("limitPx"),
                             "sz": order_data.get("sz"),
                             "timestamp": order_data.get("timestamp"),
-                            "raw_order_data": order_data 
+                            "raw_order_data": order_data
                         }
                         if all(mapped_order_data.get(k) is not None for k in ["oid", "asset", "side", "limit_px", "sz", "timestamp"]):
                             parsed_open_orders.append(HyperliquidOpenOrderItem(**mapped_order_data))
@@ -336,18 +336,18 @@ class HyperliquidExecutionService:
                             logger.warning(f"Skipping open order due to missing fields: {order_data}")
 
             snapshot_timestamp_ms = user_state_raw.get("time", int(datetime.now(timezone.utc).timestamp() * 1000))
-            margin_summary_data = user_state_raw.get("crossMarginSummary", {}) 
-            if not margin_summary_data and "spotMarginSummary" in user_state_raw: 
+            margin_summary_data = user_state_raw.get("crossMarginSummary", {})
+            if not margin_summary_data and "spotMarginSummary" in user_state_raw:
                 margin_summary_data = user_state_raw.get("spotMarginSummary", {})
 
             account_snapshot = HyperliquidAccountSnapshot(
-                time=snapshot_timestamp_ms, 
-                totalRawUsd=margin_summary_data.get("totalRawUsd", "0"), 
-                total_pnl_usd_str=margin_summary_data.get("totalNtlPos", "0"), 
+                time=snapshot_timestamp_ms,
+                totalRawUsd=margin_summary_data.get("totalRawUsd", "0"),
+                total_pnl_usd_str=margin_summary_data.get("totalNtlPos", "0"),
                 parsed_positions=parsed_positions,
                 parsed_open_orders=parsed_open_orders
             )
-            
+
             logger.info(f"Successfully parsed account snapshot for {user_address}. Positions: {len(parsed_positions)}, Open Orders: {len(parsed_open_orders)}.")
             return account_snapshot
 

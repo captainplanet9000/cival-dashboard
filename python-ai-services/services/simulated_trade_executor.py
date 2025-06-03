@@ -9,13 +9,13 @@ from logging import getLogger
 import pandas as pd
 
 # Import the new Pydantic models and enums
-from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperPosition 
+from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperPosition
 from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType, OrderStatus as PaperOrderStatus, TradeRecord, OrderType as TradingHistoryOrderType, OrderStatus as TradingHistoryOrderStatus
 # Import market data tool
 from ..tools.market_data_tools import get_historical_price_data_tool
-import uuid 
+import uuid
 from typing import Callable # For strategy_function type hint
-from .event_service import EventService 
+from .event_service import EventService
 from ..models.event_models import AlertEvent, AlertLevel # Added
 import asyncio # Added for event publishing from async methods
 
@@ -33,7 +33,7 @@ class SimulatedTradeExecutor:
         except Exception as e:
             logger.error(f"Error initializing Supabase client in SimulatedTradeExecutor: {e}", exc_info=True)
             raise ValueError(f"Error initializing Supabase client in SimulatedTradeExecutor: {e}")
-        
+
         self.event_service = event_service
         if self.event_service:
             logger.info("SimulatedTradeExecutor initialized with EventService.")
@@ -61,7 +61,7 @@ class SimulatedTradeExecutor:
                 .eq("exchange", "PAPER_BACKTEST") \
                 .order("created_at", desc=True) \
                 .execute()
-            
+
             if response.data:
                 return [TradeRecord(**order_data) for order_data in response.data]
             return []
@@ -75,26 +75,26 @@ class SimulatedTradeExecutor:
         Fetches a small window of market data around a specific time for fill simulation.
         For simplicity, fetches 1-minute interval data.
         """
-        start_dt = around_time - timedelta(minutes=window_minutes) 
-        end_dt = around_time + timedelta(minutes=window_minutes)   
-        
+        start_dt = around_time - timedelta(minutes=window_minutes)
+        end_dt = around_time + timedelta(minutes=window_minutes)
+
         start_date_str = start_dt.strftime("%Y-%m-%d")
         # Add a day to end_date_str to ensure the window around `around_time` is fully covered,
         # especially if `around_time` is near end of day.
-        end_date_str = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d") 
-        
+        end_date_str = (end_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+
         logger.debug(f"Fetching 1m data for {symbol} from {start_date_str} to {end_date_str} (effective window around {around_time})")
         historical_data_df = get_historical_price_data_tool( # Renamed variable for clarity
             symbol=symbol,
             start_date=start_date_str,
             end_date=end_date_str,
-            interval="1m", 
-            provider="yfinance" 
+            interval="1m",
+            provider="yfinance"
         )
         if historical_data_df is None or historical_data_df.empty:
             logger.warning(f"Could not fetch 1m market data for {symbol} around {around_time}")
             return None
-        
+
         if not isinstance(historical_data_df.index, pd.DatetimeIndex):
             try:
                 historical_data_df.index = pd.to_datetime(historical_data_df.index, utc=True) # Assume UTC if not already
@@ -111,18 +111,18 @@ class SimulatedTradeExecutor:
         historical_data_df.sort_index(inplace=True)
         return historical_data_df
 
-    async def submit_paper_order(self, order: PaperTradeOrder, 
-                                 simulated_commission_pct: float = 0.001 
+    async def submit_paper_order(self, order: PaperTradeOrder,
+                                 simulated_commission_pct: float = 0.001
                                 ) -> Tuple[PaperTradeOrder, List[PaperTradeFill]]:
         """
         Simulates the execution of a paper trade order.
         """
         logger.info(f"Simulating paper order {order.order_id} for {order.quantity} {order.symbol} {order.side.value} @ {order.order_type.value}")
-        
+
         fills: List[PaperTradeFill] = []
-        
+
         order_time_utc = order.order_request_timestamp.astimezone(timezone.utc) if order.order_request_timestamp.tzinfo else order.order_request_timestamp.replace(tzinfo=timezone.utc)
-        
+
         market_data = await self._get_market_data_for_fill(order.symbol, order_time_utc)
 
         if market_data is None or market_data.empty:
@@ -130,7 +130,7 @@ class SimulatedTradeExecutor:
             order.notes = (order.notes or "") + " Failed: No market data available for simulation period."
             logger.warning(f"Order {order.order_id} rejected due to no market data for {order.symbol}")
             return order, fills
-        
+
         relevant_data = market_data[market_data.index > order_time_utc] # Data strictly after order request
 
         if relevant_data.empty:
@@ -148,7 +148,7 @@ class SimulatedTradeExecutor:
             # Ensure 'Open' column exists after market_data_tools processing (it should)
             if 'Open' in fill_bar and not pd.isna(fill_bar['Open']):
                 fill_price = fill_bar['Open']
-                fill_timestamp = fill_bar.name 
+                fill_timestamp = fill_bar.name
                 logger.info(f"Market order {order.order_id}: attempting fill at next bar open: {fill_price} on {fill_timestamp}")
             else:
                 logger.warning(f"Market order {order.order_id}: 'Open' price missing or NaN in fill bar {fill_bar.name}. Cannot fill.")
@@ -168,7 +168,7 @@ class SimulatedTradeExecutor:
                         # If bar opens below limit, fill at open (better price for buyer, but less likely for pure limit).
                         # Standard limit fill: at limit_price or better.
                         # Simplification: fill at limit_price if Low <= limit_price.
-                        fill_price = order.limit_price 
+                        fill_price = order.limit_price
                         fill_timestamp = idx_timestamp
                         logger.info(f"BUY Limit order {order.order_id}: hit at {fill_price} on {fill_timestamp} (bar low: {bar['Low']})")
                         break
@@ -178,13 +178,13 @@ class SimulatedTradeExecutor:
                         fill_timestamp = idx_timestamp
                         logger.info(f"SELL Limit order {order.order_id}: hit at {fill_price} on {fill_timestamp} (bar high: {bar['High']})")
                         break
-            
-            if fill_price is None: 
+
+            if fill_price is None:
                 order.notes = (order.notes or "") + " Info: Limit price not reached in simulation window."
                 logger.info(f"Limit order {order.order_id} for {order.symbol}: limit price {order.limit_price} not reached.")
                 # Status remains NEW or could be considered EXPIRED depending on TIF logic (not implemented here)
                 return order, fills
-        else: 
+        else:
             order.status = PaperOrderStatus.REJECTED
             order.notes = (order.notes or "") + f" Failed: Order type '{order.order_type.value}' not supported by simulator."
             logger.warning(f"Order {order.order_id} for {order.symbol}: type {order.order_type.value} not supported.")
@@ -192,7 +192,7 @@ class SimulatedTradeExecutor:
 
         if fill_price is not None and fill_timestamp is not None:
             sim_commission = round(order.quantity * fill_price * simulated_commission_pct, 4)
-            
+
             # Convert pd.Timestamp to python datetime, ensure UTC
             py_fill_timestamp = fill_timestamp.to_pydatetime()
             if py_fill_timestamp.tzinfo is None:
@@ -207,9 +207,9 @@ class SimulatedTradeExecutor:
                 side=order.side,
                 fill_timestamp=py_fill_timestamp,
                 price=fill_price,
-                quantity=order.quantity, 
+                quantity=order.quantity,
                 commission=sim_commission,
-                commission_asset="USD", 
+                commission_asset="USD",
                 fill_notes=f"Simulated fill for order {order.order_id}"
             )
             fills.append(fill)
@@ -242,14 +242,14 @@ class SimulatedTradeExecutor:
                 message=f"Paper trade order REJECTED for {order.symbol}.",
                 details={"order_id": str(order.order_id), "symbol": order.symbol, "reason": order.notes}
             )
-        
+
         if alert_to_publish and self.event_service:
             try:
                 await self.event_service.publish_event(alert_to_publish, channel="alert_events")
                 logger.info(f"Published {alert_to_publish.alert_level.value} alert for order {order.order_id}")
             except Exception as e_pub:
                 logger.error(f"Failed to publish alert for order {order.order_id}: {e_pub}", exc_info=True)
-                
+
         return order, fills
 
     async def cancel_paper_order(self, user_id: uuid.UUID, order_id: uuid.UUID) -> PaperTradeOrder:
@@ -289,7 +289,7 @@ class SimulatedTradeExecutor:
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "notes": (trade_record_data.get("notes") or "") + " [User Canceled]"
         }
-        
+
         # Use the primary key of trading_history table, which is 'trade_id' (or 'id' if that's the case)
         # Assuming 'trade_id' is the primary key based on previous log_simulated_trade and _log_paper_trade_to_history.
         # If 'id' is the PK, this should be 'id'. Let's assume 'trade_id' for now as per typical DB naming.
@@ -315,7 +315,7 @@ class SimulatedTradeExecutor:
             raise Exception(f"Failed to cancel order {order_id}: {err_msg}")
 
         logger.info(f"Paper order {order_id} for user {user_id} successfully canceled.")
-        
+
         updated_trade_record = TradeRecord(**update_response.data[0])
 
         if self.event_service:
@@ -330,7 +330,7 @@ class SimulatedTradeExecutor:
                 logger.info(f"Published CANCELED alert for order {order_id}")
             except Exception as e_pub:
                 logger.error(f"Failed to publish CANCELED alert for order {order_id}: {e_pub}", exc_info=True)
-        
+
         return PaperTradeOrder(
             order_id=uuid.UUID(updated_trade_record.order_id),
             user_id=updated_trade_record.user_id,
@@ -352,7 +352,7 @@ class SimulatedTradeExecutor:
         logger.warning("execute_trade method is legacy, consider using submit_paper_order.")
         print(f"SIMULATED TRADE EXECUTION for Agent {agent_id}: {direction} {quantity} {symbol} @ {price}")
 
-        if price is None or price <= 0: 
+        if price is None or price <= 0:
             print(f"Trade for {symbol} aborted due to invalid price: {price}")
             self.log_simulated_trade(agent_id, symbol, direction, quantity, price, 'failed', "Invalid market price for execution", strategy_id, None)
             return {"status": "failed", "reason": "Invalid market price"}
@@ -373,7 +373,7 @@ class SimulatedTradeExecutor:
             return {"status": "failed", "reason": "Agent wallet not found"}
         
         wallet = wallet_resp.data
-        current_balance = Decimal(str(wallet['balance'])) 
+        current_balance = Decimal(str(wallet['balance']))
         wallet_currency = wallet['currency']
         wallet_status = wallet['status']
 
@@ -399,7 +399,7 @@ class SimulatedTradeExecutor:
         if hasattr(update_resp, 'error') and update_resp.error is not None:
             has_error = True
             error_message = update_resp.error.message if hasattr(update_resp.error, 'message') else str(update_resp.error)
-        
+
         if has_error:
              print(f"Error updating wallet balance for {agent_wallet_id}: {error_message}")
              self.log_simulated_trade(agent_id, symbol, direction, quantity, price, 'failed', "Wallet balance update failed", strategy_id, None)
@@ -410,7 +410,7 @@ class SimulatedTradeExecutor:
                 "source_wallet_id": agent_wallet_id, 
                 "amount": float(required_capital),
                 "currency": wallet_currency,
-                "type": "trade_settlement", 
+                "type": "trade_settlement",
                 "status": "completed",
                 "description": f"Simulated BUY {quantity} {symbol} @ {price} for agent {agent_id}"
             }
@@ -474,13 +474,13 @@ class SimulatedTradeExecutor:
     async def _create_paper_position(self, position: PaperPosition) -> PaperPosition:
         """Creates a new paper position record in the database."""
         try:
-            position.last_modified_at = datetime.now(timezone.utc) 
+            position.last_modified_at = datetime.now(timezone.utc)
             # Use model_dump for Pydantic v2, exclude_none=True is good practice
             response = await self.supabase.table("paper_positions") \
                 .insert(position.model_dump(exclude_none=True)) \
                 .select("*") \
                 .execute()
-            
+
             if response.data and len(response.data) > 0:
                 logger.info(f"Paper position created: User {position.user_id}, Symbol {position.symbol}, Qty {position.quantity}")
                 return PaperPosition(**response.data[0])
@@ -498,7 +498,7 @@ class SimulatedTradeExecutor:
             position.last_modified_at = datetime.now(timezone.utc)
             # Exclude primary key parts and fields that shouldn't change on every update from here
             update_data = position.model_dump(exclude={'position_id', 'user_id', 'symbol', 'created_at'}, exclude_none=True)
-            
+
             response = await self.supabase.table("paper_positions") \
                 .update(update_data) \
                 .eq("position_id", str(position.position_id)) \
@@ -535,18 +535,18 @@ class SimulatedTradeExecutor:
         Creates, updates, or closes/deletes a position based on the fill.
         """
         logger.info(f"Applying fill {fill.fill_id} to position for User {fill.user_id}, Symbol {fill.symbol}, Side {fill.side.value}, Qty {fill.quantity}, Price {fill.price}")
-        
+
         existing_position = await self._get_paper_position(fill.user_id, fill.symbol)
-        
+
         # Determine the change in quantity based on trade side
         signed_fill_quantity = fill.quantity if fill.side == TradeSide.BUY else -fill.quantity
-        
+
         if existing_position is None:
             # New position
             if signed_fill_quantity == 0: # Should be caught by PaperTradeFill validation (quantity > 0)
                  logger.warning(f"Fill quantity is zero for new position {fill.symbol}. No position created.")
                  return None # Or raise error, as fill quantity should be > 0
-            
+
             new_position = PaperPosition(
                 user_id=fill.user_id,
                 symbol=fill.symbol,
@@ -560,22 +560,22 @@ class SimulatedTradeExecutor:
             # Update existing position
             current_total_value_of_position = existing_position.quantity * existing_position.average_entry_price
             value_of_fill = signed_fill_quantity * fill.price
-            
+
             updated_quantity = existing_position.quantity + signed_fill_quantity
-            
-            if abs(updated_quantity) < 1e-9: 
-                updated_quantity = 0.0 
+
+            if abs(updated_quantity) < 1e-9:
+                updated_quantity = 0.0
 
             if updated_quantity == 0:
                 logger.info(f"Paper position for {fill.symbol} (ID: {existing_position.position_id}) closed by fill {fill.fill_id}. Quantity becomes zero.")
                 await self._delete_paper_position(existing_position.position_id)
-                
+
                 alert_closed = AlertEvent(
                     source_id=f"SimulatedTradeExecutor_Position_{existing_position.position_id}",
                     alert_level=AlertLevel.INFO,
                     message=f"Paper position CLOSED for {fill.symbol}.",
                     details={
-                        "position_id": str(existing_position.position_id), "symbol": fill.symbol, 
+                        "position_id": str(existing_position.position_id), "symbol": fill.symbol,
                         "closing_fill_id": str(fill.fill_id),
                         # TODO: Add realized P&L to details when available
                     }
@@ -586,14 +586,14 @@ class SimulatedTradeExecutor:
                         logger.info(f"Published position CLOSED alert for {fill.symbol}, pos_id {existing_position.position_id}")
                     except Exception as e_pub:
                         logger.error(f"Failed to publish position CLOSED alert for {fill.symbol}: {e_pub}", exc_info=True)
-                return None 
-            
+                return None
+
             # If signs are different (position flipped) or if adding to a position in the same direction
             if (existing_position.quantity > 0 and signed_fill_quantity > 0) or \
                (existing_position.quantity < 0 and signed_fill_quantity < 0) or \
                (existing_position.quantity > 0 and updated_quantity < 0) or \
                (existing_position.quantity < 0 and updated_quantity > 0): # Adding to position or flipping
-                
+
                 if (existing_position.quantity > 0 and updated_quantity < 0) or \
                    (existing_position.quantity < 0 and updated_quantity > 0): # Position flipped
                     logger.info(f"Position for {fill.symbol} (ID: {existing_position.position_id}) flipped by fill {fill.fill_id}.")
@@ -602,10 +602,10 @@ class SimulatedTradeExecutor:
                     existing_position.average_entry_price = fill.price
                 else: # Adding to existing position in the same direction
                     updated_avg_price = (current_total_value_of_position + value_of_fill) / updated_quantity
-                    existing_position.average_entry_price = round(updated_avg_price, 8) 
+                    existing_position.average_entry_price = round(updated_avg_price, 8)
             # If reducing position size (but not closing or flipping), average_entry_price typically remains unchanged.
             # Realized P&L for the reduced part would be calculated elsewhere based on this avg_entry_price.
-            
+
             existing_position.quantity = round(updated_quantity, 8) # Round final quantity
             logger.info(f"Updating paper position for {fill.symbol} (ID: {existing_position.position_id}): New Qty {existing_position.quantity}, New AvgPrice {existing_position.average_entry_price}")
             return await self._update_paper_position_record(existing_position)
@@ -619,11 +619,11 @@ class SimulatedTradeExecutor:
         # or consider running in executor if it becomes IO bound significantly.
         # For now, direct call.
         from ..tools.market_data_tools import get_current_quote_tool # Ensure it's in scope
-        
-        quote_data = get_current_quote_tool(symbol=symbol, provider="yfinance") 
-        if quote_data and isinstance(quote_data.get("last_price"), (float, int)): 
+
+        quote_data = get_current_quote_tool(symbol=symbol, provider="yfinance")
+        if quote_data and isinstance(quote_data.get("last_price"), (float, int)):
             return float(quote_data["last_price"])
-        elif quote_data and isinstance(quote_data.get("price"), (float, int)): 
+        elif quote_data and isinstance(quote_data.get("price"), (float, int)):
             return float(quote_data["price"])
         elif quote_data and isinstance(quote_data.get("close"), (float, int)): # Some providers might use 'close' for latest
              return float(quote_data["close"])
@@ -631,16 +631,16 @@ class SimulatedTradeExecutor:
         return None
 
     async def calculate_paper_portfolio_valuation(
-        self, 
+        self,
         user_id: uuid.UUID,
-        current_cash_balance: float 
+        current_cash_balance: float
     ) -> Dict[str, Any]:
         """
         Calculates the current valuation of a user's paper trading portfolio,
         including current value of open positions and unrealized P&L.
         """
         logger.info(f"Calculating paper portfolio valuation for user {user_id}")
-        
+
         open_positions_details = []
         total_positions_market_value = 0.0
         total_unrealized_pnl = 0.0
@@ -650,14 +650,14 @@ class SimulatedTradeExecutor:
                 .select("*") \
                 .eq("user_id", str(user_id)) \
                 .execute()
-            
+
             open_positions: List[PaperPosition] = []
             if response.data:
                 open_positions = [PaperPosition(**pos_data) for pos_data in response.data]
 
             if not open_positions:
                 logger.info(f"No open paper positions found for user {user_id}.")
-            
+
             for pos in open_positions:
                 current_price = await self.get_current_market_price(pos.symbol)
                 position_detail = {
@@ -674,7 +674,7 @@ class SimulatedTradeExecutor:
                     market_value = pos.quantity * current_price
                     position_detail["current_market_value"] = round(market_value, 2)
                     total_positions_market_value += market_value
-                    
+
                     unrealized_pnl_for_pos = (current_price - pos.average_entry_price) * pos.quantity
                     position_detail["unrealized_pnl"] = round(unreal_pnl_for_pos, 2)
                     total_unrealized_pnl += unrealized_pnl_for_pos
@@ -684,7 +684,7 @@ class SimulatedTradeExecutor:
                 open_positions_details.append(position_detail)
 
             total_portfolio_value = current_cash_balance + total_positions_market_value
-            
+
             return {
                 "user_id": str(user_id),
                 "current_cash_balance": round(current_cash_balance, 2),
@@ -702,11 +702,11 @@ class SimulatedTradeExecutor:
             raise Exception(f"Database or calculation error during portfolio valuation: {str(e)}")
 
     async def calculate_realized_pnl_for_trades(
-        self, 
-        user_id: uuid.UUID, 
-        trade_ids: Optional[List[uuid.UUID]] = None, 
-        symbol_filter: Optional[str] = None, 
-        start_date_filter: Optional[datetime] = None, 
+        self,
+        user_id: uuid.UUID,
+        trade_ids: Optional[List[uuid.UUID]] = None,
+        symbol_filter: Optional[str] = None,
+        start_date_filter: Optional[datetime] = None,
         end_date_filter: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """
@@ -714,16 +714,16 @@ class SimulatedTradeExecutor:
         This is a simplified version. True P&L requires careful matching of buy/sell fills.
         """
         logger.info(f"Calculating realized P&L for user {user_id}, trades: {trade_ids}, symbol: {symbol_filter}, period: {start_date_filter}-{end_date_filter}")
-        
+
         logger.warning("calculate_realized_pnl_for_trades is a conceptual placeholder and does not perform full P&L calculation yet.")
-        
+
         # Placeholder logic. A real implementation would query 'paper_trade_fills' or a dedicated 'realized_trades' table,
         # group by symbol, and apply FIFO/LIFO or average cost basis accounting for closing trades.
         # For now, it returns a conceptual structure.
-        
+
         return {
             "user_id": str(user_id),
-            "total_realized_pnl": 0.00, 
+            "total_realized_pnl": 0.00,
             "calculation_status": "Placeholder - Full P&L logic not yet implemented.",
             "number_of_trades_considered": 0, # Placeholder
             "filters_applied": {
@@ -736,14 +736,14 @@ class SimulatedTradeExecutor:
 
     # --- Historical Paper Trading Backtesting System ---
 
-    async def _log_paper_trade_to_history(self, order: PaperTradeOrder, fill: Optional[PaperTradeFill] = None, 
-                                         strategy_id: Optional[uuid.UUID] = None, 
+    async def _log_paper_trade_to_history(self, order: PaperTradeOrder, fill: Optional[PaperTradeFill] = None,
+                                         strategy_id: Optional[uuid.UUID] = None,
                                          agent_id: Optional[uuid.UUID] = None) -> Optional[TradeRecord]:
         """
         Logs a paper trade order and its fill (if any) to the 'trading_history' table.
         """
         logger.info(f"Logging paper order {order.order_id} to trading_history. Status: {order.status.value}")
-        
+
         # Map PaperOrderStatus to TradingHistoryOrderStatus
         history_status_map = {
             PaperOrderStatus.NEW: TradingHistoryOrderStatus.NEW,
@@ -759,27 +759,27 @@ class SimulatedTradeExecutor:
         # Map PaperOrderType to TradingHistoryOrderType (they might be identical but aliased)
         # For this example, assume direct value mapping is okay if enums are compatible.
         # If PaperOrderType and TradingHistoryOrderType are structurally different, specific mapping needed.
-        history_order_type = order.order_type.value 
+        history_order_type = order.order_type.value
 
         trade_record_payload = {
             "user_id": order.user_id,
-            "agent_id": getattr(order, 'agent_id', None) or agent_id, 
-            "strategy_id": getattr(order, 'strategy_id', None) or strategy_id, 
+            "agent_id": getattr(order, 'agent_id', None) or agent_id,
+            "strategy_id": getattr(order, 'strategy_id', None) or strategy_id,
             "symbol": order.symbol,
-            "exchange": "PAPER_BACKTEST", 
-            "order_id": str(order.order_id), 
-            "side": order.side.value, 
+            "exchange": "PAPER_BACKTEST",
+            "order_id": str(order.order_id),
+            "side": order.side.value,
             "order_type": history_order_type, # Use mapped/original value
             "status": history_status.value,
             "quantity_ordered": order.quantity,
             "quantity_filled": 0.0,
-            "price": None, 
+            "price": None,
             "limit_price": order.limit_price,
             "stop_price": order.stop_price,
             "commission": None,
             "commission_asset": None,
-            "created_at": order.order_request_timestamp, 
-            "updated_at": datetime.now(timezone.utc), 
+            "created_at": order.order_request_timestamp,
+            "updated_at": datetime.now(timezone.utc),
             "filled_at": None,
             "notes": f"Paper Trade (Backtest): {order.notes or ''}".strip(),
             "metadata": {"source": "paper_backtest", "time_in_force": order.time_in_force}
@@ -791,14 +791,14 @@ class SimulatedTradeExecutor:
             trade_record_payload["commission"] = fill.commission
             trade_record_payload["commission_asset"] = fill.commission_asset
             trade_record_payload["filled_at"] = fill.fill_timestamp
-            trade_record_payload["updated_at"] = fill.fill_timestamp 
+            trade_record_payload["updated_at"] = fill.fill_timestamp
 
         try:
             response = await self.supabase.table("trading_history") \
                 .insert(trade_record_payload) \
                 .select("*") \
                 .execute()
-            
+
             if response.error:
                 err_msg = response.error.message
                 logger.error(f"Supabase error logging paper trade {order.order_id} to trading_history: {err_msg}")
@@ -816,7 +816,7 @@ class SimulatedTradeExecutor:
     async def run_historical_paper_backtest(
         self,
         user_id: uuid.UUID,
-        strategy_signal_func: Callable, 
+        strategy_signal_func: Callable,
         strategy_params: Dict[str, Any],
         symbol: str,
         start_date: str,
@@ -824,7 +824,7 @@ class SimulatedTradeExecutor:
         initial_cash: float,
         trade_quantity: float = 1.0, # Fixed quantity per trade for this simplified backtester
         data_provider: str = "yfinance" # Allow provider to be specified
-    ) -> Dict[str, Any]: 
+    ) -> Dict[str, Any]:
         logger.info(f"Starting historical paper backtest for User {user_id}, Symbol {symbol}, Strategy {strategy_signal_func.__name__}")
         logger.info(f"Period: {start_date} to {end_date}, Initial Cash: {initial_cash}, Params: {strategy_params}")
 
@@ -833,7 +833,7 @@ class SimulatedTradeExecutor:
         if price_data_df_full is None or price_data_df_full.empty:
             logger.error("Failed to fetch historical data for backtest.")
             return {"error": "Failed to fetch historical data for backtest.", "performance": None, "trades": []}
-        
+
         if not all(col in price_data_df_full.columns for col in ['Open', 'High', 'Low', 'Close']): # Check for OHLC
             logger.error("Historical data must contain Open, High, Low, Close columns.")
             return {"error": "Historical data missing OHLC columns.", "performance": None, "trades": []}
@@ -841,20 +841,20 @@ class SimulatedTradeExecutor:
 
         # 2. Generate all signals for the period
         signal_func_result = strategy_signal_func(
-            symbol=symbol, start_date=start_date, end_date=end_date, 
+            symbol=symbol, start_date=start_date, end_date=end_date,
             data_provider=data_provider, **strategy_params
         )
-        
+
         signal_df: Optional[pd.DataFrame] = None
         if isinstance(signal_func_result, tuple) and len(signal_func_result) > 0:
             signal_df = signal_func_result[0] # Assuming first element is the signals DataFrame
         elif isinstance(signal_func_result, pd.DataFrame):
             signal_df = signal_func_result
-            
+
         if signal_df is None or signal_df.empty or not all(col in signal_df for col in ['entries', 'exits']):
             logger.error("Strategy failed to generate valid signals DataFrame with 'entries' and 'exits' columns.")
             return {"error": "Strategy failed to generate valid signals.", "performance": None, "trades": []}
-        
+
         # Ensure signal_df index is DatetimeIndex and UTC for proper joining
         if not isinstance(signal_df.index, pd.DatetimeIndex):
             signal_df.index = pd.to_datetime(signal_df.index, utc=True)
@@ -888,21 +888,21 @@ class SimulatedTradeExecutor:
                     side=TradeSide.SELL if current_position.quantity > 0 else TradeSide.BUY,
                     order_type=PaperOrderType.MARKET, quantity=abs(current_position.quantity),
                     order_request_timestamp=ts_utc )
-                
+
                 updated_order, fills = await self.submit_paper_order(exit_order)
                 logged_trade = await self._log_paper_trade_to_history(updated_order, fills[0] if fills else None, strategy_id=backtest_strategy_id)
                 if logged_trade: logged_trades.append(logged_trade)
-                
+
                 if updated_order.status == PaperOrderStatus.FILLED and fills:
                     fill = fills[0]
                     # P&L calculation simplified
                     if current_position.quantity > 0: # Long closed by sell
                         current_cash += fill.price * fill.quantity
                     else: # Short closed by buy
-                        current_cash -= fill.price * fill.quantity 
+                        current_cash -= fill.price * fill.quantity
                     current_cash -= fill.commission
                     logger.info(f"{ts_utc}: Position for {symbol} closed. Fill: {fill.price}x{fill.quantity}. Cash: {current_cash:.2f}")
-                    current_position = await self.apply_fill_to_position(fill) 
+                    current_position = await self.apply_fill_to_position(fill)
                 else:
                     logger.warning(f"{ts_utc}: Exit order for {symbol} {updated_order.status.value if updated_order else 'N/A'}: {updated_order.notes if updated_order else 'N/A'}")
 
@@ -913,7 +913,7 @@ class SimulatedTradeExecutor:
                     side=TradeSide.BUY, # Assuming 'entries' always means BUY for now
                     order_type=PaperOrderType.MARKET, quantity=trade_quantity,
                     order_request_timestamp=ts_utc)
-                
+
                 updated_order, fills = await self.submit_paper_order(entry_order)
                 logged_trade = await self._log_paper_trade_to_history(updated_order, fills[0] if fills else None, strategy_id=backtest_strategy_id)
                 if logged_trade: logged_trades.append(logged_trade)
@@ -921,16 +921,16 @@ class SimulatedTradeExecutor:
                 if updated_order.status == PaperOrderStatus.FILLED and fills:
                     fill = fills[0]
                     if entry_order.side == TradeSide.BUY:
-                         current_cash -= (fill.price * fill.quantity) 
+                         current_cash -= (fill.price * fill.quantity)
                     current_cash -= fill.commission
                     logger.info(f"{ts_utc}: Position for {symbol} opened. Fill: {fill.price}x{fill.quantity}. Cash: {current_cash:.2f}")
                     current_position = await self.apply_fill_to_position(fill)
                 else:
                      logger.warning(f"{ts_utc}: Entry order for {symbol} {updated_order.status.value if updated_order else 'N/A'}: {updated_order.notes if updated_order else 'N/A'}")
-            
+
         final_portfolio_valuation = await self.calculate_paper_portfolio_valuation(user_id, current_cash)
         logger.info(f"Historical paper backtest completed for User {user_id}, Symbol {symbol}.")
-        
+
         net_profit = final_portfolio_valuation.get('total_portfolio_value', initial_cash) - initial_cash
         return {
             "strategy_name": strategy_signal_func.__name__, "symbol": symbol,
@@ -946,14 +946,14 @@ class SimulatedTradeExecutor:
 
     # --- Historical Paper Trading Backtesting System ---
 
-    async def _log_paper_trade_to_history(self, order: PaperTradeOrder, fill: Optional[PaperTradeFill] = None, 
-                                         strategy_id: Optional[uuid.UUID] = None, 
+    async def _log_paper_trade_to_history(self, order: PaperTradeOrder, fill: Optional[PaperTradeFill] = None,
+                                         strategy_id: Optional[uuid.UUID] = None,
                                          agent_id: Optional[uuid.UUID] = None) -> Optional[TradeRecord]:
         """
         Logs a paper trade order and its fill (if any) to the 'trading_history' table.
         """
         logger.info(f"Logging paper order {order.order_id} to trading_history. Status: {order.status.value}")
-        
+
         history_status_map = {
             PaperOrderStatus.NEW: TradingHistoryOrderStatus.NEW,
             PaperOrderStatus.FILLED: TradingHistoryOrderStatus.FILLED,
@@ -968,23 +968,23 @@ class SimulatedTradeExecutor:
 
         trade_record_payload = {
             "user_id": order.user_id,
-            "agent_id": getattr(order, 'agent_id', None) or agent_id, 
-            "strategy_id": getattr(order, 'strategy_id', None) or strategy_id, 
+            "agent_id": getattr(order, 'agent_id', None) or agent_id,
+            "strategy_id": getattr(order, 'strategy_id', None) or strategy_id,
             "symbol": order.symbol,
-            "exchange": "PAPER_BACKTEST", 
-            "order_id": str(order.order_id), 
-            "side": order.side.value, 
+            "exchange": "PAPER_BACKTEST",
+            "order_id": str(order.order_id),
+            "side": order.side.value,
             "order_type": order.order_type.value, # This should be PaperOrderType, map to TradingHistoryOrderType if different
             "status": history_status.value,
             "quantity_ordered": order.quantity,
             "quantity_filled": 0.0,
-            "price": None, 
+            "price": None,
             "limit_price": order.limit_price,
             "stop_price": order.stop_price,
             "commission": None,
             "commission_asset": None,
-            "created_at": order.order_request_timestamp, 
-            "updated_at": datetime.now(timezone.utc), 
+            "created_at": order.order_request_timestamp,
+            "updated_at": datetime.now(timezone.utc),
             "filled_at": None,
             "notes": f"Paper Trade (Backtest): {order.notes or ''}".strip(),
             "metadata": {"source": "paper_backtest", "time_in_force": order.time_in_force}
@@ -996,7 +996,7 @@ class SimulatedTradeExecutor:
             trade_record_payload["commission"] = fill.commission
             trade_record_payload["commission_asset"] = fill.commission_asset
             trade_record_payload["filled_at"] = fill.fill_timestamp
-            trade_record_payload["updated_at"] = fill.fill_timestamp 
+            trade_record_payload["updated_at"] = fill.fill_timestamp
 
         try:
             response = await self.supabase.table("trading_history") \
@@ -1017,14 +1017,14 @@ class SimulatedTradeExecutor:
     async def run_historical_paper_backtest(
         self,
         user_id: uuid.UUID,
-        strategy_signal_func: Callable, 
+        strategy_signal_func: Callable,
         strategy_params: Dict[str, Any],
         symbol: str,
         start_date: str,
         end_date: str,
         initial_cash: float,
-        trade_quantity: float = 1.0 
-    ) -> Dict[str, Any]: 
+        trade_quantity: float = 1.0
+    ) -> Dict[str, Any]:
         logger.info(f"Starting historical paper backtest for User {user_id}, Symbol {symbol}, Strategy {strategy_signal_func.__name__}")
         logger.info(f"Period: {start_date} to {end_date}, Initial Cash: {initial_cash}, Params: {strategy_params}")
 
@@ -1033,7 +1033,7 @@ class SimulatedTradeExecutor:
         if price_data_df_full is None or price_data_df_full.empty:
             logger.error("Failed to fetch historical data for backtest.")
             return {"error": "Failed to fetch historical data for backtest.", "performance": None}
-        
+
         # Ensure Open prices are available for market order simulation
         if 'Open' not in price_data_df_full.columns:
             logger.error("'Open' column missing from historical data. Cannot simulate market orders accurately.")
@@ -1043,23 +1043,23 @@ class SimulatedTradeExecutor:
         # 2. Generate all signals for the period
         # The strategy_signal_func might return (signal_df, shapes_df) or just signal_df
         signal_func_result = strategy_signal_func(symbol=symbol, start_date=start_date, end_date=end_date, **strategy_params)
-        
+
         signal_df: Optional[pd.DataFrame] = None
         if isinstance(signal_func_result, tuple) and len(signal_func_result) > 0:
             signal_df = signal_func_result[0]
         elif isinstance(signal_func_result, pd.DataFrame):
             signal_df = signal_func_result
-            
+
         if signal_df is None or signal_df.empty or not all(col in signal_df for col in ['entries', 'exits']):
             logger.error("Strategy failed to generate valid signals DataFrame with 'entries' and 'exits' columns.")
             return {"error": "Strategy failed to generate valid signals.", "performance": None}
-        
+
         # Align signal_df index with price_data_df_full if they are not already
         # This is crucial. Assuming both are daily and can be merged/aligned on DateTimeIndex.
         # For simplicity, let's ensure price_data_df_full is used as the base for iteration.
         # We need to merge signals onto the main price data that has Open prices.
         # The signal_df usually carries the 'Close' price used for signal generation.
-        
+
         # Ensure signal_df index is DatetimeIndex if not already
         if not isinstance(signal_df.index, pd.DatetimeIndex):
             signal_df.index = pd.to_datetime(signal_df.index, utc=True)
@@ -1074,7 +1074,7 @@ class SimulatedTradeExecutor:
 
         current_cash = initial_cash
         current_position: Optional[PaperPosition] = None
-        backtest_strategy_id = uuid.uuid4() 
+        backtest_strategy_id = uuid.uuid4()
 
         for timestamp, row in loop_data.iterrows():
             # Ensure timestamp is timezone-aware (UTC)
@@ -1089,10 +1089,10 @@ class SimulatedTradeExecutor:
                     side=TradeSide.SELL if current_position.quantity > 0 else TradeSide.BUY,
                     order_type=PaperOrderType.MARKET, quantity=abs(current_position.quantity),
                     order_request_timestamp=ts_utc )
-                
+
                 updated_order, fills = await self.submit_paper_order(exit_order)
                 await self._log_paper_trade_to_history(updated_order, fills[0] if fills else None, strategy_id=backtest_strategy_id)
-                
+
                 if updated_order.status == PaperOrderStatus.FILLED and fills:
                     fill = fills[0]
                     pnl = 0
@@ -1102,7 +1102,7 @@ class SimulatedTradeExecutor:
                     else: # Was short, closed by buy
                         pnl = (current_position.average_entry_price - fill.price) * abs(fill.quantity)
                         current_cash -= fill.price * fill.quantity # Cost to buy back
-                    
+
                     current_cash -= fill.commission
                     logger.info(f"{ts_utc}: Position for {symbol} closed. Fill Price: {fill.price}. Realized P&L (approx): {pnl:.2f}. Cash: {current_cash:.2f}")
                     # apply_fill_to_position should handle deleting the position record
@@ -1117,7 +1117,7 @@ class SimulatedTradeExecutor:
                     side=TradeSide.BUY, # Assuming entries are BUY signals for now
                     order_type=PaperOrderType.MARKET, quantity=trade_quantity,
                     order_request_timestamp=ts_utc)
-                
+
                 updated_order, fills = await self.submit_paper_order(entry_order)
                 await self._log_paper_trade_to_history(updated_order, fills[0] if fills else None, strategy_id=backtest_strategy_id)
 
@@ -1135,7 +1135,7 @@ class SimulatedTradeExecutor:
 
         final_portfolio_valuation = await self.calculate_paper_portfolio_valuation(user_id, current_cash)
         logger.info(f"Historical paper backtest completed for User {user_id}, Symbol {symbol}.")
-        
+
         net_profit = final_portfolio_valuation.get('total_portfolio_value', initial_cash) - initial_cash
         return {
             "strategy_name": strategy_signal_func.__name__, "symbol": symbol,

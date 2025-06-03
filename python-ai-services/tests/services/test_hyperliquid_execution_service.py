@@ -23,7 +23,7 @@ from python_ai_services.models.hyperliquid_models import (
 # from eth_account import Account
 
 # --- Constants for Testing ---
-TEST_WALLET_ADDRESS = "0x0367C313f106A301207009ad699b816c5E8336e8" 
+TEST_WALLET_ADDRESS = "0x0367C313f106A301207009ad699b816c5E8336e8"
 TEST_PRIVATE_KEY = "0xde89f6b9febfddd494176bebac48610c8a5f34a8a1228251e206df22e6f2da16" # Test key
 # Note: HL_CONSTANTS.MAINNET_API_URL and HL_CONSTANTS.TESTNET_API_URL are used in service
 # We will mock HL_CONSTANTS directly if specific URL values are needed beyond what service already uses.
@@ -42,8 +42,8 @@ def mock_hyperliquid_sdk_info(mock_hl_constants): # Depends on mock_hl_constants
     """Mocks the hyperliquid.info.Info class."""
     with patch('python_ai_services.services.hyperliquid_execution_service.Info') as MockInfo:
         instance = MockInfo.return_value
-        instance.user_state = MagicMock() 
-        instance.order_status = MagicMock() 
+        instance.user_state = MagicMock()
+        instance.order_status = MagicMock()
         yield MockInfo
 
 @pytest_asyncio.fixture
@@ -51,8 +51,8 @@ def mock_hyperliquid_sdk_exchange(mock_hl_constants): # Depends on mock_hl_const
     """Mocks the hyperliquid.exchange.Exchange class."""
     with patch('python_ai_services.services.hyperliquid_execution_service.Exchange') as MockExchange:
         instance = MockExchange.return_value
-        instance.order = MagicMock() 
-        instance.cancel = MagicMock() 
+        instance.order = MagicMock()
+        instance.cancel = MagicMock()
         yield MockExchange
 
 @pytest_asyncio.fixture
@@ -68,8 +68,8 @@ def mock_eth_account():
 # Use all relevant fixtures for __init__ tests. mock_hl_constants is used by other fixtures.
 @pytest.mark.usefixtures("mock_hyperliquid_sdk_info", "mock_hyperliquid_sdk_exchange", "mock_eth_account", "mock_hl_constants")
 def test_hyperliquid_service_init_mainnet_success(
-    mock_eth_account: MagicMock, 
-    mock_hyperliquid_sdk_info: MagicMock, 
+    mock_eth_account: MagicMock,
+    mock_hyperliquid_sdk_info: MagicMock,
     mock_hyperliquid_sdk_exchange: MagicMock,
     mock_hl_constants: MagicMock
 ):
@@ -79,7 +79,7 @@ def test_hyperliquid_service_init_mainnet_success(
         network_mode="mainnet"
     )
     mock_eth_account.from_key.assert_called_once_with(TEST_PRIVATE_KEY)
-    assert service.wallet_address == TEST_WALLET_ADDRESS 
+    assert service.wallet_address == TEST_WALLET_ADDRESS
     mock_hyperliquid_sdk_info.assert_called_once_with(mock_hl_constants.MAINNET_API_URL, skip_ws=True)
     mock_hyperliquid_sdk_exchange.assert_called_once_with(mock_eth_account.from_key.return_value, mock_hl_constants.MAINNET_API_URL)
     assert service.info_client is not None
@@ -87,17 +87,17 @@ def test_hyperliquid_service_init_mainnet_success(
 
 @pytest.mark.usefixtures("mock_hyperliquid_sdk_info", "mock_hyperliquid_sdk_exchange", "mock_eth_account", "mock_hl_constants")
 def test_hyperliquid_service_init_testnet_with_url_override(
-    mock_eth_account: MagicMock, 
-    mock_hyperliquid_sdk_info: MagicMock, 
+    mock_eth_account: MagicMock,
+    mock_hyperliquid_sdk_info: MagicMock,
     mock_hyperliquid_sdk_exchange: MagicMock,
     mock_hl_constants: MagicMock # Though HL_CONSTANTS is mocked, api_url override means it's not used for URL selection
 ):
     custom_testnet_url = "https://custom.api.hyperliquid-testnet.xyz"
     service = HyperliquidExecutionService(
-        wallet_address=TEST_WALLET_ADDRESS, 
+        wallet_address=TEST_WALLET_ADDRESS,
         private_key=TEST_PRIVATE_KEY,
-        api_url=custom_testnet_url, 
-        network_mode="testnet" 
+        api_url=custom_testnet_url,
+        network_mode="testnet"
     )
     mock_hyperliquid_sdk_info.assert_called_once_with(custom_testnet_url, skip_ws=True)
     mock_hyperliquid_sdk_exchange.assert_called_once_with(mock_eth_account.from_key.return_value, custom_testnet_url)
@@ -123,12 +123,12 @@ def test_hyperliquid_service_init_sdk_not_installed_fully(MockInfo, MockExchange
 # We patch __init__ to None to prevent it from running its SDK setup logic,
 # allowing us to manually set up the mocks for info_client for this specific test.
 @patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
-async def test_get_user_state_success(): 
-    service = HyperliquidExecutionService("addr", "key") 
-    
-    service.info_client = MagicMock() 
+async def test_get_user_state_success():
+    service = HyperliquidExecutionService("addr", "key")
+
+    service.info_client = MagicMock()
     service.info_client.user_state = MagicMock(return_value={"totalRawUsd": "10000.00", "assetPositions": []})
-    service.wallet_address = TEST_WALLET_ADDRESS 
+    service.wallet_address = TEST_WALLET_ADDRESS
 
     user_state = await service.get_user_state(TEST_WALLET_ADDRESS)
 
@@ -148,7 +148,7 @@ async def test_get_user_state_sdk_exception():
         await service.get_user_state(TEST_WALLET_ADDRESS)
 
 # --- Placeholders for other method tests ---
-# test_cancel_order, test_get_order_status, 
+# test_cancel_order, test_get_order_status,
 # test_get_detailed_account_summary, test_get_all_open_positions, test_get_all_open_orders
 
 # --- Tests for place_order ---
@@ -159,20 +159,20 @@ async def test_place_order_success(mock_hl_init_bypass): # param name should be 
     # Arrange
     service = HyperliquidExecutionService("addr", "key") # Args don't matter
     service.exchange_client = MagicMock() # Mock the exchange client instance
-    
+
     order_params_data = HyperliquidPlaceOrderParams(
         asset="ETH", is_buy=True, sz=0.01, limit_px=2000.0,
         order_type={"limit": {"tif": "Gtc"}},
         cloid=uuid.uuid4()
     )
-    
+
     # Expected SDK response structure for a successful order placement
     sdk_success_response = {
         "status": "ok",
         "response": {
             "type": "order",
             "data": {
-                "statuses": [{"resting": {"oid": 12345}}] 
+                "statuses": [{"resting": {"oid": 12345}}]
             }
         }
     }
@@ -203,7 +203,7 @@ async def test_place_order_sdk_returns_error_status(mock_hl_init_bypass):
     service = HyperliquidExecutionService("addr", "key")
     service.exchange_client = MagicMock()
     order_params_data = HyperliquidPlaceOrderParams(asset="BTC", is_buy=False, sz=0.1, limit_px=30000.0, order_type={"limit": {"tif": "Alo"}})
-    
+
     sdk_error_response = {"status": "error", "error": "Insufficient margin"}
     service.exchange_client.order = MagicMock(return_value=sdk_error_response)
     service.wallet_address = TEST_WALLET_ADDRESS
@@ -232,7 +232,7 @@ async def test_place_order_sdk_raises_exception(mock_hl_init_bypass):
     service = HyperliquidExecutionService("addr", "key")
     service.exchange_client = MagicMock()
     order_params_data = HyperliquidPlaceOrderParams(asset="ETH", is_buy=True, sz=0.01, limit_px=2000.0, order_type={"limit": {"tif": "Gtc"}})
-    
+
     service.exchange_client.order = MagicMock(side_effect=Exception("Network timeout"))
     service.wallet_address = TEST_WALLET_ADDRESS
 
@@ -258,10 +258,10 @@ async def test_cancel_order_success(mock_hl_init_bypass):
     # Arrange
     service = HyperliquidExecutionService("addr", "key")
     service.exchange_client = MagicMock()
-    
+
     asset = "ETH"
     oid_to_cancel = 12345
-    
+
     sdk_success_response = {"status": "ok", "response": {"type": "cancel", "data": {"statuses": ["success"]}}}
     service.exchange_client.cancel = MagicMock(return_value=sdk_success_response)
     service.wallet_address = TEST_WALLET_ADDRESS
@@ -319,10 +319,10 @@ async def test_get_order_status_success(mock_hl_init_bypass):
     # Arrange
     service = HyperliquidExecutionService("addr", "key")
     service.info_client = MagicMock() # Mock the info client instance
-    
+
     user_address = TEST_WALLET_ADDRESS
     oid_to_check = 56789
-    
+
     mock_order_detail = {"oid": oid_to_check, "asset": "BTC", "side": "b", "limitPx": "30000.0", "sz": "0.1"}
     sdk_success_response = {
         "order": mock_order_detail,
@@ -419,7 +419,7 @@ async def test_get_detailed_account_summary_success(mock_hl_init_bypass):
     assert isinstance(summary, HyperliquidAccountSnapshot)
     assert summary.total_account_value_usd == "12345.67"
     assert summary.total_pnl_usd_str == "100.50"
-    
+
     assert len(summary.parsed_positions) == 1 # BTC position with szi="0" should be filtered
     assert summary.parsed_positions[0].asset == "ETH"
     assert summary.parsed_positions[0].szi == "1.5"
@@ -430,7 +430,7 @@ async def test_get_detailed_account_summary_success(mock_hl_init_bypass):
     assert summary.parsed_open_orders[0].asset == "ETH"
     assert summary.parsed_open_orders[1].oid == 2
     assert summary.parsed_open_orders[1].asset == "BTC"
-    
+
     service.get_user_state.assert_called_once_with(TEST_WALLET_ADDRESS)
 
 @pytest.mark.asyncio
@@ -469,7 +469,7 @@ async def test_get_detailed_account_summary_parsing_error(mock_hl_init_bypass):
     service = HyperliquidExecutionService("addr", "key")
     service.wallet_address = TEST_WALLET_ADDRESS
     # Malformed state that might cause Pydantic validation error or key error
-    mock_malformed_user_state = {"time": "not_an_int", "crossMarginSummary": {}} 
+    mock_malformed_user_state = {"time": "not_an_int", "crossMarginSummary": {}}
     service.get_user_state = MagicMock(return_value=mock_malformed_user_state)
 
     with pytest.raises(HyperliquidExecutionServiceError, match="Failed to parse account snapshot:"):
@@ -480,17 +480,17 @@ async def test_get_detailed_account_summary_parsing_error(mock_hl_init_bypass):
 async def test_get_all_open_positions_delegates_to_summary(mock_hl_init_bypass):
     service = HyperliquidExecutionService("addr", "key")
     service.wallet_address = TEST_WALLET_ADDRESS
-    
+
     mock_position = HyperliquidAssetPosition(asset="ETH", szi="1.0", entry_px="2000", unrealized_pnl="10", margin_used="200")
     mock_snapshot = HyperliquidAccountSnapshot(
-        time=123, totalRawUsd="1000", 
+        time=123, totalRawUsd="1000",
         parsed_positions=[mock_position], parsed_open_orders=[]
     )
     # Patch get_detailed_account_summary directly on the instance for this test
     service.get_detailed_account_summary = MagicMock(return_value=mock_snapshot)
 
     positions = await service.get_all_open_positions(TEST_WALLET_ADDRESS)
-    
+
     assert len(positions) == 1
     assert positions[0].asset == "ETH"
     service.get_detailed_account_summary.assert_called_once_with(TEST_WALLET_ADDRESS)
@@ -502,12 +502,12 @@ async def test_get_all_open_orders_delegates_to_summary(mock_hl_init_bypass):
     service.wallet_address = TEST_WALLET_ADDRESS
 
     mock_order_item = HyperliquidOpenOrderItem(
-        oid=1, asset="BTC", side="b", limit_px="30000", sz="0.01", 
+        oid=1, asset="BTC", side="b", limit_px="30000", sz="0.01",
         timestamp=int(dt.datetime.now(timezone.utc).timestamp() * 1000),
         raw_order_data={}
     )
     mock_snapshot = HyperliquidAccountSnapshot(
-        time=123, totalRawUsd="1000", 
+        time=123, totalRawUsd="1000",
         parsed_positions=[], parsed_open_orders=[mock_order_item]
     )
     service.get_detailed_account_summary = MagicMock(return_value=mock_snapshot)

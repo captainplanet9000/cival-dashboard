@@ -27,10 +27,10 @@ from .agent_analysis_tools import (
     ema_calculation_tool,
     rsi_calculation_tool,
     macd_calculation_tool,
-    HistoricalDataArgs, 
+    HistoricalDataArgs,
     CurrentQuoteArgs,
     SymbolSearchArgs,
-    SMAArgs, 
+    SMAArgs,
     # EMAArgs uses SMAArgs, no need to export EMAArgs explicitly if it's identical
     # RSIArgs uses SMAArgs, no need to export RSIArgs explicitly if it's identical
     MACDArgs

@@ -16,24 +16,24 @@ class TradeRecord(BaseModel):
 
     symbol: str = Field(..., description="Financial symbol traded (e.g., BTC/USD, AAPL).")
     exchange: Optional[str] = Field(default=None, description="Exchange where the trade was executed (e.g., Binance, NYSE).")
-    
+
     order_id: str = Field(..., description="The unique order ID from the exchange or broker.")
     client_order_id: Optional[str] = Field(default=None, description="Client-side order ID, if applicable.")
-    
+
     side: TradeSide = Field(..., description="Side of the trade: BUY or SELL.")
     order_type: OrderType = Field(..., description="Type of order (MARKET, LIMIT, etc.).")
     status: OrderStatus = Field(..., description="Current status of the order/trade.")
-    
+
     quantity_ordered: float = Field(..., gt=0, description="Quantity of the asset ordered.")
     quantity_filled: float = Field(default=0.0, ge=0, description="Quantity of the asset filled.")
-    
+
     price: Optional[float] = Field(default=None, description="Execution price for a market order or limit price for a limit order. Average fill price if partially/fully filled.")
     limit_price: Optional[float] = Field(default=None, gt=0, description="Limit price for LIMIT or STOP_LIMIT orders.")
     stop_price: Optional[float] = Field(default=None, gt=0, description="Stop price for STOP or STOP_LIMIT orders.")
-    
+
     commission: Optional[float] = Field(default=None, ge=0, description="Commission paid for the trade.")
     commission_asset: Optional[str] = Field(default=None, description="Asset in which commission was paid (e.g., USDT, USD, or the base/quote asset).")
-    
+
     created_at: datetime = Field(description="Timestamp when the order was created/placed (UTC).") # Should be provided by exchange or order system
     updated_at: datetime = Field(description="Timestamp when the order was last updated (e.g., filled, canceled) (UTC).") # Should be provided
     filled_at: Optional[datetime] = Field(default=None, description="Timestamp when the order was fully filled (UTC).")

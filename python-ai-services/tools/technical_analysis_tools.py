@@ -40,7 +40,7 @@ def calculate_sma_tool(data: pd.DataFrame, window: int = 20) -> Optional[pd.Seri
     try:
         # obb.technical.ma requires a 'close' series directly.
         sma_df = obb.technical.ma(data['close'], length=window, ma_type='sma')
-        
+
         if isinstance(sma_df, pd.DataFrame) and not sma_df.empty:
             # Common naming convention by OpenBB for SMA is like 'SMA_window'
             sma_col_name = f'SMA_{window}'
@@ -51,7 +51,7 @@ def calculate_sma_tool(data: pd.DataFrame, window: int = 20) -> Optional[pd.Seri
             elif f'close_{sma_col_name}' in sma_df.columns:
                 logger.info(f"SMA calculation successful. Returning column: close_{sma_col_name}")
                 return sma_df[f'close_{sma_col_name}']
-            elif not sma_df.columns.empty: 
+            elif not sma_df.columns.empty:
                 logger.warning(f"SMA Tool: Specific column names like '{sma_col_name}' not found. Returning first column: {sma_df.columns[0]}")
                 return sma_df.iloc[:, 0]
         logger.error("SMA Tool: Unexpected result format from obb.technical.ma or empty result.")
@@ -115,14 +115,14 @@ def calculate_rsi_tool(data: pd.DataFrame, window: int = 14) -> Optional[pd.Seri
         rsi_df = obb.technical.rsi(data=data['close'], window=window)
         if isinstance(rsi_df, pd.DataFrame) and not rsi_df.empty:
             # Common naming for RSI is 'RSI_window' or just 'RSI' if window is implied by context
-            rsi_col_name = f'RSI_{window}' 
+            rsi_col_name = f'RSI_{window}'
             if rsi_col_name in rsi_df.columns:
                  logger.info(f"RSI calculation successful. Returning column: {rsi_col_name}")
                  return rsi_df[rsi_col_name]
             elif 'RSI' in rsi_df.columns: # Some might just name it RSI
                  logger.info(f"RSI calculation successful. Returning column: RSI")
                  return rsi_df['RSI']
-            elif not rsi_df.columns.empty: 
+            elif not rsi_df.columns.empty:
                  logger.warning(f"RSI Tool: Column '{rsi_col_name}' or 'RSI' not found. Returning first column: {rsi_df.columns[0]}")
                  return rsi_df.iloc[:,0]
         logger.error("RSI Tool: Unexpected result format from obb.technical.rsi or empty result.")
@@ -132,9 +132,9 @@ def calculate_rsi_tool(data: pd.DataFrame, window: int = 14) -> Optional[pd.Seri
         return None
 
 def calculate_macd_tool(
-    data: pd.DataFrame, 
-    fast_period: int = 12, 
-    slow_period: int = 26, 
+    data: pd.DataFrame,
+    fast_period: int = 12,
+    slow_period: int = 26,
     signal_period: int = 9
 ) -> Optional[pd.DataFrame]:
     """
@@ -156,18 +156,18 @@ def calculate_macd_tool(
         return None
     try:
         macd_df = obb.technical.macd(
-            data=data['close'], 
-            fast=fast_period, 
-            slow=slow_period, 
+            data=data['close'],
+            fast=fast_period,
+            slow=slow_period,
             signal=signal_period
         )
         if isinstance(macd_df, pd.DataFrame) and not macd_df.empty:
             # Expected columns: e.g., 'MACD_12_26_9', 'MACDH_12_26_9' (Histogram), 'MACDS_12_26_9' (Signal)
             # Ensure the returned DataFrame has the expected structure (at least 3 columns for MACD, signal, histogram)
-            expected_cols_pattern = [f"MACD_{fast_period}_{slow_period}_{signal_period}", 
-                                     f"MACDH_{fast_period}_{slow_period}_{signal_period}", 
+            expected_cols_pattern = [f"MACD_{fast_period}_{slow_period}_{signal_period}",
+                                     f"MACDH_{fast_period}_{slow_period}_{signal_period}",
                                      f"MACDS_{fast_period}_{slow_period}_{signal_period}"]
-            
+
             # Check if all standard named columns are present
             if all(col in macd_df.columns for col in expected_cols_pattern):
                 logger.info("MACD calculation successful with standard column names.")
@@ -178,7 +178,7 @@ def calculate_macd_tool(
                  logger.warning(f"MACD Tool: Standard column names ({expected_cols_pattern}) not found. "
                                 f"Returning first 3 columns found: {list(macd_df.columns[:3])}. "
                                 "Order might not be MACD, Histogram, Signal.")
-                 return macd_df.iloc[:, :3] 
+                 return macd_df.iloc[:, :3]
             else:
                  logger.error(f"MACD Tool: Did not find enough columns (expected 3) in MACD result. Columns found: {list(macd_df.columns)}")
                  return None

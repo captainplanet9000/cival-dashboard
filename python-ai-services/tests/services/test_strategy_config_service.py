@@ -7,14 +7,14 @@ from typing import List, Dict, Any, Optional
 
 # Models and Services to test/mock
 from python_ai_services.services.strategy_config_service import (
-    StrategyConfigService, 
-    StrategyConfigNotFoundError, 
+    StrategyConfigService,
+    StrategyConfigNotFoundError,
     StrategyConfigServiceError,
     StrategyConfigCreationError,
     StrategyConfigUpdateError
 )
 from python_ai_services.models.strategy_models import (
-    StrategyConfig, 
+    StrategyConfig,
     DarvasBoxParams, # Example for parameters
     StrategyTimeframe,
     PerformanceMetrics, # For mocking get_latest_performance_metrics
@@ -26,7 +26,7 @@ from python_ai_services.models.strategy_models import (
 # --- Fixtures ---
 @pytest_asyncio.fixture
 async def mock_supabase_client_scs(): # scs for StrategyConfigService tests
-    client = MagicMock() 
+    client = MagicMock()
     # Setup mock chains for typical Supabase calls used by StrategyConfigService
     client.table.return_value.insert.return_value.select.return_value.execute = AsyncMock()
     client.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute = AsyncMock()
@@ -48,13 +48,13 @@ def sample_strategy_config_data(user_id: uuid.UUID, strategy_id: Optional[uuid.U
     sid = strategy_id or uuid.uuid4()
     return {
         "strategy_id": str(sid), # DB usually returns string UUIDs
-        "user_id": str(user_id), 
+        "user_id": str(user_id),
         "strategy_name": f"Test Darvas{name_suffix}",
         "strategy_type": "DarvasBox",
         "description": "Test Darvas Desc",
         "symbols": ["AAPL", "MSFT"],
         "timeframe": StrategyTimeframe("1h").value, # Ensure it's the string value '1h'
-        "parameters": DarvasBoxParams().model_dump(), 
+        "parameters": DarvasBoxParams().model_dump(),
         "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -95,7 +95,7 @@ async def test_create_strategy_config(strategy_config_service_instance: Strategy
     config_model_input_data = {k: v for k, v in raw_data_for_model.items() if k not in ['user_id', 'created_at', 'updated_at', 'strategy_id']}
     config_model_input_data['parameters'] = DarvasBoxParams(**config_model_input_data['parameters']) # Ensure sub-model
     config_model = StrategyConfig(**config_model_input_data)
-    
+
     # This is what the DB operation would return (includes strategy_id, user_id, timestamps)
     mock_db_return_data = {
         **config_model.model_dump(mode='json'), # Serializes sub-models like parameters
@@ -104,15 +104,15 @@ async def test_create_strategy_config(strategy_config_service_instance: Strategy
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
+
     mock_supabase_client_scs.table.return_value.insert.return_value.select.return_value.execute.return_value = MagicMock(data=[mock_db_return_data], error=None)
 
     created_config = await strategy_config_service_instance.create_strategy_config(user_id, config_model)
-    
+
     assert isinstance(created_config, StrategyConfig)
     assert created_config.strategy_name == config_model.strategy_name
     assert created_config.user_id == user_id # Check if service correctly parses user_id from return
-    
+
     insert_payload = mock_supabase_client_scs.table.return_value.insert.call_args[0][0]
     assert insert_payload["user_id"] == str(user_id)
 
@@ -123,14 +123,14 @@ async def test_get_strategy_config_found(strategy_config_service_instance: Strat
     mock_data = sample_strategy_config_data(user_id, strategy_id)
     # Ensure parameters is a dict for Pydantic parsing if StrategyConfig expects specific sub-model
     mock_data['parameters'] = DarvasBoxParams(**mock_data['parameters']).model_dump()
-    
+
     mock_supabase_client_scs.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute.return_value = MagicMock(data=mock_data, error=None)
 
     config = await strategy_config_service_instance.get_strategy_config(strategy_id, user_id)
 
     assert config is not None
     assert config.strategy_id == strategy_id
-    assert config.user_id == user_id 
+    assert config.user_id == user_id
 
 @pytest.mark.asyncio
 async def test_get_strategy_config_not_found(strategy_config_service_instance: StrategyConfigService, mock_supabase_client_scs: MagicMock):
@@ -160,10 +160,10 @@ async def test_update_strategy_config(strategy_config_service_instance: Strategy
     user_id = uuid.uuid4()
     strategy_id = uuid.uuid4()
     update_payload = {"description": "Updated Description", "is_active": False} # This is Dict[str, Any]
-    
+
     existing_config_data_dict = sample_strategy_config_data(user_id, strategy_id, name_suffix="_orig_for_update")
     existing_config_data_dict['parameters'] = DarvasBoxParams(**existing_config_data_dict['parameters']).model_dump()
-    
+
     # Mock for get_strategy_config (ownership check)
     mock_get_execute = mock_supabase_client_scs.table.return_value.select.return_value.eq.return_value.eq.return_value.maybe_single.return_value.execute
     mock_get_execute.return_value = MagicMock(data=existing_config_data_dict, error=None)
@@ -175,7 +175,7 @@ async def test_update_strategy_config(strategy_config_service_instance: Strategy
     mock_update_execute.return_value = MagicMock(data=[updated_db_data], error=None)
 
     updated_config = await strategy_config_service_instance.update_strategy_config(strategy_id, user_id, update_payload)
-    
+
     assert updated_config.description == "Updated Description"
     assert updated_config.is_active is False
     update_call_args = mock_supabase_client_scs.table.return_value.update.call_args[0][0]
@@ -193,7 +193,7 @@ async def test_delete_strategy_config(strategy_config_service_instance: Strategy
     mock_get_execute.return_value = MagicMock(data=existing_config_data, error=None)
 
     mock_delete_execute = mock_supabase_client_scs.table.return_value.delete.return_value.eq.return_value.eq.return_value.execute
-    mock_delete_execute.return_value = MagicMock(error=None) 
+    mock_delete_execute.return_value = MagicMock(error=None)
 
     await strategy_config_service_instance.delete_strategy_config(strategy_id, user_id)
     mock_delete_execute.assert_called_once()
@@ -214,15 +214,15 @@ async def test_get_all_user_strategies_with_performance_teasers_success(strategy
     # Ensure parameters are dicts for Pydantic parsing within the service if needed
     for item in mock_configs_data_raw:
         item['parameters'] = DarvasBoxParams(**item['parameters']).model_dump()
-    
+
     mock_configs_pydantic = [StrategyConfig(**d) for d in mock_configs_data_raw]
-    
+
     # Patch the service's own method for this test
     strategy_config_service_instance.get_strategy_configs_by_user = AsyncMock(return_value=mock_configs_pydantic)
 
     metrics_s1_raw = sample_performance_metrics_data(strat_id_1)
     metrics_s1_pydantic = PerformanceMetrics(**metrics_s1_raw)
-    
+
     async def mock_get_latest_perf(strategy_id_arg, user_id_arg): # Matches service method signature
         if strategy_id_arg == strat_id_1:
             return metrics_s1_pydantic
@@ -230,7 +230,7 @@ async def test_get_all_user_strategies_with_performance_teasers_success(strategy
             return None # Simulate no metrics for strat_id_2
         return None
     strategy_config_service_instance.get_latest_performance_metrics = AsyncMock(side_effect=mock_get_latest_perf)
-    
+
     teasers = await strategy_config_service_instance.get_all_user_strategies_with_performance_teasers(user_id)
 
     assert len(teasers) == 2
@@ -249,7 +249,7 @@ async def test_get_all_user_strategies_with_performance_teasers_success(strategy
     assert teaser2.latest_net_profit_percentage is None
     assert teaser2.latest_sharpe_ratio is None
     assert teaser2.total_trades_from_latest_metrics is None
-    
+
     assert strategy_config_service_instance.get_strategy_configs_by_user.call_count == 1
     assert strategy_config_service_instance.get_latest_performance_metrics.call_count == 2
 
@@ -257,11 +257,11 @@ async def test_get_all_user_strategies_with_performance_teasers_success(strategy
 @pytest.mark.asyncio
 async def test_get_all_user_strategies_with_performance_teasers_no_strategies(strategy_config_service_instance: StrategyConfigService):
     user_id = uuid.uuid4()
-    strategy_config_service_instance.get_strategy_configs_by_user = AsyncMock(return_value=[]) 
+    strategy_config_service_instance.get_strategy_configs_by_user = AsyncMock(return_value=[])
     strategy_config_service_instance.get_latest_performance_metrics = AsyncMock()
 
     teasers = await strategy_config_service_instance.get_all_user_strategies_with_performance_teasers(user_id)
-    
+
     assert len(teasers) == 0
     strategy_config_service_instance.get_latest_performance_metrics.assert_not_called()
 

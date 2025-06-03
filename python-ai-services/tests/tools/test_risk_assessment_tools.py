@@ -19,16 +19,16 @@ def test_calculate_position_size_tool_valid_inputs_buy():
     entry_price = 100.0
     stop_loss_price = 98.0  # Risk $2 per share
     asset_price_decimals = 2
-    
+
     expected_risk_amount = 1000.0  # 1% of 100,000
     expected_risk_per_share = 2.0
     expected_position_size = 500.0 # 1000 / 2
-    
+
     # Act
     result = calculate_position_size_tool(
         account_equity, risk_per_trade_percentage, entry_price, stop_loss_price, asset_price_decimals
     )
-    
+
     # Assert
     assert result is not None
     assert "error" not in result, f"Expected no error, got: {result.get('error')}"
@@ -44,16 +44,16 @@ def test_calculate_position_size_tool_valid_inputs_sell():
     entry_price = 200.0 # Selling short
     stop_loss_price = 205.0 # Stop loss is above entry for short
     asset_price_decimals = 2
-    
+
     expected_risk_amount = 1000.0 # 2% of 50,000
     expected_risk_per_share = 5.0 # abs(200 - 205)
     expected_position_size = 200.0 # 1000 / 5
-    
+
     # Act
     result = calculate_position_size_tool(
         account_equity, risk_per_trade_percentage, entry_price, stop_loss_price, asset_price_decimals
     )
-    
+
     # Assert
     assert result is not None
     assert "error" not in result, f"Expected no error, got: {result.get('error')}"
@@ -73,7 +73,7 @@ def test_calculate_position_size_tool_invalid_equity():
     # Pydantic model PositionSizeRequest should catch this
     with pytest.raises(ValidationError, match="Input should be greater than 0"):
         PositionSizeRequest(account_equity=0, risk_per_trade_percentage=1, entry_price=100, stop_loss_price=98, asset_price_decimals=2)
-    
+
     # Test tool's handling if Pydantic error is caught internally
     result = calculate_position_size_tool(0, 1, 100, 98, 2)
     assert result is not None
@@ -87,7 +87,7 @@ def test_calculate_position_size_tool_invalid_risk_percentage():
         PositionSizeRequest(account_equity=10000, risk_per_trade_percentage=100, entry_price=100, stop_loss_price=98) # lt=100 means 100 is invalid
     with pytest.raises(ValidationError, match="Input should be less than 100"):
         PositionSizeRequest(account_equity=10000, risk_per_trade_percentage=101, entry_price=100, stop_loss_price=98)
-    
+
     result_zero = calculate_position_size_tool(10000, 0, 100, 98, 2)
     assert result_zero is not None
     assert "error" in result_zero
@@ -101,7 +101,7 @@ def test_calculate_position_size_tool_invalid_risk_percentage():
     result_high = calculate_position_size_tool(10000, 101, 100, 98, 2)
     assert result_high is not None
     assert "error" in result_high
-    assert "Input should be less than 100" in result_high["error"] 
+    assert "Input should be less than 100" in result_high["error"]
 
 # --- Tests for check_trade_risk_limit_tool ---
 
@@ -109,10 +109,10 @@ def test_check_trade_risk_limit_tool_within_limit():
     # Arrange
     potential_loss = 100.0
     max_acceptable_loss = 200.0
-    
+
     # Act
     result = check_trade_risk_limit_tool(potential_loss, max_acceptable_loss)
-    
+
     # Assert
     assert result is not None
     assert result["is_within_limit"] is True
@@ -124,10 +124,10 @@ def test_check_trade_risk_limit_tool_exceeds_limit():
     # Arrange
     potential_loss = 250.0
     max_acceptable_loss = 200.0
-    
+
     # Act
     result = check_trade_risk_limit_tool(potential_loss, max_acceptable_loss)
-    
+
     # Assert
     assert result is not None
     assert result["is_within_limit"] is False
@@ -139,10 +139,10 @@ def test_check_trade_risk_limit_tool_at_limit():
     # Arrange
     potential_loss = 200.0
     max_acceptable_loss = 200.0
-    
+
     # Act
     result = check_trade_risk_limit_tool(potential_loss, max_acceptable_loss)
-    
+
     # Assert
     assert result is not None
     assert result["is_within_limit"] is True # Equal is considered within limit
@@ -152,9 +152,9 @@ def test_check_trade_risk_limit_tool_at_limit():
 
 def test_check_trade_risk_limit_tool_invalid_inputs():
     # Test Pydantic validation via direct model instantiation
-    with pytest.raises(ValidationError, match="Input should be greater than 0"): 
+    with pytest.raises(ValidationError, match="Input should be greater than 0"):
         RiskCheckRequest(potential_loss_amount=0, max_acceptable_loss_per_trade=100)
-    with pytest.raises(ValidationError, match="Input should be greater than 0"): 
+    with pytest.raises(ValidationError, match="Input should be greater than 0"):
         RiskCheckRequest(potential_loss_amount=50, max_acceptable_loss_per_trade=0)
 
     # Test tool's error response when Pydantic validation (inside the tool) fails

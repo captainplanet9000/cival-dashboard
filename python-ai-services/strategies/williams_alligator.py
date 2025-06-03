@@ -47,12 +47,12 @@ def get_williams_alligator_signals(
         if not data_obb or not hasattr(data_obb, 'to_df'):
             logger.warning(f"No data or unexpected data object returned for {symbol} from {start_date} to {end_date} by provider {data_provider}")
             return None
-            
+
         price_data = data_obb.to_df()
         if price_data.empty:
             logger.warning(f"No data returned (empty DataFrame) for {symbol} from {start_date} to {end_date} by provider {data_provider}")
             return None
-        
+
         rename_map = {}
         for col_map_from, col_map_to in {'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}.items():
             if col_map_from in price_data.columns:
@@ -64,14 +64,14 @@ def get_williams_alligator_signals(
                 if title_case_col in price_data.columns:
                      rename_map[title_case_col] = col_map_to
         price_data.rename(columns=rename_map, inplace=True)
-        
+
         required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
         if not all(col in price_data.columns for col in required_cols):
             logger.error(f"DataFrame for {symbol} is missing one or more required columns: {required_cols}. Available: {price_data.columns.tolist()}")
             return None
-            
+
         price_data = price_data[required_cols].copy()
-        
+
         # Use median price (High+Low)/2 for Alligator calculations
         median_price = (price_data['High'] + price_data['Low']) / 2
 
@@ -82,8 +82,8 @@ def get_williams_alligator_signals(
         price_data['jaw'] = jaw_line_unshifted.shift(jaw_offset)
         price_data['teeth'] = teeth_line_unshifted.shift(teeth_offset)
         price_data['lips'] = lips_line_unshifted.shift(lips_offset)
-        
-        price_data.dropna(inplace=True) 
+
+        price_data.dropna(inplace=True)
 
         if price_data.empty:
             logger.warning(f"Data became empty after Alligator calculations for {symbol}. Insufficient history for periods/offsets.")
@@ -97,12 +97,12 @@ def get_williams_alligator_signals(
 
         # Long entry: Previous state was not bullishly aligned, current state is.
         price_data.loc[is_bullish_aligned & ~is_bullish_aligned.shift(1).fillna(False), 'entries'] = True
-        
+
         # Exit long: Bullish alignment is lost (e.g., Lips cross below Teeth)
         # A more robust exit might be when lips cross below teeth, or teeth cross below jaw.
         # Simple version: if it's no longer bullishly aligned but was on the previous bar.
         price_data.loc[~is_bullish_aligned & is_bullish_aligned.shift(1).fillna(False), 'exits'] = True
-        
+
         price_data.loc[price_data['entries'], 'exits'] = False
 
         logger.info(f"Generated {price_data['entries'].sum()} entry signals and {price_data['exits'].sum()} exit signals for {symbol}.")
@@ -115,7 +115,7 @@ def get_williams_alligator_signals(
 def run_williams_alligator_backtest(
     price_data_with_signals: pd.DataFrame,
     init_cash: float = 100000,
-    size: float = 0.10, 
+    size: float = 0.10,
     commission_pct: float = 0.001,
     freq: str = 'D'
 ) -> Optional[vbt.Portfolio.StatsEntry]:
@@ -134,7 +134,7 @@ def run_williams_alligator_backtest(
             size=size,
             size_type='percentequity',
             fees=commission_pct,
-            freq=freq 
+            freq=freq
         )
         logger.info("Williams Alligator backtest portfolio created successfully.")
         return portfolio.stats()
@@ -161,11 +161,11 @@ def run_williams_alligator_backtest(
 #             # Plotting example:
 #             # try:
 #             #    signals_df[['Close', 'jaw', 'teeth', 'lips']].vbt.plot(
-#             #        trace_kwargs=dict(name='Close'), 
+#             #        trace_kwargs=dict(name='Close'),
 #             #        fig=None # Pass a figure if you want to add to an existing one
 #             #    ).add_trace( # Example for plotting signals
 #             #        go.Scatter(y=signals_df.loc[signals_df['entries'], 'Close'], mode='markers', marker_symbol='triangle-up', marker_color='green', name='Entry'),
-#             #        row=1, col=1 
+#             #        row=1, col=1
 #             #    ).add_trace(
 #             #        go.Scatter(y=signals_df.loc[signals_df['exits'], 'Close'], mode='markers', marker_symbol='triangle-down', marker_color='red', name='Exit'),
 #             #        row=1, col=1

@@ -31,7 +31,7 @@ def get_sma_crossover_signals(
     if obb is None:
         logger.error("OpenBB SDK not available. Cannot fetch data for SMA Crossover strategy.")
         return None
-    
+
     if not (isinstance(short_window, int) and short_window > 0):
         logger.error(f"Short SMA window must be a positive integer. Got: {short_window}")
         return None
@@ -63,9 +63,9 @@ def get_sma_crossover_signals(
         if 'Close' not in price_data_full.columns:
             logger.error(f"DataFrame for {symbol} is missing 'Close' column. Available: {price_data_full.columns.tolist()}")
             return None
-            
+
         # Ensure we only work with necessary columns and avoid SettingWithCopyWarning
-        price_data = price_data_full[['Close']].copy() 
+        price_data = price_data_full[['Close']].copy()
         
     except Exception as e:
         logger.error(f"Failed to fetch data for {symbol} using OpenBB: {e}", exc_info=True)
@@ -108,7 +108,7 @@ def get_sma_crossover_signals(
             logger.warning(f"Could not find standard name '{long_sma_col_name_expected}' for long SMA. Using first column: {long_sma_df.columns[0]}")
             price_data['long_sma'] = long_sma_df.iloc[:, 0]
 
-        price_data.dropna(inplace=True) 
+        price_data.dropna(inplace=True)
 
         if price_data.empty:
             logger.warning("DataFrame became empty after SMA calculations and dropna. Insufficient data for all windows.")
@@ -118,12 +118,12 @@ def get_sma_crossover_signals(
         logger.error(f"Error calculating SMAs for {symbol}: {e}", exc_info=True)
         return None
 
-    price_data['signal'] = 0 
+    price_data['signal'] = 0
     # Golden Cross: short_sma crosses above long_sma (Buy signal)
     golden_cross = (price_data['short_sma'].shift(1) < price_data['long_sma'].shift(1)) & \
                    (price_data['short_sma'] > price_data['long_sma'])
     price_data.loc[golden_cross, 'signal'] = 1
-    
+
     # Death Cross: short_sma crosses below long_sma (Sell signal to close long, or open short)
     death_cross = (price_data['short_sma'].shift(1) > price_data['long_sma'].shift(1)) & \
                   (price_data['short_sma'] < price_data['long_sma'])
@@ -133,7 +133,7 @@ def get_sma_crossover_signals(
     price_data['exits'] = price_data['signal'] == -1
 
     price_data.loc[price_data['entries'], 'exits'] = False # Avoid entry and exit on same bar
-    
+
     logger.info(f"Generated {price_data['entries'].sum()} entry signals and {price_data['exits'].sum()} exit signals for {symbol}.")
     # Return only necessary columns for backtesting and analysis
     return price_data[['Close', 'short_sma', 'long_sma', 'entries', 'exits']].copy()
@@ -142,7 +142,7 @@ def get_sma_crossover_signals(
 def run_sma_crossover_backtest(
     price_data_with_signals: pd.DataFrame,
     init_cash: float = 100000,
-    size: float = 0.10, 
+    size: float = 0.10,
     commission_pct: float = 0.001,
     freq: str = 'D'
 ) -> Optional[vbt.Portfolio.StatsEntry]:
@@ -156,12 +156,12 @@ def run_sma_crossover_backtest(
         portfolio = vbt.Portfolio.from_signals(
             close=price_data_with_signals['Close'],
             entries=price_data_with_signals['entries'],
-            exits=price_data_with_signals['exits'], 
+            exits=price_data_with_signals['exits'],
             init_cash=init_cash,
             size=size,
             size_type='percentequity',
             fees=commission_pct,
-            freq=freq 
+            freq=freq
         )
         logger.info("SMA Crossover backtest portfolio created successfully.")
         return portfolio.stats()
@@ -185,27 +185,27 @@ def run_sma_crossover_backtest(
 #         if not active_signals.empty:
 #             print("Active signal dates:")
 #             print(active_signals.index)
-#         
+#
 #         stats = run_sma_crossover_backtest(signals_df, freq='D') # Ensure freq matches data
 #         if stats is not None:
 #             print("\nBacktest Stats:")
 #             print(stats)
-#         
+#
 #         # Plotting example (requires plotly and graphical environment)
 #         # try:
 #         #     fig = signals_df[['Close', 'short_sma', 'long_sma']].vbt.plot(title=f"{symbol_to_test} SMA Crossover")
 #         #     # Add entry signals
 #         #     entry_points = signals_df[signals_df['entries']]
-#         #     fig.add_scatter(x=entry_points.index, y=entry_points['short_sma'], mode='markers', 
+#         #     fig.add_scatter(x=entry_points.index, y=entry_points['short_sma'], mode='markers',
 #         #                     marker=dict(symbol='triangle-up', color='green', size=10), name='Entry')
 #         #     # Add exit signals
 #         #     exit_points = signals_df[signals_df['exits']]
-#         #     fig.add_scatter(x=exit_points.index, y=exit_points['short_sma'], mode='markers', 
+#         #     fig.add_scatter(x=exit_points.index, y=exit_points['short_sma'], mode='markers',
 #         #                     marker=dict(symbol='triangle-down', color='red', size=10), name='Exit')
 #         #     fig.show()
 #         # except Exception as plot_e:
 #         #     print(f"Plotting failed (might require graphical environment or Plotly setup): {plot_e}")
-#             
+#
 #     else:
 #         logger.warning("Could not generate SMA Crossover signals.")
 #     logger.info(f"--- End of SMA Crossover Refactored Example for {symbol_to_test} ---")

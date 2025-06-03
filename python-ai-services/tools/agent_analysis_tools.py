@@ -81,7 +81,7 @@ def historical_stock_prices(symbol: str, start_date: str, end_date: str, interva
         pass
     except Exception as e: # Should be caught by CrewAI based on args_schema
         return f"Error: Invalid arguments for historical_stock_prices: {e}"
-        
+
     df = get_historical_price_data_tool(symbol, start_date, end_date, interval, provider)
     if df is not None:
         return df.to_json(orient="records", date_format="iso")
@@ -117,9 +117,9 @@ def search_stock_symbols(query: str, provider: str = "yfinance", is_etf: Optiona
         pass
     except Exception as e:
         return f"Error: Invalid arguments for search_stock_symbols: {e}"
-        
+
     results_list = search_symbols_tool(query, provider, is_etf)
-    if results_list is not None: 
+    if results_list is not None:
         return json.dumps(results_list)
     return "Error: Symbol search failed or returned no results."
 
@@ -160,8 +160,8 @@ def rsi_calculation_tool(symbol: str, start_date: str, end_date: str, window: in
     return f"Error: Could not calculate RSI for {symbol}."
 
 @tool("Calculate MACD Tool", args_schema=MACDArgs)
-def macd_calculation_tool(symbol: str, start_date: str, end_date: str, 
-                          fast_period: int = 12, slow_period: int = 26, signal_period: int = 9, 
+def macd_calculation_tool(symbol: str, start_date: str, end_date: str,
+                          fast_period: int = 12, slow_period: int = 26, signal_period: int = 9,
                           provider: str = "yfinance") -> str:
     """Calculates MACD for a stock. Returns JSON string of DataFrame."""
     logger.info(f"CrewAI Tool: macd_calculation_tool for {symbol}")

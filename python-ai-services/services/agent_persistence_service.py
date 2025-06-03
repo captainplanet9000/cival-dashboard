@@ -17,15 +17,15 @@ class AgentPersistenceService:
         self.supabase = supabase_client
 
     def save_agent_runtime_state(
-        self, 
-        agent_id: str, 
-        strategy_type: str, 
-        state: Dict[str, Any], 
+        self,
+        agent_id: str,
+        strategy_type: str,
+        state: Dict[str, Any],
         memory_references: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         if not agent_id or not strategy_type:
             raise ValueError("agent_id and strategy_type are required.")
-        
+
         record = {
             "agent_id": agent_id,
             "strategy_type": strategy_type,
@@ -33,7 +33,7 @@ class AgentPersistenceService:
             "memory_references": memory_references,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
-        
+
         try:
             logger.info(f"Saving runtime state for agent_id: {agent_id}")
             # This upsert assumes agent_id has a UNIQUE constraint in agent_states table.
@@ -42,7 +42,7 @@ class AgentPersistenceService:
             # Supabase python client upsert needs a 'returning="representation"' for data to be returned
             # and it will return a list.
             response = self.supabase.table("agent_states").upsert(record, on_conflict="agent_id").execute()
-            
+
             # Check for errors first as per Supabase client behavior
             if hasattr(response, 'error') and response.error:
                 err_msg = response.error.message
@@ -54,7 +54,7 @@ class AgentPersistenceService:
                 # This case might indicate an issue with the upsert not returning data as expected
                 # or the record not being found/matched for update and no insert happened.
                 raise AgentPersistenceError(f"Failed to save/update agent state for {agent_id}: No data returned.")
-            
+
             return response.data[0]
         except AgentPersistenceError: # Re-raise specific errors
             raise
@@ -74,7 +74,7 @@ class AgentPersistenceService:
                 .limit(1) \
                 .maybe_single() \
                 .execute()
-            
+
             # maybe_single() returns data directly, not a list with one item.
             # No error attribute check needed for maybe_single if it returns None for no data.
             # However, if execute() itself can have an error (network etc.), that should be checked.
@@ -88,7 +88,7 @@ class AgentPersistenceService:
         except Exception as e:
             logger.exception(f"Database error loading latest agent state for {agent_id}: {str(e)}")
             raise AgentPersistenceError(f"Database error loading agent state: {str(e)}")
-            
+
     def load_agent_runtime_state_by_id(self, state_id: uuid.UUID) -> Optional[Dict[str, Any]]:
         if not state_id:
             raise ValueError("state_id is required.")
@@ -113,7 +113,7 @@ class AgentPersistenceService:
 
     def update_specific_agent_runtime_state(
         self,
-        state_id: uuid.UUID, 
+        state_id: uuid.UUID,
         new_state: Optional[Dict[str, Any]] = None,
         new_memory_references: Optional[Dict[str, Any]] = None,
         new_strategy_type: Optional[str] = None
@@ -128,7 +128,7 @@ class AgentPersistenceService:
             update_fields["memory_references"] = new_memory_references
         if new_strategy_type is not None:
             update_fields["strategy_type"] = new_strategy_type
-        
+
         if len(update_fields) == 1 and "updated_at" in update_fields: # Only updated_at is present
             raise ValueError("No fields provided to update for agent state other than timestamp.")
 

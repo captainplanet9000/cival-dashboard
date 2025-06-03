@@ -161,7 +161,7 @@ class MemoryService:
         if not self.memgpt_agent_instance:
             logger.warning(f"MemGPT not initialized for agent {self.memgpt_agent_name}. Cannot get memory stats.")
             return {
-                "status": "error", 
+                "status": "error",
                 "message": "MemGPT client/agent not initialized.",
                 "stats": None
             }
@@ -172,9 +172,9 @@ class MemoryService:
             # - Count of messages in recall memory: len(self.memgpt_agent_instance.persistence_manager.recall_memory)
             # - Count of passages in archival memory: self.memgpt_agent_instance.persistence_manager.archival_memory.storage.size() (if available)
             # This often requires direct interaction with the persistence manager components.
-            
+
             logger.info(f"Generating STUBBED memory stats for MemGPT agent: {self.memgpt_agent_name}")
-            
+
             # Mock data for the stub
             mock_stats = {
                 "memgpt_agent_name": self.memgpt_agent_name,
@@ -187,7 +187,7 @@ class MemoryService:
                 "human_tokens": 150, # Example
                 "notes": "These are stubbed values and do not reflect actual memory usage yet."
             }
-            
+
             return {
                 "status": "success",
                 "message": "Memory stats retrieved successfully (stubbed data).",

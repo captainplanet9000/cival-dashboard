@@ -26,14 +26,14 @@ def test_get_historical_price_data_tool_success(mock_obb_historical):
     mock_obb_result = MagicMock()
     mock_obb_result.to_df.return_value = mock_df
     mock_obb_historical.return_value = mock_obb_result
-    
+
     symbol = "AAPL"
     start_date = "2023-01-01"
     end_date = "2023-01-03"
-    
+
     # Act
     result_df = get_historical_price_data_tool(symbol, start_date, end_date)
-    
+
     # Assert
     mock_obb_historical.assert_called_once_with(
         symbol=symbol, start_date=start_date, end_date=end_date, interval="1d", provider="yfinance"
@@ -48,10 +48,10 @@ def test_get_historical_price_data_tool_no_data_df_empty(mock_obb_historical):
     mock_obb_result = MagicMock()
     mock_obb_result.to_df.return_value = mock_empty_df
     mock_obb_historical.return_value = mock_obb_result
-    
+
     # Act
     result_df = get_historical_price_data_tool("MSFT", "2023-01-01", "2023-01-03")
-    
+
     # Assert
     assert result_df is None # Tool should return None if DataFrame is empty
     mock_obb_historical.assert_called_once()
@@ -60,10 +60,10 @@ def test_get_historical_price_data_tool_no_data_df_empty(mock_obb_historical):
 def test_get_historical_price_data_tool_no_obb_object_returned(mock_obb_historical):
     # Arrange
     mock_obb_historical.return_value = None # Simulate OpenBB returning None directly
-    
+
     # Act
     result_df = get_historical_price_data_tool("MSFT", "2023-01-01", "2023-01-03")
-    
+
     # Assert
     assert result_df is None
     mock_obb_historical.assert_called_once()
@@ -73,10 +73,10 @@ def test_get_historical_price_data_tool_no_obb_object_returned(mock_obb_historic
 def test_get_historical_price_data_tool_openbb_exception(mock_obb_historical):
     # Arrange
     mock_obb_historical.side_effect = Exception("OpenBB API error")
-    
+
     # Act
     result_df = get_historical_price_data_tool("GOOG", "2023-01-01", "2023-01-03")
-    
+
     # Assert
     assert result_df is None
     mock_obb_historical.assert_called_once()
@@ -91,7 +91,7 @@ def test_get_historical_price_data_tool_invalid_input_pydantic():
         # or whatever error handling is in place. Current tool returns None on Pydantic error.
         # For this test, we expect it to return None because the HistoricalPriceRequest validation fails.
         # The actual Pydantic ValidationError is caught inside the tool and logged.
-        assert result is None 
+        assert result is None
         mock_obb_historical_pydantic_test.assert_not_called() # obb should not be called
 
 # --- Tests for get_current_quote_tool ---
@@ -105,10 +105,10 @@ def test_get_current_quote_tool_success_single_obbject(mock_obb_quote):
     mock_obb_quote.return_value = mock_obb_result # Simulate returning a single OBBject
 
     symbol = "AAPL"
-    
+
     # Act
     result_dict = get_current_quote_tool(symbol)
-    
+
     # Assert
     mock_obb_quote.assert_called_once_with(symbol=symbol, provider="yfinance")
     assert result_dict == {'last_price': 150.25, 'volume': 1000}
@@ -122,10 +122,10 @@ def test_get_current_quote_tool_success_list_of_obbjects(mock_obb_quote):
     mock_obb_quote.return_value = [mock_obb_item] # Simulate returning a list containing one OBBject
 
     symbol = "MSFT"
-    
+
     # Act
     result_dict = get_current_quote_tool(symbol)
-    
+
     # Assert
     mock_obb_quote.assert_called_once_with(symbol=symbol, provider="yfinance")
     assert result_dict == {'last_price': 200.50, 'bid': 200.40, 'ask': 200.60}
@@ -138,10 +138,10 @@ def test_get_current_quote_tool_empty_df_from_obbject(mock_obb_quote):
     mock_obb_item.to_df.return_value = mock_empty_df
     # Test with single OBBject path first
     mock_obb_quote.return_value = mock_obb_item
-    
+
     # Act
     result_dict_single = get_current_quote_tool("AMZN")
-    
+
     # Assert
     assert result_dict_single is None
 
@@ -155,10 +155,10 @@ def test_get_current_quote_tool_empty_df_from_obbject(mock_obb_quote):
 def test_get_current_quote_tool_no_data_returned(mock_obb_quote):
     # Arrange
     mock_obb_quote.return_value = None # Simulate OpenBB returning None
-    
+
     # Act
     result_dict = get_current_quote_tool("TSLA")
-    
+
     # Assert
     assert result_dict is None
     mock_obb_quote.assert_called_once()
@@ -167,10 +167,10 @@ def test_get_current_quote_tool_no_data_returned(mock_obb_quote):
 def test_get_current_quote_tool_empty_list_returned(mock_obb_quote):
     # Arrange
     mock_obb_quote.return_value = [] # Simulate OpenBB returning an empty list
-    
+
     # Act
     result_dict = get_current_quote_tool("NVDA")
-    
+
     # Assert
     assert result_dict is None
     mock_obb_quote.assert_called_once()
@@ -179,10 +179,10 @@ def test_get_current_quote_tool_empty_list_returned(mock_obb_quote):
 def test_get_current_quote_tool_openbb_exception(mock_obb_quote):
     # Arrange
     mock_obb_quote.side_effect = Exception("OpenBB API error for quote")
-    
+
     # Act
     result_dict = get_current_quote_tool("GOOG")
-    
+
     # Assert
     assert result_dict is None
     mock_obb_quote.assert_called_once()
@@ -205,7 +205,7 @@ def test_get_current_quote_tool_invalid_input_pydantic():
         # If the tool was: `QuoteRequest(symbol=symbol, provider="invalid_provider_literal_if_defined_so")`
         # then Pydantic would fail.
         # Let's assume the current Pydantic model for QuoteRequest is too simple to easily fail from the tool's call.
-        pass 
+        pass
 
 
 # --- Tests for search_symbols_tool ---
@@ -216,14 +216,14 @@ def test_search_symbols_tool_success(mock_obb_search):
     # Simulate OBBjects having a model_dump() method (Pydantic v2) or to_dict()
     mock_item1_data = {'symbol': 'T1', 'name': 'TestCo One'}
     mock_item2_data = {'symbol': 'T2', 'name': 'TestCo Two'}
-    
+
     mock_obb_item1 = MagicMock()
     # Check for model_dump first, then to_dict as fallback, common for OpenBB models
     if hasattr(mock_obb_item1, 'model_dump'):
         mock_obb_item1.model_dump.return_value = mock_item1_data
     else:
         mock_obb_item1.to_dict.return_value = mock_item1_data
-    
+
     mock_obb_item2 = MagicMock()
     if hasattr(mock_obb_item2, 'model_dump'):
         mock_obb_item2.model_dump.return_value = mock_item2_data
@@ -233,12 +233,12 @@ def test_search_symbols_tool_success(mock_obb_search):
     mock_search_results_object = MagicMock() # This is the OBBject returned by obb.equity.search
     mock_search_results_object.results = [mock_obb_item1, mock_obb_item2] # .results is the list
     mock_obb_search.return_value = mock_search_results_object
-    
+
     query = "TestCo"
-    
+
     # Act
     result_list = search_symbols_tool(query)
-    
+
     # Assert
     mock_obb_search.assert_called_once_with(query=query, provider="yfinance", is_etf=None)
     assert len(result_list) == 2
@@ -251,10 +251,10 @@ def test_search_symbols_tool_no_results(mock_obb_search):
     mock_search_results_object = MagicMock()
     mock_search_results_object.results = [] # Empty list of results
     mock_obb_search.return_value = mock_search_results_object
-    
+
     # Act
     result_list = search_symbols_tool("NonExistentQuery")
-    
+
     # Assert
     assert result_list == [] # Expect empty list for no results
     mock_obb_search.assert_called_once()
@@ -263,14 +263,14 @@ def test_search_symbols_tool_no_results(mock_obb_search):
 def test_search_symbols_tool_obb_returns_none(mock_obb_search):
     # Arrange
     mock_obb_search.return_value = None # Simulate OpenBB returning None directly
-    
+
     # Act
     result_list = search_symbols_tool("AnotherQuery")
-    
+
     # Assert
     # The tool's logic `if data and hasattr(data, 'results') and data.results:`
     # means if `data` is None, it will evaluate to false, and the tool returns [].
-    assert result_list == [] 
+    assert result_list == []
     mock_obb_search.assert_called_once()
 
 
@@ -278,10 +278,10 @@ def test_search_symbols_tool_obb_returns_none(mock_obb_search):
 def test_search_symbols_tool_openbb_exception(mock_obb_search):
     # Arrange
     mock_obb_search.side_effect = Exception("OpenBB API error for search")
-    
+
     # Act
     result_list = search_symbols_tool("SearchFail")
-    
+
     # Assert
     assert result_list is None # Expect None when an exception occurs
     mock_obb_search.assert_called_once()

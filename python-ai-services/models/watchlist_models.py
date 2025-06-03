@@ -17,7 +17,7 @@ class WatchlistItem(WatchlistItemBase):
     watchlist_id: uuid.UUID = Field(..., description="ID of the watchlist this item belongs to.")
     user_id: uuid.UUID = Field(..., description="ID of the user this item belongs to (denormalized for easier access).")
     added_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp when the item was added.")
-    
+
     # Optional: To store last fetched quote data directly on the item for quick view
     # last_quote_price: Optional[float] = None
     # last_quote_timestamp: Optional[datetime] = None

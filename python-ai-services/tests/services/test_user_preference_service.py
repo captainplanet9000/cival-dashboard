@@ -50,7 +50,7 @@ async def test_get_user_preferences_not_found_returns_default(user_preference_se
 async def test_update_user_preferences_success(user_preference_service: UserPreferenceService, mock_supabase_client_ups: MagicMock):
     user_id = uuid.uuid4()
     new_prefs_payload = {"notifications": {"email": True}}
-    
+
     # Mock the return value of upsert().select().execute()
     # The actual Supabase client returns a list of dictionaries in the 'data' attribute of the response object
     db_return_data = {"user_id": str(user_id), "preferences": new_prefs_payload, "last_updated_at": datetime.now(timezone.utc).isoformat()}
@@ -61,18 +61,18 @@ async def test_update_user_preferences_success(user_preference_service: UserPref
     assert isinstance(updated_prefs, UserPreferences)
     assert updated_prefs.user_id == user_id
     assert updated_prefs.preferences == new_prefs_payload
-    
+
     # Check the payload sent to upsert
     # The first argument to call_args is a tuple of positional arguments
     called_with_payload = mock_supabase_client_ups.table.return_value.upsert.call_args[0][0]
     assert called_with_payload["user_id"] == str(user_id)
     assert called_with_payload["preferences"] == new_prefs_payload
-    assert "last_updated_at" in called_with_payload 
+    assert "last_updated_at" in called_with_payload
     # Ensure last_updated_at is a datetime string
     assert isinstance(datetime.fromisoformat(called_with_payload["last_updated_at"].replace("Z", "+00:00")), datetime)
 
     mock_supabase_client_ups.table.return_value.upsert.assert_called_once_with(
-        called_with_payload, 
+        called_with_payload,
         on_conflict="user_id"
     )
     # Verify that select() was called after upsert, as per Supabase-py behavior for returning data
@@ -83,7 +83,7 @@ async def test_update_user_preferences_success(user_preference_service: UserPref
 async def test_update_user_preferences_db_error(user_preference_service: UserPreferenceService, mock_supabase_client_ups: MagicMock):
     user_id = uuid.uuid4()
     new_prefs_payload = {"theme": "light"}
-    
+
     # Simulate a Supabase error response
     mock_error_response = MagicMock()
     mock_error_response.message = "DB upsert failed" # This matches what Supabase error objects might have

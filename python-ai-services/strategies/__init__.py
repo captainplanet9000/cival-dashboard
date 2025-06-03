@@ -17,7 +17,7 @@ __all__ = [
     "run_elliott_wave_backtest",
     "get_heikin_ashi_signals",
     "run_heikin_ashi_backtest",
-    "calculate_heikin_ashi_candles", 
+    "calculate_heikin_ashi_candles",
     "get_renko_signals",
     "run_renko_backtest",
     "calculate_renko_bricks",
