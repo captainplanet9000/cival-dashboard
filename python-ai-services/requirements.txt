@@ -25,6 +25,7 @@ scikit-learn==1.6.0
 ta-lib==0.4.32
 yfinance==0.2.50
 alpha-vantage==2.3.1
+hyperliquid>=0.1.9
 
 # Development
 pytest==8.3.4
@@ -39,7 +40,9 @@ crewai>=0.28.0
 crewai_tools>=0.1.6
 supabase>=1.0.0
 langchain-openai>=0.1.0
-langchain-google-genai>=0.0.9
+langchain-google-genai>=0.1.0
+datamodel-code-generator>=0.25.2
+python-jose[cryptography]>=3.3.0
 
 # Letta Client (MemGPT)
 letta-client

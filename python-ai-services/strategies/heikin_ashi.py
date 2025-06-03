@@ -1,250 +1,230 @@
 import pandas as pd
 import numpy as np
-from typing import Dict, List, Optional, Any
-from loguru import logger
+import vectorbt as vbt
+from logging import getLogger
+from typing import Optional, Tuple
 
 try:
-    from ..models.strategy_models import HeikinAshiConfig
-    from ..types.trading_types import TradeAction # For signal types
+    from openbb import obb
 except ImportError:
-    logger.warning("Could not import HeikinAshiConfig or TradeAction. Using Any for config/action types.")
-    HeikinAshiConfig = Any
-    class TradeAction: BUY="BUY"; SELL="SELL"; HOLD="HOLD" # Basic placeholder
+    obb = None
 
+logger = getLogger(__name__)
 
-def _calculate_heikin_ashi_candles(ohlcv_df: pd.DataFrame) -> pd.DataFrame:
+# Default parameters for Heikin Ashi
+DEFAULT_TREND_CONFIRMATION_CANDLES = 3 # Number of consecutive HA candles to confirm trend
+DEFAULT_EXIT_CHANGE_CANDLES = 1 # Number of HA candles changing color/type for potential exit
+
+def calculate_heikin_ashi_candles(ohlc_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculates Heikin Ashi candle values from a standard OHLCV DataFrame.
-    Assumes ohlcv_df has lowercase columns: 'open', 'high', 'low', 'close'.
+    Calculates Heikin Ashi OHLC values from a standard OHLC DataFrame.
+    Input DataFrame must have 'Open', 'High', 'Low', 'Close' columns.
     """
-    if not all(col in ohlcv_df.columns for col in ['open', 'high', 'low', 'close']):
-        raise ValueError("Input DataFrame for Heikin Ashi must contain 'open', 'high', 'low', 'close' columns.")
+    if not all(col in ohlc_df.columns for col in ['Open', 'High', 'Low', 'Close']):
+        logger.error("Input DataFrame for HA calculation must contain 'Open', 'High', 'Low', 'Close' columns.")
+        # Consider raising ValueError or returning empty DataFrame if used as a public utility
+        # For internal use here, assume the caller (get_heikin_ashi_signals) ensures this.
+        # However, adding a safeguard:
+        raise ValueError("Input DataFrame for HA calculation must contain 'Open', 'High', 'Low', 'Close' columns.")
 
-    ha_df = pd.DataFrame(index=ohlcv_df.index)
 
-    # Heikin Ashi Close
-    ha_df['ha_close'] = (ohlcv_df['open'] + ohlcv_df['high'] + ohlcv_df['low'] + ohlcv_df['close']) / 4
+    ha_df = pd.DataFrame(index=ohlc_df.index)
 
-    # Heikin Ashi Open
+    # HA Close: (Open + High + Low + Close) / 4
+    ha_df['ha_close'] = (ohlc_df['Open'] + ohlc_df['High'] + ohlc_df['Low'] + ohlc_df['Close']) / 4.0
+
+    # HA Open: (Previous HA Open + Previous HA Close) / 2
     ha_df['ha_open'] = np.nan # Initialize column
-    if not ohlcv_df.empty:
-        ha_df.iloc[0, ha_df.columns.get_loc('ha_open')] = (ohlcv_df['open'].iloc[0] + ohlcv_df['close'].iloc[0]) / 2
-        for i in range(1, len(ohlcv_df)):
-            ha_df.iloc[i, ha_df.columns.get_loc('ha_open')] = \
-                (ha_df.iloc[i-1, ha_df.columns.get_loc('ha_open')] + ha_df.iloc[i-1, ha_df.columns.get_loc('ha_close')]) / 2
+    if not ohlc_df.empty:
+        ha_df.loc[ha_df.index[0], 'ha_open'] = (ohlc_df['Open'].iloc[0] + ohlc_df['Close'].iloc[0]) / 2.0
+        for i in range(1, len(ohlc_df)):
+            ha_df.loc[ha_df.index[i], 'ha_open'] = (ha_df['ha_open'].iloc[i-1] + ha_df['ha_close'].iloc[i-1]) / 2.0
 
-    # Heikin Ashi High & Low
-    # Ensure ha_open and ha_close are calculated before using them here
-    ha_df['ha_high'] = pd.concat([ohlcv_df['high'], ha_df['ha_open'], ha_df['ha_close']], axis=1).max(axis=1)
-    ha_df['ha_low'] = pd.concat([ohlcv_df['low'], ha_df['ha_open'], ha_df['ha_close']], axis=1).min(axis=1)
+    # HA High: Max(Original High, HA Open, HA Close)
+    # Ensure ha_open and ha_close are not NaN for max/min calculation; they should be filled by this point.
+    ha_df['ha_high'] = ha_df[['ha_open', 'ha_close']].join(ohlc_df['High']).max(axis=1)
 
-    # Ensure correct column order for clarity, though not strictly necessary
-    return ha_df[['ha_open', 'ha_high', 'ha_low', 'ha_close']]
+    # HA Low: Min(Original Low, HA Open, HA Close)
+    ha_df['ha_low'] = ha_df[['ha_open', 'ha_close']].join(ohlc_df['Low']).min(axis=1)
+
+    return ha_df[['ha_open', 'ha_high', 'ha_low', 'ha_close']].copy()
 
 
-def run_heikin_ashi(ohlcv_df: pd.DataFrame, config: HeikinAshiConfig) -> Dict[str, Any]:
-    """
-    Generates trading signals based on Heikin Ashi candles.
+def get_heikin_ashi_signals(
+    symbol: str,
+    start_date: str,
+    end_date: str,
+    trend_confirmation_candles: int = DEFAULT_TREND_CONFIRMATION_CANDLES,
+    exit_change_candles: int = DEFAULT_EXIT_CHANGE_CANDLES, # Number of opposite color candles for exit
+    data_provider: str = "yfinance"
+) -> Optional[pd.DataFrame]:
+    logger.info(f"Generating Heikin Ashi signals for {symbol} from {start_date} to {end_date} using provider {data_provider}")
 
-    Args:
-        ohlcv_df: Pandas DataFrame with DateTimeIndex and columns 'Open', 'High', 'Low', 'Close', 'Volume'.
-        config: An instance of HeikinAshiConfig.
-
-    Returns:
-        A dictionary with two keys:
-        "signals": List of signals. Each signal is a dict with:
-                   {"date": pd.Timestamp, "type": "BUY" | "SELL" | "HOLD",
-                    "price": float, "reason": str}
-        "heikin_ashi_data": The DataFrame augmented with Heikin Ashi OHLC columns,
-                            and smoothed HA columns if configured.
-    """
-    signals: List[Dict[str, Any]] = []
-
-    if ohlcv_df.empty:
-        logger.warning("OHLCV DataFrame is empty. Cannot run Heikin Ashi strategy.")
-        return {"signals": signals, "heikin_ashi_data": ohlcv_df}
-
-    df = ohlcv_df.copy()
-    df.columns = [col.lower() for col in df.columns]
-    required_cols = ['open', 'high', 'low', 'close']
-    if not all(col in df.columns for col in required_cols):
-        logger.error(f"OHLCV DataFrame must contain columns: {required_cols}. Found: {list(df.columns)}")
-        return {"signals": signals, "heikin_ashi_data": df} # Return original df
-
-    if not isinstance(df.index, pd.DatetimeIndex):
-        logger.error("OHLCV DataFrame must have a DatetimeIndex.")
-        return {"signals": signals, "heikin_ashi_data": df}
-
-    logger.info(f"Running Heikin Ashi strategy with config: {config.dict() if hasattr(config, 'dict') else config}")
+    if obb is None:
+        logger.error("OpenBB SDK not available. Cannot fetch data for Heikin Ashi strategy.")
+        return None
 
     try:
-        ha_df = _calculate_heikin_ashi_candles(df)
+        data_obb = obb.equity.price.historical(
+            symbol=symbol, start_date=start_date, end_date=end_date, provider=data_provider, interval="1d"
+        )
+        if not data_obb or not hasattr(data_obb, 'to_df'):
+            logger.warning(f"No data or unexpected data object returned for {symbol} from {start_date} to {end_date}")
+            return None
+        price_data = data_obb.to_df()
+        if price_data.empty:
+            logger.warning(f"No data returned (empty DataFrame) for {symbol} from {start_date} to {end_date}")
+            return None
+
+        rename_map = {}
+        for col_map_from, col_map_to in {'open': 'Open', 'high': 'High', 'low': 'Low', 'close': 'Close', 'volume': 'Volume'}.items():
+            if col_map_from in price_data.columns: rename_map[col_map_from] = col_map_to
+            elif col_map_to not in price_data.columns and col_map_from.title() in price_data.columns: rename_map[col_map_from.title()] = col_map_to
+        price_data.rename(columns=rename_map, inplace=True)
+
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in price_data.columns for col in required_cols):
+            logger.error(f"DataFrame for {symbol} is missing required columns {required_cols}. Available: {price_data.columns.tolist()}")
+            return None
+
+        # Keep original OHLC for backtesting close price and other potential uses
+        original_ohlcv = price_data[required_cols].copy()
+
+        ha_candles = calculate_heikin_ashi_candles(original_ohlcv[['Open', 'High', 'Low', 'Close']])
+
+        price_data = original_ohlcv.join(ha_candles) # Join HA candles to the original data
+        price_data.dropna(subset=['ha_open', 'ha_close', 'ha_high', 'ha_low'], inplace=True) # Remove NaNs from initial HA calculation
+
+        if price_data.empty:
+            logger.warning(f"Data became empty after Heikin Ashi calculations for {symbol}. Insufficient data for HA generation.")
+            return None
+
     except Exception as e:
-        logger.exception(f"Error calculating Heikin Ashi candles: {e}")
-        return {"signals": signals, "heikin_ashi_data": df} # Return original df on error
+        logger.error(f"Failed to fetch or process data for {symbol}: {e}", exc_info=True)
+        return None
 
-    # Optionally smooth Heikin Ashi candles
-    if config.price_smoothing_period is not None and config.price_smoothing_period > 0:
-        logger.debug(f"Applying SMA({config.price_smoothing_period}) smoothing to Heikin Ashi candles.")
-        for col in ['ha_open', 'ha_high', 'ha_low', 'ha_close']:
-            if col in ha_df.columns: # Ensure column exists
-                # Use rolling mean for SMA. min_periods=1 to get values even if period is not met at start.
-                ha_df[f'smoothed_{col}'] = ha_df[col].rolling(window=config.price_smoothing_period, min_periods=1).mean()
-        # Use smoothed columns for signal generation if available
-        signal_ha_open_col = 'smoothed_ha_open' if 'smoothed_ha_open' in ha_df.columns else 'ha_open'
-        signal_ha_close_col = 'smoothed_ha_close' if 'smoothed_ha_close' in ha_df.columns else 'ha_close'
-        signal_ha_high_col = 'smoothed_ha_high' if 'smoothed_ha_high' in ha_df.columns else 'ha_high'
-        signal_ha_low_col = 'smoothed_ha_low' if 'smoothed_ha_low' in ha_df.columns else 'ha_low'
-    else:
-        signal_ha_open_col, signal_ha_close_col, signal_ha_high_col, signal_ha_low_col = \
-            'ha_open', 'ha_close', 'ha_high', 'ha_low'
+    price_data['entries'] = False
+    price_data['exits'] = False
 
-    # Combine original OHLCV with Heikin Ashi data for the output DataFrame
-    df_with_ha = df.join(ha_df)
+    # Define tolerance for shadow checks to handle floating point inaccuracies
+    tolerance = 1e-5 # A small number, adjust based on price scale if necessary
+    price_data['ha_green'] = price_data['ha_close'] > price_data['ha_open']
+    price_data['ha_red'] = price_data['ha_close'] < price_data['ha_open']
+    # No lower shadow (strong uptrend): ha_open is very close to ha_low
+    price_data['ha_no_lower_shadow'] = abs(price_data['ha_open'] - price_data['ha_low']) < tolerance
+    # No upper shadow (strong downtrend): ha_open is very close to ha_high
+    # price_data['ha_no_upper_shadow'] = abs(price_data['ha_open'] - price_data['ha_high']) < tolerance # For shorting
 
-    # Signal Generation Logic (Simplified)
-    current_position = "NONE" # "NONE", "LONG", "SHORT"
+    # Long Entry: N consecutive green HA candles, ideally with no lower shadows
+    buy_condition = price_data['ha_green'] & price_data['ha_no_lower_shadow']
+    entry_signal_active = buy_condition.rolling(window=trend_confirmation_candles, min_periods=trend_confirmation_candles).apply(lambda x: x.all(), raw=True).fillna(0).astype(bool)
 
-    # Start iteration from where we have enough data for min_trend_candles lookback
-    # and ensure all HA signal columns are not NaN
-    first_valid_idx = df_with_ha[[signal_ha_open_col, signal_ha_close_col, signal_ha_high_col, signal_ha_low_col]].dropna().index.min()
-    if pd.isna(first_valid_idx):
-        logger.warning("No valid Heikin Ashi data points available after calculation/smoothing to generate signals.")
-        return {"signals": signals, "heikin_ashi_data": df_with_ha}
-
-    start_signal_generation_idx = df_with_ha.index.get_loc(first_valid_idx) + config.min_trend_candles -1
-    if start_signal_generation_idx >= len(df_with_ha):
-        logger.warning(f"Not enough data points ({len(df_with_ha)}) for Heikin Ashi signal generation with min_trend_candles={config.min_trend_candles}.")
-        return {"signals": signals, "heikin_ashi_data": df_with_ha}
+    # Trigger entry on the bar *after* the confirmation
+    # Shift signals by 1 to enter on the open of the next bar after confirmation
+    shifted_entry_signal = entry_signal_active.shift(1).fillna(False)
+    price_data.loc[shifted_entry_signal & ~shifted_entry_signal.shift(1).fillna(False), 'entries'] = True
 
 
-    for i in range(start_signal_generation_idx, len(df_with_ha)):
-        current_date = df_with_ha.index[i]
-        # Use original close price for signal execution price
-        signal_price = df_with_ha['close'].iloc[i]
+    # Long Exit: N consecutive red HA candles (signifying trend change)
+    sell_condition = price_data['ha_red']
+    exit_signal_active = sell_condition.rolling(window=exit_change_candles, min_periods=exit_change_candles).apply(lambda x: x.all(), raw=True).fillna(0).astype(bool)
 
-        # Current candle properties
-        ha_open_curr = df_with_ha[signal_ha_open_col].iloc[i]
-        ha_close_curr = df_with_ha[signal_ha_close_col].iloc[i]
-        ha_high_curr = df_with_ha[signal_ha_high_col].iloc[i]
-        ha_low_curr = df_with_ha[signal_ha_low_col].iloc[i]
+    # Trigger exit on the bar *after* exit confirmation
+    shifted_exit_signal = exit_signal_active.shift(1).fillna(False)
+    # Only exit if an entry signal was active previously (conceptual: must be in a trade)
+    # This simplified logic doesn't track actual position state, vectorbt handles that.
+    # We are providing signals. If an entry signal was active, and now an exit condition is met.
+    # This requires a state machine or more complex logic to ensure we only exit if in a position.
+    # For vectorbt, providing entry and exit signals separately is fine.
+    price_data.loc[shifted_exit_signal, 'exits'] = True
 
-        if pd.isna(ha_open_curr) or pd.isna(ha_close_curr) or pd.isna(ha_high_curr) or pd.isna(ha_low_curr):
-            continue # Skip if essential HA data is NaN
+    # Ensure no exit on the same bar as entry
+    price_data.loc[price_data['entries'], 'exits'] = False
 
-        is_green_curr = ha_close_curr > ha_open_curr
-        is_red_curr = ha_close_curr < ha_open_curr
-        body_size_curr = abs(ha_close_curr - ha_open_curr)
-
-        # Avoid division by zero if body_size is extremely small or zero
-        upper_wick_curr = ha_high_curr - max(ha_open_curr, ha_close_curr)
-        lower_wick_curr = min(ha_open_curr, ha_close_curr) - ha_low_curr
-
-        is_small_upper_wick_curr = upper_wick_curr < (body_size_curr * config.small_wick_threshold_percent / 100) if body_size_curr > 1e-6 else True
-        is_small_lower_wick_curr = lower_wick_curr < (body_size_curr * config.small_wick_threshold_percent / 100) if body_size_curr > 1e-6 else True
+    # Ensure Close and Volume are present for backtesting (they should be from original_ohlcv join)
+    if 'Close' not in price_data.columns and 'Close' in original_ohlcv.columns:
+        price_data['Close'] = original_ohlcv['Close']
+    if 'Volume' not in price_data.columns and 'Volume' in original_ohlcv.columns:
+        price_data['Volume'] = original_ohlcv['Volume']
+    price_data.dropna(subset=['Close'], inplace=True)
 
 
-        # Trend Check: Look back for min_trend_candles
-        trend_is_green = True
-        trend_is_red = True
-        for j in range(config.min_trend_candles):
-            idx = i - j
-            ha_o, ha_c = df_with_ha[signal_ha_open_col].iloc[idx], df_with_ha[signal_ha_close_col].iloc[idx]
-            ha_h, ha_l = df_with_ha[signal_ha_high_col].iloc[idx], df_with_ha[signal_ha_low_col].iloc[idx]
-
-            if pd.isna(ha_o) or pd.isna(ha_c) or pd.isna(ha_h) or pd.isna(ha_l): # Should not happen if start_signal_generation_idx is correct
-                trend_is_green = trend_is_red = False; break
-
-            body_j = abs(ha_c - ha_o)
-            lw_j = min(ha_o, ha_c) - ha_l
-            uw_j = ha_h - max(ha_o, ha_c)
-
-            if not (ha_c > ha_o and (lw_j < (body_j * config.small_wick_threshold_percent / 100) if body_j > 1e-6 else True) ):
-                trend_is_green = False
-            if not (ha_c < ha_o and (uw_j < (body_j * config.small_wick_threshold_percent / 100) if body_j > 1e-6 else True) ):
-                trend_is_red = False
-
-        signal_type = "HOLD"
-        reason = "Heikin Ashi indicates consolidation or unclear trend."
-
-        if current_position == "NONE":
-            if trend_is_green:
-                signal_type = "BUY"
-                reason = f"{config.min_trend_candles} consecutive green HA candles with small lower wicks."
-                current_position = "LONG"
-            elif trend_is_red:
-                signal_type = "SELL"
-                reason = f"{config.min_trend_candles} consecutive red HA candles with small upper wicks."
-                current_position = "SHORT"
-        elif current_position == "LONG":
-            if is_red_curr or (is_green_curr and not is_small_lower_wick_curr): # Red candle or green with large lower wick
-                signal_type = "SELL"
-                reason = "Exit Long: Heikin Ashi turned red or showed weakening bullish trend."
-                current_position = "NONE"
-            else: # Continue long
-                signal_type = "HOLD"
-                reason = "Continue Long: Heikin Ashi trend remains bullish."
-        elif current_position == "SHORT":
-            if is_green_curr or (is_red_curr and not is_small_upper_wick_curr): # Green candle or red with large upper wick
-                signal_type = "BUY"
-                reason = "Exit Short: Heikin Ashi turned green or showed weakening bearish trend."
-                current_position = "NONE"
-            else: # Continue short
-                signal_type = "HOLD"
-                reason = "Continue Short: Heikin Ashi trend remains bearish."
-
-        if not (signal_type == "HOLD" and current_position == "NONE" and (not signals or signals[-1]["type"] == "HOLD")):
-            signals.append({
-                "date": current_date, "type": signal_type, "price": signal_price, "reason": reason
-            })
-
-    logger.info(f"Heikin Ashi strategy run complete. Found {len(signals)} signals.")
-    return {"signals": signals, "heikin_ashi_data": df_with_ha}
+    logger.info(f"Generated {price_data['entries'].sum()} entry signals and {price_data['exits'].sum()} exit signals for {symbol}.")
+    return price_data
 
 
-if __name__ == '__main__':
-    logger.remove()
-    logger.add(lambda msg: print(msg, end=''), colorize=True, format="<green>{time:HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>", level="DEBUG")
+def run_heikin_ashi_backtest(
+    price_data_with_signals: pd.DataFrame,
+    init_cash: float = 100000,
+    size: float = 0.10,
+    commission_pct: float = 0.001,
+    freq: str = 'D'
+) -> Optional[vbt.Portfolio.StatsEntry]:
+    if price_data_with_signals is None or not all(col in price_data_with_signals for col in ['Close', 'entries', 'exits']):
+        logger.error("Price data is missing required 'Close', 'entries', or 'exits' columns for Heikin Ashi backtest.")
+        return None
+    if price_data_with_signals['entries'].sum() == 0:
+        logger.warning("No entry signals found for Heikin Ashi. Backtest will show no trades.")
 
-    dates = pd.date_range(start="2023-01-01", periods=50, freq="D")
-    data_len = len(dates)
+    try:
+        portfolio = vbt.Portfolio.from_signals(
+            close=price_data_with_signals['Close'],
+            entries=price_data_with_signals['entries'],
+            exits=price_data_with_signals['exits'],
+            init_cash=init_cash,
+            size=size,
+            size_type='percentequity',
+            fees=commission_pct,
+            freq=freq
+        )
+        logger.info("Heikin Ashi backtest portfolio created successfully.")
+        return portfolio.stats()
+    except Exception as e:
+        logger.error(f"Error running Heikin Ashi vectorbt backtest: {e}", exc_info=True)
+        return None
 
-    # Simulate a trend: flat -> uptrend -> flat -> downtrend -> flat
-    prices = []
-    p = 100
-    for i in range(data_len):
-        if i < 10: prices.append(p) # Flat
-        elif i < 20: p += 0.5; prices.append(p) # Uptrend
-        elif i < 25: prices.append(p) # Flat
-        elif i < 35: p -= 0.6; prices.append(p) # Downtrend
-        elif i < 40: prices.append(p) # Flat
-        else: p += 0.2; prices.append(p) # Slight recovery
-
-    sample_df = pd.DataFrame({
-        'Open': np.array(prices) - np.random.rand(data_len) * 0.1,
-        'High': np.array(prices) + np.random.rand(data_len) * 0.2,
-        'Low': np.array(prices) - np.random.rand(data_len) * 0.2,
-        'Close': np.array(prices),
-        'Volume': np.random.randint(100, 1000, size=data_len)
-    }, index=dates)
-
-    logger.info("\n--- Heikin Ashi with Default Config ---")
-    if HeikinAshiConfig != Any:
-        default_ha_config = HeikinAshiConfig()
-        results_default = run_heikin_ashi(sample_df.copy(), default_ha_config)
-        logger.info(f"Signals ({len(results_default['signals'])}):")
-        for s in results_default['signals']: logger.info(s)
-        logger.info(f"\nHeikin Ashi Data (last 10 rows with HA candles):")
-        print(results_default['heikin_ashi_data'][['close', 'ha_open', 'ha_close', 'ha_high', 'ha_low']].tail(10))
-
-        logger.info("\n--- Heikin Ashi with Smoothing (period 3) ---")
-        smoothed_ha_config = HeikinAshiConfig(price_smoothing_period=3, min_trend_candles=2)
-        results_smoothed = run_heikin_ashi(sample_df.copy(), smoothed_ha_config)
-        logger.info(f"Signals ({len(results_smoothed['signals'])}):")
-        for s in results_smoothed['signals']: logger.info(s)
-        logger.info(f"\nHeikin Ashi Data (last 10 rows with smoothed HA candles):")
-        print(results_smoothed['heikin_ashi_data'][['close', 'smoothed_ha_open', 'smoothed_ha_close']].tail(10))
-    else:
-        logger.warning("Skipping Heikin Ashi examples as HeikinAshiConfig import failed.")
-
-```
+# Example Usage (commented out):
+# if __name__ == '__main__':
+#     symbol_to_test = "MSFT"
+#     start_date_test = "2022-01-01"
+#     end_date_test = "2023-12-31"
+#     logger.info(f"--- Running Heikin Ashi Example for {symbol_to_test} ---")
+#     signals_df = get_heikin_ashi_signals(symbol_to_test, start_date_test, end_date_test,
+#                                          trend_confirmation_candles=3, exit_change_candles=1)
+#     if signals_df is not None and not signals_df.empty:
+#         print("\nSignals DataFrame head (showing HA and original close):")
+#         # Display relevant columns for verification
+#         print(signals_df[['Close', 'ha_open', 'ha_high', 'ha_low', 'ha_close', 'ha_green', 'ha_no_lower_shadow', 'entries', 'exits']].head(30))
+#         print(f"\nTotal Entry Signals: {signals_df['entries'].sum()}")
+#         print(f"Total Exit Signals: {signals_df['exits'].sum()}")
+#
+#         stats = run_heikin_ashi_backtest(signals_df, freq='D') # Ensure freq matches data
+#         if stats is not None:
+#             print("\nBacktest Stats:")
+#             print(stats)
+#
+#         # Plotting example (requires plotly and graphical environment)
+#         # import plotly.graph_objects as go
+#         # try:
+#         #     fig = signals_df[['Close']].vbt.plot(trace_kwargs=dict(name='Original Close'))
+#         #     fig.add_candlestick(
+#         #         x=signals_df.index,
+#         #         open=signals_df['ha_open'],
+#         #         high=signals_df['ha_high'],
+#         #         low=signals_df['ha_low'],
+#         #         close=signals_df['ha_close'],
+#         #         name="Heikin Ashi"
+#         #     )
+#         #     entry_points = signals_df[signals_df['entries']]
+#         #     exit_points = signals_df[signals_df['exits']]
+#         #     fig.add_trace(go.Scatter(x=entry_points.index, y=entry_points['Close'], mode='markers',
+#         #                              marker=dict(symbol='triangle-up', color='green', size=10), name='Entry'))
+#         #     fig.add_trace(go.Scatter(x=exit_points.index, y=exit_points['Close'], mode='markers',
+#         #                              marker=dict(symbol='triangle-down', color='red', size=10), name='Exit'))
+#         #     fig.show()
+#         # except Exception as plot_e:
+#         #     print(f"Plotting failed: {plot_e}")
+#
+#     else:
+#         logger.warning("Could not generate Heikin Ashi signals.")
+#     logger.info(f"--- End of Heikin Ashi Example for {symbol_to_test} ---")

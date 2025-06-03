@@ -100,6 +100,7 @@ class RenkoConfig(BaseModel):
         extra = "forbid"
         use_enum_values = True
 
+<<<<<<< HEAD
     @model_validator(mode='after')
     def check_fixed_brick_size_value(cls, values: Any) -> Any:
         if isinstance(values, BaseModel):
@@ -324,3 +325,44 @@ class ElliottWaveConfig(BaseModel):
     except ValidationError as e:
         logger.error(f"Error creating invalid EW config (extra field) (as expected): {e}")
 ```
+
+import uuid
+from datetime import datetime
+
+class StrategyGoalAlignment(BaseModel):
+    alignment_id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    strategy_id: uuid.UUID
+    goal_id: uuid.UUID
+    # How well this strategy is expected to contribute to the goal
+    expected_contribution_score: Optional[float] = Field(default=None, ge=0, le=1)
+    notes: Optional[str] = None
+
+class StrategyTimeframe(str, Enum):
+    MINUTE_1 = "1m"
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
+    MINUTE_30 = "30m"
+    HOUR_1 = "1h"
+    HOUR_4 = "4h"
+    DAY_1 = "1d"
+    WEEK_1 = "1w"
+
+class StrategyPerformanceTeaser(BaseModel):
+    # From StrategyConfig
+    strategy_id: uuid.UUID
+    strategy_name: str
+    strategy_type: str
+    is_active: bool
+    symbols: List[str]
+    timeframe: StrategyTimeframe
+
+    # From latest PerformanceMetrics
+    latest_performance_record_timestamp: Optional[datetime] = None
+    latest_net_profit_percentage: Optional[float] = None
+    latest_sharpe_ratio: Optional[float] = None
+    latest_sortino_ratio: Optional[float] = None
+    latest_max_drawdown_percentage: Optional[float] = None
+    total_trades_from_latest_metrics: Optional[int] = None
+
+    class Config:
+        from_attributes = True

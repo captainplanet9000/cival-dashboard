@@ -13,14 +13,16 @@ from python_ai_services.services.agent_persistence_service import AgentPersisten
 
 # Imports for new tests
 import uuid # For task_ids and service instance IDs
-from unittest.mock import AsyncMock, MagicMock, patch # Ensure MagicMock and patch are available
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime, timezone # Already available via direct import of datetime
 
 # Models and Services to test/mock
-from python_ai_services.models.agent_task_models import AgentTaskStatus # For status filter
+from python_ai_services.models.agent_task_models import AgentTaskStatus
 from python_ai_services.models.monitoring_models import TaskListResponse, AgentTaskSummary
 from python_ai_services.services.agent_task_service import AgentTaskService
 from python_ai_services.services.memory_service import MemoryService, MemoryInitializationError
+from python_ai_services.models.api_models import TradingAnalysisCrewRequest # Added for TradingCoordinator tests
+# trading_analysis_crew will be patched where it's used, so direct import not strictly needed here for patching.
 
 
 # Attempt to import Pydantic models for A2A communication and requests
@@ -110,14 +112,8 @@ async def market_data_service_instance(mock_google_sdk_bridge, mock_a2a_protocol
 
 @pytest_asyncio.fixture
 async def trading_coordinator_instance(mock_google_sdk_bridge, mock_a2a_protocol):
+    # The TradingCoordinator is now simpler, primarily delegating to the crew for analysis
     service = TradingCoordinator(google_bridge=mock_google_sdk_bridge, a2a_protocol=mock_a2a_protocol)
-    # Further mock the PydanticAI agent if its direct instantiation is complex or has side effects
-    service.agent = mock.AsyncMock()
-    service.agent.tools = mock.AsyncMock() # Mock the tools attribute if accessed directly
-    # Specifically mock the tool methods that TradingCoordinator registers
-    # These are actually wrappers around a2a_protocol.send_message
-    service.agent.tools.analyze_market_conditions = mock.AsyncMock(spec=service.a2a_protocol.send_message)
-    service.agent.tools.check_risk_limits = mock.AsyncMock(spec=service.a2a_protocol.send_message)
     return service
 
 
@@ -609,6 +605,65 @@ async def test_analyze_trading_opportunity_with_account_id_and_conditional_risk_
     assert response["analysis"] == mock_market_analysis.dict()
     assert response["decision"] == ai_decision_str
     assert "timestamp" in response
+
+
+@pytest.mark.asyncio
+@patch('python_ai_services.services.trading_coordinator.trading_analysis_crew') # Patch the imported crew object
+async def test_analyze_trading_opportunity_delegates_to_crew(
+    mock_trading_analysis_crew, # Patched object
+    trading_coordinator_instance: TradingCoordinator # Fixture
+):
+    # Arrange
+    mock_crew_kickoff_result = {"analysis_summary": "Market is bullish", "recommendation": "BUY AAPL"}
+    # trading_analysis_crew.kickoff is synchronous
+    mock_trading_analysis_crew.kickoff = MagicMock(return_value=mock_crew_kickoff_result)
+
+    request_payload = TradingAnalysisCrewRequest(
+        user_id="test_user_123",
+        symbol="AAPL",
+        market_event_description="New iPhone announced.",
+        additional_context={"sentiment_score": 0.75}
+    )
+
+    expected_crew_inputs = {
+        "symbol": request_payload.symbol,
+        "market_event_description": request_payload.market_event_description,
+        "additional_context": request_payload.additional_context,
+        "user_id": request_payload.user_id
+    }
+
+    # Act
+    # The service method analyze_trading_opportunity runs kickoff in an executor.
+    # We are testing the service method, so we call it directly.
+    # The mock for trading_analysis_crew.kickoff will be hit by the executor.
+    result = await trading_coordinator_instance.analyze_trading_opportunity(request_payload)
+
+    # Assert
+    # Check that the kickoff method of the (mocked) crew was called correctly
+    mock_trading_analysis_crew.kickoff.assert_called_once_with(inputs=expected_crew_inputs)
+    assert result == mock_crew_kickoff_result
+
+@pytest.mark.asyncio
+@patch('python_ai_services.services.trading_coordinator.trading_analysis_crew')
+async def test_analyze_trading_opportunity_crew_exception(
+    mock_trading_analysis_crew,
+    trading_coordinator_instance: TradingCoordinator
+):
+    # Arrange
+    mock_trading_analysis_crew.kickoff = MagicMock(side_effect=Exception("Crew failed spectacularly"))
+
+    request_payload = TradingAnalysisCrewRequest(
+        user_id="test_user_456",
+        symbol="TSLA",
+        market_event_description="Battery day event."
+    )
+
+    # Act & Assert
+    with pytest.raises(Exception, match="Failed to analyze trading opportunity due to crew execution error: Crew failed spectacularly"):
+        await trading_coordinator_instance.analyze_trading_opportunity(request_payload)
+
+    mock_trading_analysis_crew.kickoff.assert_called_once()
+
 
 # --- AgentTaskService Tests ---
 
