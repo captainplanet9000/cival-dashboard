@@ -53,4 +53,16 @@ class RiskAssessmentResponseData(BaseModel):
     rejection_reason: Optional[str] = None
     # Optional: if risk manager can adjust signals
     # adjusted_trade_signal: Optional[TradeSignalEventPayload] = None
+
+class NewsArticleEventPayload(BaseModel):
+    source_feed_url: str
+    headline: str
+    link: str
+    published_date: Optional[datetime] = None
+    summary: Optional[str] = None
+    mentioned_symbols: List[str] = Field(default_factory=list)
+    sentiment_score: float = 0.0 # e.g., -1.0 (very negative) to 1.0 (very positive)
+    sentiment_label: Literal["positive", "negative", "neutral"] = "neutral"
+    matched_keywords: List[str] = Field(default_factory=list)
+    raw_content_snippet: Optional[str] = None # Optional: a snippet of original text
 ```

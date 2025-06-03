@@ -425,27 +425,31 @@ class HyperliquidExecutionService:
         logger.info("Attempting to fetch asset contexts (market metadata)...")
         if not self.info_client:
             logger.error("Hyperliquid Info client not initialized. Cannot fetch asset contexts.")
+            # Return empty list or raise error, consistent with how other methods handle this.
+            # Raising an error is appropriate as this is a prerequisite.
             raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
 
         try:
-            # The SDK's info.meta() is a synchronous method.
-            # To call it from an async method, run it in an executor.
             loop = asyncio.get_event_loop()
+            # Call the synchronous self.info_client.meta() in an executor
             asset_contexts = await loop.run_in_executor(None, self.info_client.meta)
 
-            if asset_contexts is not None: # meta() usually returns a list, could be empty.
-                logger.info(f"Successfully fetched {len(asset_contexts)} asset contexts.")
+            # self.info_client.meta() is expected to return a list of asset context dicts.
+            # It could be an empty list if there are no assets or if the API returns it that way.
+            if isinstance(asset_contexts, list):
+                logger.info(f"Successfully fetched {len(asset_contexts)} asset contexts from Hyperliquid.")
                 return asset_contexts
             else:
-                # This case might indicate an issue if meta() is expected to always return a list.
-                # However, based on typical SDK behavior, an empty list is more common than None for "no data".
-                # If meta() can return None, this logging is appropriate.
-                logger.warning("Received None for asset contexts from Hyperliquid SDK.")
-                return [] # Return empty list if None is received, to maintain type consistency.
-        except Exception as e:
-            logger.error(f"Error fetching asset contexts from Hyperliquid: {e}", exc_info=True)
-            # Specific error handling can be added here if certain exceptions from the SDK are known
-            raise HyperliquidExecutionServiceError(f"Failed to fetch asset contexts: {e}")
+                # This case handles unexpected return types from meta(), e.g. None or something else.
+                logger.error(f"Unexpected data type received from info_client.meta(): {type(asset_contexts)}. Expected list.")
+                # Return empty list to maintain type consistency for the method's return signature.
+                return []
+        except AttributeError as e: # Specifically catch if self.info_client was somehow None despite the check
+            logger.error(f"AttributeError: self.info_client might be None or meta attribute missing. Error: {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"Info client attribute error: {e}")
+        except Exception as e: # Catch other potential errors from the info_client.meta() call
+            logger.error(f"Failed to fetch asset contexts from Hyperliquid due to an API/SDK error: {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"API call to fetch asset contexts failed: {e}")
 
     async def get_funding_history(self, user_address: str, start_time: int, end_time: Optional[int] = None) -> List[Dict[str, Any]]:
         """Gets funding payment history for a user."""

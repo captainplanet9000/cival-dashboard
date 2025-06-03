@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, Literal, List # Ensure List is imported
+from pydantic import BaseModel, Field, validator
+from typing import Optional, Dict, Any, Literal, List
 from datetime import datetime, timezone
 import uuid
 
@@ -15,7 +15,6 @@ class AgentStrategyConfig(BaseModel):
         breakout_confirmation_periods: int = 1
         box_range_min_percentage: float = 0.02
         stop_loss_percentage_from_box_bottom: float = 0.01
-
     darvas_params: Optional[DarvasStrategyParams] = None
 
     class WilliamsAlligatorParams(BaseModel):
@@ -25,7 +24,6 @@ class AgentStrategyConfig(BaseModel):
         teeth_shift: int = 5
         lips_period: int = 5
         lips_shift: int = 3
-
     williams_alligator_params: Optional[WilliamsAlligatorParams] = None
 
     class MarketConditionClassifierParams(BaseModel):
@@ -38,22 +36,27 @@ class AgentStrategyConfig(BaseModel):
         ma_slope_threshold: float = 0.001
         bbands_width_volatility_threshold: float = 0.1
         bbands_width_ranging_threshold: float = 0.03
-
     market_condition_classifier_params: Optional[MarketConditionClassifierParams] = None
 
-    class PortfolioOptimizerRule(BaseModel): # Defined once
+    class PortfolioOptimizerRule(BaseModel):
         rule_name: Optional[str] = None
         if_market_regime: Optional[Literal["trending_up", "trending_down", "ranging", "volatile", "undetermined"]] = None
+        if_news_sentiment_is: Optional[Literal["positive", "negative", "neutral"]] = None
         target_agent_type: Optional[str] = None
         target_agent_id: Optional[str] = None
         set_operational_parameters: Optional[Dict[str, Any]] = None
         set_is_active: Optional[bool] = None
-
-    class PortfolioOptimizerParams(BaseModel): # Defined once
+    class PortfolioOptimizerParams(BaseModel):
         rules: List[PortfolioOptimizerRule] = Field(default_factory=list)
-
     portfolio_optimizer_params: Optional[PortfolioOptimizerParams] = None
 
+    class NewsAnalysisParams(BaseModel):
+        rss_feed_urls: List[str] = Field(default_factory=list)
+        symbols_of_interest: List[str] = Field(default_factory=list)
+        keywords_positive: List[str] = Field(default_factory=lambda: ["positive", "upgrade", "strong", "rally", "breakthrough", "bullish", "optimistic", "profit", "growth"])
+        keywords_negative: List[str] = Field(default_factory=lambda: ["negative", "downgrade", "weak", "crash", "scandal", "bearish", "pessimistic", "loss", "decline", "fud"])
+        fetch_limit_per_feed: Optional[int] = 10
+    news_analysis_params: Optional[NewsAnalysisParams] = None
 
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float
@@ -78,9 +81,13 @@ class AgentConfigBase(BaseModel):
     description: Optional[str] = None
     strategy: AgentStrategyConfig
     risk_config: AgentRiskConfig
-    execution_provider: Literal["paper", "hyperliquid"] = "paper"
+    execution_provider: Literal["paper", "hyperliquid", "dex"] = "paper" # Added "dex"
     hyperliquid_credentials_id: Optional[str] = None # DEPRECATED
     hyperliquid_config: Optional[Dict[str, str]] = Field(default=None, description="Configuration for Hyperliquid: {'wallet_address': '0x...', 'private_key_env_var_name': 'AGENT_X_HL_PRIVKEY', 'network_mode': 'mainnet/testnet'}")
+    dex_config: Optional[Dict[str, Any]] = Field( # New field
+        default=None,
+        description="Configuration for DEX trading: e.g., {'rpc_url_env_var_name': 'RPC_URL_ENV', 'private_key_env_var_name': 'DEX_PK_ENV', 'wallet_address': '0x...', 'dex_router_address': '0x...', 'weth_address': '0x...' (optional), 'default_chain_id': 1, 'default_gas_limit': 300000, 'token_mappings': {'USDC': '0xA0b...'} }"
+    )
     agent_type: str = Field(default="GenericAgent", description="Type of the agent, e.g., 'TradingCoordinator', 'MarketAnalyst', 'DarvasBoxTechnical'.")
     parent_agent_id: Optional[str] = Field(default=None, description="ID of the parent agent, if part of a hierarchy.")
     operational_parameters: Dict[str, Any] = Field(default_factory=dict, description="Runtime operational parameters like decision weights, resource limits, strategy-specific overrides.")
@@ -103,11 +110,12 @@ class AgentStatus(BaseModel):
 class AgentUpdateRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    strategy: Optional[AgentStrategyConfig] = None # Allow full strategy update
-    risk_config: Optional[AgentRiskConfig] = None # Allow full risk_config update
-    execution_provider: Optional[Literal["paper", "hyperliquid"]] = None
+    strategy: Optional[AgentStrategyConfig] = None
+    risk_config: Optional[AgentRiskConfig] = None
+    execution_provider: Optional[Literal["paper", "hyperliquid", "dex"]] = None # Added "dex"
     hyperliquid_credentials_id: Optional[str] = None # DEPRECATED
     hyperliquid_config: Optional[Dict[str, str]] = None
+    dex_config: Optional[Dict[str, Any]] = None # New field
     agent_type: Optional[str] = None
     parent_agent_id: Optional[str] = None
     operational_parameters: Optional[Dict[str, Any]] = None

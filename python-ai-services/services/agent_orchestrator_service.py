@@ -13,10 +13,14 @@ from .event_bus_service import EventBusService
 from .darvas_box_service import DarvasBoxTechnicalService
 from .williams_alligator_service import WilliamsAlligatorTechnicalService
 from .market_condition_classifier_service import MarketConditionClassifierService
-from .portfolio_optimizer_service import PortfolioOptimizerService # Added
-# Use the new factory
-from ..core.factories import get_hyperliquid_execution_service_instance
+from .portfolio_optimizer_service import PortfolioOptimizerService
+from .portfolio_optimizer_service import PortfolioOptimizerService
+from .news_analysis_service import NewsAnalysisService
+# Use the new factories
+from ..core.factories import get_hyperliquid_execution_service_instance, get_dex_execution_service_instance # Added get_dex_execution_service_instance
 from typing import Optional, Any, Dict, List
+# Need DEXExecutionService for type hinting
+from .dex_execution_service import DEXExecutionService
 from loguru import logger
 import asyncio
 from unittest.mock import MagicMock
@@ -45,50 +49,44 @@ class AgentOrchestratorService:
         logger.info("AgentOrchestratorService initialized with MarketDataService, EventBusService, TradeHistoryService, and RiskManagerService.")
 
     async def _get_trading_coordinator_for_agent(self, agent_config: AgentConfigOutput) -> Optional[TradingCoordinator]:
-        logger.debug(f"Getting TradingCoordinator for agent: {agent_config.agent_id} ({agent_config.name})")
+        logger.debug(f"Orchestrator: Getting TradingCoordinator for agent: {agent_config.agent_id} ({agent_config.name}), provider: {agent_config.execution_provider}")
         hles_instance: Optional[HyperliquidExecutionService] = None
+        dex_instance: Optional[DEXExecutionService] = None # Renamed for clarity and consistency
 
         if agent_config.execution_provider == "hyperliquid":
-            # Use the new factory function directly
             hles_instance = get_hyperliquid_execution_service_instance(agent_config)
             if not hles_instance:
-                # Error logging is handled by the factory function
-                logger.warning(f"Could not get HLES instance for Hyperliquid agent {agent_config.agent_id}. TradingCoordinator setup will proceed without it or fail if essential.")
-                # Depending on TradingCoordinator's strictness, it might still work if only paper trading part is used by mistake,
-                # or fail if HLES is strictly required for "hyperliquid" mode.
-                # For this logic, if provider is "hyperliquid", HLES is essential.
+                logger.error(f"Orchestrator: Failed to get HyperliquidExecutionService for agent {agent_config.agent_id}.")
+                return None
+        elif agent_config.execution_provider == "dex":
+            dex_instance = get_dex_execution_service_instance(agent_config) # Use the correct factory
+            if not dex_instance:
+                logger.error(f"Orchestrator: Failed to get DEXExecutionService for agent {agent_config.agent_id}.")
                 return None
 
-        # Ensure simulated_trade_executor is available if paper trading
-        # For "paper" mode, simulated_trade_executor must be provided at Orchestrator init.
         if agent_config.execution_provider == "paper" and not self.simulated_trade_executor:
-             logger.error(f"Agent {agent_config.agent_id} configured for paper trading, but SimulatedTradeExecutor not available in Orchestrator.")
+             logger.error(f"Orchestrator: Agent {agent_config.agent_id} configured for paper trading, but SimulatedTradeExecutor not available.")
              return None
 
-
         try:
-            # Pass the potentially None hles_instance to TradingCoordinator
-            # TradingCoordinator's init should handle hles_instance being None if mode is paper
-            # TradingCoordinator now requires its own agent_id, AgentManagementService, RiskManagerService
             coordinator = TradingCoordinator(
-                agent_id=agent_config.agent_id, # Pass the agent_config's ID as the TC's ID for this context
-                agent_management_service=self.agent_management_service, # Pass AMS
-                risk_manager_service=self.risk_manager_service, # Pass RMS
+                agent_id=agent_config.agent_id,
+                agent_management_service=self.agent_management_service,
+                risk_manager_service=self.risk_manager_service,
                 google_bridge=self.google_bridge,
                 a2a_protocol=self.a2a_protocol,
                 simulated_trade_executor=self.simulated_trade_executor,
                 hyperliquid_execution_service=hles_instance,
+                dex_execution_service=dex_instance, # Pass the created dex_instance
                 trade_history_service=self.trade_history_service,
-                event_bus_service=self.event_bus_service # Pass EventBusService
+                event_bus_service=self.event_bus_service
             )
-            # Set trade execution mode on the coordinator instance
-            await coordinator.set_trade_execution_mode(agent_config.execution_provider)
-            # Setup event subscriptions for this TC instance
+            await coordinator.set_trade_execution_mode(agent_config.execution_provider) # type: ignore
             await coordinator.setup_event_subscriptions()
-            logger.debug(f"TradingCoordinator instantiated and subscriptions set up for agent {agent_config.agent_id} in '{agent_config.execution_provider}' mode.")
+            logger.debug(f"Orchestrator: TradingCoordinator instantiated and subscriptions set up for agent {agent_config.agent_id} in '{agent_config.execution_provider}' mode.")
             return coordinator
         except Exception as e:
-            logger.error(f"Failed to instantiate or set up TradingCoordinator for agent {agent_config.agent_id}: {e}", exc_info=True)
+            logger.error(f"Orchestrator: Failed to instantiate or set up TradingCoordinator for agent {agent_config.agent_id}: {e}", exc_info=True)
             return None
 
     async def run_single_agent_cycle(self, agent_id: str):
@@ -196,6 +194,27 @@ class AgentOrchestratorService:
             logger.debug(f"PortfolioOptimizerAgent {agent_id} cycle: Is event-driven. Updating heartbeat.")
             await self.agent_management_service.update_agent_heartbeat(agent_id)
             logger.info(f"PortfolioOptimizerAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        elif agent_config.agent_type == "NewsAnalysisAgent":
+            if not self.event_bus_service: # MarketDataService not directly used by NewsAnalysisService itself if it only fetches external RSS
+                logger.error(f"Orchestrator: EventBusService not configured. Cannot run NewsAnalysisAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+
+            news_service = NewsAnalysisService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service
+            )
+            try:
+                # This agent type might not iterate symbols, but rather fetches all its configured feeds.
+                # If it needs to iterate symbols (e.g. to filter news or focus analysis), that logic is in NewsAnalysisService.
+                await news_service.fetch_and_analyze_feeds()
+            except Exception as e:
+                logger.error(f"Error during NewsAnalysisAgent cycle for agent {agent_id}: {e}", exc_info=True)
+
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"NewsAnalysisAgent cycle finished for agent_id: {agent_id}")
             return
 
         # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)

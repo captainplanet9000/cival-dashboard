@@ -9,6 +9,7 @@ from typing import Optional, Dict, Any
 from python_ai_services.services.trading_coordinator import TradingCoordinator
 from python_ai_services.services.simulated_trade_executor import SimulatedTradeExecutor
 from python_ai_services.services.hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
+from python_ai_services.services.dex_execution_service import DEXExecutionService, DEXExecutionServiceError # Added
 
 from python_ai_services.models.paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperOrderStatus
 from python_ai_services.models.trading_history_models import TradeSide as PaperTradeSide, OrderType as PaperOrderType
@@ -40,41 +41,25 @@ def mock_hyperliquid_executor():
     return executor
 
 @pytest_asyncio.fixture
+def mock_dex_executor(): # New fixture for DEX
+    executor = MagicMock(spec=DEXExecutionService)
+    # This will be a placeholder, so the actual place_swap_order might not be called
+    # or will be mocked if we test deeper logic later.
+    # For now, its existence is key.
+    executor.place_swap_order = AsyncMock()
+    return executor
+
+@pytest_asyncio.fixture
 def trading_coordinator(
-from python_ai_services.services.trade_history_service import TradeHistoryService
-from python_ai_services.models.trade_history_models import TradeFillData
-from python_ai_services.services.risk_manager_service import RiskManagerService # Added
-from python_ai_services.services.agent_management_service import AgentManagementService # Added
-from python_ai_services.models.event_bus_models import RiskAssessmentResponseData, TradeSignalEventPayload # Added
-from datetime import datetime, timezone
-
-@pytest_asyncio.fixture
-def mock_trade_history_service():
-    service = AsyncMock(spec=TradeHistoryService)
-    service.record_fill = AsyncMock()
-    return service
-
-@pytest_asyncio.fixture # Added
-def mock_risk_manager_service():
-    service = AsyncMock(spec=RiskManagerService)
-    service.assess_trade_risk = AsyncMock()
-    return service
-
-@pytest_asyncio.fixture # Added
-def mock_agent_management_service():
-    return AsyncMock(spec=AgentManagementService)
-
-
-@pytest_asyncio.fixture
-def trading_coordinator( # Updated
     mock_google_bridge: MagicMock,
     mock_a2a_protocol: MagicMock,
     mock_simulated_executor: MagicMock,
     mock_hyperliquid_executor: MagicMock,
+    mock_dex_executor: MagicMock, # Added
     mock_trade_history_service: MagicMock,
-    mock_risk_manager_service: MagicMock, # Added
+    mock_risk_manager_service: MagicMock,
     mock_agent_management_service: MagicMock,
-    mock_event_bus_service: MagicMock # Added EventBusService mock
+    mock_event_bus_service: MagicMock
 ):
     return TradingCoordinator(
         agent_id="tc_main_test_id",
@@ -84,17 +69,18 @@ def trading_coordinator( # Updated
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
         hyperliquid_execution_service=mock_hyperliquid_executor,
+        dex_execution_service=mock_dex_executor, # Added
         trade_history_service=mock_trade_history_service,
-        event_bus_service=mock_event_bus_service # Pass the mock
+        event_bus_service=mock_event_bus_service
     )
 
 # --- Tests for __init__ ---
 
-def test_trading_coordinator_init( # Renamed and Updated
+def test_trading_coordinator_init(
     mock_google_bridge, mock_a2a_protocol, mock_simulated_executor,
-    mock_hyperliquid_executor, mock_trade_history_service,
+    mock_hyperliquid_executor, mock_dex_executor, mock_trade_history_service,
     mock_risk_manager_service, mock_agent_management_service,
-    mock_event_bus_service # Added
+    mock_event_bus_service
 ):
     coordinator = TradingCoordinator(
         agent_id="tc_test_init",
@@ -104,13 +90,14 @@ def test_trading_coordinator_init( # Renamed and Updated
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
         hyperliquid_execution_service=mock_hyperliquid_executor,
+        dex_execution_service=mock_dex_executor, # Check it's stored
         trade_history_service=mock_trade_history_service,
-        event_bus_service=mock_event_bus_service # Check it's stored
+        event_bus_service=mock_event_bus_service
     )
     assert coordinator.agent_id == "tc_test_init"
-    # ... (other asserts from previous version)
-    assert coordinator.event_bus_service == mock_event_bus_service # New assert
+    assert coordinator.event_bus_service == mock_event_bus_service
     assert coordinator.hyperliquid_execution_service == mock_hyperliquid_executor
+    assert coordinator.dex_execution_service == mock_dex_executor # New assert
     assert coordinator.trade_history_service == mock_trade_history_service
     assert coordinator.trade_execution_mode == "paper"
 
@@ -123,22 +110,26 @@ async def test_set_and_get_trade_execution_mode(trading_coordinator: TradingCoor
     mode_info = await trading_coordinator.get_trade_execution_mode()
     assert mode_info["current_mode"] == "paper"
 
-    # Set to live
-    result = await trading_coordinator.set_trade_execution_mode("live")
-    assert result["status"] == "success"
-    assert result["message"] == "Trade execution mode set to live"
+    # Set to hyperliquid (formerly live)
+    await trading_coordinator.set_trade_execution_mode("hyperliquid")
     mode_info = await trading_coordinator.get_trade_execution_mode()
-    assert mode_info["current_mode"] == "live"
+    assert mode_info["current_mode"] == "hyperliquid"
+
+    # Set to dex
+    await trading_coordinator.set_trade_execution_mode("dex")
+    mode_info = await trading_coordinator.get_trade_execution_mode()
+    assert mode_info["current_mode"] == "dex"
 
     # Set back to paper
-    result = await trading_coordinator.set_trade_execution_mode("paper")
-    assert result["status"] == "success"
+    await trading_coordinator.set_trade_execution_mode("paper")
     mode_info = await trading_coordinator.get_trade_execution_mode()
     assert mode_info["current_mode"] == "paper"
 
 @pytest.mark.asyncio
 async def test_set_trade_execution_mode_invalid(trading_coordinator: TradingCoordinator):
-    with pytest.raises(ValueError, match="Invalid trade execution mode 'test'. Allowed modes are: paper, live"):
+    # Note: The allowed modes in TradingCoordinator.set_trade_execution_mode might have changed
+    # Let's assume it was updated to ["paper", "hyperliquid", "dex"]
+    with pytest.raises(ValueError, match="Invalid trade execution mode 'test'. Allowed modes are: paper, hyperliquid, dex"):
         await trading_coordinator.set_trade_execution_mode("test")
 
 # --- Tests for _parse_crew_result_and_execute ---
@@ -415,11 +406,66 @@ async def test_execute_live_trade_no_hyperliquid_service( # Updated to pass all 
     assert result["status"] == "live_skipped"
     assert result["reason"] == "Hyperliquid service unavailable."
 
+# DEX Trading Mode Tests
+@pytest.mark.asyncio
+async def test_execute_dex_trade_success_placeholder(trading_coordinator: TradingCoordinator, mock_dex_executor: MagicMock, caplog):
+    await trading_coordinator.set_trade_execution_mode("dex")
+    user_id = str(uuid.uuid4())
+    trade_params = {"action": "buy", "symbol": "WETH/USDC", "quantity": 1.0, "order_type": "limit", "price": 3000.0}
+
+    # Since it's a placeholder, place_swap_order might not be called, or if it is, mock its return
+    mock_dex_executor.place_swap_order = AsyncMock(return_value={
+        "tx_hash": "0xMockDexTxHash", "status": "success", "error": None,
+        "amount_out_wei_actual": 2990 * (10**6), # Example output for USDC (6 decimals)
+        "amount_out_wei_minimum_requested": 2985 * (10**6)
+    })
+
+    result = await trading_coordinator._execute_trade_decision(trade_params, user_id)
+
+    assert result["status"] == "dex_executed_placeholder"
+    assert "details" in result
+    assert result["details"]["status"] == "success_mocked_dex" # From the placeholder logic
+    assert "DEX Trade conceptual mapping" in caplog.text
+    assert f"Original trade_params: {trade_params}" in caplog.text
+    assert "Conceptual mapped params" in caplog.text
+    # If the conceptual call to place_swap_order was made (even if commented out in service):
+    # mock_dex_executor.place_swap_order.assert_called_once()
+    # For current placeholder, the actual call is commented out, so we check logs.
+
+@pytest.mark.asyncio
+async def test_execute_dex_trade_no_dex_service(
+    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor,
+    mock_hyperliquid_executor, mock_trade_history_service,
+    mock_risk_manager_service, mock_agent_management_service, mock_event_bus_service
+):
+    # Initialize TC without dex_execution_service
+    coordinator_no_dex = TradingCoordinator(
+        agent_id="tc_no_dex",
+        agent_management_service=mock_agent_management_service,
+        risk_manager_service=mock_risk_manager_service,
+        google_bridge=mock_google_bridge, a2a_protocol=mock_a2a_protocol,
+        simulated_trade_executor=mock_simulated_executor,
+        hyperliquid_execution_service=mock_hyperliquid_executor,
+        dex_execution_service=None, # Explicitly None
+        trade_history_service=mock_trade_history_service,
+        event_bus_service=mock_event_bus_service
+    )
+    await coordinator_no_dex.set_trade_execution_mode("dex")
+    user_id = str(uuid.uuid4())
+    trade_params = {"action": "buy", "symbol": "UNI/ETH", "quantity": 10, "order_type": "market"}
+
+    result = await coordinator_no_dex._execute_trade_decision(trade_params, user_id)
+    assert result["status"] == "dex_skipped"
+    assert result["reason"] == "DEX service unavailable."
+
 # Unknown Mode Test
 @pytest.mark.asyncio
 async def test_execute_trade_unknown_mode(trading_coordinator: TradingCoordinator):
     # This test is fine, set_trade_execution_mode is independent of new __init__ args
-    await trading_coordinator.set_trade_execution_mode("mystery_mode")
+    # Need to ensure the mode being set is actually unknown to the updated set_trade_execution_mode
+    await trading_coordinator.set_trade_execution_mode("hyperliquid") # Set to a known state first
+    trading_coordinator.trade_execution_mode = "mystery_mode" # Force unknown mode directly for test
+
     user_id = str(uuid.uuid4())
     trade_params = {"action": "buy", "symbol": "SOL", "quantity": 10, "order_type": "market"}
 

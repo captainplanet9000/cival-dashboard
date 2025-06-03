@@ -96,6 +96,7 @@ __all__ = [
     "AgentStrategyConfig.MarketConditionClassifierParams",
     "AgentStrategyConfig.PortfolioOptimizerRule", # For exporting nested models
     "AgentStrategyConfig.PortfolioOptimizerParams",
+    "AgentStrategyConfig.NewsAnalysisParams", # Added
     # dashboard_models
     "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
     # performance_models
@@ -104,7 +105,7 @@ __all__ = [
     "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification",
     # event_bus_models
     "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
-    "RiskAssessmentRequestData", "RiskAssessmentResponseData",
+    "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload", # Added
     # db_models
     "AgentConfigDB"
 ]

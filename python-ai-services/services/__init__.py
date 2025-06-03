@@ -11,9 +11,12 @@ from .trading_data_service import TradingDataService
 from .performance_calculation_service import PerformanceCalculationService
 from .alert_configuration_service import AlertConfigurationService
 from .alert_monitoring_service import AlertMonitoringService
+from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError
 
 
 __all__ = [
+    "DEXExecutionService",
+    "DEXExecutionServiceError",
     "GoogleVertexService",
     "MarketDataService",
     "SimulatedTradeExecutor",
@@ -27,12 +30,13 @@ __all__ = [
     "AlertConfigurationService",
     "AlertMonitoringService",
     "AgentOrchestratorService",
-    "TradeHistoryService",
+    # "TradeHistoryService", # Duplicate removed
     "EventBusService",
     "RiskManagerService",
-    "MarketDataService",
+    # "MarketDataService", # Duplicate removed
     "DarvasBoxTechnicalService",
     "WilliamsAlligatorTechnicalService",
     "MarketConditionClassifierService",
-    "PortfolioOptimizerService"
+    "PortfolioOptimizerService",
+    "NewsAnalysisService"
 ]

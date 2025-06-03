@@ -36,7 +36,8 @@ import uuid
 from .trade_history_service import TradeHistoryService
 from .risk_manager_service import RiskManagerService
 from .agent_management_service import AgentManagementService
-from .event_bus_service import EventBusService # Added
+from .event_bus_service import EventBusService
+from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError # Added
 
 
 class TradingCoordinator:
@@ -51,10 +52,11 @@ class TradingCoordinator:
                  risk_manager_service: RiskManagerService, # For pre-trade risk checks
                  google_bridge: GoogleSDKBridge, # Existing dependency
                  a2a_protocol: A2AProtocol, # Existing dependency
-                 simulated_trade_executor: SimulatedTradeExecutor, # Existing dependency
+                 simulated_trade_executor: SimulatedTradeExecutor,
                  hyperliquid_execution_service: Optional[HyperliquidExecutionService] = None,
+                 dex_execution_service: Optional[DEXExecutionService] = None, # Added
                  trade_history_service: Optional[TradeHistoryService] = None,
-                 event_bus_service: EventBusService # Now required
+                 event_bus_service: EventBusService
                 ):
         self.agent_id = agent_id
         self.agent_management_service = agent_management_service
@@ -63,12 +65,13 @@ class TradingCoordinator:
         self.a2a_protocol = a2a_protocol
         self.simulated_trade_executor = simulated_trade_executor
         self.hyperliquid_execution_service = hyperliquid_execution_service
+        self.dex_execution_service = dex_execution_service # Store it
         self.trade_history_service = trade_history_service
-        self.event_bus_service = event_bus_service # Now required and stored
-        self.trade_execution_mode: str = "paper"
+        self.event_bus_service = event_bus_service
+        self.trade_execution_mode: str = "paper" # Default
 
         self.base_url = "http://localhost:3000/api/agents/trading"
-        logger.info(f"TradingCoordinator instance {self.agent_id} initialized.")
+        logger.info(f"TradingCoordinator instance {self.agent_id} initialized with DEXExecutionService: {'Available' if self.dex_execution_service else 'Not Available'}.")
         if self.simulated_trade_executor:
             logger.info("SimulatedTradeExecutor is available.")
         if self.hyperliquid_execution_service:
@@ -77,12 +80,22 @@ class TradingCoordinator:
 
     async def set_trade_execution_mode(self, mode: str) -> Dict[str, str]:
         """Sets the trade execution mode for the TradingCoordinator."""
-        allowed_modes = ["paper", "live"]
-        if mode.lower() not in allowed_modes:
-            logger.error(f"Attempted to set invalid trade execution mode: {mode}")
-            raise ValueError(f"Invalid trade execution mode '{mode}'. Allowed modes are: {', '.join(allowed_modes)}")
+        # Updated to include "dex" as an allowed mode.
+        # Note: "live" previously referred to Hyperliquid. Consider renaming "live" to "live_cxl" (Centralized Exchange Live)
+        # and "dex" to "live_dex" for clarity, or just use "hyperliquid" and "dex".
+        # For this change, let's assume "live" means Hyperliquid and "dex" is the new mode.
+        allowed_modes = ["paper", "hyperliquid", "dex"] # Changed "live" to "hyperliquid"
 
-        self.trade_execution_mode = mode.lower()
+        mode_lower = mode.lower()
+        if mode_lower == "live": # Map "live" to "hyperliquid" for backward compatibility if needed
+            logger.warning("Received 'live' execution mode, interpreting as 'hyperliquid'. Consider using 'hyperliquid' or 'dex' explicitly.")
+            mode_lower = "hyperliquid"
+
+        if mode_lower not in allowed_modes:
+            logger.error(f"Attempted to set invalid trade execution mode: {mode_lower}")
+            raise ValueError(f"Invalid trade execution mode '{mode_lower}'. Allowed modes are: {', '.join(allowed_modes)}")
+
+        self.trade_execution_mode = mode_lower
         logger.info(f"Trade execution mode set to: {self.trade_execution_mode}")
         return {"status": "success", "message": f"Trade execution mode set to {self.trade_execution_mode}"}
 
@@ -333,6 +346,110 @@ class TradingCoordinator:
             else:
                 logger.warning("Paper trade mode selected, but SimulatedTradeExecutor is not available.")
                 return {"status": "paper_skipped", "reason": "Simulated executor unavailable."}
+
+        elif self.trade_execution_mode == "dex":
+            if not self.dex_execution_service:
+                logger.warning("DEX trade mode selected, but DEXExecutionService is not available.")
+                return {"status": "dex_skipped", "reason": "DEX service unavailable."}
+
+            logger.info(f"Attempting DEX trade execution via DEXExecutionService for agent {user_id}.")
+            # Conceptual placeholder for parameter mapping and execution
+            # In a full implementation, this would involve:
+            # 1. Fetching agent's full dex_config (e.g., via self.agent_management_service.get_agent(user_id))
+            #    agent_dex_config = (await self.agent_management_service.get_agent(user_id)).dex_config
+            # 2. Parsing symbol (e.g., "WETH/USDC") from trade_params["symbol"] into token_in_address and token_out_address
+            #    using agent_dex_config.token_mappings.
+            # 3. Fetching decimals for token_in (e.g., using self.dex_execution_service.get_token_balance or a dedicated get_token_info).
+            # 4. Converting trade_params["quantity"] (amount_in) to wei using token_in decimals.
+            # 5. Calculating min_amount_out_wei:
+            #    - If trade_params["price"] (limit price) is available: (amount_in_tokens * limit_price) * (1 - slippage_tolerance_from_config)
+            #    - Convert this to token_out_wei using token_out decimals.
+            #    - If no limit price, use 0 for market-like order (or a very low value).
+            # 6. Getting fee_tier (e.g., from agent_dex_config.operational_parameters or a default).
+            # 7. Handling native ETH (e.g., if token_in is ETH, use WETH address and pass value in transaction).
+
+            logger.info(f"DEX Trade conceptual mapping for agent {user_id}:")
+            logger.info(f"  Original trade_params: {trade_params}")
+
+            # --- Placeholder mapping ---
+            symbol_pair = trade_params.get("symbol", "UNKNOWN/UNKNOWN")
+            token_in_symbol, token_out_symbol = symbol_pair.split('/', 1) if '/' in symbol_pair else (symbol_pair, "UNKNOWN")
+
+            # These would be looked up from agent_config.dex_config.token_mappings
+            mock_token_in_address = f"0xTOKEN_IN_ADDRESS_FOR_{token_in_symbol}"
+            mock_token_out_address = f"0xTOKEN_OUT_ADDRESS_FOR_{token_out_symbol}"
+
+            # This would involve fetching decimals and converting
+            mock_amount_in_wei = int(float(trade_params.get("quantity", 0)) * (10**18)) # Assuming 18 decimals for token_in
+
+            # This would involve price, slippage, and token_out decimals
+            mock_min_amount_out_wei = 0 # For market-like, or calculated from price for limit
+            if trade_params.get("price") and trade_params.get("order_type", "").lower() == "limit":
+                 # Simplified: assume price is for token_out per token_in.
+                 # (token_in_quantity * price_of_token_out_per_token_in) * (1-slippage)
+                 # This needs token_out decimals as well.
+                 mock_min_amount_out_wei = int(mock_amount_in_wei * float(trade_params["price"]) * 0.995 / (10**(18-6))) # Example: 18dec in, 6dec out, 0.5% slippage
+
+            mock_fee_tier = 3000 # Would come from config
+
+            logger.info(f"  Conceptual mapped params: token_in={mock_token_in_address}, token_out={mock_token_out_address}, amount_in_wei={mock_amount_in_wei}, min_amount_out_wei={mock_min_amount_out_wei}, fee_tier={mock_fee_tier}")
+
+            try:
+                # Conceptual call to the actual service method
+                # result = await self.dex_execution_service.place_swap_order(
+                #     token_in_address=mock_token_in_address,
+                #     token_out_address=mock_token_out_address,
+                #     amount_in_wei=mock_amount_in_wei,
+                #     min_amount_out_wei=mock_min_amount_out_wei,
+                #     fee_tier=mock_fee_tier
+                # )
+                # logger.info(f"DEXExecutionService.place_swap_order call conceptually made. Mocked result: {result}")
+
+                # For this subtask, return a mocked success for the placeholder
+                mock_dex_result = {
+                    "tx_hash": f"0xMOCK_DEX_SWAP_{uuid.uuid4().hex}",
+                    "status": "success_mocked_dex",
+                    "error": None,
+                    "amount_out_wei_actual": mock_min_amount_out_wei, # Simulate actual = minimum for mock
+                    "amount_out_wei_minimum_requested": mock_min_amount_out_wei,
+                    "amount_in_wei": mock_amount_in_wei,
+                    "token_in": mock_token_in_address,
+                    "token_out": mock_token_out_address
+                }
+                logger.info(f"DEX trade conceptually executed for agent {user_id}. Mocked result: {mock_dex_result}")
+
+                # Conceptual fill recording for DEX:
+                # Would involve creating two TradeFillData objects:
+                # 1. Debit token_in from agent's balance (e.g., -amount_in_wei of token_in_address)
+                # 2. Credit token_out to agent's balance (e.g., +amount_out_wei_actual of token_out_address)
+                # These would be recorded using self.trade_history_service.record_fill()
+                # This part is complex due to different assets and requires careful handling of prices for P&L.
+                if self.trade_history_service:
+                    logger.info(f"DEX Conceptual: Would record fills for token_in ({token_in_symbol}) and token_out ({token_out_symbol}) here.")
+                    # Example conceptual fill for token_out (credit)
+                    fill_timestamp = datetime.now(timezone.utc)
+                    conceptual_fill_out = TradeFillData(
+                        agent_id=user_id,
+                        timestamp=fill_timestamp,
+                        asset=token_out_symbol, # Or use address
+                        side=TradeSide.BUY, # Receiving token_out
+                        quantity=float(mock_dex_result["amount_out_wei_actual"]) / (10**6), # Assuming 6 decimals for mock USDC
+                        price=float(trade_params.get("price", 0)), # Price of token_out in terms of token_in, or overall USD price
+                        fee=0.0, fee_currency="ETH", # Example fee
+                        exchange_order_id=mock_dex_result["tx_hash"],
+                        exchange_trade_id=f"DEX_FILL_{uuid.uuid4().hex}"
+                    )
+                    # await self.trade_history_service.record_fill(conceptual_fill_out)
+                    logger.debug(f"DEX Conceptual Fill (token_out): {conceptual_fill_out.model_dump_json(indent=2)}")
+
+                return {"status": "dex_executed_placeholder", "details": mock_dex_result}
+
+            except DEXExecutionServiceError as e:
+                logger.error(f"DEX trade execution failed for agent {user_id}: {e}", exc_info=True)
+                return {"status": "dex_failed", "error": str(e)}
+            except Exception as e:
+                logger.error(f"Unexpected error during DEX trade placeholder execution for agent {user_id}: {e}", exc_info=True)
+                return {"status": "dex_failed_unexpected", "error": str(e)}
         else:
             logger.warning(f"Unknown trade execution mode: {self.trade_execution_mode}")
             return {"status": "error", "reason": "Unknown trade execution mode."}
