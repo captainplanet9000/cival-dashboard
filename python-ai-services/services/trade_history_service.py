@@ -19,7 +19,22 @@ class TradeHistoryService:
     async def _get_agent_fills_filepath(self, agent_id: str) -> Path:
         return self.fills_dir / f"{agent_id}_fills.jsonl" # Using .jsonl for line-separated JSON
 
-    async def record_fill(self, fill_data: TradeFillData): # agent_id is part of fill_data
+    async def record_fill(self, fill_data: TradeFillData):
+        """
+        Records a single trade fill to persistent storage for a specific agent.
+
+        The `TradeFillData` object should represent an actual execution fill from an exchange
+        or a simulated fill that mirrors real execution details. This data is fundamental
+        for P&L calculations and trade history tracking.
+
+        Args:
+            fill_data: A TradeFillData Pydantic model instance containing the fill details.
+                       The `agent_id` within `fill_data` determines which agent's fill log
+                       the record will be appended to.
+
+        Raises:
+            IOError: If writing to the fill log file fails.
+        """
         agent_id = fill_data.agent_id
         filepath = await self._get_agent_fills_filepath(agent_id)
         logger.debug(f"Recording fill for agent {agent_id} to file {filepath}. Fill ID: {fill_data.fill_id}")

@@ -8,9 +8,10 @@ from ..utils.google_sdk_bridge import GoogleSDKBridge
 from ..utils.a2a_protocol import A2AProtocol
 from .trade_history_service import TradeHistoryService
 from .risk_manager_service import RiskManagerService
-from .market_data_service import MarketDataService # Added
-from .event_bus_service import EventBusService # Added and ensure it's the actual class
-from .darvas_box_service import DarvasBoxTechnicalService # Added
+from .market_data_service import MarketDataService
+from .event_bus_service import EventBusService
+from .darvas_box_service import DarvasBoxTechnicalService
+from .williams_alligator_service import WilliamsAlligatorTechnicalService # Added
 # Use the new factory
 from ..core.factories import get_hyperliquid_execution_service_instance
 from typing import Optional, Any, Dict, List
@@ -118,9 +119,33 @@ class AgentOrchestratorService:
                         await darvas_service.analyze_symbol_and_generate_signal(symbol)
                     except Exception as e:
                         logger.error(f"Error during DarvasBox analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
-            # Heartbeat and return for specialized agent
+
             await self.agent_management_service.update_agent_heartbeat(agent_id)
             logger.info(f"DarvasBoxTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        elif agent_config.agent_type == "WilliamsAlligatorTechnicalAgent":
+            if not self.market_data_service or not self.event_bus_service:
+                logger.error(f"MarketDataService or EventBusService not available for WilliamsAlligatorTechnicalAgent {agent_id}. Skipping cycle.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+
+            wa_service = WilliamsAlligatorTechnicalService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service,
+                market_data_service=self.market_data_service
+            )
+            if not agent_config.strategy.watched_symbols:
+                logger.warning(f"WilliamsAlligatorAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
+            else:
+                for symbol in agent_config.strategy.watched_symbols:
+                    try:
+                        await wa_service.analyze_symbol_and_generate_signal(symbol)
+                    except Exception as e:
+                        logger.error(f"Error during WilliamsAlligator analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"WilliamsAlligatorTechnicalAgent cycle finished for agent_id: {agent_id}")
             return
 
         # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)

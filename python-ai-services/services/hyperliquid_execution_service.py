@@ -184,6 +184,25 @@ class HyperliquidExecutionService:
                     # Could also check order_status_key if it directly indicates a fill (e.g. "filled")
                     # For simplicity, we'll primarily rely on it being a market order for simulation.
                     # A real system might get actual fill data from the SDK response if available.
+
+                    # --- START OF SIMULATED FILL GENERATION ---
+                    # TODO: Replace this section with actual fill data processing when available.
+                    # How real fills might be obtained:
+                    # 1. Direct SDK Response: Some SDK order placement calls might return fill data directly
+                    #    if the order is executed immediately (e.g., market orders, aggressive limit orders).
+                    #    The `sdk_response_dict` would need to be parsed for this.
+                    # 2. WebSocket Stream: Subscribe to a user-specific WebSocket endpoint that pushes fill events.
+                    #    This would likely happen outside this `place_order` method, in a separate listener
+                    #    that then records fills using TradeHistoryService.
+                    # 3. Polling: Periodically call `info_client.user_fills_by_time()` to get recent fills.
+                    #    This is less real-time but can catch fills not captured immediately.
+                    #
+                    # Mapping to TradeFillData:
+                    # Actual fill data from Hyperliquid (e.g., from user_fills_by_time or WebSocket)
+                    # would need to be mapped to the `TradeFillData` Pydantic model structure.
+                    # This involves matching fields like price, quantity, fees, timestamps, asset, side,
+                    # and various IDs (exchange order ID, fill/trade ID).
+                    # Example fields from user_fills_by_time: 'coin', 'side', 'px', 'sz', 'time', 'fee', 'oid', 'tid'.
                     if is_market_order or order_status_key == "filled":
                         fill_list = []
                         simulated_fill_dict = {
@@ -202,7 +221,8 @@ class HyperliquidExecutionService:
                         }
                         fill_list.append(simulated_fill_dict)
                         parsed_response.simulated_fills = fill_list
-                        logger.info(f"Generated simulated fills for order OID {parsed_response.oid}: {fill_list}")
+                        logger.info(f"Generated SIMULATED fills for order OID {parsed_response.oid}: {fill_list}")
+                    # --- END OF SIMULATED FILL GENERATION ---
 
                     logger.info(f"Order placed successfully on Hyperliquid. Status: {parsed_response.status}, OID: {parsed_response.oid}")
                     return parsed_response

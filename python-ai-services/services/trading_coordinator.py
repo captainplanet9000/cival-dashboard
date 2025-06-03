@@ -171,8 +171,18 @@ class TradingCoordinator:
                 logger.info(f"Main live trade executed. Response: {main_order_result_dict}")
 
                 # Record simulated fills if available and TradeHistoryService is configured
+                # --- START OF (SIMULATED) FILL RECORDING ---
+                # This section processes fills provided by HyperliquidExecutionService.
+                # Currently, HyperliquidExecutionService generates *simulated* fills for market orders
+                # or orders that are immediately marked as "filled" by the (mocked) SDK response.
+                # When HyperliquidExecutionService is updated to provide real fill data (e.g., from
+                # WebSocket streams or by parsing immediate execution data from SDK responses),
+                # this logic in TradingCoordinator should seamlessly process those real fills
+                # as long as they are provided in the 'simulated_fills' field (which might then be renamed
+                # to 'actual_fills' or similar in HyperliquidOrderResponseData).
+                # The TradeFillData model is designed to hold data from actual exchange fills.
                 if self.trade_history_service and main_order_result.simulated_fills:
-                    logger.info(f"Processing {len(main_order_result.simulated_fills)} simulated fills for main order.")
+                    logger.info(f"Processing {len(main_order_result.simulated_fills)} (simulated) fills for main order.")
                     for fill_dict in main_order_result.simulated_fills:
                         try:
                             # Convert timestamp string to datetime object
@@ -195,8 +205,9 @@ class TradingCoordinator:
                             logger.info(f"Recording simulated fill for agent {user_id}: {fill_data_obj.model_dump_json(indent=2)}")
                             await self.trade_history_service.record_fill(fill_data_obj)
                         except Exception as e_fill:
-                            logger.error(f"Error processing or recording simulated fill for agent {user_id}: {e_fill}", exc_info=True)
+                            logger.error(f"Error processing or recording (simulated) fill for agent {user_id}: {e_fill}", exc_info=True)
                             # Continue to SL/TP placement even if fill recording fails for one fill
+                # --- END OF (SIMULATED) FILL RECORDING ---
 
 
                 # 3. Stop-Loss (SL) and Take-Profit (TP) Order Placement

@@ -99,25 +99,44 @@ def create_sample_agent_config(
     agent_id: str,
     is_active: bool = True,
     provider: str = "paper",
-    symbols: list = None,
-    cred_id: str = None
+    symbols: Optional[list] = None, # Optional for tests
+    # cred_id is deprecated, using hyperliquid_config in AgentConfigOutput directly
+    agent_type_override: Optional[str] = None # To specify agent type
 ) -> AgentConfigOutput:
     if symbols is None:
         symbols = ["BTC/USD", "ETH/USD"]
+
+    hl_config = None
+    if provider == "hyperliquid":
+        hl_config = {
+            "wallet_address": f"0xWallet{agent_id}",
+            "private_key_env_var_name": f"PRIV_KEY_{agent_id.upper()}",
+            "network_mode": "testnet"
+        }
+
+    strategy = AgentStrategyConfig(
+        strategy_name="test_strat",
+        parameters={},
+        watched_symbols=symbols,
+        default_market_event_description="Market event for {symbol}",
+        default_additional_context={"source": "orchestrator"}
+    )
+    # Set specific strategy params based on agent_type_override
+    if agent_type_override == "DarvasBoxTechnicalAgent":
+        strategy.darvas_params = AgentStrategyConfig.DarvasStrategyParams()
+    elif agent_type_override == "WilliamsAlligatorTechnicalAgent":
+        strategy.williams_alligator_params = AgentStrategyConfig.WilliamsAlligatorParams()
+
     return AgentConfigOutput(
         agent_id=agent_id,
         name=f"Agent {agent_id}",
         is_active=is_active,
-        strategy=AgentStrategyConfig(
-            strategy_name="test_strat",
-            parameters={},
-            watched_symbols=symbols,
-            default_market_event_description="Market event for {symbol}",
-            default_additional_context={"source": "orchestrator"}
-        ),
+        agent_type=agent_type_override if agent_type_override else "GenericAgent",
+        strategy=strategy,
         risk_config=AgentRiskConfig(max_capital_allocation_usd=1000, risk_per_trade_percentage=0.01),
-        execution_provider=provider,
-        hyperliquid_credentials_id=cred_id
+        execution_provider=provider, # type: ignore
+        hyperliquid_config=hl_config
+        # hyperliquid_credentials_id is deprecated
     )
 
 # --- Tests for _get_trading_coordinator_for_agent ---
@@ -329,10 +348,10 @@ async def test_run_all_active_agents_once_multiple_active(orchestrator_service: 
     assert orchestrator_service.run_single_agent_cycle.call_count == 2
     # Check it was called with the active agent IDs
     calls = orchestrator_service.run_single_agent_cycle.call_args_list
-    called_agent_ids = {call[0][0] for call in calls} # call[0][0] is the first arg (agent_id)
-    assert "agent1" in called_agent_ids
-    assert "agent3" in called_agent_ids
-    assert "agent2" not in called_agent_ids # Was inactive
+    called_agent_ids = {call[0][0] for call in calls}
+    assert agent1_config.agent_id in called_agent_ids # Use actual IDs
+    assert agent3_config.agent_id in called_agent_ids
+    assert agent2_config.agent_id not in called_agent_ids # Was inactive
 
 @pytest.mark.asyncio
 async def test_run_all_active_agents_one_cycle_fails(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):

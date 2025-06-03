@@ -1,347 +1,329 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 from datetime import datetime, timezone
 import uuid
 import json
-import os
-from pathlib import Path
+from sqlalchemy.orm import Session
 
 from ..models.agent_models import (
     AgentConfigInput,
     AgentConfigOutput,
     AgentUpdateRequest,
     AgentStatus,
-    AgentStrategyConfig, # Required for nested updates
-    AgentRiskConfig      # Required for nested updates
+    AgentStrategyConfig,
+    AgentRiskConfig
 )
+from ..models.db_models import AgentConfigDB
 from loguru import logger
 
 class AgentManagementService:
-    def __init__(self, config_dir: Path = Path("agent_configs")):
-        self.config_dir = config_dir
-        os.makedirs(self.config_dir, exist_ok=True)
-        self._agent_statuses: Dict[str, AgentStatus] = {} # Runtime status remains in-memory
-        logger.info(f"AgentManagementService initialized. Configs stored in: {self.config_dir.resolve()}")
-        self._load_existing_statuses()
+    def __init__(self, session_factory: Callable[[], Session]):
+        self.session_factory = session_factory
+        self._agent_statuses: Dict[str, AgentStatus] = {}
+        logger.info("AgentManagementService initialized with DB session factory.")
+        # _load_existing_statuses_from_db should be called from an async context, e.g., app startup.
 
-    def _load_existing_statuses(self):
-        """Initialize statuses for agents that have configs but no runtime status yet."""
+    async def _load_existing_statuses_from_db(self):
+        logger.info("Loading existing agent statuses from database...")
+        db: Session = self.session_factory()
         try:
-            for filename in os.listdir(self.config_dir):
-                if filename.endswith(".json"):
-                    agent_id = filename[:-5] # Remove .json
-                    if agent_id not in self._agent_statuses:
-                        # Attempt to load config to check is_active, default to 'stopped'
-                        # This is a simplified load just for is_active, actual get_agent does full parsing
-                        try:
-                            file_path = self.config_dir / filename
-                            with open(file_path, 'r') as f:
-                                data = json.load(f)
-                                is_active = data.get('is_active', False)
-                                current_status_val = "running" if is_active else "stopped"
-                                # if is_active, it implies it should be running, but on startup, it's safer to assume stopped
-                                # unless a more robust persistence for runtime state is added.
-                                # For now, if is_active is True in file, it means it *should* be running.
-                                # Actual runtime state is managed by start/stop calls.
-                                # So, on fresh service start, all are "stopped" unless explicitly started later.
-                                self._agent_statuses[agent_id] = AgentStatus(
-                                    agent_id=agent_id,
-                                    status="stopped", # Always init to stopped, start_agent will change this
-                                    last_heartbeat=datetime.now(timezone.utc)
-                                )
-                                logger.debug(f"Initialized status for existing agent {agent_id} to 'stopped'.")
-                        except Exception as e:
-                            logger.error(f"Error loading minimal config for agent {agent_id} to init status: {e}")
+            db_agents_query = db.query(AgentConfigDB.agent_id, AgentConfigDB.updated_at, AgentConfigDB.is_active)
+            db_agents = db_agents_query.all()
+            for agent_id_val, updated_at_val, is_active_val in db_agents:
+                if agent_id_val not in self._agent_statuses:
+                    self._agent_statuses[agent_id_val] = AgentStatus(
+                        agent_id=agent_id_val,
+                        status="stopped",
+                        last_heartbeat=updated_at_val
+                    )
+            logger.info(f"Initialized/checked statuses for {len(db_agents)} agents from DB (all set to 'stopped' initially).")
         except Exception as e:
-            logger.error(f"Error listing agent config directory during status initialization: {e}")
+            logger.error(f"Error loading existing agent statuses from DB: {e}", exc_info=True)
+        finally:
+            db.close()
 
-
-    async def _save_agent_config(self, agent_config: AgentConfigOutput):
-        file_path = self.config_dir / f"{agent_config.agent_id}.json"
+    def _db_to_pydantic(self, db_agent: AgentConfigDB) -> AgentConfigOutput:
         try:
-            with open(file_path, 'w') as f:
-                f.write(agent_config.model_dump_json(indent=2))
-            logger.debug(f"Agent config saved to {file_path}")
-        except IOError as e:
-            logger.error(f"Failed to save agent config {agent_config.agent_id} to {file_path}: {e}")
-            raise # Re-raise to indicate save failure
+            strategy_data = json.loads(db_agent.strategy_config_json or "{}")
+            if 'darvas_params' in strategy_data and strategy_data['darvas_params'] and isinstance(strategy_data['darvas_params'], dict):
+                strategy_data['darvas_params'] = AgentStrategyConfig.DarvasStrategyParams(**strategy_data['darvas_params'])
+            if 'williams_alligator_params' in strategy_data and strategy_data['williams_alligator_params'] and isinstance(strategy_data['williams_alligator_params'], dict):
+                strategy_data['williams_alligator_params'] = AgentStrategyConfig.WilliamsAlligatorParams(**strategy_data['williams_alligator_params'])
+            strategy_config = AgentStrategyConfig(**strategy_data)
+        except (json.JSONDecodeError, TypeError) as e_strat:
+            logger.error(f"Error deserializing strategy_config_json for agent {db_agent.agent_id}: {e_strat}. Data: '{db_agent.strategy_config_json}'")
+            strategy_config = AgentStrategyConfig(strategy_name="ERROR_DESERIALIZING", parameters={}, watched_symbols=[])
+
+        try:
+            risk_conf_dict = json.loads(db_agent.risk_config_json or "{}")
+            risk_config = AgentRiskConfig(**risk_conf_dict)
+        except (json.JSONDecodeError, TypeError) as e_risk:
+            logger.error(f"Error deserializing risk_config_json for agent {db_agent.agent_id}: {e_risk}. Data: '{db_agent.risk_config_json}'")
+            risk_config = AgentRiskConfig(max_capital_allocation_usd=0, risk_per_trade_percentage=0.01) # Default
+
+        try:
+            hyperliquid_conf = json.loads(db_agent.hyperliquid_config_json) if db_agent.hyperliquid_config_json else None
+        except json.JSONDecodeError as e_hl:
+            logger.error(f"Error deserializing hyperliquid_config_json for agent {db_agent.agent_id}: {e_hl}. Data: '{db_agent.hyperliquid_config_json}'")
+            hyperliquid_conf = None
+
+        try:
+            op_params = json.loads(db_agent.operational_parameters_json or "{}")
+        except json.JSONDecodeError as e_op:
+            logger.error(f"Error deserializing operational_parameters_json for agent {db_agent.agent_id}: {e_op}. Data: '{db_agent.operational_parameters_json}'")
+            op_params = {}
+
+        return AgentConfigOutput(
+            agent_id=db_agent.agent_id, name=db_agent.name, description=db_agent.description,
+            agent_type=db_agent.agent_type, parent_agent_id=db_agent.parent_agent_id,
+            is_active=db_agent.is_active, strategy=strategy_config, risk_config=risk_config,
+            hyperliquid_config=hyperliquid_conf, operational_parameters=op_params,
+            created_at=db_agent.created_at, updated_at=db_agent.updated_at
+        )
 
     async def create_agent(self, agent_input: AgentConfigInput) -> AgentConfigOutput:
-        logger.info(f"Attempting to create agent with name: {agent_input.name}")
+        logger.info(f"Attempting to create agent with name: {agent_input.name} in DB.")
         agent_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc)
 
-        agent_config = AgentConfigOutput(
-            agent_id=agent_id,
-            created_at=now,
-            updated_at=now,
-            is_active=False, # Default to inactive
+        pydantic_agent = AgentConfigOutput(
+            agent_id=agent_id, created_at=now, updated_at=now, is_active=False,
             **agent_input.model_dump()
         )
-        await self._save_agent_config(agent_config)
 
-        self._agent_statuses[agent_id] = AgentStatus(
-            agent_id=agent_id,
-            status="stopped",
-            last_heartbeat=now
+        db_agent = AgentConfigDB(
+            agent_id=pydantic_agent.agent_id, name=pydantic_agent.name, description=pydantic_agent.description,
+            agent_type=pydantic_agent.agent_type, parent_agent_id=pydantic_agent.parent_agent_id,
+            is_active=pydantic_agent.is_active,
+            strategy_config_json=pydantic_agent.strategy.model_dump_json(),
+            risk_config_json=pydantic_agent.risk_config.model_dump_json(), # Serialize risk_config
+            hyperliquid_config_json=json.dumps(pydantic_agent.hyperliquid_config) if pydantic_agent.hyperliquid_config else None,
+            operational_parameters_json=json.dumps(pydantic_agent.operational_parameters or {}),
+            created_at=pydantic_agent.created_at, updated_at=pydantic_agent.updated_at
         )
-        logger.info(f"Agent created successfully with ID: {agent_id}")
-        return agent_config
+
+        db: Session = self.session_factory()
+        try:
+            db.add(db_agent)
+            db.commit()
+            db.refresh(db_agent)
+            logger.info(f"Agent created successfully in DB with ID: {agent_id}")
+            self._agent_statuses[agent_id] = AgentStatus(agent_id=agent_id, status="stopped", last_heartbeat=now)
+            return self._db_to_pydantic(db_agent)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error creating agent {agent_id} in DB: {e}", exc_info=True)
+            raise
+        finally:
+            db.close()
 
     async def get_agents(self) -> List[AgentConfigOutput]:
-        agents_list: List[AgentConfigOutput] = []
-        logger.debug(f"Retrieving all agents from {self.config_dir}")
+        logger.debug("Retrieving all agents from DB.")
+        db: Session = self.session_factory()
         try:
-            for filename in os.listdir(self.config_dir):
-                if filename.endswith(".json"):
-                    agent_id = filename[:-5]
-                    agent = await self.get_agent(agent_id) # Use existing get_agent to load and parse
-                    if agent:
-                        agents_list.append(agent)
-        except Exception as e:
-            logger.error(f"Error listing or loading agents from {self.config_dir}: {e}", exc_info=True)
-        return agents_list
+            db_agents = db.query(AgentConfigDB).all()
+            return [self._db_to_pydantic(db_agent) for db_agent in db_agents]
+        finally:
+            db.close()
 
     async def get_agent(self, agent_id: str) -> Optional[AgentConfigOutput]:
-        logger.debug(f"Attempting to retrieve agent with ID: {agent_id} from file.")
-        file_path = self.config_dir / f"{agent_id}.json"
-        if not file_path.exists():
-            logger.warning(f"Agent config file not found for ID {agent_id} at {file_path}")
-            return None
+        logger.debug(f"Attempting to retrieve agent with ID: {agent_id} from DB.")
+        db: Session = self.session_factory()
         try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                return AgentConfigOutput(**data)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON decode error for agent {agent_id} from {file_path}: {e}")
-            return None
-        except IOError as e:
-            logger.error(f"IOError for agent {agent_id} from {file_path}: {e}")
-            return None
-        except Exception as e: # Catch any other Pydantic validation errors, etc.
-            logger.error(f"Failed to load/parse agent {agent_id} from {file_path}: {e}", exc_info=True)
-            return None
-
+            db_agent = db.query(AgentConfigDB).filter(AgentConfigDB.agent_id == agent_id).first()
+            return self._db_to_pydantic(db_agent) if db_agent else None
+        finally:
+            db.close()
 
     async def update_agent(self, agent_id: str, update_data: AgentUpdateRequest) -> Optional[AgentConfigOutput]:
-        logger.info(f"Attempting to update agent with ID: {agent_id} in file.")
-        agent = await self.get_agent(agent_id)
-        if not agent:
-            logger.warning(f"Agent with ID {agent_id} not found for update.")
-            return None
-
-        update_dict = update_data.model_dump(exclude_unset=True)
-
-        # For nested Pydantic models, we need to update them correctly.
-        # Pydantic's model_update can be tricky with nested partial updates.
-        # A common way is to convert the existing model to a dict, update the dict, then re-parse.
-
-        agent_data_dict = agent.model_dump()
-
-        # Handle nested model updates carefully
-        if 'strategy' in update_dict and update_dict['strategy'] is not None:
-            # Assuming AgentUpdateRequest.strategy is a dict (from model_dump) or AgentStrategyConfig
-            strategy_update_data = update_dict['strategy']
-            if isinstance(strategy_update_data, dict):
-                 # If strategy_update_data has 'parameters', merge them, otherwise replace strategy.parameters
-                if 'parameters' in strategy_update_data and isinstance(agent_data_dict['strategy']['parameters'], dict) and isinstance(strategy_update_data['parameters'], dict):
-                    agent_data_dict['strategy']['parameters'].update(strategy_update_data['parameters'])
-                    # Remove parameters from strategy_update_data to avoid overwriting the merged one by top-level dict.update
-                    del strategy_update_data['parameters']
-                agent_data_dict['strategy'].update(strategy_update_data)
-            elif isinstance(strategy_update_data, AgentStrategyConfig): # Should be dict from model_dump(exclude_unset=True)
-                 agent_data_dict['strategy'].update(strategy_update_data.model_dump(exclude_unset=True))
-
-
-        if 'risk_config' in update_dict and update_dict['risk_config'] is not None:
-            risk_update_data = update_dict['risk_config']
-            if isinstance(risk_update_data, dict):
-                agent_data_dict['risk_config'].update(risk_update_data)
-            elif isinstance(risk_update_data, AgentRiskConfig): # Should be dict
-                agent_data_dict['risk_config'].update(risk_update_data.model_dump(exclude_unset=True))
-
-        # Handle operational_parameters merge
-        if 'operational_parameters' in update_dict and update_dict['operational_parameters'] is not None:
-            if isinstance(agent_data_dict.get('operational_parameters'), dict) and isinstance(update_dict['operational_parameters'], dict):
-                agent_data_dict['operational_parameters'].update(update_dict['operational_parameters'])
-            else: # Overwrite if not dict or not existing
-                agent_data_dict['operational_parameters'] = update_dict['operational_parameters']
-
-        # Update other top-level fields
-        for key, value in update_dict.items():
-            if key not in ['strategy', 'risk_config', 'operational_parameters']: # Already handled
-                agent_data_dict[key] = value # Value can be None here if explicitly set in AgentUpdateRequest
-
-        agent_data_dict['updated_at'] = datetime.now(timezone.utc).isoformat()
-
+        logger.info(f"Attempting to update agent with ID: {agent_id} in DB.")
+        db: Session = self.session_factory()
         try:
-            updated_agent = AgentConfigOutput(**agent_data_dict)
-            await self._save_agent_config(updated_agent)
-            logger.info(f"Agent {agent_id} updated successfully in file.")
-            return updated_agent
-        except Exception as e: # Pydantic validation error or other
-            logger.error(f"Error re-validating or saving updated agent {agent_id}: {e}", exc_info=True)
-            return None
+            db_agent = db.query(AgentConfigDB).filter(AgentConfigDB.agent_id == agent_id).first()
+            if not db_agent:
+                logger.warning(f"Agent with ID {agent_id} not found in DB for update.")
+                return None
 
+            pydantic_agent_current = self._db_to_pydantic(db_agent)
+            update_payload_dict = update_data.model_dump(exclude_unset=True)
+            current_agent_dict = pydantic_agent_current.model_dump()
+
+            # Merge strategy
+            if 'strategy' in update_payload_dict and update_payload_dict['strategy'] is not None:
+                current_strategy_dict = current_agent_dict.get('strategy', {})
+                new_strategy_data = update_payload_dict['strategy']
+                # Deep merge for parameters, direct update for other strategy fields
+                if 'parameters' in new_strategy_data and isinstance(current_strategy_dict.get('parameters'), dict):
+                    current_strategy_dict['parameters'].update(new_strategy_data['parameters'])
+                for key, value in new_strategy_data.items():
+                    if key != 'parameters':
+                        current_strategy_dict[key] = value
+                current_agent_dict['strategy'] = current_strategy_dict
+
+            if 'risk_config' in update_payload_dict and update_payload_dict['risk_config'] is not None:
+                 current_risk_config_dict = current_agent_dict.get('risk_config', {})
+                 current_risk_config_dict.update(update_payload_dict['risk_config'])
+                 current_agent_dict['risk_config'] = current_risk_config_dict
+
+            if 'operational_parameters' in update_payload_dict and update_payload_dict['operational_parameters'] is not None:
+                current_op_params = current_agent_dict.get('operational_parameters', {})
+                current_op_params.update(update_payload_dict['operational_parameters'])
+                current_agent_dict['operational_parameters'] = current_op_params
+
+            for key, value in update_payload_dict.items():
+                if key not in ['strategy', 'operational_parameters', 'risk_config']:
+                    current_agent_dict[key] = value
+
+            current_agent_dict['updated_at'] = datetime.now(timezone.utc)
+            updated_pydantic_agent = AgentConfigOutput(**current_agent_dict)
+
+            db_agent.name = updated_pydantic_agent.name
+            db_agent.description = updated_pydantic_agent.description
+            db_agent.agent_type = updated_pydantic_agent.agent_type
+            db_agent.parent_agent_id = updated_pydantic_agent.parent_agent_id
+            db_agent.is_active = updated_pydantic_agent.is_active
+            db_agent.strategy_config_json = updated_pydantic_agent.strategy.model_dump_json()
+            db_agent.risk_config_json = updated_pydantic_agent.risk_config.model_dump_json()
+            db_agent.hyperliquid_config_json = json.dumps(updated_pydantic_agent.hyperliquid_config) if updated_pydantic_agent.hyperliquid_config else None
+            db_agent.operational_parameters_json = json.dumps(updated_pydantic_agent.operational_parameters or {})
+            db_agent.updated_at = updated_pydantic_agent.updated_at
+
+            db.commit()
+            db.refresh(db_agent)
+            logger.info(f"Agent {agent_id} updated successfully in DB.")
+            return self._db_to_pydantic(db_agent)
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error updating agent {agent_id} in DB: {e}", exc_info=True)
+            return None
+        finally:
+            db.close()
 
     async def delete_agent(self, agent_id: str) -> bool:
-        logger.info(f"Attempting to delete agent with ID: {agent_id} from file.")
-        file_path = self.config_dir / f"{agent_id}.json"
-        if file_path.exists():
-            try:
-                os.remove(file_path)
-                if agent_id in self._agent_statuses:
-                    del self._agent_statuses[agent_id]
-                logger.info(f"Agent {agent_id} deleted successfully from file system and status cache.")
+        logger.info(f"Attempting to delete agent with ID: {agent_id} from DB.")
+        db: Session = self.session_factory()
+        try:
+            db_agent = db.query(AgentConfigDB).filter(AgentConfigDB.agent_id == agent_id).first()
+            if db_agent:
+                db.delete(db_agent)
+                db.commit()
+                if agent_id in self._agent_statuses: del self._agent_statuses[agent_id]
+                logger.info(f"Agent {agent_id} deleted successfully from DB.")
                 return True
-            except IOError as e:
-                logger.error(f"Error deleting agent config file {file_path} for agent {agent_id}: {e}")
-                return False # Deletion failed
-        logger.warning(f"Agent config file {file_path} not found for deletion for agent {agent_id}.")
-        return False
+            logger.warning(f"Agent {agent_id} not found in DB for deletion.")
+            return False
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error deleting agent {agent_id} from DB: {e}", exc_info=True)
+            return False
+        finally:
+            db.close()
 
     async def start_agent(self, agent_id: str) -> AgentStatus:
         logger.info(f"Attempting to start agent with ID: {agent_id}")
-        agent = await self.get_agent(agent_id) # Load from file
-        if not agent:
-            logger.error(f"Cannot start agent: Agent with ID {agent_id} not found.")
-            raise ValueError(f"Agent with ID {agent_id} not found.")
-
-        agent.is_active = True
-        agent.updated_at = datetime.now(timezone.utc)
-        await self._save_agent_config(agent) # Save updated is_active state
-
-        status = AgentStatus(
-            agent_id=agent_id,
-            status="starting",
-            message="Agent start initiated.",
-            last_heartbeat=datetime.now(timezone.utc)
-        )
-        self._agent_statuses[agent_id] = status
-        logger.info(f"Agent {agent_id} start initiated. Status set to 'starting'. Config updated with is_active=True.")
-
-        status.status = "running"
-        status.message = "Agent is now running."
-        self._agent_statuses[agent_id] = status # Update in-memory status
-        logger.info(f"Agent {agent_id} status updated to 'running' (simulated).")
-        return status
+        db: Session = self.session_factory()
+        try:
+            db_agent = db.query(AgentConfigDB).filter(AgentConfigDB.agent_id == agent_id).first()
+            if not db_agent:
+                raise ValueError(f"Agent with ID {agent_id} not found.")
+            db_agent.is_active = True
+            db_agent.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            status = AgentStatus(agent_id=agent_id, status="running", message="Agent is now running.", last_heartbeat=datetime.now(timezone.utc))
+            self._agent_statuses[agent_id] = status
+            logger.info(f"Agent {agent_id} started. DB updated: is_active=True.")
+            return status
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error starting agent {agent_id}: {e}", exc_info=True)
+            raise ValueError(f"Failed to start agent {agent_id}: {e}")
+        finally:
+            db.close()
 
     async def stop_agent(self, agent_id: str) -> AgentStatus:
         logger.info(f"Attempting to stop agent with ID: {agent_id}")
-        agent = await self.get_agent(agent_id) # Load from file
-        if not agent:
-            logger.error(f"Cannot stop agent: Agent with ID {agent_id} not found.")
-            raise ValueError(f"Agent with ID {agent_id} not found.")
-
-        agent.is_active = False
-        agent.updated_at = datetime.now(timezone.utc)
-        await self._save_agent_config(agent) # Save updated is_active state
-
-        status = AgentStatus(
-            agent_id=agent_id,
-            status="stopping",
-            message="Agent stop initiated.",
-            last_heartbeat=datetime.now(timezone.utc)
-        )
-        self._agent_statuses[agent_id] = status
-        logger.info(f"Agent {agent_id} stop initiated. Status set to 'stopping'. Config updated with is_active=False.")
-
-        status.status = "stopped"
-        status.message = "Agent has been stopped."
-        self._agent_statuses[agent_id] = status # Update in-memory status
-        logger.info(f"Agent {agent_id} status updated to 'stopped' (simulated).")
-        return status
+        db: Session = self.session_factory()
+        try:
+            db_agent = db.query(AgentConfigDB).filter(AgentConfigDB.agent_id == agent_id).first()
+            if not db_agent:
+                raise ValueError(f"Agent with ID {agent_id} not found.")
+            db_agent.is_active = False
+            db_agent.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            status = AgentStatus(agent_id=agent_id, status="stopped", message="Agent has been stopped.", last_heartbeat=datetime.now(timezone.utc))
+            self._agent_statuses[agent_id] = status
+            logger.info(f"Agent {agent_id} stopped. DB updated: is_active=False.")
+            return status
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Error stopping agent {agent_id}: {e}", exc_info=True)
+            raise ValueError(f"Failed to stop agent {agent_id}: {e}")
+        finally:
+            db.close()
 
     async def get_child_agents(self, parent_agent_id: str) -> List[AgentConfigOutput]:
-        logger.debug(f"Retrieving child agents for parent_agent_id: {parent_agent_id}")
-        child_agents: List[AgentConfigOutput] = []
+        logger.debug(f"Retrieving child agents for parent_agent_id: {parent_agent_id} from DB.")
+        db: Session = self.session_factory()
         try:
-            for filename in os.listdir(self.config_dir):
-                if filename.endswith(".json"):
-                    agent_id = filename[:-5]
-                    # Avoid reading the file if it's the parent itself, though parent_agent_id check handles this
-                    if agent_id == parent_agent_id:
-                        continue
-
-                    # We need to load the agent config to check its parent_agent_id
-                    # Using a simplified load just for parent_agent_id to avoid full model parsing if not needed,
-                    # but full parsing is safer for consistency and future needs. Let's use get_agent.
-                    agent_config = await self.get_agent(agent_id)
-                    if agent_config and agent_config.parent_agent_id == parent_agent_id:
-                        child_agents.append(agent_config)
-        except Exception as e:
-            logger.error(f"Error listing or loading child agents for parent {parent_agent_id} from {self.config_dir}: {e}", exc_info=True)
-
-        logger.info(f"Found {len(child_agents)} child agents for parent {parent_agent_id}.")
-        return child_agents
+            db_child_agents = db.query(AgentConfigDB).filter(AgentConfigDB.parent_agent_id == parent_agent_id).all()
+            return [self._db_to_pydantic(db_agent) for db_agent in db_child_agents]
+        finally:
+            db.close()
 
     async def get_agent_status(self, agent_id: str) -> Optional[AgentStatus]:
         logger.debug(f"Retrieving status for agent ID: {agent_id}")
         status = self._agent_statuses.get(agent_id)
         if not status:
-            # Check if config file exists for this agent_id to differentiate "unknown agent" from "known agent, no runtime status"
-            if (self.config_dir / f"{agent_id}.json").exists():
-                 # Config exists, but not in _agent_statuses (e.g., after service restart before agent starts)
-                logger.warning(f"Status not found in memory for existing agent {agent_id}, returning default 'stopped'.")
-                # Create and store a default status for next time
-                default_status = AgentStatus(agent_id=agent_id, status="stopped", message="Status initialized on first query after service start.", last_heartbeat=datetime.now(timezone.utc))
+            db_agent_pydantic = await self.get_agent(agent_id) # Checks DB via _db_to_pydantic
+            if db_agent_pydantic:
+                logger.warning(f"Status not found in memory for existing agent {agent_id}, re-initializing from DB.")
+                current_status_val = "running" if db_agent_pydantic.is_active else "stopped"
+                default_status = AgentStatus(agent_id=agent_id, status=current_status_val, message="Status initialized from DB is_active field.", last_heartbeat=db_agent_pydantic.updated_at)
                 self._agent_statuses[agent_id] = default_status
                 return default_status
             else:
-                logger.warning(f"Status not found for agent ID {agent_id} (agent config also does not exist).")
-                return None # Agent truly unknown
+                logger.warning(f"Status not found for agent ID {agent_id} (agent also not in DB).")
+                return None
         return status
 
     async def update_agent_heartbeat(self, agent_id: str) -> bool:
         logger.debug(f"Received heartbeat for agent ID: {agent_id}")
+        db: Session = self.session_factory()
+        try:
+            # Check if agent config exists using a lightweight query.
+            db_agent_data = db.query(AgentConfigDB.agent_id, AgentConfigDB.is_active).filter(AgentConfigDB.agent_id == agent_id).first()
+            if not db_agent_data:
+                logger.error(f"Cannot update heartbeat: Agent config for ID {agent_id} not found in DB.")
+                if agent_id in self._agent_statuses: del self._agent_statuses[agent_id]
+                return False
 
-        # Check if agent config file exists.
-        if not (self.config_dir / f"{agent_id}.json").exists():
-            logger.error(f"Cannot update heartbeat: Agent config for ID {agent_id} not found.")
+            agent_is_active_in_db = db_agent_data.is_active
+            status = self._agent_statuses.get(agent_id)
+            now = datetime.now(timezone.utc)
+
+            if not status:
+                current_status_val = "running" if agent_is_active_in_db else "stopped"
+                logger.warning(f"Heartbeat for agent {agent_id}: No in-memory status. Initializing based on DB is_active ({agent_is_active_in_db}) as '{current_status_val}'.")
+                status = AgentStatus(agent_id=agent_id, status=current_status_val, message="Heartbeat received, status initialized from DB.", last_heartbeat=now)
+
+            if agent_is_active_in_db and status.status != "running":
+                 logger.warning(f"Heartbeat for agent {agent_id}: Agent is active in DB, but status was '{status.status}'. Setting to 'running'.")
+                 status.status = "running"
+                 status.message = f"Status set to running by heartbeat (was {status.status}, DB is_active=True)."
+            elif not agent_is_active_in_db and status.status == "running":
+                 logger.warning(f"Heartbeat for agent {agent_id}: Agent is NOT active in DB, but status was 'running'. Setting to 'stopped'.")
+                 status.status = "stopped"
+                 status.message = f"Status set to stopped by heartbeat (was {status.status}, DB is_active=False)."
+
+            status.last_heartbeat = now
+            self._agent_statuses[agent_id] = status
+            logger.debug(f"Heartbeat updated for agent {agent_id}. Status: {status.status}.")
+            return True
+        except Exception as e:
+            logger.error(f"Error during heartbeat update for agent {agent_id}: {e}", exc_info=True)
             return False
+        finally:
+            db.close()
 
-        status = self._agent_statuses.get(agent_id)
-        now = datetime.now(timezone.utc)
-
-        if not status:
-            logger.warning(f"Heartbeat for agent {agent_id}: No in-memory status found. Initializing as 'running'.")
-            status = AgentStatus(
-                agent_id=agent_id,
-                status="running",
-                message="Heartbeat received, status auto-initialized to running.",
-                last_heartbeat=now
-            )
-        elif status.status not in ["running", "starting"]:
-            # If an agent is explicitly stopped or in error, but its config still exists (and might be is_active=true)
-            # a heartbeat indicates it might be running unexpectedly or coming back up.
-            # The prompt states "ensure status is 'running'".
-            logger.warning(f"Heartbeat for agent {agent_id}: Status was '{status.status}'. Forcing to 'running' due to heartbeat.")
-            status.status = "running"
-            status.message = f"Status forced to running due to heartbeat from previous state {status.status}."
-
-        status.last_heartbeat = now
-        self._agent_statuses[agent_id] = status
-        logger.debug(f"Heartbeat updated for agent {agent_id}. Status: {status.status}.")
-        return True
-
-    async def _update_agent_status_internally(self, agent_id: str, new_status: Literal["running", "stopped", "error"], message: Optional[str] = None):
-        # This method is less relevant now that status is primarily driven by explicit start/stop/get calls
-        # and heartbeat. Config persistence for 'is_active' is the source of truth for desired state.
-        # However, an agent process might still want to report an 'error' state.
-        logger.info(f"Internal status update attempt for agent {agent_id}: new_status='{new_status}'")
-        if not (self.config_dir / f"{agent_id}.json").exists(): # Check file existence
-            logger.error(f"Cannot update status internally: Agent config {agent_id} does not exist.")
-            return
-
-        current_status = self._agent_statuses.get(agent_id)
-        if not current_status:
-            current_status = AgentStatus(agent_id=agent_id, status=new_status, message=message or f"Status initialized internally to {new_status}.")
-        else:
-            current_status.status = new_status
-            if message:
-                current_status.message = message
-
-        current_status.last_heartbeat = datetime.now(timezone.utc)
-        self._agent_statuses[agent_id] = current_status
-        logger.info(f"Internal status update for agent {agent_id} completed: new_status='{new_status}', message='{message or '(no change)'}'")
-
+# Removed _update_agent_status_internally as it's less relevant with DB and explicit start/stop
+# from typing import Literal # No longer needed
 ```

@@ -91,7 +91,8 @@ __all__ = [
     # agent_models
     "AgentStrategyConfig", "AgentRiskConfig", "AgentConfigBase", "AgentConfigInput",
     "AgentConfigOutput", "AgentStatus", "AgentUpdateRequest",
-    "AgentStrategyConfig.DarvasStrategyParams", # For exporting the nested model if needed directly
+    "AgentStrategyConfig.DarvasStrategyParams",
+    "AgentStrategyConfig.WilliamsAlligatorParams", # For exporting the nested model
     # dashboard_models
     "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
     # performance_models
@@ -100,5 +101,7 @@ __all__ = [
     "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification",
     # event_bus_models
     "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
-    "RiskAssessmentRequestData", "RiskAssessmentResponseData"
+    "RiskAssessmentRequestData", "RiskAssessmentResponseData",
+    # db_models
+    "AgentConfigDB"
 ]

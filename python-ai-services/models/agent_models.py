@@ -19,6 +19,18 @@ class AgentStrategyConfig(BaseModel):
 
     darvas_params: Optional[DarvasStrategyParams] = None
 
+    # Nested model for Williams Alligator parameters
+    class WilliamsAlligatorParams(BaseModel):
+        jaw_period: int = 13
+        jaw_shift: int = 8
+        teeth_period: int = 8
+        teeth_shift: int = 5
+        lips_period: int = 5
+        lips_shift: int = 3
+        # Optional: add parameters for signal confirmation, e.g., min_spread_percentage
+
+    williams_alligator_params: Optional[WilliamsAlligatorParams] = None
+
 
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float

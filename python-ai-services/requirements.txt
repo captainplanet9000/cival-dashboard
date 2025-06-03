@@ -49,3 +49,6 @@ letta-client
 
 # Scheduler
 APScheduler>=3.0.0,<4.0.0
+
+# Database ORM
+SQLAlchemy>=2.0.0,<2.1.0

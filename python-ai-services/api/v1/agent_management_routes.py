@@ -11,12 +11,24 @@ from python_ai_services.services.agent_management_service import AgentManagement
 
 router = APIRouter()
 
+from python_ai_services.core.database import SessionLocal # Import the session factory
+
 # Dependency for AgentManagementService
-# For this subtask, we'll instantiate it directly here.
-# In a larger app, this might come from a shared dependency management system.
-_agent_service_instance = AgentManagementService()
+# Instantiate with the session factory. This instance will be a singleton for the app.
+_agent_service_instance = AgentManagementService(session_factory=SessionLocal)
+
+# It's good practice to have an async function to initialize things if needed,
+# like calling _load_existing_statuses_from_db. This can be tied to FastAPI startup.
+# For now, _load_existing_statuses_from_db would be called separately or via first request to relevant method.
+# However, the service is designed to be robust if status isn't in memory yet.
+
+# To ensure statuses are loaded at startup, you might do this in main.py or here (if this module is loaded early):
+# asyncio.create_task(_agent_service_instance._load_existing_statuses_from_db())
+# This is a bit advanced for a simple route file. Better in main.py startup event.
+
 
 def get_agent_management_service() -> AgentManagementService:
+    # This now returns the singleton initialized with the DB session factory.
     return _agent_service_instance
 
 @router.post("/agents", response_model=AgentConfigOutput, status_code=201)

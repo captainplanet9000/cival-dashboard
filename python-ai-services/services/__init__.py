@@ -31,5 +31,6 @@ __all__ = [
     "EventBusService",
     "RiskManagerService",
     "MarketDataService",
-    "DarvasBoxTechnicalService"
+    "DarvasBoxTechnicalService",
+    "WilliamsAlligatorTechnicalService"
 ]
