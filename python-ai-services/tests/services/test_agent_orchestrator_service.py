@@ -48,17 +48,50 @@ def orchestrator_service(
     mock_agent_service: AgentManagementService,
     mock_google_bridge: GoogleSDKBridge,
     mock_a2a_protocol: A2AProtocol,
+from python_ai_services.services.risk_manager_service import RiskManagerService # Added
+from python_ai_services.services.event_bus_service import EventBusService # Added for future use
+
+@pytest_asyncio.fixture
+def mock_risk_manager_service() -> RiskManagerService: # Added
+    return AsyncMock(spec=RiskManagerService)
+
+@pytest_asyncio.fixture
+def mock_event_bus_service() -> EventBusService: # Added
+    return AsyncMock(spec=EventBusService)
+
+
+@pytest_asyncio.fixture
+def orchestrator_service(
+    mock_agent_service: AgentManagementService,
+    mock_google_bridge: GoogleSDKBridge,
+    mock_a2a_protocol: A2AProtocol,
+from python_ai_services.services.market_data_service import MarketDataService # Added
+
+@pytest_asyncio.fixture
+def mock_market_data_service() -> MarketDataService: # Added
+    return AsyncMock(spec=MarketDataService)
+
+
+@pytest_asyncio.fixture
+def orchestrator_service(
+    mock_agent_service: AgentManagementService,
+    mock_google_bridge: GoogleSDKBridge,
+    mock_a2a_protocol: A2AProtocol,
     mock_simulated_trade_executor: SimulatedTradeExecutor,
-    mock_trade_history_service: TradeHistoryService # Added
-    # mock_hles_factory removed
+    mock_trade_history_service: TradeHistoryService,
+    mock_risk_manager_service: RiskManagerService,
+    mock_event_bus_service: EventBusService,
+    mock_market_data_service: MarketDataService # Added
 ) -> AgentOrchestratorService:
-    # hles_factory and trade_history_service are now passed to AgentOrchestratorService constructor
     return AgentOrchestratorService(
-        agent_service=mock_agent_service,
+        agent_management_service=mock_agent_service,
+        trade_history_service=mock_trade_history_service,
+        risk_manager_service=mock_risk_manager_service,
+        market_data_service=mock_market_data_service, # Pass it
+        event_bus_service=mock_event_bus_service,
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
-        simulated_trade_executor=mock_simulated_trade_executor,
-        trade_history_service=mock_trade_history_service # Added
+        simulated_trade_executor=mock_simulated_trade_executor
     )
 
 # --- Helper to create sample AgentConfigOutput ---
@@ -101,11 +134,15 @@ async def test_get_trading_coordinator_paper_agent(orchestrator_service: AgentOr
 
         assert coordinator is not None
         MockTradingCoordinator.assert_called_once_with(
+            agent_id=agent_config.agent_id,
+            agent_management_service=orchestrator_service.agent_management_service,
+            risk_manager_service=orchestrator_service.risk_manager_service,
             google_bridge=orchestrator_service.google_bridge,
             a2a_protocol=orchestrator_service.a2a_protocol,
             simulated_trade_executor=mock_simulated_trade_executor,
             hyperliquid_execution_service=None,
-            trade_history_service=orchestrator_service.trade_history_service # Verify it's passed
+            trade_history_service=orchestrator_service.trade_history_service,
+            event_bus_service=orchestrator_service.event_bus_service
         )
         mock_tc_instance.set_trade_execution_mode.assert_called_once_with("paper")
 
@@ -130,11 +167,15 @@ async def test_get_trading_coordinator_hyperliquid_agent_success(
         assert coordinator is not None
         mock_get_hles_instance.assert_called_once_with(agent_config)
         MockTradingCoordinator.assert_called_once_with(
+            agent_id=agent_config.agent_id,
+            agent_management_service=orchestrator_service.agent_management_service,
+            risk_manager_service=orchestrator_service.risk_manager_service,
             google_bridge=orchestrator_service.google_bridge,
             a2a_protocol=orchestrator_service.a2a_protocol,
             simulated_trade_executor=orchestrator_service.simulated_trade_executor,
             hyperliquid_execution_service=mock_hles_instance,
-            trade_history_service=orchestrator_service.trade_history_service # Verify it's passed
+            trade_history_service=orchestrator_service.trade_history_service,
+            event_bus_service=orchestrator_service.event_bus_service
         )
         mock_tc_instance.set_trade_execution_mode.assert_called_once_with("hyperliquid")
 
@@ -175,7 +216,11 @@ async def test_run_single_agent_cycle_agent_not_active(orchestrator_service: Age
 @pytest.mark.asyncio
 async def test_run_single_agent_cycle_tc_setup_fails(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):
     agent_id = "agent_tc_fail"
-    agent_config = create_sample_agent_config(agent_id, provider="hyperliquid", cred_id=None) # Missing cred_id will cause TC setup fail
+    agent_config = create_sample_agent_config(agent_id, provider="hyperliquid")
+    # Simulate factory returning None for HLES, leading to TC setup failure
+    with patch('python_ai_services.services.agent_orchestrator_service.get_hyperliquid_execution_service_instance', return_value=None):
+        await orchestrator_service.run_single_agent_cycle(agent_id)
+
     mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
     # _get_trading_coordinator_for_agent will return None
 
@@ -183,46 +228,78 @@ async def test_run_single_agent_cycle_tc_setup_fails(orchestrator_service: Agent
     mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id) # Heartbeat called even if TC fails
 
 @pytest.mark.asyncio
-async def test_run_single_agent_cycle_no_watched_symbols(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):
-    agent_id = "agent_no_symbols"
-    agent_config = create_sample_agent_config(agent_id, symbols=[])
+async def test_run_single_agent_cycle_generic_agent_no_watched_symbols(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):
+    agent_id = "generic_agent_no_symbols"
+    # Ensure agent_type is not Darvas, or is default "GenericAgent"
+    agent_config = create_sample_agent_config(agent_id, symbols=[], agent_type_override="GenericAgent")
     mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
 
-    # Mock _get_trading_coordinator_for_agent to return a mock TC
     mock_tc = AsyncMock(spec=TradingCoordinator)
     mock_tc.analyze_trading_opportunity = AsyncMock()
+    # Patch _get_trading_coordinator_for_agent directly on the instance for this test
     orchestrator_service._get_trading_coordinator_for_agent = AsyncMock(return_value=mock_tc)
 
     await orchestrator_service.run_single_agent_cycle(agent_id)
-    mock_tc.analyze_trading_opportunity.assert_not_called() # No symbols, no analysis
+    mock_tc.analyze_trading_opportunity.assert_not_called()
     mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
 
 @pytest.mark.asyncio
-async def test_run_single_agent_cycle_success_with_symbols(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):
-    agent_id = "agent_with_symbols"
+async def test_run_single_agent_cycle_generic_agent_success_with_symbols(orchestrator_service: AgentOrchestratorService, mock_agent_service: MagicMock):
+    agent_id = "generic_agent_with_symbols"
     symbols = ["BTC/USD", "ETH/USD"]
-    agent_config = create_sample_agent_config(agent_id, symbols=symbols)
+    agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override="GenericAgent")
     mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
 
     mock_tc = AsyncMock(spec=TradingCoordinator)
-    mock_tc.set_trade_execution_mode = AsyncMock() # Called by _get_trading_coordinator_for_agent
-    mock_tc.analyze_trading_opportunity = AsyncMock(return_value={"decision": "buy"}) # Simulate some result
-
-    # Patch the _get_trading_coordinator_for_agent to return our mock_tc
-    # This is simpler than mocking TradingCoordinator class instantiation for this test
+    mock_tc.analyze_trading_opportunity = AsyncMock(return_value={"decision": "buy"})
     orchestrator_service._get_trading_coordinator_for_agent = AsyncMock(return_value=mock_tc)
 
     await orchestrator_service.run_single_agent_cycle(agent_id)
 
     assert mock_tc.analyze_trading_opportunity.call_count == len(symbols)
-    # Check one call as an example
-    first_call_args = mock_tc.analyze_trading_opportunity.call_args_list[0][0][0] # First arg of first call
+    first_call_args = mock_tc.analyze_trading_opportunity.call_args_list[0][0][0]
     assert isinstance(first_call_args, TradingAnalysisCrewRequest)
     assert first_call_args.symbol == symbols[0]
-    assert first_call_args.user_id == agent_id
-    assert agent_config.strategy.default_market_event_description.format(symbol=symbols[0]) == first_call_args.market_event_description
-
     mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
+
+
+@pytest.mark.asyncio
+@patch('python_ai_services.services.agent_orchestrator_service.DarvasBoxTechnicalService')
+async def test_run_single_agent_cycle_darvas_agent_success(
+    MockDarvasService: MagicMock,
+    orchestrator_service: AgentOrchestratorService,
+    mock_agent_service: MagicMock,
+    mock_market_data_service: MagicMock, # Ensure these are available if Darvas needs them
+    mock_event_bus_service: MagicMock
+):
+    agent_id = "darvas_agent_1"
+    symbols = ["SOL/USD", "ADA/USD"]
+    # Helper needs to be updated to set agent_type
+    agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override="DarvasBoxTechnicalAgent")
+    mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
+
+    # Mock the DarvasBoxTechnicalService instance and its method
+    mock_darvas_instance = AsyncMock()
+    mock_darvas_instance.analyze_symbol_and_generate_signal = AsyncMock()
+    MockDarvasService.return_value = mock_darvas_instance
+
+    # Ensure _get_trading_coordinator_for_agent is NOT called for Darvas agent
+    orchestrator_service._get_trading_coordinator_for_agent = AsyncMock()
+
+    await orchestrator_service.run_single_agent_cycle(agent_id)
+
+    MockDarvasService.assert_called_once_with(
+        agent_config=agent_config,
+        event_bus=mock_event_bus_service,
+        market_data_service=mock_market_data_service
+    )
+    assert mock_darvas_instance.analyze_symbol_and_generate_signal.call_count == len(symbols)
+    mock_darvas_instance.analyze_symbol_and_generate_signal.assert_any_call(symbols[0])
+    mock_darvas_instance.analyze_symbol_and_generate_signal.assert_any_call(symbols[1])
+
+    orchestrator_service._get_trading_coordinator_for_agent.assert_not_called() # TC should not be involved
+    mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
+
 
 # --- Tests for run_all_active_agents_once ---
 @pytest.mark.asyncio

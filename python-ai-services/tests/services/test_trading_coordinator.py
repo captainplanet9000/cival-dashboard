@@ -41,65 +41,78 @@ def mock_hyperliquid_executor():
 
 @pytest_asyncio.fixture
 def trading_coordinator(
-from python_ai_services.services.trade_history_service import TradeHistoryService # Added
-from python_ai_services.models.trade_history_models import TradeFillData # Added
-from datetime import datetime, timezone # Added for fill timestamp
+from python_ai_services.services.trade_history_service import TradeHistoryService
+from python_ai_services.models.trade_history_models import TradeFillData
+from python_ai_services.services.risk_manager_service import RiskManagerService # Added
+from python_ai_services.services.agent_management_service import AgentManagementService # Added
+from python_ai_services.models.event_bus_models import RiskAssessmentResponseData, TradeSignalEventPayload # Added
+from datetime import datetime, timezone
 
 @pytest_asyncio.fixture
-def mock_trade_history_service(): # Added
+def mock_trade_history_service():
     service = AsyncMock(spec=TradeHistoryService)
-    service.record_fill = AsyncMock() # Ensure record_fill is an AsyncMock
+    service.record_fill = AsyncMock()
     return service
 
+@pytest_asyncio.fixture # Added
+def mock_risk_manager_service():
+    service = AsyncMock(spec=RiskManagerService)
+    service.assess_trade_risk = AsyncMock()
+    return service
+
+@pytest_asyncio.fixture # Added
+def mock_agent_management_service():
+    return AsyncMock(spec=AgentManagementService)
+
+
 @pytest_asyncio.fixture
-def trading_coordinator(
+def trading_coordinator( # Updated
     mock_google_bridge: MagicMock,
     mock_a2a_protocol: MagicMock,
     mock_simulated_executor: MagicMock,
     mock_hyperliquid_executor: MagicMock,
-    mock_trade_history_service: MagicMock # Added
+    mock_trade_history_service: MagicMock,
+    mock_risk_manager_service: MagicMock, # Added
+    mock_agent_management_service: MagicMock # Added
 ):
-    # Default initialization with all services
     return TradingCoordinator(
+        agent_id="tc_main_test_id", # Provide a default agent_id for TC itself
+        agent_management_service=mock_agent_management_service, # Added
+        risk_manager_service=mock_risk_manager_service, # Added
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
         hyperliquid_execution_service=mock_hyperliquid_executor,
-        trade_history_service=mock_trade_history_service # Added
+        trade_history_service=mock_trade_history_service,
+        event_bus_service=AsyncMock() # Mock event bus, not used in this step actively
     )
 
 # --- Tests for __init__ ---
 
-def test_trading_coordinator_init_defaults( # Updated
-    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor, mock_trade_history_service
+def test_trading_coordinator_init( # Renamed and Updated
+    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor,
+    mock_hyperliquid_executor, mock_trade_history_service,
+    mock_risk_manager_service, mock_agent_management_service
 ):
     coordinator = TradingCoordinator(
+        agent_id="tc_test_init",
+        agent_management_service=mock_agent_management_service,
+        risk_manager_service=mock_risk_manager_service,
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
-        trade_history_service=mock_trade_history_service
-        # hyperliquid_execution_service is None by default
+        hyperliquid_execution_service=mock_hyperliquid_executor, # Can be None for some tests
+        trade_history_service=mock_trade_history_service,
+        event_bus_service=AsyncMock()
     )
+    assert coordinator.agent_id == "tc_test_init"
+    assert coordinator.agent_management_service == mock_agent_management_service
+    assert coordinator.risk_manager_service == mock_risk_manager_service
     assert coordinator.google_bridge == mock_google_bridge
-    assert coordinator.a2a_protocol == mock_a2a_protocol
-    assert coordinator.simulated_trade_executor == mock_simulated_executor
-    assert coordinator.hyperliquid_execution_service is None
+    assert coordinator.hyperliquid_execution_service == mock_hyperliquid_executor
     assert coordinator.trade_history_service == mock_trade_history_service
     assert coordinator.trade_execution_mode == "paper"
 
-def test_trading_coordinator_init_with_hyperliquid_and_trade_history( # Renamed and Updated
-    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor, mock_hyperliquid_executor, mock_trade_history_service
-):
-    coordinator = TradingCoordinator(
-        google_bridge=mock_google_bridge,
-        a2a_protocol=mock_a2a_protocol,
-        simulated_trade_executor=mock_simulated_executor,
-        hyperliquid_execution_service=mock_hyperliquid_executor,
-        trade_history_service=mock_trade_history_service
-    )
-    assert coordinator.hyperliquid_execution_service == mock_hyperliquid_executor
-    assert coordinator.trade_history_service == mock_trade_history_service
-    assert coordinator.trade_execution_mode == "paper" # Still defaults to paper
 
 # --- Tests for set_trade_execution_mode and get_trade_execution_mode ---
 
@@ -131,41 +144,80 @@ async def test_set_trade_execution_mode_invalid(trading_coordinator: TradingCoor
 
 @pytest.mark.asyncio
 @patch.object(TradingCoordinator, '_execute_trade_decision', new_callable=AsyncMock)
-async def test_parse_crew_result_buy_action_json_string(mock_execute_decision: AsyncMock, trading_coordinator: TradingCoordinator):
-    user_id = str(uuid.uuid4())
-    crew_result_json_str = json.dumps({
-        "action": "BUY", "symbol": "ETH/USD", "quantity": "0.1", "order_type": "LIMIT", "price": "2000.0"
-    })
-    await trading_coordinator._parse_crew_result_and_execute(crew_result_json_str, user_id)
-
-    expected_trade_params = {
-        "action": "buy", "symbol": "ETH/USD", "quantity": 0.1, "order_type": "limit", "price": 2000.0
-    }
-    mock_execute_decision.assert_called_once_with(expected_trade_params, user_id)
-
-@pytest.mark.asyncio
-@patch.object(TradingCoordinator, '_execute_trade_decision', new_callable=AsyncMock)
-async def test_parse_crew_result_sell_action_dict(mock_execute_decision: AsyncMock, trading_coordinator: TradingCoordinator):
-    user_id = str(uuid.uuid4())
+async def test_parse_crew_result_risk_approved_executes(
+    mock_execute_decision: AsyncMock,
+    trading_coordinator: TradingCoordinator,
+    mock_risk_manager_service: MagicMock
+):
+    user_id = "agent_risk_approved" # This is the agent_id for whom the decision is made
     crew_result_dict = {
-        "trading_decision": {"action": "SELL", "symbol": "BTC/USD", "quantity": 0.01, "order_type": "MARKET"}
+        "action": "BUY", "symbol": "ETH/USD", "quantity": 0.1,
+        "order_type": "LIMIT", "price": "2000.0",
+        "strategy_name": "test_strat", "confidence": 0.8
     }
+    # Mock RiskManagerService to approve the trade
+    mock_risk_manager_service.assess_trade_risk = AsyncMock(
+        return_value=RiskAssessmentResponseData(signal_approved=True)
+    )
+
     await trading_coordinator._parse_crew_result_and_execute(crew_result_dict, user_id)
 
-    expected_trade_params = {
-        "action": "sell", "symbol": "BTC/USD", "quantity": 0.01, "order_type": "market"
+    mock_risk_manager_service.assess_trade_risk.assert_called_once()
+    # Verify the TradeSignalEventPayload passed to assess_trade_risk
+    call_args_list = mock_risk_manager_service.assess_trade_risk.call_args_list
+    assert len(call_args_list) == 1
+    actual_call_args = call_args_list[0][1] # Keywords args of the first call
+    assert actual_call_args['agent_id_of_proposer'] == user_id
+    assert isinstance(actual_call_args['trade_signal'], TradeSignalEventPayload)
+    assert actual_call_args['trade_signal'].symbol == "ETH/USD"
+    assert actual_call_args['trade_signal'].action == "buy"
+
+    expected_trade_params_for_execution = {
+        "action": "buy", "symbol": "ETH/USD", "quantity": 0.1,
+        "order_type": "limit", "price": 2000.0,
+        "stop_loss_price": None, "take_profit_price": None # From parsing logic if not in crew_result
     }
-    mock_execute_decision.assert_called_once_with(expected_trade_params, user_id)
+    mock_execute_decision.assert_called_once_with(expected_trade_params_for_execution, user_id)
+
 
 @pytest.mark.asyncio
 @patch.object(TradingCoordinator, '_execute_trade_decision', new_callable=AsyncMock)
-async def test_parse_crew_result_hold_action(mock_execute_decision: AsyncMock, trading_coordinator: TradingCoordinator):
-    user_id = str(uuid.uuid4())
+async def test_parse_crew_result_risk_rejected_does_not_execute(
+    mock_execute_decision: AsyncMock,
+    trading_coordinator: TradingCoordinator,
+    mock_risk_manager_service: MagicMock
+):
+    user_id = "agent_risk_rejected"
+    crew_result_dict = {
+        "action": "SELL", "symbol": "BTC/USD", "quantity": 0.01, "order_type": "MARKET", "price": 60000.0
+    }
+    # Mock RiskManagerService to reject the trade
+    mock_risk_manager_service.assess_trade_risk = AsyncMock(
+        return_value=RiskAssessmentResponseData(signal_approved=False, rejection_reason="Symbol not allowed")
+    )
+
+    await trading_coordinator._parse_crew_result_and_execute(crew_result_dict, user_id)
+
+    mock_risk_manager_service.assess_trade_risk.assert_called_once()
+    mock_execute_decision.assert_not_called() # Should not execute if risk rejected
+
+
+@pytest.mark.asyncio
+@patch.object(TradingCoordinator, '_execute_trade_decision', new_callable=AsyncMock)
+async def test_parse_crew_result_hold_action_skips_risk_check_and_execution(
+    mock_execute_decision: AsyncMock,
+    trading_coordinator: TradingCoordinator,
+    mock_risk_manager_service: MagicMock
+):
+    user_id = "agent_hold_action"
     crew_result_dict = {"action": "HOLD", "symbol": "ETH/USD"}
-    with patch.object(trading_coordinator, 'logger') as mock_logger: # trading_coordinator.logger
+
+    with patch.object(trading_coordinator.logger, 'info') as mock_logger:
       await trading_coordinator._parse_crew_result_and_execute(crew_result_dict, user_id)
+
+      mock_risk_manager_service.assess_trade_risk.assert_not_called()
       mock_execute_decision.assert_not_called()
-      mock_logger.info.assert_any_call("Crew decision is 'hold' for ETH/USD. No trade execution.")
+      mock_logger.assert_any_call(f"Crew decision is 'hold' for ETH/USD. No trade execution. User ID: {user_id}")
 
 
 @pytest.mark.asyncio

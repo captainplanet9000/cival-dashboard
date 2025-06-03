@@ -6,7 +6,11 @@ from ..models.agent_models import AgentConfigOutput
 from ..models.api_models import TradingAnalysisCrewRequest
 from ..utils.google_sdk_bridge import GoogleSDKBridge
 from ..utils.a2a_protocol import A2AProtocol
-from .trade_history_service import TradeHistoryService # Added
+from .trade_history_service import TradeHistoryService
+from .risk_manager_service import RiskManagerService
+from .market_data_service import MarketDataService # Added
+from .event_bus_service import EventBusService # Added and ensure it's the actual class
+from .darvas_box_service import DarvasBoxTechnicalService # Added
 # Use the new factory
 from ..core.factories import get_hyperliquid_execution_service_instance
 from typing import Optional, Any, Dict, List
@@ -17,19 +21,25 @@ from unittest.mock import MagicMock
 class AgentOrchestratorService:
     def __init__(
         self,
-        agent_service: AgentManagementService,
-        trade_history_service: TradeHistoryService, # Added
+        agent_management_service: AgentManagementService,
+        trade_history_service: TradeHistoryService,
+        risk_manager_service: RiskManagerService,
+        market_data_service: MarketDataService, # Added
+        event_bus_service: EventBusService, # Added, ensure type is correct
         google_bridge: Optional[GoogleSDKBridge] = None,
         a2a_protocol: Optional[A2AProtocol] = None,
         simulated_trade_executor: Optional[SimulatedTradeExecutor] = None
     ):
-        self.agent_service = agent_service
-        self.trade_history_service = trade_history_service # Store it
+        self.agent_management_service = agent_management_service
+        self.trade_history_service = trade_history_service
+        self.risk_manager_service = risk_manager_service
+        self.market_data_service = market_data_service # Store it
+        self.event_bus_service = event_bus_service # Store it
         self.google_bridge = google_bridge if google_bridge else MagicMock(spec=GoogleSDKBridge)
         self.a2a_protocol = a2a_protocol if a2a_protocol else MagicMock(spec=A2AProtocol)
         self.simulated_trade_executor = simulated_trade_executor if simulated_trade_executor else MagicMock(spec=SimulatedTradeExecutor)
 
-        logger.info("AgentOrchestratorService initialized with TradeHistoryService.")
+        logger.info("AgentOrchestratorService initialized with MarketDataService, EventBusService, TradeHistoryService, and RiskManagerService.")
 
     async def _get_trading_coordinator_for_agent(self, agent_config: AgentConfigOutput) -> Optional[TradingCoordinator]:
         logger.debug(f"Getting TradingCoordinator for agent: {agent_config.agent_id} ({agent_config.name})")
@@ -56,12 +66,17 @@ class AgentOrchestratorService:
         try:
             # Pass the potentially None hles_instance to TradingCoordinator
             # TradingCoordinator's init should handle hles_instance being None if mode is paper
+            # TradingCoordinator now requires its own agent_id, AgentManagementService, RiskManagerService
             coordinator = TradingCoordinator(
+                agent_id=agent_config.agent_id, # Pass the agent_config's ID as the TC's ID for this context
+                agent_management_service=self.agent_management_service, # Pass AMS
+                risk_manager_service=self.risk_manager_service, # Pass RMS
                 google_bridge=self.google_bridge,
                 a2a_protocol=self.a2a_protocol,
                 simulated_trade_executor=self.simulated_trade_executor,
                 hyperliquid_execution_service=hles_instance,
-                trade_history_service=self.trade_history_service # Pass it through
+                trade_history_service=self.trade_history_service,
+                event_bus_service=self.event_bus_service # Pass EventBusService
             )
             # Set trade execution mode on the coordinator instance
             await coordinator.set_trade_execution_mode(agent_config.execution_provider)
@@ -73,31 +88,51 @@ class AgentOrchestratorService:
 
     async def run_single_agent_cycle(self, agent_id: str):
         logger.info(f"Starting single agent cycle for agent_id: {agent_id}")
-        agent_config = await self.agent_service.get_agent(agent_id)
+        agent_config = await self.agent_management_service.get_agent(agent_id)
 
         if not agent_config:
-            logger.warning(f"Agent {agent_id} not found. Skipping cycle.")
+            logger.warning(f"Agent {agent_id} not found by AgentManagementService. Skipping cycle.")
             return
         if not agent_config.is_active:
             logger.info(f"Agent {agent_id} ({agent_config.name}) is not active. Skipping cycle.")
             return
 
-        logger.info(f"Running cycle for active agent: {agent_config.name} (ID: {agent_id})")
+        logger.info(f"Running cycle for active agent: {agent_config.name} (ID: {agent_id}), Type: {agent_config.agent_type}")
+
+        if agent_config.agent_type == "DarvasBoxTechnicalAgent":
+            if not self.market_data_service or not self.event_bus_service:
+                logger.error(f"MarketDataService or EventBusService not available for DarvasBoxTechnicalAgent {agent_id}. Skipping cycle.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+
+            darvas_service = DarvasBoxTechnicalService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service,
+                market_data_service=self.market_data_service
+            )
+            if not agent_config.strategy.watched_symbols:
+                logger.warning(f"DarvasBoxAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
+            else:
+                for symbol in agent_config.strategy.watched_symbols:
+                    try:
+                        await darvas_service.analyze_symbol_and_generate_signal(symbol)
+                    except Exception as e:
+                        logger.error(f"Error during DarvasBox analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+            # Heartbeat and return for specialized agent
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"DarvasBoxTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)
         trading_coordinator = await self._get_trading_coordinator_for_agent(agent_config)
         if not trading_coordinator:
-            logger.error(f"Failed to get TradingCoordinator for agent {agent_id}. Skipping analysis cycle.")
-            # Update heartbeat even if TC fails, to show orchestrator tried
-            await self.agent_service.update_agent_heartbeat(agent_id)
+            logger.error(f"Failed to get TradingCoordinator for agent {agent_id} (type: {agent_config.agent_type}). Skipping analysis cycle.")
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
             return
 
         symbols_to_watch = agent_config.strategy.watched_symbols
         if not symbols_to_watch:
-            # Fallback to a default symbol or skip if none defined
-            # For now, let's assume if watched_symbols is empty, we might use a placeholder or log.
-            # Or, as per prompt, "a default if empty" - let's define a placeholder if none.
-            # This behavior might need refinement based on product decision.
-            # For this implementation, if empty, we log and do nothing.
-            logger.info(f"Agent {agent_id} ({agent_config.name}) has no watched_symbols defined. No analysis will be run.")
+            logger.info(f"Agent {agent_id} ({agent_config.name}, type: {agent_config.agent_type}) has no watched_symbols defined. No analysis will be run.")
         else:
             for symbol in symbols_to_watch:
                 event_description = agent_config.strategy.default_market_event_description.format(symbol=symbol)
@@ -107,26 +142,24 @@ class AgentOrchestratorService:
                     symbol=symbol,
                     market_event_description=event_description,
                     additional_context=additional_context,
-                    user_id=agent_id # Pass agent_id as user_id for crew context
+                    user_id=agent_id
                 )
 
-                logger.info(f"Initiating trading analysis for agent {agent_id} on symbol {symbol}. Request: {crew_request.model_dump_json(indent=2)}")
+                logger.info(f"Initiating TradingCoordinator-based analysis for agent {agent_id} on symbol {symbol}.")
                 try:
-                    # analyze_trading_opportunity handles its own result parsing and trade execution calls
                     analysis_result = await trading_coordinator.analyze_trading_opportunity(crew_request)
-                    logger.info(f"Trading analysis completed for agent {agent_id}, symbol {symbol}. Result snippet: {str(analysis_result)[:200]}")
+                    logger.info(f"TradingCoordinator analysis completed for agent {agent_id}, symbol {symbol}. Result snippet: {str(analysis_result)[:200]}")
                 except Exception as e:
-                    logger.error(f"Error during trading analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+                    logger.error(f"Error during TradingCoordinator analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
 
-        # Update heartbeat after cycle completion (or attempt)
-        heartbeat_updated = await self.agent_service.update_agent_heartbeat(agent_id)
+        heartbeat_updated = await self.agent_management_service.update_agent_heartbeat(agent_id)
         logger.info(f"Heartbeat update for agent {agent_id}: {'Success' if heartbeat_updated else 'Failed'}")
         logger.info(f"Agent cycle finished for agent_id: {agent_id}")
 
 
     async def run_all_active_agents_once(self):
         logger.info("Starting run_all_active_agents_once cycle.")
-        all_agents = await self.agent_service.get_agents()
+        all_agents = await self.agent_management_service.get_agents() # Use updated name
         active_agents = [agent for agent in all_agents if agent.is_active]
 
         if not active_agents:

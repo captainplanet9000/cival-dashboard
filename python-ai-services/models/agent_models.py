@@ -5,10 +5,20 @@ import uuid
 
 class AgentStrategyConfig(BaseModel):
     strategy_name: str # e.g., "sma_crossover", "darvas_box"
-    parameters: Dict[str, Any] # e.g., {"short_window": 20, "long_window": 50}
+    parameters: Dict[str, Any] = Field(default_factory=dict) # General parameters, ensure default_factory if it can be empty
     watched_symbols: List[str] = Field(default_factory=list, description="List of symbols the agent should primarily focus on.")
     default_market_event_description: str = Field(default="Periodic market check for {symbol}", description="Default description for analysis crew if no specific event.")
     default_additional_context: Optional[Dict[str, Any]] = Field(default=None, description="Default additional context for analysis crew.")
+
+    # Nested model for Darvas parameters
+    class DarvasStrategyParams(BaseModel):
+        lookback_period: int = 20
+        breakout_confirmation_periods: int = 1 # Simplified: price must close above box top
+        box_range_min_percentage: float = 0.02 # Min range of box (e.g. 2%) for validity - Optional
+        stop_loss_percentage_from_box_bottom: float = 0.01 # e.g. 1% below box bottom
+
+    darvas_params: Optional[DarvasStrategyParams] = None
+
 
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float
@@ -24,6 +34,9 @@ class AgentConfigBase(BaseModel):
     execution_provider: Literal["paper", "hyperliquid"] = "paper"
     hyperliquid_credentials_id: Optional[str] = None # ID to link to stored HL credentials (DEPRECATED by hyperliquid_config)
     hyperliquid_config: Optional[Dict[str, str]] = Field(default=None, description="Configuration for Hyperliquid: {'wallet_address': '0x...', 'private_key_env_var_name': 'AGENT_X_HL_PRIVKEY', 'network_mode': 'mainnet/testnet'}")
+    agent_type: str = Field(default="GenericAgent", description="Type of the agent, e.g., 'TradingCoordinator', 'MarketAnalyst', 'DarvasBoxTechnical'.")
+    parent_agent_id: Optional[str] = Field(default=None, description="ID of the parent agent, if part of a hierarchy.")
+    operational_parameters: Dict[str, Any] = Field(default_factory=dict, description="Runtime operational parameters like decision weights, resource limits, strategy-specific overrides.")
 
 class AgentConfigInput(AgentConfigBase):
     pass
@@ -49,4 +62,7 @@ class AgentUpdateRequest(BaseModel):
     execution_provider: Optional[Literal["paper", "hyperliquid"]] = None
     hyperliquid_credentials_id: Optional[str] = None # DEPRECATED by hyperliquid_config
     hyperliquid_config: Optional[Dict[str, str]] = None
+    agent_type: Optional[str] = None
+    parent_agent_id: Optional[str] = None
+    operational_parameters: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None # Allow updating active status via this model too

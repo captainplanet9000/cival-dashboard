@@ -26,37 +26,48 @@ from .hyperliquid_execution_service import HyperliquidExecutionService, Hyperliq
 # Add imports for PaperTradeOrder and related enums
 from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill
 # Make sure PaperTradeSide is available, if not, import it or use TradeSide consistently
-from ..models.trade_history_models import TradeSide, OrderType as PaperOrderType, TradeFillData # Added TradeFillData
-from ..models.hyperliquid_models import HyperliquidPlaceOrderParams # Added
-from datetime import timezone, datetime # Ensure datetime is available for parsing
+from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType, TradeFillData
+from ..models.hyperliquid_models import HyperliquidPlaceOrderParams
+from ..models.event_bus_models import TradeSignalEventPayload # Added for risk assessment
+from datetime import timezone, datetime
 import uuid
 
-# Added for TradeHistoryService integration
+# Service imports
 from .trade_history_service import TradeHistoryService
+from .risk_manager_service import RiskManagerService # Added
+from .agent_management_service import AgentManagementService # Added for fetching TC's own config if needed
 
 
 class TradingCoordinator:
     """
-    Coordinates trading analysis by leveraging specialized CrewAI crews.
-    Other functionalities like trade execution are delegated to external APIs or simulators.
+    Coordinates trading analysis by leveraging specialized CrewAI crews,
+    performing risk assessment, and then executing trades.
     """
     
     def __init__(self,
-                 google_bridge: GoogleSDKBridge,
-                 a2a_protocol: A2AProtocol,
-                 simulated_trade_executor: SimulatedTradeExecutor, # Existing
-                 hyperliquid_execution_service: Optional[HyperliquidExecutionService] = None, # Added
-                 trade_history_service: Optional[TradeHistoryService] = None # Added
+                 agent_id: str, # ID for this TradingCoordinator instance
+                 agent_management_service: AgentManagementService, # To fetch its own config or other agents'
+                 risk_manager_service: RiskManagerService, # For pre-trade risk checks
+                 google_bridge: GoogleSDKBridge, # Existing dependency
+                 a2a_protocol: A2AProtocol, # Existing dependency
+                 simulated_trade_executor: SimulatedTradeExecutor, # Existing dependency
+                 hyperliquid_execution_service: Optional[HyperliquidExecutionService] = None,
+                 trade_history_service: Optional[TradeHistoryService] = None,
+                 event_bus_service: Optional[Any] = None # Placeholder for EventBusService
                 ):
+        self.agent_id = agent_id # Own ID, can be used as default proposer_agent_id
+        self.agent_management_service = agent_management_service
+        self.risk_manager_service = risk_manager_service
         self.google_bridge = google_bridge
         self.a2a_protocol = a2a_protocol
         self.simulated_trade_executor = simulated_trade_executor
         self.hyperliquid_execution_service = hyperliquid_execution_service
-        self.trade_history_service = trade_history_service # Store it
+        self.trade_history_service = trade_history_service
+        self.event_bus_service = event_bus_service # Store, though not used in this step
         self.trade_execution_mode: str = "paper"
 
-        self.base_url = "http://localhost:3000/api/agents/trading" # This seems like a remnant, consider removing if not used
-        logger.info("TradingCoordinator initialized.")
+        self.base_url = "http://localhost:3000/api/agents/trading"
+        logger.info(f"TradingCoordinator instance {self.agent_id} initialized.")
         if self.simulated_trade_executor:
             logger.info("SimulatedTradeExecutor is available.")
         if self.hyperliquid_execution_service:
@@ -336,38 +347,80 @@ class TradingCoordinator:
                 return
 
             # Placeholder parsing logic - adapt based on actual crew output structure
-            # Example: Crew might output a dict with 'action', 'symbol', 'quantity', 'order_type', 'price'
-            action = data.get("action", data.get("trading_decision", {}).get("action"))
-            symbol = data.get("symbol", data.get("trading_decision", {}).get("symbol"))
-            quantity = data.get("quantity", data.get("trading_decision", {}).get("quantity"))
-            order_type = data.get("order_type", data.get("trading_decision", {}).get("order_type", "market")) # Default to market
-            price = data.get("price", data.get("trading_decision", {}).get("price")) # For limit orders
+            # Example: Crew might output a dict with 'action', 'symbol', 'quantity', 'order_type', 'price', 'stop_loss_price', etc.
+            action_str = data.get("action", data.get("trading_decision", {}).get("action"))
+            symbol_str = data.get("symbol", data.get("trading_decision", {}).get("symbol"))
+            quantity_val = data.get("quantity", data.get("trading_decision", {}).get("quantity"))
+            order_type_str = data.get("order_type", data.get("trading_decision", {}).get("order_type", "market"))
+            price_val = data.get("price", data.get("trading_decision", {}).get("price")) # For limit orders or as target/entry for market
+            stop_loss_price_val = data.get("stop_loss_price", data.get("trading_decision", {}).get("stop_loss_price"))
+            take_profit_price_val = data.get("take_profit_price", data.get("trading_decision", {}).get("take_profit_price"))
+            strategy_name_val = data.get("strategy_name", "crew_default_strategy") # Get strategy name from crew or default
+            confidence_val = data.get("confidence", 0.75) # Default confidence if not provided
 
-            if action and symbol and quantity:
-                if action.lower() in ["buy", "sell"]:
+            if action_str and symbol_str and quantity_val:
+                action_lower = action_str.lower()
+                if action_lower in ["buy", "sell", "hold"]: # Include "hold" for clarity
+                    if action_lower == "hold":
+                        logger.info(f"Crew decision is 'hold' for {symbol_str}. No trade execution. User ID: {user_id}")
+                        return # Exit if action is hold
+
+                    # Prepare trade_params for _execute_trade_decision (existing format)
                     trade_params = {
-                        "action": action.lower(),
-                        "symbol": symbol,
-                        "quantity": float(quantity), # Ensure quantity is float
-                        "order_type": order_type.lower(),
+                        "action": action_lower,
+                        "symbol": symbol_str,
+                        "quantity": float(quantity_val),
+                        "order_type": order_type_str.lower(),
+                        # Price is crucial for limit orders, also used for risk sizing if available
+                        "price": float(price_val) if price_val is not None else None,
+                        "stop_loss_price": float(stop_loss_price_val) if stop_loss_price_val is not None else None,
+                        "take_profit_price": float(take_profit_price_val) if take_profit_price_val is not None else None
                     }
-                    if order_type.lower() == "limit" and price is not None:
-                        trade_params["price"] = float(price) # Ensure price is float
+                    logger.info(f"Extracted trade parameters for agent {user_id}: {trade_params}")
 
-                    logger.info(f"Extracted trade parameters: {trade_params}")
-                    await self._execute_trade_decision(trade_params, user_id)
-                elif action.lower() == "hold":
-                    logger.info(f"Crew decision is 'hold' for {symbol}. No trade execution.")
-                else:
-                    logger.warning(f"Unknown action '{action}' in crew result. No trade execution.")
-            else:
-                logger.warning(f"Essential trade parameters (action, symbol, quantity) not found in crew result: {data}")
+                    # Construct TradeSignalEventPayload for RiskManagerService
+                    # 'price_target' in TradeSignalEventPayload is the entry/limit price.
+                    # 'price' in trade_params is used for this.
+                    if trade_params["price"] is None and trade_params["order_type"] == "limit":
+                        logger.error(f"Limit order for agent {user_id}, symbol {symbol_str} is missing price. Aborting.")
+                        return
+
+                    signal_payload = TradeSignalEventPayload(
+                        symbol=trade_params["symbol"],
+                        action=trade_params["action"], # type: ignore # Literal should match
+                        quantity=trade_params["quantity"],
+                        price_target=trade_params["price"], # Using 'price' from trade_params as the target/entry for signal
+                        stop_loss=trade_params["stop_loss_price"],
+                        # strategy_name needs to be sourced, e.g. from agent config or crew output
+                        strategy_name=strategy_name_val,
+                        confidence=float(confidence_val)
+                    )
+
+                    logger.info(f"TradingCoordinator: Assessing risk for agent {user_id}, signal: {signal_payload.model_dump_json(indent=2)}")
+
+                    # The agent_id for risk assessment is user_id (agent for whom decision is made)
+                    assessment_result = await self.risk_manager_service.assess_trade_risk(
+                        agent_id_of_proposer=user_id,
+                        trade_signal=signal_payload
+                    )
+
+                    if assessment_result.signal_approved:
+                        logger.info(f"TradingCoordinator: Risk assessment approved for agent {user_id}. Proceeding with execution.")
+                        # Pass the original trade_params (which includes SL/TP if provided by crew)
+                        await self._execute_trade_decision(trade_params, user_id=user_id)
+                    else:
+                        logger.warning(f"TradingCoordinator: Trade for agent {user_id}, symbol {trade_params['symbol']} rejected by RiskManagerService: {assessment_result.rejection_reason}")
+
+                else: # action_lower not in buy/sell/hold
+                    logger.warning(f"Unknown action '{action_str}' in crew result for agent {user_id}. No trade execution.")
+            else: # Missing essential params
+                logger.warning(f"Essential trade parameters (action, symbol, quantity) not found in crew result for agent {user_id}: {data}")
 
         except Exception as e:
-            logger.error(f"Error parsing crew result or initiating trade execution: {e}", exc_info=True)
+            logger.error(f"Error parsing crew result or initiating trade execution for agent {user_id}: {e}", exc_info=True)
 
 
-    async def execute_trade(self, trade_request: Dict) -> Dict:
+    async def execute_trade(self, trade_request: Dict) -> Dict: # This method seems to be for external calls, not used by crew flow
         logger.info(f"Executing trade: {trade_request}")
         
         try:

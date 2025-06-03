@@ -137,22 +137,39 @@ class AgentManagementService:
 
         agent_data_dict = agent.model_dump()
 
+        # Handle nested model updates carefully
         if 'strategy' in update_dict and update_dict['strategy'] is not None:
-            # update_dict['strategy'] is already a dict from AgentStrategyConfig model_dump
-            # This will overwrite the entire strategy sub-dict if provided
-            agent_data_dict['strategy'].update(update_dict['strategy'])
-            # If more granular parameter update is needed (e.g. only one param in strategy.parameters)
-            # then specific logic for that would be added here. The current AgentUpdateRequest
-            # model suggests strategy is replaced if provided.
+            # Assuming AgentUpdateRequest.strategy is a dict (from model_dump) or AgentStrategyConfig
+            strategy_update_data = update_dict['strategy']
+            if isinstance(strategy_update_data, dict):
+                 # If strategy_update_data has 'parameters', merge them, otherwise replace strategy.parameters
+                if 'parameters' in strategy_update_data and isinstance(agent_data_dict['strategy']['parameters'], dict) and isinstance(strategy_update_data['parameters'], dict):
+                    agent_data_dict['strategy']['parameters'].update(strategy_update_data['parameters'])
+                    # Remove parameters from strategy_update_data to avoid overwriting the merged one by top-level dict.update
+                    del strategy_update_data['parameters']
+                agent_data_dict['strategy'].update(strategy_update_data)
+            elif isinstance(strategy_update_data, AgentStrategyConfig): # Should be dict from model_dump(exclude_unset=True)
+                 agent_data_dict['strategy'].update(strategy_update_data.model_dump(exclude_unset=True))
+
 
         if 'risk_config' in update_dict and update_dict['risk_config'] is not None:
-            agent_data_dict['risk_config'].update(update_dict['risk_config'])
+            risk_update_data = update_dict['risk_config']
+            if isinstance(risk_update_data, dict):
+                agent_data_dict['risk_config'].update(risk_update_data)
+            elif isinstance(risk_update_data, AgentRiskConfig): # Should be dict
+                agent_data_dict['risk_config'].update(risk_update_data.model_dump(exclude_unset=True))
 
-        # Update top-level fields that are not nested models
+        # Handle operational_parameters merge
+        if 'operational_parameters' in update_dict and update_dict['operational_parameters'] is not None:
+            if isinstance(agent_data_dict.get('operational_parameters'), dict) and isinstance(update_dict['operational_parameters'], dict):
+                agent_data_dict['operational_parameters'].update(update_dict['operational_parameters'])
+            else: # Overwrite if not dict or not existing
+                agent_data_dict['operational_parameters'] = update_dict['operational_parameters']
+
+        # Update other top-level fields
         for key, value in update_dict.items():
-            if key not in ['strategy', 'risk_config']: # Already handled
-                 if value is not None: # Should be exclude_unset, but this is a safeguard
-                    agent_data_dict[key] = value
+            if key not in ['strategy', 'risk_config', 'operational_parameters']: # Already handled
+                agent_data_dict[key] = value # Value can be None here if explicitly set in AgentUpdateRequest
 
         agent_data_dict['updated_at'] = datetime.now(timezone.utc).isoformat()
 
@@ -233,6 +250,29 @@ class AgentManagementService:
         self._agent_statuses[agent_id] = status # Update in-memory status
         logger.info(f"Agent {agent_id} status updated to 'stopped' (simulated).")
         return status
+
+    async def get_child_agents(self, parent_agent_id: str) -> List[AgentConfigOutput]:
+        logger.debug(f"Retrieving child agents for parent_agent_id: {parent_agent_id}")
+        child_agents: List[AgentConfigOutput] = []
+        try:
+            for filename in os.listdir(self.config_dir):
+                if filename.endswith(".json"):
+                    agent_id = filename[:-5]
+                    # Avoid reading the file if it's the parent itself, though parent_agent_id check handles this
+                    if agent_id == parent_agent_id:
+                        continue
+
+                    # We need to load the agent config to check its parent_agent_id
+                    # Using a simplified load just for parent_agent_id to avoid full model parsing if not needed,
+                    # but full parsing is safer for consistency and future needs. Let's use get_agent.
+                    agent_config = await self.get_agent(agent_id)
+                    if agent_config and agent_config.parent_agent_id == parent_agent_id:
+                        child_agents.append(agent_config)
+        except Exception as e:
+            logger.error(f"Error listing or loading child agents for parent {parent_agent_id} from {self.config_dir}: {e}", exc_info=True)
+
+        logger.info(f"Found {len(child_agents)} child agents for parent {parent_agent_id}.")
+        return child_agents
 
     async def get_agent_status(self, agent_id: str) -> Optional[AgentStatus]:
         logger.debug(f"Retrieving status for agent ID: {agent_id}")

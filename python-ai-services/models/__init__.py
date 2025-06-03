@@ -91,10 +91,14 @@ __all__ = [
     # agent_models
     "AgentStrategyConfig", "AgentRiskConfig", "AgentConfigBase", "AgentConfigInput",
     "AgentConfigOutput", "AgentStatus", "AgentUpdateRequest",
+    "AgentStrategyConfig.DarvasStrategyParams", # For exporting the nested model if needed directly
     # dashboard_models
     "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
     # performance_models
     "PerformanceMetrics",
     # alert_models
-    "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification"
+    "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification",
+    # event_bus_models
+    "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
+    "RiskAssessmentRequestData", "RiskAssessmentResponseData"
 ]

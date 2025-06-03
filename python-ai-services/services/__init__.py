@@ -27,5 +27,9 @@ __all__ = [
     "AlertConfigurationService",
     "AlertMonitoringService",
     "AgentOrchestratorService",
-    "TradeHistoryService"
+    "TradeHistoryService",
+    "EventBusService",
+    "RiskManagerService",
+    "MarketDataService",
+    "DarvasBoxTechnicalService"
 ]

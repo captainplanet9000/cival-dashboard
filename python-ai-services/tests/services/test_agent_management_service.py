@@ -104,12 +104,20 @@ async def test_get_agents(service: AgentManagementService, tmp_path: Path):
 @pytest.mark.asyncio
 async def test_update_agent(service: AgentManagementService, tmp_path: Path):
     agent_input = create_sample_agent_input("Initial Name")
+    agent_input.operational_parameters = {"op_param1": "initial_op", "op_param2": 100}
     created_agent = await service.create_agent(agent_input)
     agent_id = created_agent.agent_id
     original_updated_at_iso = created_agent.updated_at.isoformat()
+    original_op_params = created_agent.operational_parameters.copy()
 
 
-    update_payload = AgentUpdateRequest(name="Updated Name", description="New Desc")
+    update_payload = AgentUpdateRequest(
+        name="Updated Name",
+        description="New Desc",
+        agent_type="SpecialAgent",
+        parent_agent_id="parent123",
+        operational_parameters={"op_param1": "updated_op", "op_param3": True} # op_param2 should remain, op_param1 updated, op_param3 added
+    )
 
     await asyncio.sleep(0.01) # Ensure timestamp can change
     updated_agent = await service.update_agent(agent_id, update_payload)
@@ -117,8 +125,13 @@ async def test_update_agent(service: AgentManagementService, tmp_path: Path):
     assert updated_agent is not None
     assert updated_agent.name == "Updated Name"
     assert updated_agent.description == "New Desc"
-    # Pydantic v1 to_datetime on updated_at might be naive if not careful with isoformat from file.
-    # Service saves with timezone. Pydantic model should parse it back to aware.
+    assert updated_agent.agent_type == "SpecialAgent"
+    assert updated_agent.parent_agent_id == "parent123"
+
+    expected_op_params = original_op_params.copy()
+    expected_op_params.update(update_payload.operational_parameters) # type: ignore
+    assert updated_agent.operational_parameters == expected_op_params
+
     assert updated_agent.updated_at.isoformat() > original_updated_at_iso
 
     # Verify file content
@@ -127,9 +140,54 @@ async def test_update_agent(service: AgentManagementService, tmp_path: Path):
         data = json.load(f)
         assert data["name"] == "Updated Name"
         assert data["description"] == "New Desc"
+        assert data["agent_type"] == "SpecialAgent"
+        assert data["parent_agent_id"] == "parent123"
+        assert data["operational_parameters"] == expected_op_params
 
     non_existent_update = await service.update_agent(str(uuid.uuid4()), AgentUpdateRequest(name="ghost"))
     assert non_existent_update is None
+
+@pytest.mark.asyncio
+async def test_update_agent_only_operational_params(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input("OpParamAgent")
+    agent_input.operational_parameters = {"initial_key": "initial_value"}
+    created_agent = await service.create_agent(agent_input)
+    agent_id = created_agent.agent_id
+
+    update_op_params = AgentUpdateRequest(operational_parameters={"new_key": "new_value", "initial_key": "updated_initial_value"})
+    updated_agent = await service.update_agent(agent_id, update_op_params)
+
+    assert updated_agent is not None
+    assert updated_agent.operational_parameters == {"initial_key": "updated_initial_value", "new_key": "new_value"}
+
+@pytest.mark.asyncio
+async def test_load_agent_missing_new_fields_uses_defaults(service: AgentManagementService, tmp_path: Path):
+    agent_id = str(uuid.uuid4())
+    # Create a JSON file that represents an older agent config (missing new fields)
+    old_format_data = {
+        "agent_id": agent_id,
+        "name": "Old Agent",
+        "strategy": {"strategy_name": "old_strat", "parameters": {}},
+        "risk_config": {"max_capital_allocation_usd": 100, "risk_per_trade_percentage": 0.01},
+        "execution_provider": "paper",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "is_active": False
+        # agent_type, parent_agent_id, operational_parameters are missing
+    }
+    with open(tmp_path / f"{agent_id}.json", 'w') as f:
+        json.dump(old_format_data, f)
+
+    # Initialize status for this manually created agent file for get_agent_status to work if called by other parts
+    service._agent_statuses[agent_id] = AgentStatus(agent_id=agent_id, status="stopped")
+
+
+    loaded_agent = await service.get_agent(agent_id)
+    assert loaded_agent is not None
+    assert loaded_agent.agent_type == "GenericAgent" # Default value
+    assert loaded_agent.parent_agent_id is None # Default value
+    assert loaded_agent.operational_parameters == {} # Default value (default_factory=dict)
+
 
 @pytest.mark.asyncio
 async def test_delete_agent(service: AgentManagementService, tmp_path: Path):
@@ -233,6 +291,86 @@ async def test_get_agent_status_after_service_restart_with_existing_files(tmp_pa
     # Test that get_agent still loads the correct is_active from file
     loaded_active_config = await restarted_service.get_agent(agent_id_active_in_file)
     assert loaded_active_config.is_active is True
+
+
+# --- Tests for get_child_agents ---
+@pytest.mark.asyncio
+async def test_get_child_agents(service: AgentManagementService, tmp_path: Path):
+    parent_id = "parent_agent_1"
+
+    # Create parent (though not strictly necessary for this method's logic, good for context)
+    await service.create_agent(create_sample_agent_input(name="ParentAgent", agent_id_override=parent_id))
+
+    # Create child agents
+    child1_input = create_sample_agent_input(name="Child1")
+    child1_input.parent_agent_id = parent_id
+    child1 = await service.create_agent(child1_input)
+
+    child2_input = create_sample_agent_input(name="Child2")
+    child2_input.parent_agent_id = parent_id
+    child2 = await service.create_agent(child2_input)
+
+    # Create unrelated agent
+    await service.create_agent(create_sample_agent_input(name="UnrelatedAgent"))
+
+    # Create another agent with a different parent
+    other_parent_child_input = create_sample_agent_input(name="OtherParentChild")
+    other_parent_child_input.parent_agent_id = "other_parent_id"
+    await service.create_agent(other_parent_child_input)
+
+    child_agents = await service.get_child_agents(parent_id)
+    assert len(child_agents) == 2
+    child_agent_ids = {agent.agent_id for agent in child_agents}
+    assert child1.agent_id in child_agent_ids
+    assert child2.agent_id in child_agent_ids
+
+@pytest.mark.asyncio
+async def test_get_child_agents_no_children(service: AgentManagementService):
+    parent_id_no_children = "parent_no_children"
+    await service.create_agent(create_sample_agent_input(name="ParentNoChildren", agent_id_override=parent_id_no_children))
+
+    children = await service.get_child_agents(parent_id_no_children)
+    assert len(children) == 0
+
+@pytest.mark.asyncio
+async def test_get_child_agents_parent_id_not_exist(service: AgentManagementService):
+    children = await service.get_child_agents("non_existent_parent_id")
+    assert len(children) == 0
+
+@pytest.mark.asyncio
+async def test_get_child_agents_with_corrupted_file(service: AgentManagementService, tmp_path: Path):
+    parent_id = "parent_with_issues"
+    # Child that is fine
+    child_ok_input = create_sample_agent_input("ChildOK")
+    child_ok_input.parent_agent_id = parent_id
+    await service.create_agent(child_ok_input)
+
+    # Create a corrupted JSON file
+    corrupted_file_id = str(uuid.uuid4())
+    with open(tmp_path / f"{corrupted_file_id}.json", 'w') as f:
+        f.write("{'name': 'Corrupted', 'parent_agent_id': '" + parent_id + "', ...") # Invalid JSON
+
+    children = await service.get_child_agents(parent_id)
+    # Should still return the valid child, and log error for corrupted one (check logs manually or mock logger)
+    assert len(children) == 1
+    assert children[0].name == "ChildOK"
+
+
+# Fixture update for create_sample_agent_input to allow setting agent_id for predictable testing
+def create_sample_agent_input(name: str = "Test Agent", agent_id_override: Optional[str]=None) -> AgentConfigInput:
+    strategy_conf = AgentStrategyConfig(strategy_name="test_strat", parameters={"param1": 10})
+    risk_conf = AgentRiskConfig(max_capital_allocation_usd=1000, risk_per_trade_percentage=0.01)
+    # agent_id is not part of AgentConfigInput, it's generated on creation (AgentConfigOutput)
+    # This helper is for AgentConfigInput, so agent_id_override is not used here.
+    # If we need to create AgentConfigOutput directly for file writing, that's different.
+    # For now, the tests for get_child_agents create agents via service.create_agent, which is fine.
+    return AgentConfigInput(
+        name=name,
+        strategy=strategy_conf,
+        risk_config=risk_conf,
+        execution_provider="paper"
+    )
+
 
 @pytest.mark.asyncio
 async def test_update_agent_heartbeat_running_agent(service: AgentManagementService):
