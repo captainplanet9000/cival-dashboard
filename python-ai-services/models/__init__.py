@@ -1,4 +1,7 @@
 # This file makes the 'models' directory a Python package.
+# It can be used to store Pydantic models related to crew inputs, outputs, or shared data structures.
+# For example:
+# from .crew_models import TradeSignal, MarketAnalysisOutput
 
 # Export models from base_models.py (if it exists and is used)
 # This assumes base_models.py is in the same directory (models/)
@@ -23,13 +26,13 @@ except ImportError:
     # Handle case where agent_task_models might not exist (should not happen here)
     pass
 
-# Export models from api_models.py
+# Export models from event_models.py
 try:
-    from .api_models import CrewRunRequest, CrewRunResponse
+    from .event_models import EventType, EventData, EventPriority
     if '__all__' in globals():
-        __all__.extend(['CrewRunRequest', 'CrewRunResponse'])
+        __all__.extend(['EventType', 'EventData', 'EventPriority'])
     else:
-        __all__ = ['CrewRunRequest', 'CrewRunResponse']
+        __all__ = ['EventType', 'EventData', 'EventPriority']
 except ImportError:
     pass
 
@@ -80,5 +83,15 @@ try:
         __all__.extend(["TradeRecord", "TradeSide", "OrderStatus", "OrderType"])
     else:
         __all__ = ["TradeRecord", "TradeSide", "OrderStatus", "OrderType"]
+except ImportError:
+    pass
+
+# Export models from trading_strategy.py
+try:
+    from .trading_strategy import StrategyType, StrategyConfig, StrategyPerformance
+    if '__all__' in globals():
+        __all__.extend(["StrategyType", "StrategyConfig", "StrategyPerformance"])
+    else:
+        __all__ = ["StrategyType", "StrategyConfig", "StrategyPerformance"]
 except ImportError:
     pass

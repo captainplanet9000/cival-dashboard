@@ -1,116 +1,245 @@
-import os
-import requests
-from dotenv import load_dotenv
+"""
+Market Data Service for providing real-time and historical market data to agents
+"""
+from typing import Dict, List, Optional, Any, Callable
+from datetime import datetime
+import asyncio
+import httpx
+import json
+import websockets
+from loguru import logger
 
-load_dotenv()
+from ..utils.google_sdk_bridge import GoogleSDKBridge
+from ..utils.a2a_protocol import A2AProtocol
 
-COINMARKETCAP_API_KEY = os.environ.get("COINMARKETCAP_API_KEY")
-CMC_API_URL = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest' 
 
 class MarketDataService:
-    def __init__(self):
-        if not COINMARKETCAP_API_KEY:
-            raise ValueError("CoinMarketCap API Key not found in environment variables.")
-        self.headers = {
-            'Accepts': 'application/json',
-            'X-CMC_PRO_API_KEY': COINMARKETCAP_API_KEY,
-        }
+    """Service for accessing real-time and historical market data"""
 
-    def get_price_quotes(self, symbols: list[str], convert_to: str = 'USD') -> dict:
-        if not symbols:
-            return {}
-        parameters = {'symbol': ','.join(symbols).upper(), 'convert': convert_to.upper()}
+    def __init__(self, google_bridge: GoogleSDKBridge, a2a_protocol: A2AProtocol):
+        self.google_bridge = google_bridge
+        self.a2a_protocol = a2a_protocol
+        self.base_url = "http://localhost:3000/api/agents/trading"
+        self.ws_base_url = "ws://localhost:3000/api/market-data"
+        self.subscriptions = {}
+        self.websocket_tasks = {}
+
+    async def get_historical_data(self, symbol: str, interval: str = "1h", limit: int = 100) -> List[Dict]:
+        """Get historical market data for a symbol"""
+        logger.info(f"Getting historical data for {symbol}, interval {interval}, limit {limit}")
+
         try:
-            response = requests.get(CMC_API_URL, headers=self.headers, params=parameters)
-            response.raise_for_status() 
-            data = response.json()
-            quotes = {}
-            if data.get('status', {}).get('error_code') == 0:
-                for symbol_provided in symbols: # Iterate over originally requested symbols for consistent keying
-                    s_upper = symbol_provided.upper()
-                    # CMC data is keyed by the base symbol, e.g., 'BTC' for 'BTC/USD'
-                    base_symbol_data = data.get('data', {}).get(s_upper.split('/')[0], None) 
-                    if base_symbol_data: # Check if data exists for this base symbol
-                        quote_data = base_symbol_data.get('quote', {}).get(convert_to.upper())
-                        if quote_data:
-                            quotes[s_upper] = {
-                                "price": quote_data.get('price'),
-                                "volume_24h": quote_data.get('volume_24h'),
-                                "percent_change_24h": quote_data.get('percent_change_24h'),
-                                "last_updated": quote_data.get('last_updated')
-                            }
-                        else:
-                            print(f"Warning: Quote data for convert_to '{convert_to.upper()}' not found for symbol {s_upper} in CMC response.")
-                            quotes[s_upper] = None
-                    else:
-                        print(f"Warning: Symbol {s_upper} not found in CMC response data field.")
-                        quotes[s_upper] = None 
-            else:
-                error_message = data.get('status', {}).get('error_message', 'Unknown API error')
-                print(f"CoinMarketCap API Error: {error_message}")
-                return {"error": error_message}
-            return quotes
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching market data from CoinMarketCap: {e}")
-            return {"error": str(e)}
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/market-data?symbol={symbol}&interval={interval}&limit={limit}",
+                    timeout=30.0
+                )
+                response.raise_for_status()
+                data = response.json()
 
-    def get_historical_ohlcv(self, symbol: str, time_period: str = 'daily', count: int = 30, convert_to: str = 'USD') -> dict:
-        """
-        Fetches historical OHLCV data for a given symbol.
-        `time_period` maps to `interval` for CMC API: e.g., 'daily', 'weekly', '1h', '3h'.
-        """
-        if not symbol:
-            return {"error": "Symbol must be provided"}
+                logger.info(f"Retrieved {len(data.get('candles', []))} historical candles for {symbol}")
+                return data.get('candles', [])
 
-        # Map time_period to CMC's interval parameter
-        # Common intervals: 'hourly', 'daily', 'weekly', 'monthly', 
-        # '1h', '2h', '3h', '4h', '6h', '12h', 
-        # '1d', '2d', '3d', '7d', '14d', '15d', '30d', '60d', '90d', '365d'
-        # For simplicity, we'll assume time_period maps directly if it's one of the common ones like 'daily', '1h' etc.
-        # More robust mapping might be needed for broader compatibility.
-        interval_map = {
-            'daily': 'daily',
-            'hourly': 'hourly', # This might fetch 1h data by default; check CMC docs if specific hours like '1h' are needed.
-            '1h': '1h', # Example if CMC uses '1h' directly
-            '4h': '4h',
-            'weekly': 'weekly',
-            'monthly': 'monthly'
-        }
-        api_interval = interval_map.get(time_period.lower(), time_period) # Default to using time_period if not in map
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error getting historical data: {e.response.status_code} - {e.response.text}")
+            raise Exception(f"Failed to get historical data: {e.response.text}")
+        except httpx.RequestError as e:
+            logger.error(f"Request error getting historical data: {str(e)}")
+            raise Exception(f"Historical data request failed: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error getting historical data: {str(e)}")
+            raise
 
-        parameters = {
-            'symbol': symbol.upper(),
-            'count': count,
-            'interval': api_interval,
-            'convert': convert_to.upper()
+    async def subscribe_to_market_data(self, symbol: str, interval: str = "1m", callback: Callable = None) -> str:
+        """Subscribe to real-time market data for a symbol"""
+        subscription_id = f"{symbol}_{interval}_{datetime.now().timestamp()}"
+        logger.info(f"Creating market data subscription: {subscription_id}")
+
+        # Store the callback
+        self.subscriptions[subscription_id] = {
+            "symbol": symbol,
+            "interval": interval,
+            "callback": callback,
+            "active": True,
+            "last_data": None,
+            "created_at": datetime.now()
         }
         
-        ohlcv_api_url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/ohlcv/historical'
+        # Start WebSocket connection in background
+        task = asyncio.create_task(self._maintain_websocket_connection(subscription_id))
+        self.websocket_tasks[subscription_id] = task
+
+        # Register subscription in database
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/market-data/subscribe",
+                    json={
+                        "symbol": symbol,
+                        "interval": interval,
+                        "subscriptionId": subscription_id
+                    },
+                    timeout=10.0
+                )
+                response.raise_for_status()
+
+                logger.info(f"Market data subscription registered: {response.json()}")
+        except Exception as e:
+            logger.error(f"Failed to register subscription: {str(e)}")
+            # Continue anyway as WebSocket might work independently
+
+        return subscription_id
+
+    async def unsubscribe_from_market_data(self, subscription_id: str) -> bool:
+        """Unsubscribe from real-time market data"""
+        logger.info(f"Unsubscribing from market data: {subscription_id}")
+
+        if subscription_id not in self.subscriptions:
+            logger.warning(f"Subscription {subscription_id} not found")
+            return False
+
+        # Mark subscription as inactive
+        self.subscriptions[subscription_id]["active"] = False
+
+        # Cancel WebSocket task
+        if subscription_id in self.websocket_tasks:
+            self.websocket_tasks[subscription_id].cancel()
+            del self.websocket_tasks[subscription_id]
+
+        # Unregister subscription in database
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.base_url}/market-data/unsubscribe",
+                    json={"subscriptionId": subscription_id},
+                    timeout=10.0
+                )
+                response.raise_for_status()
+                logger.info(f"Market data subscription unregistered: {response.json()}")
+        except Exception as e:
+            logger.error(f"Failed to unregister subscription: {str(e)}")
+
+        # Remove subscription after a delay to allow for any final messages
+        asyncio.create_task(self._delayed_subscription_removal(subscription_id))
+
+        return True
+
+    async def _delayed_subscription_removal(self, subscription_id: str):
+        """Remove subscription after a delay"""
+        await asyncio.sleep(5)  # Allow time for final messages
+        if subscription_id in self.subscriptions:
+            del self.subscriptions[subscription_id]
+            logger.info(f"Removed subscription {subscription_id}")
+
+    async def _maintain_websocket_connection(self, subscription_id: str):
+        """Maintain WebSocket connection and process messages"""
+        if subscription_id not in self.subscriptions:
+            logger.error(f"Subscription {subscription_id} not found")
+            return
+
+        subscription = self.subscriptions[subscription_id]
+        symbol = subscription["symbol"]
+        interval = subscription["interval"]
+        callback = subscription["callback"]
+
+        retry_delay = 1.0
+        max_retry_delay = 60.0
+
+        while subscription["active"]:
+            ws_url = f"{self.ws_base_url}/{symbol}?interval={interval}&subscriptionId={subscription_id}"
+            logger.info(f"Connecting to WebSocket: {ws_url}")
+
+            try:
+                async with websockets.connect(ws_url) as websocket:
+                    # Reset retry delay on successful connection
+                    retry_delay = 1.0
+
+                    logger.info(f"WebSocket connected for {subscription_id}")
+
+                    # Process messages
+                    while subscription["active"]:
+                        try:
+                            message = await websocket.recv()
+                            data = json.loads(message)
+
+                            # Store last received data
+                            subscription["last_data"] = data
+
+                            # Call callback if provided
+                            if callback:
+                                try:
+                                    await callback(data)
+                                except Exception as e:
+                                    logger.error(f"Error in subscription callback: {str(e)}")
+
+                            # Broadcast to A2A protocol
+                            await self.a2a_protocol.broadcast_message(
+                                message_type="market_data_update",
+                                payload={
+                                    "symbol": symbol,
+                                    "interval": interval,
+                                    "data": data,
+                                    "timestamp": datetime.utcnow().isoformat()
+                                }
+                            )
+                        except websockets.exceptions.ConnectionClosed:
+                            logger.warning(f"WebSocket connection closed for {subscription_id}")
+                            break
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Error decoding message: {str(e)}")
+                        except Exception as e:
+                            logger.error(f"Error processing WebSocket message: {str(e)}")
+            except Exception as e:
+                logger.error(f"WebSocket connection error: {str(e)}")
+
+            # Only retry if subscription is still active
+            if subscription["active"]:
+                logger.info(f"Retrying WebSocket connection in {retry_delay} seconds")
+                await asyncio.sleep(retry_delay)
+
+                # Exponential backoff with jitter
+                retry_delay = min(max_retry_delay, retry_delay * 1.5)
+
+        logger.info(f"WebSocket connection task ended for {subscription_id}")
+
+    async def get_available_symbols(self) -> List[str]:
+        """Get list of available trading symbols"""
+        logger.info("Getting available trading symbols")
 
         try:
-            response = requests.get(ohlcv_api_url, headers=self.headers, params=parameters)
-            response.raise_for_status()
-            data = response.json()
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.base_url}/market-data/symbols",
+                    timeout=10.0
+                )
+                response.raise_for_status()
+                data = response.json()
 
-            if data.get('status', {}).get('error_code') == 0:
-                symbol_data = data.get('data', {}).get(symbol.upper())
-                if symbol_data and 'quotes' in symbol_data:
-                    return {
-                        "symbol": symbol.upper(),
-                        "quotes": symbol_data['quotes'], # This directly contains the list of OHLCV objects
-                        "error": None
-                    }
-                else:
-                    msg = f"OHLCV data for symbol {symbol.upper()} not found in response."
-                    print(f"Warning: {msg}")
-                    return {"symbol": symbol.upper(), "quotes": [], "error": msg}
-            else:
-                error_message = data.get('status', {}).get('error_message', 'Unknown API error')
-                print(f"CoinMarketCap API Error (OHLCV): {error_message}")
-                return {"symbol": symbol.upper(), "quotes": [], "error": error_message}
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching historical OHLCV data from CoinMarketCap: {e}")
-            return {"symbol": symbol.upper(), "quotes": [], "error": str(e)}
-        except Exception as e: # Catch any other unexpected errors
-            print(f"Unexpected error in get_historical_ohlcv: {e}")
-            return {"symbol": symbol.upper(), "quotes": [], "error": str(e)}
+                symbols = data.get('symbols', [])
+                logger.info(f"Retrieved {len(symbols)} available symbols")
+                return symbols
+
+        except Exception as e:
+            logger.error(f"Error getting available symbols: {str(e)}")
+            raise
+
+    async def get_market_summary(self, symbols: List[str] = None) -> Dict:
+        """Get market summary for specified symbols or top markets"""
+        logger.info(f"Getting market summary for: {symbols if symbols else 'top markets'}")
+
+        try:
+            async with httpx.AsyncClient() as client:
+                url = f"{self.base_url}/market-data/summary"
+                if symbols:
+                    url += f"?symbols={','.join(symbols)}"
+
+                response = await client.get(url, timeout=10.0)
+                response.raise_for_status()
+                data = response.json()
+
+                logger.info(f"Retrieved market summary for {len(data.get('markets', []))} markets")
+                return data
+
+        except Exception as e:
+            logger.error(f"Error getting market summary: {str(e)}")
+            raise
