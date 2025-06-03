@@ -323,44 +323,77 @@ async def test_execute_live_trade_buy_limit_success(trading_coordinator: Trading
 
 
 @pytest.mark.asyncio
-async def test_execute_live_trade_with_simulated_fills_records_history(
+async def test_execute_live_trade_fetches_and_records_actual_fills( # Renamed test
     trading_coordinator: TradingCoordinator,
     mock_hyperliquid_executor: MagicMock,
-    mock_trade_history_service: MagicMock # Added
+    mock_trade_history_service: MagicMock
 ):
     await trading_coordinator.set_trade_execution_mode("live")
-    user_id = str(uuid.uuid4())
-    # Market order, price is placeholder for sizing, actual fill price in sim_fill_data
+    user_id = "agent_wallet_address_for_hl" # Simulate this user_id is the wallet address
     trade_params = {"action": "buy", "symbol": "ETH", "quantity": 0.01, "order_type": "market", "price": 0.0}
 
-    # Create mock HLES response with simulated_fills
-    sim_fill_data_dict = {
-        "asset": "ETH", "side": "buy", "quantity": 0.01, "price": 2000.0, # Actual fill price
-        "timestamp": datetime.now(timezone.utc).isoformat(), "fee": 0.2, "fee_currency": "USD",
-        "exchange_order_id": "hl_oid_123", "exchange_trade_id": "hl_tid_abc"
-    }
-    mock_hl_response_with_fills = HyperliquidOrderResponseData(
-        status="filled", oid=12345,
-        order_type_info={"market": {"tif": "Ioc"}},
-        simulated_fills=[sim_fill_data_dict] # List of dicts
+    # Mock successful order placement
+    mock_place_order_response = HyperliquidOrderResponseData(
+        status="filled", # Assume it filled for simplicity of test focus
+        oid=12345,
+        order_type_info={"market": {"tif": "Ioc"}}
+        # No simulated_fills here anymore
     )
-    mock_hyperliquid_executor.place_order.return_value = mock_hl_response_with_fills
-    # mock_trade_history_service.record_fill is already an AsyncMock from the fixture
+    mock_hyperliquid_executor.place_order.return_value = mock_place_order_response
+
+    # Mock response from get_fills_for_order
+    mock_hl_actual_fill_dict = {
+        "coin": "ETH", "dir": "Open Long", "px": "2000.0", "qty": "0.01",
+        "time": int(datetime.now(timezone.utc).timestamp() * 1000), # HL time is ms timestamp
+        "fee": "0.2", "oid": 12345, "tid": "HLTradeID_XYZ"
+    }
+    mock_hyperliquid_executor.get_fills_for_order = AsyncMock(return_value=[mock_hl_actual_fill_dict])
 
     result = await trading_coordinator._execute_trade_decision(trade_params, user_id)
 
-    assert result["status"] == "live_executed_with_risk_management" # Status from risk management update
+    assert result["status"] == "live_executed_with_risk_management"
     assert result["details"]["main_order"]["oid"] == 12345
 
-    # Verify record_fill was called
+    # Verify get_fills_for_order was called
+    mock_hyperliquid_executor.get_fills_for_order.assert_called_once_with(
+        user_address=user_id, # user_id is passed as agent_wallet_address
+        oid=12345
+    )
+
+    # Verify trade_history_service.record_fill was called with correctly mapped TradeFillData
     mock_trade_history_service.record_fill.assert_called_once()
-    called_fill_arg = mock_trade_history_service.record_fill.call_args[0][0]
+    called_fill_arg: TradeFillData = mock_trade_history_service.record_fill.call_args[0][0]
+
     assert isinstance(called_fill_arg, TradeFillData)
-    assert called_fill_arg.agent_id == user_id
-    assert called_fill_arg.asset == sim_fill_data_dict["asset"]
-    assert called_fill_arg.quantity == sim_fill_data_dict["quantity"]
-    assert called_fill_arg.price == sim_fill_data_dict["price"]
-    assert called_fill_arg.timestamp == datetime.fromisoformat(sim_fill_data_dict["timestamp"])
+    assert called_fill_arg.agent_id == user_id # Should be the internal agent ID
+    assert called_fill_arg.asset == mock_hl_actual_fill_dict["coin"]
+    assert called_fill_arg.side == "buy" # From "Open Long"
+    assert called_fill_arg.quantity == float(mock_hl_actual_fill_dict["qty"])
+    assert called_fill_arg.price == float(mock_hl_actual_fill_dict["px"])
+    assert called_fill_arg.timestamp == datetime.fromtimestamp(mock_hl_actual_fill_dict["time"] / 1000, tz=timezone.utc)
+    assert called_fill_arg.fee == float(mock_hl_actual_fill_dict["fee"])
+    assert called_fill_arg.fee_currency == "USD"
+    assert called_fill_arg.exchange_order_id == str(mock_hl_actual_fill_dict["oid"])
+    assert called_fill_arg.exchange_trade_id == mock_hl_actual_fill_dict["tid"]
+
+@pytest.mark.asyncio
+async def test_execute_live_trade_no_fills_found_for_order(
+    trading_coordinator: TradingCoordinator,
+    mock_hyperliquid_executor: MagicMock,
+    mock_trade_history_service: MagicMock
+):
+    await trading_coordinator.set_trade_execution_mode("live")
+    user_id = "agent_wallet_for_hl_no_fills"
+    trade_params = {"action": "sell", "symbol": "BTC", "quantity": 0.001, "order_type": "market", "price": 0.0}
+
+    mock_place_order_response = HyperliquidOrderResponseData(status="ok", oid=67890)
+    mock_hyperliquid_executor.place_order.return_value = mock_place_order_response
+    mock_hyperliquid_executor.get_fills_for_order = AsyncMock(return_value=[]) # No fills returned
+
+    await trading_coordinator._execute_trade_decision(trade_params, user_id)
+
+    mock_hyperliquid_executor.get_fills_for_order.assert_called_once_with(user_address=user_id, oid=67890)
+    mock_trade_history_service.record_fill.assert_not_called()
 
 
 @pytest.mark.asyncio

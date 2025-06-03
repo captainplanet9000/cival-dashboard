@@ -1,28 +1,59 @@
 import feedparser # Add import
 import re # For keyword searching
-from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig # For NewsAnalysisParams
+import feedparser
+import re
+from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig
 from ..models.event_bus_models import Event, NewsArticleEventPayload
 from ..services.event_bus_service import EventBusService
-from typing import List, Dict, Any, Optional, Set
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.learning_models import LearningLogEntry # Added
+from typing import List, Dict, Any, Optional, Set, Literal # Added Literal for _perform_basic_sentiment
 from loguru import logger
-from datetime import datetime, timezone, timedelta # Added timedelta for potential lookback logic
-from dateutil import parser as date_parser # For robust date parsing
-import asyncio # For potential async executor use
+from datetime import datetime, timezone, timedelta
+from dateutil import parser as date_parser
+import asyncio
 
 class NewsAnalysisService:
     def __init__(
         self,
         agent_config: AgentConfigOutput,
-        event_bus: EventBusService
-        # MarketDataService is not directly used by this agent type if it only processes external news.
+        event_bus: EventBusService,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
     ):
         self.agent_config = agent_config
         self.event_bus = event_bus
+        self.learning_logger_service = learning_logger_service # Store it
+
         if self.agent_config.strategy.news_analysis_params:
             self.params = self.agent_config.strategy.news_analysis_params
         else:
-            logger.warning(f"NewsAnalysisService ({self.agent_config.agent_id}): news_analysis_params not found in strategy. Using default NewsAnalysisParams.")
+            logger.warning(f"NewsSvc ({self.agent_config.agent_id}): news_analysis_params not found. Using defaults.")
             self.params = AgentStrategyConfig.NewsAnalysisParams()
+
+        if self.learning_logger_service:
+            logger.info(f"NewsSvc ({self.agent_config.agent_id}): LearningDataLoggerService: Available")
+        else:
+            logger.warning(f"NewsSvc ({self.agent_config.agent_id}): LearningDataLoggerService: Not Available. Learning logs will be skipped.")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        outcome: Optional[Dict] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=self.agent_config.agent_id,
+                source_service=self.__class__.__name__,
+                event_type=event_type,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     def _perform_basic_sentiment(self, text: str) -> Dict[str, Any]:
         text_lower = text.lower()
@@ -139,15 +170,20 @@ class NewsAnalysisService:
                     matched_keywords=sentiment_analysis["matched"],
                     raw_content_snippet=full_text_for_analysis[:200] if full_text_for_analysis else None
                 )
+
+                await self._log_learning_event(
+                    event_type="NewsArticleProcessed",
+                    data_snapshot=payload.model_dump(exclude_none=True),
+                    notes=f"News article processed: {payload.headline[:100]}...",
+                    tags=["news_analysis", payload.sentiment_label] + [f"symbol:{s}" for s in payload.mentioned_symbols]
+                )
+
                 event = Event(
                     publisher_agent_id=self.agent_config.agent_id,
                     message_type="NewsArticleEvent",
-                    payload=payload.model_dump(exclude_none=True) # Exclude None to keep payload cleaner
+                    payload=payload.model_dump(exclude_none=True)
                 )
                 await self.event_bus.publish(event)
-                logger.debug(f"NewsAnalysisService ({self.agent_config.agent_id}): Published NewsArticleEvent for: {headline[:50]}...")
-        logger.info(f"NewsAnalysisService ({self.agent_config.agent_id}): Finished feed fetch and analysis cycle.")
-
-# Ensure Literal is imported for type hint in _perform_basic_sentiment
-from typing import Literal
+                logger.debug(f"NewsSvc ({self.agent_config.agent_id}): Published NewsArticleEvent for: {headline[:50]}...")
+        logger.info(f"NewsSvc ({self.agent_config.agent_id}): Finished feed fetch and analysis cycle.")
 ```

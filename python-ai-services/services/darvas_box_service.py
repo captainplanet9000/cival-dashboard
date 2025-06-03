@@ -1,32 +1,56 @@
-from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig # AgentStrategyConfig for DarvasStrategyParams
+from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig
 from ..models.event_bus_models import Event, TradeSignalEventPayload
 from ..services.event_bus_service import EventBusService
 from ..services.market_data_service import MarketDataService
-from typing import List, Dict, Any, Optional # Added Optional
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.learning_models import LearningLogEntry # Added
+from typing import List, Dict, Any, Optional
 from loguru import logger
-from datetime import datetime, timezone # Ensure timezone for Event
+from datetime import datetime, timezone
 
 class DarvasBoxTechnicalService:
     def __init__(
         self,
-        agent_config: AgentConfigOutput, # Pass the specific agent's config
+        agent_config: AgentConfigOutput,
         event_bus: EventBusService,
-        market_data_service: MarketDataService
+        market_data_service: MarketDataService,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
     ):
         self.agent_config = agent_config
         self.event_bus = event_bus
         self.market_data_service = market_data_service
+        self.learning_logger_service = learning_logger_service # Store it
 
-        # Ensure darvas_params exist or use defaults from the model
-        # The model AgentStrategyConfig now has darvas_params: Optional[DarvasStrategyParams]
-        # And DarvasStrategyParams itself has defaults.
         if self.agent_config.strategy.darvas_params:
             self.params = self.agent_config.strategy.darvas_params
-        else: # Fallback to default DarvasStrategyParams if not specified in agent's config
-            logger.warning(f"DarvasBox ({self.agent_config.agent_id}): darvas_params not found in strategy config. Using default DarvasStrategyParams.")
-            # Need to access the nested DarvasStrategyParams definition for its defaults
+        else:
+            logger.warning(f"DarvasBox ({self.agent_config.agent_id}): darvas_params not found. Using defaults.")
             self.params = AgentStrategyConfig.DarvasStrategyParams()
 
+        if self.learning_logger_service:
+            logger.info(f"DarvasBox ({self.agent_config.agent_id}): LearningDataLoggerService: Available")
+        else:
+            logger.warning(f"DarvasBox ({self.agent_config.agent_id}): LearningDataLoggerService: Not Available. Learning logs will be skipped.")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        outcome: Optional[Dict] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=self.agent_config.agent_id,
+                source_service=self.__class__.__name__,
+                event_type=event_type,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     async def analyze_symbol_and_generate_signal(self, symbol: str):
         logger.info(f"DarvasBox ({self.agent_config.agent_id}): Analyzing {symbol} with params: Lookback={self.params.lookback_period}, BoxMinRange%={self.params.box_range_min_percentage*100}%, SL%FromBoxBottom={self.params.stop_loss_percentage_from_box_bottom*100}%")
@@ -88,18 +112,30 @@ class DarvasBoxTechnicalService:
                 price_target=current_price, # Signal to enter at current breakout price
                 stop_loss=round(stop_loss_price, 2), # Example rounding, adapt to asset precision
                 strategy_name=f"DarvasBox_L{self.params.lookback_period}",
-                confidence=0.75 # Example: Could be based on box quality, breakout strength, etc.
+                confidence=0.75
             )
+
+            await self._log_learning_event(
+                event_type="SignalGenerated",
+                data_snapshot=signal_payload.model_dump(),
+                notes=f"Darvas Box signal for {symbol}. Box: [{box_bottom} - {box_top}]",
+                tags=["darvas_box", signal_payload.action]
+            )
+
             event = Event(
                 publisher_agent_id=self.agent_config.agent_id,
-                message_type="TradeSignalEvent", # Standardized message type string
+                message_type="TradeSignalEvent",
                 payload=signal_payload.model_dump()
             )
             await self.event_bus.publish(event)
             logger.success(f"DarvasBox ({self.agent_config.agent_id}): Published BUY signal for {symbol} at {current_price}. SL: {stop_loss_price:.2f}. Box: [{box_bottom} - {box_top}]")
         else:
             logger.info(f"DarvasBox ({self.agent_config.agent_id}): No breakout signal for {symbol}. Current price {current_price} not above box top {box_top}.")
-
-        # No explicit sell signal logic (e.g., breakdown below box bottom) in this simplified version.
-        # It could be added similarly if desired.
+            await self._log_learning_event(
+                event_type="SignalEvaluation",
+                data_snapshot={"symbol": symbol, "current_price": current_price, "box_top": box_top, "box_bottom": box_bottom, "params": self.params.model_dump()},
+                outcome={"signal_generated": False},
+                notes=f"No Darvas Box breakout for {symbol}.",
+                tags=["darvas_box", "no_signal"]
+            )
 ```

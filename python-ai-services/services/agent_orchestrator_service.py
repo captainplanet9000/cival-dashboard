@@ -17,10 +17,10 @@ from .portfolio_optimizer_service import PortfolioOptimizerService
 from .portfolio_optimizer_service import PortfolioOptimizerService
 from .news_analysis_service import NewsAnalysisService
 # Use the new factories
-from ..core.factories import get_hyperliquid_execution_service_instance, get_dex_execution_service_instance # Added get_dex_execution_service_instance
+from ..core.factories import get_hyperliquid_execution_service_instance, get_dex_execution_service_instance
 from typing import Optional, Any, Dict, List
-# Need DEXExecutionService for type hinting
 from .dex_execution_service import DEXExecutionService
+from .learning_data_logger_service import LearningDataLoggerService # Added
 from loguru import logger
 import asyncio
 from unittest.mock import MagicMock
@@ -35,18 +35,25 @@ class AgentOrchestratorService:
         event_bus_service: EventBusService, # Added, ensure type is correct
         google_bridge: Optional[GoogleSDKBridge] = None,
         a2a_protocol: Optional[A2AProtocol] = None,
-        simulated_trade_executor: Optional[SimulatedTradeExecutor] = None
+        simulated_trade_executor: Optional[SimulatedTradeExecutor] = None,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
     ):
         self.agent_management_service = agent_management_service
         self.trade_history_service = trade_history_service
         self.risk_manager_service = risk_manager_service
-        self.market_data_service = market_data_service # Store it
-        self.event_bus_service = event_bus_service # Store it
+        self.market_data_service = market_data_service
+        self.event_bus_service = event_bus_service
+        self.learning_logger_service = learning_logger_service # Store it
         self.google_bridge = google_bridge if google_bridge else MagicMock(spec=GoogleSDKBridge)
         self.a2a_protocol = a2a_protocol if a2a_protocol else MagicMock(spec=A2AProtocol)
         self.simulated_trade_executor = simulated_trade_executor if simulated_trade_executor else MagicMock(spec=SimulatedTradeExecutor)
 
-        logger.info("AgentOrchestratorService initialized with MarketDataService, EventBusService, TradeHistoryService, and RiskManagerService.")
+        logger.info("AgentOrchestratorService initialized.") # Simplified log
+        if self.learning_logger_service:
+            logger.info("LearningDataLoggerService: Available to AgentOrchestratorService.")
+        else:
+            logger.warning("LearningDataLoggerService: Not Available to AgentOrchestratorService. Technical agent learning logs will be skipped.")
+
 
     async def _get_trading_coordinator_for_agent(self, agent_config: AgentConfigOutput) -> Optional[TradingCoordinator]:
         logger.debug(f"Orchestrator: Getting TradingCoordinator for agent: {agent_config.agent_id} ({agent_config.name}), provider: {agent_config.execution_provider}")
@@ -111,7 +118,8 @@ class AgentOrchestratorService:
             darvas_service = DarvasBoxTechnicalService(
                 agent_config=agent_config,
                 event_bus=self.event_bus_service,
-                market_data_service=self.market_data_service
+                market_data_service=self.market_data_service,
+                learning_logger_service=self.learning_logger_service # Pass logger
             )
             if not agent_config.strategy.watched_symbols:
                 logger.warning(f"DarvasBoxAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
@@ -135,7 +143,8 @@ class AgentOrchestratorService:
             wa_service = WilliamsAlligatorTechnicalService(
                 agent_config=agent_config,
                 event_bus=self.event_bus_service,
-                market_data_service=self.market_data_service
+                market_data_service=self.market_data_service,
+                learning_logger_service=self.learning_logger_service # Pass logger
             )
             if not agent_config.strategy.watched_symbols:
                 logger.warning(f"WilliamsAlligatorAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
@@ -159,7 +168,8 @@ class AgentOrchestratorService:
             mcc_service = MarketConditionClassifierService(
                 agent_config=agent_config,
                 event_bus=self.event_bus_service,
-                market_data_service=self.market_data_service
+                market_data_service=self.market_data_service,
+                learning_logger_service=self.learning_logger_service # Pass logger
             )
             if not agent_config.strategy.watched_symbols:
                 logger.warning(f"MarketConditionClassifierAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
@@ -204,7 +214,8 @@ class AgentOrchestratorService:
 
             news_service = NewsAnalysisService(
                 agent_config=agent_config,
-                event_bus=self.event_bus_service
+                event_bus=self.event_bus_service,
+                learning_logger_service=self.learning_logger_service # Pass logger
             )
             try:
                 # This agent type might not iterate symbols, but rather fetches all its configured feeds.
@@ -217,7 +228,34 @@ class AgentOrchestratorService:
             logger.info(f"NewsAnalysisAgent cycle finished for agent_id: {agent_id}")
             return
 
+
+        elif agent_config.agent_type == "RenkoTechnicalAgent":
+            if not all([self.market_data_service, self.event_bus_service]):
+                logger.error(f"Orchestrator: Missing critical services for RenkoTechnicalAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+            from .renko_technical_service import RenkoTechnicalService # Local import
+
+            renko_service = RenkoTechnicalService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service,
+                market_data_service=self.market_data_service,
+                learning_logger=self.learning_logger_service # Pass logger
+            )
+            if agent_config.strategy.watched_symbols:
+                for symbol in agent_config.strategy.watched_symbols:
+                    try:
+                        await renko_service.analyze_symbol_and_generate_signal(symbol)
+                    except Exception as e:
+                        logger.error(f"Error during Renko analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+            else:
+                logger.warning(f"RenkoTechnicalAgent {agent_id} has no watched_symbols configured.")
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"RenkoTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
         # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)
+        # This block should be the last one for agent_type checks.
         trading_coordinator = await self._get_trading_coordinator_for_agent(agent_config)
         if not trading_coordinator:
             logger.error(f"Failed to get TradingCoordinator for agent {agent_id} (type: {agent_config.agent_type}). Skipping analysis cycle.")

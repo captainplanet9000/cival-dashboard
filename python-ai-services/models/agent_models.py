@@ -58,6 +58,14 @@ class AgentStrategyConfig(BaseModel):
         fetch_limit_per_feed: Optional[int] = 10
     news_analysis_params: Optional[NewsAnalysisParams] = None
 
+    class RenkoParams(BaseModel):
+        brick_size_mode: Literal["fixed", "atr"] = "atr"
+        brick_size_value_fixed: Optional[float] = Field(default=None, gt=0, description="Fixed brick size if mode is 'fixed'.")
+        atr_period: int = Field(default=14, gt=0, description="ATR period if mode is 'atr'.")
+        signal_confirmation_bricks: int = Field(default=2, ge=1, description="Number of same-color bricks for signal confirmation.")
+        stop_loss_bricks_away: Optional[int] = Field(default=2, ge=1, description="Stop loss X bricks away from entry brick's open/close.")
+    renko_params: Optional[RenkoParams] = None
+
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float
     risk_per_trade_percentage: float

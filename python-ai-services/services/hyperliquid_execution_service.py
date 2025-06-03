@@ -173,57 +173,10 @@ class HyperliquidExecutionService:
                     parsed_response = HyperliquidOrderResponseData(
                         status=order_status_key, # "resting", "filled", etc.
                         oid=oid_info.get("oid") if isinstance(oid_info, dict) else None,
-                        order_type_info=order_params.order_type, # Echo back the order type sent
-                        # Add simulated fills if applicable
-                        simulated_fills=None # Placeholder, will be set below if conditions met
+                        order_type_info=order_params.order_type # Echo back the order type sent
+                        # simulated_fills field is now removed/commented out from HyperliquidOrderResponseData
                     )
-
-                    # Simulate Fill Generation for market orders or if status indicates immediate fill
-                    # For this example, let's assume 'filled' or if it's a market order
-                    is_market_order = "market" in order_params.order_type
-                    # Could also check order_status_key if it directly indicates a fill (e.g. "filled")
-                    # For simplicity, we'll primarily rely on it being a market order for simulation.
-                    # A real system might get actual fill data from the SDK response if available.
-
-                    # --- START OF SIMULATED FILL GENERATION ---
-                    # TODO: Replace this section with actual fill data processing when available.
-                    # How real fills might be obtained:
-                    # 1. Direct SDK Response: Some SDK order placement calls might return fill data directly
-                    #    if the order is executed immediately (e.g., market orders, aggressive limit orders).
-                    #    The `sdk_response_dict` would need to be parsed for this.
-                    # 2. WebSocket Stream: Subscribe to a user-specific WebSocket endpoint that pushes fill events.
-                    #    This would likely happen outside this `place_order` method, in a separate listener
-                    #    that then records fills using TradeHistoryService.
-                    # 3. Polling: Periodically call `info_client.user_fills_by_time()` to get recent fills.
-                    #    This is less real-time but can catch fills not captured immediately.
-                    #
-                    # Mapping to TradeFillData:
-                    # Actual fill data from Hyperliquid (e.g., from user_fills_by_time or WebSocket)
-                    # would need to be mapped to the `TradeFillData` Pydantic model structure.
-                    # This involves matching fields like price, quantity, fees, timestamps, asset, side,
-                    # and various IDs (exchange order ID, fill/trade ID).
-                    # Example fields from user_fills_by_time: 'coin', 'side', 'px', 'sz', 'time', 'fee', 'oid', 'tid'.
-                    if is_market_order or order_status_key == "filled":
-                        fill_list = []
-                        simulated_fill_dict = {
-                            "asset": order_params.asset,
-                            "side": "buy" if order_params.is_buy else "sell",
-                            "quantity": order_params.sz, # Full quantity fill
-                            # Use limit_px as stand-in for execution price.
-                            # For true market orders, limit_px might be 0 or a conventional far price.
-                            # Actual fill price would come from exchange if not simulating.
-                            "price": order_params.limit_px,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "fee": 0.001 * order_params.sz * order_params.limit_px, # Example: 0.1% fee
-                            "fee_currency": "USD", # Assuming USD for quote currency
-                            "exchange_order_id": str(parsed_response.oid) if parsed_response.oid else None,
-                            "exchange_trade_id": str(uuid.uuid4()) # Simulated unique fill/trade ID
-                        }
-                        fill_list.append(simulated_fill_dict)
-                        parsed_response.simulated_fills = fill_list
-                        logger.info(f"Generated SIMULATED fills for order OID {parsed_response.oid}: {fill_list}")
-                    # --- END OF SIMULATED FILL GENERATION ---
-
+                    # --- SIMULATED FILL GENERATION REMOVED ---
                     logger.info(f"Order placed successfully on Hyperliquid. Status: {parsed_response.status}, OID: {parsed_response.oid}")
                     return parsed_response
                 else:
@@ -650,4 +603,40 @@ class HyperliquidExecutionService:
     # Remember to handle Hyperliquid's specific data types (e.g. numbers as strings)
     # and ensure all private_key interactions are secure and through the SDK's intended mechanisms.
     # The Exchange client setup is critical for any methods that modify state (place/cancel orders, set leverage).
+
+    async def get_fills_for_order(self, user_address: str, oid: int) -> List[Dict[str, Any]]:
+        logger.info(f"HLES: Fetching fills for order OID {oid}, user {user_address}")
+        if not self.info_client:
+            logger.error("HLES: Hyperliquid Info client not initialized. Cannot fetch fills.")
+            # Consider raising an error or make behavior consistent with other methods
+            return []
+            # raise HyperliquidExecutionServiceError("Hyperliquid Info client not initialized.")
+
+        try:
+            loop = asyncio.get_event_loop()
+            # SDK's info_client method: order_status(user: str, oid: int) -> Any
+            # It returns a dict with 'order' object, 'status' string, 'fills' list.
+            sdk_response = await loop.run_in_executor(
+                None,
+                lambda: self.info_client.order_status(user=user_address, oid=oid)
+            )
+            # logger.debug(f"HLES: Order status response for OID {oid} (for fills): {str(sdk_response)[:500]}")
+
+            if isinstance(sdk_response, dict) and "fills" in sdk_response:
+                fills = sdk_response.get("fills")
+                if isinstance(fills, list):
+                    logger.info(f"HLES: Found {len(fills)} fills for order OID {oid}.")
+                    return fills
+                else:
+                    logger.warning(f"HLES: 'fills' field in order_status response is not a list for OID {oid}. Type: {type(fills)}")
+                    return []
+            elif isinstance(sdk_response, dict) and "error" in sdk_response: # Check for API error response
+                logger.warning(f"HLES: API error when fetching order status for fills (OID {oid}): {sdk_response['error']}")
+                return []
+            else:
+                logger.warning(f"HLES: Unexpected response structure or no fills found for OID {oid} when fetching order status: {sdk_response}")
+                return []
+        except Exception as e:
+            logger.error(f"HLES: Error fetching fills for order OID {oid}: {e}", exc_info=True)
+            raise HyperliquidExecutionServiceError(f"Failed to fetch fills for order {oid}: {e}")
 ```

@@ -1,10 +1,12 @@
 from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig, AgentUpdateRequest, AgentStatus # Added AgentStatus
 # PortfolioOptimizerParams and PortfolioOptimizerRule are nested in AgentStrategyConfig
-from ..models.event_bus_models import Event, MarketConditionEventPayload, NewsArticleEventPayload # Added NewsArticleEventPayload
+from ..models.event_bus_models import Event, MarketConditionEventPayload, NewsArticleEventPayload
 from ..services.agent_management_service import AgentManagementService
 from ..services.event_bus_service import EventBusService
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.learning_models import LearningLogEntry # Added
 # from ..services.performance_calculation_service import PerformanceCalculationService # For later
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Literal # Added Literal for _apply_rule_to_targets
 from loguru import logger
 from datetime import datetime, timezone
 
@@ -13,19 +15,48 @@ class PortfolioOptimizerService:
         self,
         agent_config: AgentConfigOutput,
         agent_management_service: AgentManagementService,
-        event_bus: EventBusService
+        event_bus: EventBusService,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
         # performance_service: Optional[PerformanceCalculationService] = None # For future enhancements
     ):
         self.agent_config = agent_config
         self.agent_management_service = agent_management_service
         self.event_bus = event_bus
+        self.learning_logger_service = learning_logger_service # Store it
         # self.performance_service = performance_service
 
         if not self.agent_config.strategy.portfolio_optimizer_params:
-            logger.warning(f"PortfolioOptimizerAgent {self.agent_config.agent_id} has no 'portfolio_optimizer_params' in its strategy. It will be passive.")
+            logger.warning(f"PO ({self.agent_config.agent_id}): Has no 'portfolio_optimizer_params'. Will be passive.")
             self.params = AgentStrategyConfig.PortfolioOptimizerParams(rules=[]) # Empty rules
         else:
             self.params = self.agent_config.strategy.portfolio_optimizer_params
+
+        if self.learning_logger_service:
+            logger.info(f"PO ({self.agent_config.agent_id}): LearningDataLoggerService: Available")
+        else:
+            logger.warning(f"PO ({self.agent_config.agent_id}): LearningDataLoggerService: Not Available. Learning logs will be skipped.")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        outcome: Optional[Dict] = None,
+        triggering_event_id: Optional[str] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=self.agent_config.agent_id, # PO's own ID
+                source_service=self.__class__.__name__, # PortfolioOptimizerService
+                event_type=event_type,
+                triggering_event_id=triggering_event_id,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     async def setup_subscriptions(self):
         """
@@ -54,7 +85,13 @@ class PortfolioOptimizerService:
         for rule in self.params.rules:
             if rule.if_market_regime and rule.if_market_regime == market_condition.regime:
                 logger.info(f"PO ({self.agent_config.agent_id}): Rule '{rule.rule_name or 'Unnamed Rule'}' matched for regime '{market_condition.regime}' (symbol: {market_condition.symbol}).")
-                await self._apply_rule_to_targets(rule, event_context=market_condition, event_type="market_condition")
+                await self._log_learning_event(
+                    event_type="OptimizerRuleMatched",
+                    data_snapshot={"rule": rule.model_dump(), "triggering_event_payload": event.payload},
+                    triggering_event_id=event.event_id,
+                    notes=f"Market condition rule matched for symbol {market_condition.symbol}."
+                )
+                await self._apply_rule_to_targets(rule, event_context=market_condition, event_type="market_condition", trigger_event_id=event.event_id)
 
     async def on_news_article_event(self, event: Event):
         if not isinstance(event.payload, dict):
@@ -69,14 +106,21 @@ class PortfolioOptimizerService:
         logger.info(f"PO ({self.agent_config.agent_id}): Processing NewsArticleEvent for symbols {news_payload.mentioned_symbols}, sentiment: {news_payload.sentiment_label}.")
 
         for rule in self.params.rules:
-            # Check if the rule is related to news sentiment
             if rule.if_news_sentiment_is and rule.if_news_sentiment_is == news_payload.sentiment_label:
                 logger.info(f"PO ({self.agent_config.agent_id}): Rule '{rule.rule_name or 'Unnamed Rule'}' matched for news sentiment {news_payload.sentiment_label}.")
-                # Pass news_payload as context to _apply_rule_to_targets
-                await self._apply_rule_to_targets(rule, event_context=news_payload, event_type="news")
+                await self._log_learning_event(
+                    event_type="OptimizerRuleMatched",
+                    data_snapshot={"rule": rule.model_dump(), "triggering_event_payload": event.payload},
+                    triggering_event_id=event.event_id,
+                    notes=f"News sentiment rule matched for symbols {news_payload.mentioned_symbols}."
+                )
+                await self._apply_rule_to_targets(rule, event_context=news_payload, event_type="news", trigger_event_id=event.event_id)
 
-    async def _apply_rule_to_targets(self, rule: AgentStrategyConfig.PortfolioOptimizerRule, event_context: Any, event_type: Literal["market_condition", "news"]):
+    async def _apply_rule_to_targets(self, rule: AgentStrategyConfig.PortfolioOptimizerRule, event_context: Any, event_type: Literal["market_condition", "news"], trigger_event_id: Optional[str] = None):
         target_agents_configs: List[AgentConfigOutput] = []
+        # Log initial state for this rule application attempt
+        initial_target_info = {"target_agent_id": rule.target_agent_id, "target_agent_type": rule.target_agent_type}
+
         if rule.target_agent_id:
             agent_conf = await self.agent_management_service.get_agent(rule.target_agent_id)
             if agent_conf:
@@ -142,15 +186,43 @@ class PortfolioOptimizerService:
 
             if update_request_fields:
                 update_payload = AgentUpdateRequest(**update_request_fields)
+                update_snapshot = {"target_agent_id": agent_to_update.agent_id, "update_payload": update_payload.model_dump(exclude_none=True), "triggering_rule_id": rule.rule_id}
+                await self._log_learning_event(
+                    event_type="OptimizerAgentConfigUpdateAttempt",
+                    data_snapshot=update_snapshot,
+                    triggering_event_id=trigger_event_id, # Pass original event ID
+                    notes=f"Attempting to apply rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
+                )
                 logger.info(f"PO ({self.agent_config.agent_id}): Applying update to agent {agent_to_update.agent_id} ('{agent_to_update.name}') due to rule '{rule.rule_name}'. Changes: {', '.join(log_changes)}")
                 try:
                     await self.agent_management_service.update_agent(
                         agent_id=agent_to_update.agent_id,
                         update_data=update_payload
                     )
+                    await self._log_learning_event(
+                        event_type="OptimizerAgentConfigUpdateResult",
+                        data_snapshot=update_snapshot,
+                        outcome={"success": True, "updated_agent_id": agent_to_update.agent_id},
+                        triggering_event_id=trigger_event_id,
+                        notes=f"Successfully applied rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
+                    )
                 except Exception as e_update:
                     logger.error(f"PO ({self.agent_config.agent_id}): Failed to update agent {agent_to_update.agent_id}: {e_update}", exc_info=True)
+                    await self._log_learning_event(
+                        event_type="OptimizerAgentConfigUpdateResult",
+                        data_snapshot=update_snapshot,
+                        outcome={"success": False, "error": str(e_update), "target_agent_id": agent_to_update.agent_id},
+                        triggering_event_id=trigger_event_id,
+                        notes=f"Failed to apply rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
+                    )
             else:
                 logger.info(f"PO ({self.agent_config.agent_id}): No actual changes to apply to agent {agent_to_update.agent_id} ('{agent_to_update.name}') for rule '{rule.rule_name}'.")
+                # Optionally log that no update was needed
+                await self._log_learning_event(
+                    event_type="OptimizerAgentConfigUpdateSkipped",
+                    data_snapshot={"target_agent_id": agent_to_update.agent_id, "triggering_rule_id": rule.rule_id, "reason": "No effective changes specified by rule."},
+                    triggering_event_id=trigger_event_id,
+                    notes=f"No effective changes to apply for rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
+                )
 
 ```

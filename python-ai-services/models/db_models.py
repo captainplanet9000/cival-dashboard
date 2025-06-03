@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Text
+from sqlalchemy import Column, String, Boolean, DateTime, Text, Float # Added Float
 # For SQLAlchemy's built-in JSON type, if available and preferred over Text for JSON strings:
 # from sqlalchemy import JSON as DB_JSON_TYPE
 from python_ai_services.core.database import Base # Adjusted import path
@@ -35,4 +35,20 @@ class AgentConfigDB(Base):
 
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class TradeFillDB(Base):
+    __tablename__ = "trade_fills"
+
+    fill_id = Column(String, primary_key=True, index=True) # From TradeFillData.fill_id
+    agent_id = Column(String, nullable=False, index=True)
+    timestamp = Column(DateTime, nullable=False, index=True, default=datetime.utcnow) # Consider timezone.utc for default
+    asset = Column(String, nullable=False, index=True)
+    side = Column(String, nullable=False) # "buy" or "sell"
+    quantity = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)
+    fee = Column(Float, default=0.0)
+    fee_currency = Column(String, nullable=True)
+    exchange_order_id = Column(String, nullable=True, index=True)
+    exchange_trade_id = Column(String, nullable=True, index=True) # Exchange's own fill/trade ID
 ```

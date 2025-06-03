@@ -4,6 +4,9 @@ from sqlalchemy.ext.declarative import declarative_base # For older SQLAlchemy v
 # For SQLAlchemy 2.0 style, can use from sqlalchemy.orm import DeclarativeBase
 # Using declarative_base for wider compatibility as per prompt's initial suggestion style.
 import os
+# Import DB models to ensure they are registered with Base.metadata
+from python_ai_services.models.db_models import AgentConfigDB, TradeFillDB
+
 
 # SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agent_configs.db")
 # Using a file for persistence outside tests. In-memory for tests will be handled by test setup.

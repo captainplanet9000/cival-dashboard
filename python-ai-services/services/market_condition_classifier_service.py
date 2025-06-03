@@ -1,10 +1,12 @@
-from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig # For MarketConditionClassifierParams
+from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig
 from ..models.event_bus_models import Event, MarketConditionEventPayload
 from ..services.event_bus_service import EventBusService
 from ..services.market_data_service import MarketDataService
-from typing import List, Dict, Any, Optional
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.learning_models import LearningLogEntry # Added
+from typing import List, Dict, Any, Optional, Literal # Added Literal for regime
 import pandas as pd
-import numpy as np # For slope calculation
+import numpy as np
 from loguru import logger
 from datetime import datetime, timezone
 
@@ -13,17 +15,44 @@ class MarketConditionClassifierService:
         self,
         agent_config: AgentConfigOutput,
         event_bus: EventBusService,
-        market_data_service: MarketDataService
+        market_data_service: MarketDataService,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
     ):
         self.agent_config = agent_config
         self.event_bus = event_bus
         self.market_data_service = market_data_service
+        self.learning_logger_service = learning_logger_service # Store it
 
         if self.agent_config.strategy.market_condition_classifier_params:
             self.params = self.agent_config.strategy.market_condition_classifier_params
         else:
             logger.warning(f"MCC ({self.agent_config.agent_id}): market_condition_classifier_params not found. Using defaults.")
             self.params = AgentStrategyConfig.MarketConditionClassifierParams()
+
+        if self.learning_logger_service:
+            logger.info(f"MCC ({self.agent_config.agent_id}): LearningDataLoggerService: Available")
+        else:
+            logger.warning(f"MCC ({self.agent_config.agent_id}): LearningDataLoggerService: Not Available. Learning logs will be skipped.")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        outcome: Optional[Dict] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=self.agent_config.agent_id,
+                source_service=self.__class__.__name__,
+                event_type=event_type,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     def _calculate_sma(self, data: List[float], period: int) -> pd.Series:
         if not data or len(data) < period:
@@ -169,6 +198,14 @@ class MarketConditionClassifierService:
         payload = MarketConditionEventPayload(
             symbol=symbol, regime=regime, confidence_score=confidence, supporting_data=supporting_data
         )
+
+        await self._log_learning_event(
+            event_type="MarketConditionClassified",
+            data_snapshot=payload.model_dump(), # Log the payload being published
+            notes=f"Market condition classified for {symbol}.",
+            tags=["market_condition_classifier", regime]
+        )
+
         event = Event(
             publisher_agent_id=self.agent_config.agent_id,
             message_type="MarketConditionEvent",

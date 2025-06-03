@@ -12,9 +12,17 @@ from .performance_calculation_service import PerformanceCalculationService
 from .alert_configuration_service import AlertConfigurationService
 from .alert_monitoring_service import AlertMonitoringService
 from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError
+from .simulation_service import SimulationService
+from .regulatory_compliance_service import RegulatoryComplianceService
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from .renko_technical_service import RenkoTechnicalService # Added
 
 
 __all__ = [
+    "RenkoTechnicalService", # Added
+    "LearningDataLoggerService", # Added
+    "RegulatoryComplianceService",
+    "SimulationService",
     "DEXExecutionService",
     "DEXExecutionServiceError",
     "GoogleVertexService",

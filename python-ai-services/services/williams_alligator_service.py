@@ -1,7 +1,9 @@
-from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig # For WilliamsAlligatorParams
+from ..models.agent_models import AgentConfigOutput, AgentStrategyConfig
 from ..models.event_bus_models import Event, TradeSignalEventPayload
 from ..services.event_bus_service import EventBusService
 from ..services.market_data_service import MarketDataService
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.learning_models import LearningLogEntry # Added
 from typing import List, Dict, Any, Optional
 import pandas as pd
 from loguru import logger
@@ -12,17 +14,44 @@ class WilliamsAlligatorTechnicalService:
         self,
         agent_config: AgentConfigOutput,
         event_bus: EventBusService,
-        market_data_service: MarketDataService
+        market_data_service: MarketDataService,
+        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
     ):
         self.agent_config = agent_config
         self.event_bus = event_bus
         self.market_data_service = market_data_service
+        self.learning_logger_service = learning_logger_service # Store it
 
         if self.agent_config.strategy.williams_alligator_params:
             self.params = self.agent_config.strategy.williams_alligator_params
-        else: # Fallback to default WilliamsAlligatorParams if not specified
-            logger.warning(f"WilliamsAlligator ({self.agent_config.agent_id}): williams_alligator_params not found in strategy config. Using default WilliamsAlligatorParams.")
+        else:
+            logger.warning(f"WA ({self.agent_config.agent_id}): williams_alligator_params not found. Using defaults.")
             self.params = AgentStrategyConfig.WilliamsAlligatorParams()
+
+        if self.learning_logger_service:
+            logger.info(f"WA ({self.agent_config.agent_id}): LearningDataLoggerService: Available")
+        else:
+            logger.warning(f"WA ({self.agent_config.agent_id}): LearningDataLoggerService: Not Available. Learning logs will be skipped.")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        outcome: Optional[Dict] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=self.agent_config.agent_id,
+                source_service=self.__class__.__name__,
+                event_type=event_type,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     def _calculate_sma(self, data: List[float], period: int) -> List[Optional[float]]:
         if not data or len(data) < period: # Added check for empty data
@@ -128,8 +157,16 @@ class WilliamsAlligatorTechnicalService:
                 price_target=round(current_price, 2), # Use current price as target for market entry
                 stop_loss=round(sl_price, 2) if sl_price is not None else None,
                 strategy_name=f"WilliamsAlligator_J{self.params.jaw_period}T{self.params.teeth_period}L{self.params.lips_period}",
-                confidence=0.65 # Example confidence
+                confidence=0.65
             )
+
+            await self._log_learning_event(
+                event_type="SignalGenerated",
+                data_snapshot=signal_payload.model_dump(),
+                notes=f"Williams Alligator signal for {symbol}. Lines: Lips({lips_current:.2f}), Teeth({teeth_current:.2f}), Jaw({jaw_current:.2f})",
+                tags=["williams_alligator", signal_payload.action]
+            )
+
             event = Event(
                 publisher_agent_id=self.agent_config.agent_id,
                 message_type="TradeSignalEvent",
@@ -138,6 +175,22 @@ class WilliamsAlligatorTechnicalService:
             await self.event_bus.publish(event)
             logger.success(f"WA ({self.agent_config.agent_id}): Published {action.upper()} signal for {symbol} at {current_price:.2f}. SL: {sl_price:.2f if sl_price else 'N/A'}")
         else:
-           logger.info(f"WA ({self.agent_config.agent_id}): No actionable signal for {symbol} based on Williams Alligator conditions.")
+            logger.info(f"WA ({self.agent_config.agent_id}): No actionable signal for {symbol} based on Williams Alligator conditions.")
+            current_values_snapshot = {
+                "symbol": symbol, "current_price": current_price,
+                "lips_current": lips_current, "lips_prev": lips_prev,
+                "teeth_current": teeth_current, "teeth_prev": teeth_prev,
+                "jaw_current": jaw_current, "jaw_prev": jaw_prev,
+                "params": self.params.model_dump()
+            }
+            # Only log if all values were available for a decision to be made (i.e., not None)
+            if None not in [lips_current, teeth_current, jaw_current, lips_prev, teeth_prev, jaw_prev]:
+                await self._log_learning_event(
+                    event_type="SignalEvaluation",
+                    data_snapshot=current_values_snapshot,
+                    outcome={"signal_generated": False},
+                    notes=f"No Williams Alligator signal for {symbol}.",
+                    tags=["williams_alligator", "no_signal"]
+                )
 
 ```

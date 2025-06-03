@@ -72,6 +72,22 @@ from .alert_models import (
     AlertNotification
 )
 
+from .simulation_models import ( # Added
+    BacktestRequest,
+    BacktestResult,
+    SimulatedTrade,
+    EquityDataPoint
+)
+
+from .compliance_models import ( # Added
+    ComplianceRule,
+    ComplianceCheckRequest,
+    ViolatedRuleInfo,
+    ComplianceCheckResult
+)
+
+from .learning_models import LearningLogEntry # Added
+
 __all__ = [
     # api_models
     "TradingAnalysisCrewRequest", "TradingSignal", "BaseResponseModel", "ErrorDetail",
@@ -103,9 +119,15 @@ __all__ = [
     "PerformanceMetrics",
     # alert_models
     "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification",
+    # simulation_models
+    "BacktestRequest", "BacktestResult", "SimulatedTrade", "EquityDataPoint",
+    # compliance_models
+    "ComplianceRule", "ComplianceCheckRequest", "ViolatedRuleInfo", "ComplianceCheckResult",
+    # learning_models
+    "LearningLogEntry", # Added
     # event_bus_models
     "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
-    "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload", # Added
+    "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload",
     # db_models
     "AgentConfigDB"
 ]

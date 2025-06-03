@@ -43,6 +43,7 @@ from models.monitoring_models import AgentTaskSummary, TaskListResponse, Depende
 
 # API Routers
 from api.v1 import monitoring_routes # Added Monitoring API routerimport AgentTaskService
+from api.v1 import simulation_routes # Added Simulation API router
 from services.memory_service import MemoryService, MemoryInitializationError
 from services.event_service import EventService, EventServiceError
 from services.simulated_trade_executor import SimulatedTradeExecutor
@@ -394,6 +395,7 @@ app = FastAPI(
 
 # Include API routers
 app.include_router(monitoring_routes.router)
+app.include_router(simulation_routes.router, prefix="/api/v1", tags=["Simulations"]) # Added Simulation router
 # Add other V1 routers here if created, e.g., for agent interactions, configurations etc.
 
 

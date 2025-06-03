@@ -37,7 +37,13 @@ from .trade_history_service import TradeHistoryService
 from .risk_manager_service import RiskManagerService
 from .agent_management_service import AgentManagementService
 from .event_bus_service import EventBusService
-from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError # Added
+from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError
+from .regulatory_compliance_service import RegulatoryComplianceService
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from ..models.compliance_models import ComplianceCheckRequest
+from ..models.agent_models import AgentConfigOutput
+from ..models.learning_models import LearningLogEntry # Added
+from typing import List # Added for List in _log_learning_event type hint
 
 
 class TradingCoordinator:
@@ -54,29 +60,59 @@ class TradingCoordinator:
                  a2a_protocol: A2AProtocol, # Existing dependency
                  simulated_trade_executor: SimulatedTradeExecutor,
                  hyperliquid_execution_service: Optional[HyperliquidExecutionService] = None,
-                 dex_execution_service: Optional[DEXExecutionService] = None, # Added
+                 dex_execution_service: Optional[DEXExecutionService] = None,
                  trade_history_service: Optional[TradeHistoryService] = None,
-                 event_bus_service: EventBusService
+                 event_bus_service: EventBusService,
+                 compliance_service: Optional[RegulatoryComplianceService] = None,
+                 learning_logger_service: Optional[LearningDataLoggerService] = None # Added
                 ):
-        self.agent_id = agent_id
+        self.agent_id = agent_id # ID of this TradingCoordinator agent itself
         self.agent_management_service = agent_management_service
         self.risk_manager_service = risk_manager_service
+        self.compliance_service = compliance_service
+        self.learning_logger_service = learning_logger_service # Store it
         self.google_bridge = google_bridge
         self.a2a_protocol = a2a_protocol
         self.simulated_trade_executor = simulated_trade_executor
         self.hyperliquid_execution_service = hyperliquid_execution_service
-        self.dex_execution_service = dex_execution_service # Store it
+        self.dex_execution_service = dex_execution_service
         self.trade_history_service = trade_history_service
         self.event_bus_service = event_bus_service
         self.trade_execution_mode: str = "paper" # Default
 
         self.base_url = "http://localhost:3000/api/agents/trading"
-        logger.info(f"TradingCoordinator instance {self.agent_id} initialized with DEXExecutionService: {'Available' if self.dex_execution_service else 'Not Available'}.")
-        if self.simulated_trade_executor:
-            logger.info("SimulatedTradeExecutor is available.")
-        if self.hyperliquid_execution_service:
-            logger.info("HyperliquidExecutionService is available.")
+        logger.info(f"TradingCoordinator instance {self.agent_id} initialized.")
+        if self.simulated_trade_executor: logger.info("SimulatedTradeExecutor: Available")
+        if self.hyperliquid_execution_service: logger.info("HyperliquidExecutionService: Available")
+        if self.dex_execution_service: logger.info(f"DEXExecutionService: Available")
+        if self.compliance_service: logger.info(f"RegulatoryComplianceService: Available")
+        else: logger.warning(f"RegulatoryComplianceService: Not Available. Compliance checks will be skipped.")
+        if self.learning_logger_service: logger.info(f"LearningDataLoggerService: Available")
+        else: logger.warning(f"LearningDataLoggerService: Not Available. Learning logs will be skipped.")
         logger.info(f"Default trade execution mode: {self.trade_execution_mode}")
+
+    async def _log_learning_event(
+        self,
+        event_type: str,
+        data_snapshot: Dict,
+        primary_agent_id: Optional[str] = None,
+        outcome: Optional[Dict] = None,
+        triggering_event_id: Optional[str] = None,
+        notes: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ):
+        if self.learning_logger_service:
+            entry = LearningLogEntry(
+                primary_agent_id=primary_agent_id if primary_agent_id else self.agent_id, # Default to TC's own ID if no specific agent context
+                source_service=self.__class__.__name__, # TradingCoordinator
+                event_type=event_type,
+                triggering_event_id=triggering_event_id,
+                data_snapshot=data_snapshot,
+                outcome_or_result=outcome,
+                notes=notes,
+                tags=tags if tags else []
+            )
+            await self.learning_logger_service.log_entry(entry)
 
     async def set_trade_execution_mode(self, mode: str) -> Dict[str, str]:
         """Sets the trade execution mode for the TradingCoordinator."""
@@ -184,45 +220,66 @@ class TradingCoordinator:
                 main_order_result_dict = main_order_result.model_dump()
                 logger.info(f"Main live trade executed. Response: {main_order_result_dict}")
 
-                # Record simulated fills if available and TradeHistoryService is configured
-                # --- START OF (SIMULATED) FILL RECORDING ---
-                # This section processes fills provided by HyperliquidExecutionService.
-                # Currently, HyperliquidExecutionService generates *simulated* fills for market orders
-                # or orders that are immediately marked as "filled" by the (mocked) SDK response.
-                # When HyperliquidExecutionService is updated to provide real fill data (e.g., from
-                # WebSocket streams or by parsing immediate execution data from SDK responses),
-                # this logic in TradingCoordinator should seamlessly process those real fills
-                # as long as they are provided in the 'simulated_fills' field (which might then be renamed
-                # to 'actual_fills' or similar in HyperliquidOrderResponseData).
-                # The TradeFillData model is designed to hold data from actual exchange fills.
-                if self.trade_history_service and main_order_result.simulated_fills:
-                    logger.info(f"Processing {len(main_order_result.simulated_fills)} (simulated) fills for main order.")
-                    for fill_dict in main_order_result.simulated_fills:
-                        try:
-                            # Convert timestamp string to datetime object
-                            fill_timestamp_str = fill_dict.get("timestamp")
-                            fill_timestamp = datetime.fromisoformat(fill_timestamp_str) if fill_timestamp_str else datetime.now(timezone.utc)
+                # Attempt to fetch and record actual fills if trade was placed successfully
+                if main_order_result.oid is not None and self.hyperliquid_execution_service and self.trade_history_service:
+                    agent_wallet_address = user_id # Assuming user_id IS the wallet address for this agent for HLES calls
 
-                            fill_data_obj = TradeFillData(
-                                agent_id=user_id, # user_id is agent_id in this context
-                                # fill_id is auto-generated by TradeFillData model
-                                timestamp=fill_timestamp,
-                                asset=str(fill_dict.get("asset")),
-                                side=str(fill_dict.get("side")).lower(), # type: ignore
-                                quantity=float(fill_dict.get("quantity", 0.0)),
-                                price=float(fill_dict.get("price", 0.0)),
-                                fee=float(fill_dict.get("fee", 0.0)),
-                                fee_currency=str(fill_dict.get("fee_currency")) if fill_dict.get("fee_currency") else None,
-                                exchange_order_id=str(fill_dict.get("exchange_order_id")) if fill_dict.get("exchange_order_id") else None,
-                                exchange_trade_id=str(fill_dict.get("exchange_trade_id")) if fill_dict.get("exchange_trade_id") else None
-                            )
-                            logger.info(f"Recording simulated fill for agent {user_id}: {fill_data_obj.model_dump_json(indent=2)}")
-                            await self.trade_history_service.record_fill(fill_data_obj)
-                        except Exception as e_fill:
-                            logger.error(f"Error processing or recording (simulated) fill for agent {user_id}: {e_fill}", exc_info=True)
-                            # Continue to SL/TP placement even if fill recording fails for one fill
-                # --- END OF (SIMULATED) FILL RECORDING ---
+                    # A small delay to allow fills to be potentially registered by the exchange
+                    await asyncio.sleep(2) # Configurable delay, e.g., 2 seconds
 
+                    logger.info(f"TC ({self.agent_id}): Attempting to fetch actual fills for order OID {main_order_result.oid} for agent wallet {agent_wallet_address}.")
+                    try:
+                        actual_fill_dicts = await self.hyperliquid_execution_service.get_fills_for_order(
+                            user_address=agent_wallet_address,
+                            oid=main_order_result.oid
+                        )
+
+                        if actual_fill_dicts:
+                            logger.info(f"TC ({self.agent_id}): Found {len(actual_fill_dicts)} actual fills for order {main_order_result.oid}.")
+                            for fill_dict in actual_fill_dicts:
+                                try:
+                                    # Map Hyperliquid fill fields to TradeFillData
+                                    # HL fill fields example: {'cloid': None, 'coin': 'ETH', 'dir': 'Open Long', 'px': '3000.0', 'qty': '0.001', 'time': 1678886400000, 'hash': '0x...', 'fee': '0.003', 'oid': 12345, 'tid': 'HLTradeID123'}
+
+                                    raw_dir = fill_dict.get("dir", "")
+                                    # More robust side mapping based on common HL 'dir' values
+                                    if "long" in raw_dir.lower():
+                                        mapped_side = "buy" if "open" in raw_dir.lower() else "sell"
+                                    elif "short" in raw_dir.lower():
+                                        mapped_side = "sell" if "open" in raw_dir.lower() else "buy"
+                                    elif raw_dir.upper() == "B": mapped_side = "buy"
+                                    elif raw_dir.upper() == "S": mapped_side = "sell"
+                                    else: # Fallback if 'dir' is not recognized or missing
+                                        logger.warning(f"TC ({self.agent_id}): Unrecognized fill direction '{raw_dir}' for OID {main_order_result.oid}. Defaulting based on order params if possible, or skipping side.")
+                                        # Fallback to original order's side; this assumes fills are for the main order direction
+                                        # This part might need more sophisticated logic if fills can be against the order direction (e.g. complex reduce_only)
+                                        original_order_is_buy = main_order_hl_params.is_buy # Assuming main_order_hl_params is in scope
+                                        mapped_side = "buy" if original_order_is_buy else "sell"
+
+                                    fill_data_obj = TradeFillData(
+                                        agent_id=user_id, # Internal agent_id, not necessarily wallet address
+                                        asset=str(fill_dict["coin"]),
+                                        side=mapped_side, # type: ignore
+                                        quantity=float(fill_dict["qty"]),
+                                        price=float(fill_dict["px"]),
+                                        timestamp=datetime.fromtimestamp(int(fill_dict["time"]) / 1000, tz=timezone.utc),
+                                        fee=float(fill_dict.get("fee", 0.0)),
+                                        fee_currency="USD", # Hyperliquid typically denominates fees in a USD-stablecoin
+                                        exchange_order_id=str(fill_dict.get("oid", main_order_result.oid)),
+                                        exchange_trade_id=str(fill_dict.get("tid", uuid.uuid4())) # tid is Hyperliquid's trade ID
+                                    )
+                                    logger.info(f"TC ({self.agent_id}): Recording actual fill for agent {user_id} (wallet: {agent_wallet_address}): {fill_data_obj.model_dump_json(exclude_none=True)}")
+                                    await self.trade_history_service.record_fill(fill_data_obj)
+                                except KeyError as ke:
+                                    logger.error(f"TC ({self.agent_id}): KeyError mapping Hyperliquid fill: {fill_dict}. Missing key: {ke}", exc_info=True)
+                                except Exception as e_map:
+                                    logger.error(f"TC ({self.agent_id}): Error mapping or recording fill: {fill_dict}. Error: {e_map}", exc_info=True)
+                        else:
+                            logger.info(f"TC ({self.agent_id}): No actual fills found immediately for order {main_order_result.oid}.")
+                    except HyperliquidExecutionServiceError as e_fetch_fills:
+                        logger.error(f"TC ({self.agent_id}): Error fetching fills for order {main_order_result.oid}: {e_fetch_fills}", exc_info=True)
+                    except Exception as e_fills_processing:
+                        logger.error(f"TC ({self.agent_id}): Unexpected error during fill processing for order {main_order_result.oid}: {e_fills_processing}", exc_info=True)
 
                 # 3. Stop-Loss (SL) and Take-Profit (TP) Order Placement
                 # Check if main order was successful enough to place SL/TP (e.g. "resting", "filled", or general "ok")
@@ -524,21 +581,56 @@ class TradingCoordinator:
                         strategy_name=strategy_name_val,
                         confidence=float(confidence_val)
                     )
-
-                    logger.info(f"TradingCoordinator: Assessing risk for agent {user_id}, signal: {signal_payload.model_dump_json(indent=2)}")
-
-                    # The agent_id for risk assessment is user_id (agent for whom decision is made)
-                    assessment_result = await self.risk_manager_service.assess_trade_risk(
-                        agent_id_of_proposer=user_id,
-                        trade_signal=signal_payload
+                    agent_id_of_proposer = user_id # user_id is the agent for whom the decision is made
+                    await self._log_learning_event(
+                        event_type="InternalSignalGenerated",
+                        data_snapshot=signal_payload.model_dump(),
+                        primary_agent_id=agent_id_of_proposer,
+                        notes="Signal generated from crew analysis"
                     )
 
-                    if assessment_result.signal_approved:
-                        logger.info(f"TradingCoordinator: Risk assessment approved for agent {user_id}. Proceeding with execution.")
-                        # Pass the original trade_params (which includes SL/TP if provided by crew)
-                        await self._execute_trade_decision(trade_params, user_id=user_id)
+                    # --- Compliance Check ---
+                    current_agent_config = await self.agent_management_service.get_agent(agent_id_of_proposer)
+                    if not current_agent_config:
+                        logger.error(f"TC ({self.agent_id}): Could not retrieve agent config for {agent_id_of_proposer} for compliance check. Skipping trade.")
+                        await self._log_learning_event("ComplianceCheckSkipped", {"reason": "Agent config not found"}, primary_agent_id=agent_id_of_proposer)
+                        return
+
+                    compliance_result_dict: Optional[Dict] = None
+                    if self.compliance_service:
+                        compliance_request = ComplianceCheckRequest(
+                            agent_id=agent_id_of_proposer,
+                            agent_type=current_agent_config.agent_type,
+                            action_type="place_order",
+                            trade_signal_payload=signal_payload
+                        )
+                        logger.debug(f"TC ({self.agent_id}): Performing compliance check for agent {agent_id_of_proposer}: {compliance_request.model_dump_json(exclude={'trade_signal_payload'})}")
+                        compliance_result = await self.compliance_service.check_action_compliance(compliance_request)
+                        compliance_result_dict = compliance_result.model_dump()
+                        await self._log_learning_event("ComplianceCheckResult", data_snapshot=compliance_request.model_dump(), outcome=compliance_result_dict, primary_agent_id=agent_id_of_proposer)
+
+                        if not compliance_result.is_compliant:
+                            logger.warning(f"TC ({self.agent_id}): Trade for agent {agent_id_of_proposer}, symbol {signal_payload.symbol} REJECTED by ComplianceService. Reasons: {compliance_result.violated_rules}")
+                            return
+                        logger.info(f"TC ({self.agent_id}): Compliance check PASSED for agent {agent_id_of_proposer}, symbol {signal_payload.symbol}.")
                     else:
-                        logger.warning(f"TradingCoordinator: Trade for agent {user_id}, symbol {trade_params['symbol']} rejected by RiskManagerService: {assessment_result.rejection_reason}")
+                        logger.warning(f"TC ({self.agent_id}): ComplianceService not available. Skipping compliance check for agent {agent_id_of_proposer}.")
+                        await self._log_learning_event("ComplianceCheckSkipped", {"reason": "ComplianceService not available"}, primary_agent_id=agent_id_of_proposer)
+
+                    # --- Risk Assessment ---
+                    logger.info(f"TC ({self.agent_id}): Assessing risk for agent {agent_id_of_proposer}, signal: {signal_payload.model_dump_json(indent=2)}")
+                    assessment_result = await self.risk_manager_service.assess_trade_risk(
+                        agent_id_of_proposer=agent_id_of_proposer,
+                        trade_signal=signal_payload
+                    )
+                    await self._log_learning_event("RiskAssessmentResult", data_snapshot={"trade_signal": signal_payload.model_dump(), "proposer_agent_id": agent_id_of_proposer}, outcome=assessment_result.model_dump(), primary_agent_id=agent_id_of_proposer)
+
+                    if assessment_result.signal_approved:
+                        logger.info(f"TC ({self.agent_id}): Risk assessment approved for agent {agent_id_of_proposer}. Proceeding with execution.")
+                        execution_outcome = await self._execute_trade_decision(trade_params, user_id=agent_id_of_proposer)
+                        await self._log_learning_event("TradeExecutionAttempt", data_snapshot={"trade_params": trade_params, "executing_agent_id": agent_id_of_proposer}, outcome=execution_outcome, primary_agent_id=agent_id_of_proposer)
+                    else:
+                        logger.warning(f"TC ({self.agent_id}): Trade for agent {agent_id_of_proposer}, symbol {trade_params['symbol']} rejected by RiskManagerService: {assessment_result.rejection_reason}")
 
                 else: # action_lower not in buy/sell/hold
                     logger.warning(f"Unknown action '{action_str}' in crew result for agent {user_id}. No trade execution.")
@@ -568,22 +660,63 @@ class TradingCoordinator:
             logger.error(f"TC ({self.agent_id}): Failed to parse TradeSignalEventPayload: {e}. Payload: {event.payload}", exc_info=True)
             return
 
-        if not self.risk_manager_service:
-            logger.error(f"TC ({self.agent_id}): RiskManagerService not available. Cannot assess trade.")
-            return
+        agent_id_of_proposer = event.publisher_agent_id
+        trigger_event_id_for_logs = event.event_id
 
-        # Use event.publisher_agent_id as the context for risk assessment
-        assessment_result = await self.risk_manager_service.assess_trade_risk(
-            agent_id_of_proposer=event.publisher_agent_id,
-            trade_signal=signal_payload
+        await self._log_learning_event(
+            event_type="ExternalSignalReceived",
+            data_snapshot=signal_payload.model_dump(),
+            primary_agent_id=agent_id_of_proposer,
+            triggering_event_id=trigger_event_id_for_logs
         )
 
+        if not self.risk_manager_service: # Risk manager is essential, compliance is optional enhancement
+            logger.error(f"TC ({self.agent_id}): RiskManagerService not available. Cannot assess trade for external signal.")
+            await self._log_learning_event("ProcessingError", {"reason": "RiskManagerService not available"}, primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
+            return
+
+        # --- Compliance Check ---
+        current_agent_config = await self.agent_management_service.get_agent(agent_id_of_proposer)
+        if not current_agent_config:
+            logger.error(f"TC ({self.agent_id}): Could not retrieve agent config for {agent_id_of_proposer} for compliance check on external signal. Skipping trade.")
+            await self._log_learning_event("ComplianceCheckSkipped", {"reason": "Agent config not found for external signal"}, primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
+            return
+
+        compliance_result_dict: Optional[Dict] = None
+        if self.compliance_service:
+            compliance_request = ComplianceCheckRequest(
+                agent_id=agent_id_of_proposer,
+                agent_type=current_agent_config.agent_type,
+                action_type="place_order",
+                trade_signal_payload=signal_payload
+            )
+            logger.debug(f"TC ({self.agent_id}): Performing compliance check for external signal from agent {agent_id_of_proposer}: {compliance_request.model_dump_json(exclude={'trade_signal_payload'})}")
+            compliance_result = await self.compliance_service.check_action_compliance(compliance_request)
+            compliance_result_dict = compliance_result.model_dump()
+            await self._log_learning_event("ComplianceCheckResult", data_snapshot=compliance_request.model_dump(), outcome=compliance_result_dict, primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
+
+            if not compliance_result.is_compliant:
+                logger.warning(f"TC ({self.agent_id}): External trade signal from agent {agent_id_of_proposer}, symbol {signal_payload.symbol} REJECTED by ComplianceService. Reasons: {compliance_result.violated_rules}")
+                return
+            logger.info(f"TC ({self.agent_id}): Compliance check PASSED for external signal from agent {agent_id_of_proposer}, symbol {signal_payload.symbol}.")
+        else:
+            logger.warning(f"TC ({self.agent_id}): ComplianceService not available. Skipping compliance check for external signal from agent {agent_id_of_proposer}.")
+            await self._log_learning_event("ComplianceCheckSkipped", {"reason": "ComplianceService not available for external signal"}, primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
+
+        # --- Risk Assessment ---
+        logger.info(f"TC ({self.agent_id}): Assessing risk for external signal from agent {agent_id_of_proposer}, signal: {signal_payload.model_dump_json(indent=2)}")
+        assessment_result = await self.risk_manager_service.assess_trade_risk(
+            agent_id_of_proposer=agent_id_of_proposer,
+            trade_signal=signal_payload
+        )
+        await self._log_learning_event("RiskAssessmentResult", data_snapshot={"trade_signal": signal_payload.model_dump(), "proposer_agent_id": agent_id_of_proposer}, outcome=assessment_result.model_dump(), primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
+
         if assessment_result.signal_approved:
-            logger.info(f"TC ({self.agent_id}): External signal from {event.publisher_agent_id} for {signal_payload.symbol} APPROVED by RiskManager.")
+            logger.info(f"TC ({self.agent_id}): External signal from {agent_id_of_proposer} for {signal_payload.symbol} APPROVED by RiskManager.")
 
             if signal_payload.quantity is None:
-                logger.warning(f"TC ({self.agent_id}): TradeSignalEvent from {event.publisher_agent_id} for {signal_payload.symbol} has no quantity. Rejecting execution.")
-                return # Or apply default quantity from agent's op_params if such logic exists
+                logger.error(f"TC ({self.agent_id}): TradeSignalEvent from {agent_id_of_proposer} for {signal_payload.symbol} has no quantity even after Pydantic. Rejecting execution.")
+                return
 
             trade_params = {
                 "action": signal_payload.action,
@@ -592,17 +725,14 @@ class TradingCoordinator:
                 "order_type": "limit" if signal_payload.price_target else "market",
                 "price": signal_payload.price_target,
                 "stop_loss_price": signal_payload.stop_loss,
-                "take_profit_price": None, # Not in TradeSignalEventPayload currently
-                # These might be useful for logging/context within _execute_trade_decision
+                "take_profit_price": None,
                 "strategy_name": signal_payload.strategy_name,
                 "confidence": signal_payload.confidence
             }
-
-            # _execute_trade_decision's user_id should be the agent whose account/risk limits are affected.
-            # If TC is acting on behalf of the publisher_agent_id:
-            await self._execute_trade_decision(trade_params, user_id=event.publisher_agent_id)
+            execution_outcome = await self._execute_trade_decision(trade_params, user_id=agent_id_of_proposer)
+            await self._log_learning_event("TradeExecutionAttempt", data_snapshot={"trade_params": trade_params, "executing_agent_id": agent_id_of_proposer}, outcome=execution_outcome, primary_agent_id=agent_id_of_proposer, triggering_event_id=trigger_event_id_for_logs)
         else:
-            logger.warning(f"TC ({self.agent_id}): External signal from {event.publisher_agent_id} for {signal_payload.symbol} REJECTED by RiskManager: {assessment_result.rejection_reason}")
+            logger.warning(f"TC ({self.agent_id}): External signal from {agent_id_of_proposer} for {signal_payload.symbol} REJECTED by RiskManager: {assessment_result.rejection_reason}")
 
     async def handle_market_condition_event(self, event: Event):
         logger.info(f"TradingCoordinator ({self.agent_id}): Received MarketConditionEvent (ID: {event.event_id}) from agent {event.publisher_agent_id}.")

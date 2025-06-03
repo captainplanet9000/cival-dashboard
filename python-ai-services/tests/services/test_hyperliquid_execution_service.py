@@ -196,46 +196,36 @@ async def test_place_order_success(mock_hl_init_bypass): # param name should be 
     assert response_model.status == "resting" # Extracted from statuses[0] key
     assert response_model.oid == 12345
     assert response_model.order_type_info == order_params_data.order_type
-    # By default, for a non-market, non-"filled" status, simulated_fills should be None
-    assert response_model.simulated_fills is None
+    # simulated_fills field is removed
 
 
+# Test for market order still makes sense to ensure it's processed, just no simulated_fills
 @pytest.mark.asyncio
 @patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None) # Bypass __init__
-async def test_place_market_order_simulated_fills(mock_hl_init_bypass):
+async def test_place_market_order_processed_correctly(mock_hl_init_bypass): # Renamed test
     service = HyperliquidExecutionService("addr", "key")
     service.exchange_client = MagicMock()
 
     order_params_market = HyperliquidPlaceOrderParams(
-        asset="ETH", is_buy=True, sz=0.01, limit_px=0, # Market order often uses 0 or a far price
-        order_type={"market": {"tif": "Ioc"}}, # Market order
+        asset="ETH", is_buy=True, sz=0.01, limit_px=0,
+        order_type={"market": {"tif": "Ioc"}},
     )
 
-    # SDK response indicating immediate fill (or just "ok" and we check market type)
-    sdk_market_fill_response = {
+    sdk_market_response = { # Could be 'filled' or just 'ok' if market order status is generic
         "status": "ok",
         "response": {
             "type": "order",
-            "data": {"statuses": [{"filled": {"oid": 54321, "totalSz": "0.01", "avgPx": "2001.0"}}]} # Simulate a fill status
+            "data": {"statuses": [{"filled": {"oid": 54321, "totalSz": "0.01", "avgPx": "2001.0"}}]}
         }
     }
-    service.exchange_client.order = MagicMock(return_value=sdk_market_fill_response)
+    service.exchange_client.order = MagicMock(return_value=sdk_market_response)
 
     response_model = await service.place_order(order_params_market)
 
     assert isinstance(response_model, HyperliquidOrderResponseData)
-    assert response_model.status == "filled"
+    assert response_model.status == "filled" # Or "ok" depending on what SDK returns and how it's parsed
     assert response_model.oid == 54321
-    assert response_model.simulated_fills is not None
-    assert len(response_model.simulated_fills) == 1
-    fill = response_model.simulated_fills[0]
-    assert fill["asset"] == order_params_market.asset
-    assert fill["side"] == "buy"
-    assert fill["quantity"] == order_params_market.sz
-    assert fill["price"] == order_params_market.limit_px # Using limit_px as stand-in
-    assert "timestamp" in fill
-    assert "fee" in fill
-    assert fill["exchange_order_id"] == str(response_model.oid)
+    # No assertion for simulated_fills here
 
 
 @pytest.mark.asyncio
@@ -953,4 +943,90 @@ async def test_set_asset_leverage_invalid_leverage_value():
 
     # Check that it's not called if validation fails
     service.exchange_client.update_leverage.assert_not_called()
+
+
+# --- Tests for get_fills_for_order ---
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_success(mock_hl_init_bypass):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    user_address = "0xUser"
+    oid = 123
+    mock_fills_data = [{"px": "2000", "qty": "0.1", "time": 1678886400000}, {"px": "2001", "qty": "0.2", "time": 1678886400001}]
+    sdk_response = {"order": {}, "status": "filled", "fills": mock_fills_data}
+    service.info_client.order_status = MagicMock(return_value=sdk_response)
+
+    fills = await service.get_fills_for_order(user_address, oid)
+
+    assert fills == mock_fills_data
+    service.info_client.order_status.assert_called_once_with(user=user_address, oid=oid)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_no_fills_in_response(mock_hl_init_bypass):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    # Scenario 1: "fills" key present but list is empty
+    sdk_response_empty_fills = {"order": {}, "status": "open", "fills": []}
+    service.info_client.order_status = MagicMock(return_value=sdk_response_empty_fills)
+    fills = await service.get_fills_for_order("user", 124)
+    assert fills == []
+    # Scenario 2: "fills" key is missing
+    sdk_response_missing_fills_key = {"order": {}, "status": "open"}
+    service.info_client.order_status = MagicMock(return_value=sdk_response_missing_fills_key)
+    fills_missing = await service.get_fills_for_order("user", 125)
+    assert fills_missing == []
+     # Scenario 3: "fills" is not a list
+    sdk_response_fills_not_list = {"order": {}, "status": "open", "fills": "not_a_list"}
+    service.info_client.order_status = MagicMock(return_value=sdk_response_fills_not_list)
+    fills_not_list = await service.get_fills_for_order("user", 126)
+    assert fills_not_list == []
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_api_error_response(mock_hl_init_bypass, caplog):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    sdk_api_error_response = {"error": "Order not found or archived"}
+    service.info_client.order_status = MagicMock(return_value=sdk_api_error_response)
+
+    fills = await service.get_fills_for_order("user", 127)
+    assert fills == []
+    assert "API error when fetching order status for fills (OID 127): Order not found or archived" in caplog.text
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_unexpected_response_structure(mock_hl_init_bypass, caplog):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    sdk_unexpected_response = {"data": "some_other_format"} # Does not contain 'fills' or 'error'
+    service.info_client.order_status = MagicMock(return_value=sdk_unexpected_response)
+
+    fills = await service.get_fills_for_order("user", 128)
+    assert fills == []
+    assert "Unexpected response structure or no fills found for OID 128" in caplog.text
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_sdk_call_raises_exception(mock_hl_init_bypass):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = MagicMock()
+    service.info_client.order_status = MagicMock(side_effect=Exception("SDK network failure"))
+
+    with pytest.raises(HyperliquidExecutionServiceError, match="Failed to fetch fills for order 129: SDK network failure"):
+        await service.get_fills_for_order("user", 129)
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)
+async def test_get_fills_for_order_info_client_not_initialized(mock_hl_init_bypass, caplog):
+    service = HyperliquidExecutionService("addr", "key")
+    service.info_client = None # Simulate client not initialized
+
+    fills = await service.get_fills_for_order("user", 130)
+    assert fills == []
+    assert "Hyperliquid Info client not initialized. Cannot fetch fills." in caplog.text
 ```
