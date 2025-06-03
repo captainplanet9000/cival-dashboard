@@ -28,14 +28,15 @@ from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill
 # Make sure PaperTradeSide is available, if not, import it or use TradeSide consistently
 from ..models.trading_history_models import TradeSide, OrderType as PaperOrderType, TradeFillData
 from ..models.hyperliquid_models import HyperliquidPlaceOrderParams
-from ..models.event_bus_models import TradeSignalEventPayload # Added for risk assessment
+from ..models.event_bus_models import TradeSignalEventPayload, Event, MarketConditionEventPayload # Updated imports
 from datetime import timezone, datetime
 import uuid
 
 # Service imports
 from .trade_history_service import TradeHistoryService
-from .risk_manager_service import RiskManagerService # Added
-from .agent_management_service import AgentManagementService # Added for fetching TC's own config if needed
+from .risk_manager_service import RiskManagerService
+from .agent_management_service import AgentManagementService
+from .event_bus_service import EventBusService # Added
 
 
 class TradingCoordinator:
@@ -53,9 +54,9 @@ class TradingCoordinator:
                  simulated_trade_executor: SimulatedTradeExecutor, # Existing dependency
                  hyperliquid_execution_service: Optional[HyperliquidExecutionService] = None,
                  trade_history_service: Optional[TradeHistoryService] = None,
-                 event_bus_service: Optional[Any] = None # Placeholder for EventBusService
+                 event_bus_service: EventBusService # Now required
                 ):
-        self.agent_id = agent_id # Own ID, can be used as default proposer_agent_id
+        self.agent_id = agent_id
         self.agent_management_service = agent_management_service
         self.risk_manager_service = risk_manager_service
         self.google_bridge = google_bridge
@@ -63,7 +64,7 @@ class TradingCoordinator:
         self.simulated_trade_executor = simulated_trade_executor
         self.hyperliquid_execution_service = hyperliquid_execution_service
         self.trade_history_service = trade_history_service
-        self.event_bus_service = event_bus_service # Store, though not used in this step
+        self.event_bus_service = event_bus_service # Now required and stored
         self.trade_execution_mode: str = "paper"
 
         self.base_url = "http://localhost:3000/api/agents/trading"
@@ -429,6 +430,75 @@ class TradingCoordinator:
 
         except Exception as e:
             logger.error(f"Error parsing crew result or initiating trade execution for agent {user_id}: {e}", exc_info=True)
+
+    async def setup_event_subscriptions(self):
+        if not self.event_bus_service:
+            # This case should ideally not be hit if EventBusService is required in __init__
+            logger.error(f"TradingCoordinator ({self.agent_id}): EventBusService not provided. Cannot set up subscriptions.")
+            return
+        await self.event_bus_service.subscribe("TradeSignalEvent", self.handle_external_trade_signal)
+        await self.event_bus_service.subscribe("MarketConditionEvent", self.handle_market_condition_event)
+        logger.info(f"TradingCoordinator ({self.agent_id}): Subscribed to TradeSignalEvent and MarketConditionEvent.")
+
+    async def handle_external_trade_signal(self, event: Event):
+        logger.info(f"TradingCoordinator ({self.agent_id}): Received external TradeSignalEvent (ID: {event.event_id}) from agent {event.publisher_agent_id}.")
+        if not isinstance(event.payload, dict):
+            logger.error(f"TC ({self.agent_id}): Invalid payload type in TradeSignalEvent: {type(event.payload)}")
+            return
+        try:
+            signal_payload = TradeSignalEventPayload(**event.payload)
+        except Exception as e:
+            logger.error(f"TC ({self.agent_id}): Failed to parse TradeSignalEventPayload: {e}. Payload: {event.payload}", exc_info=True)
+            return
+
+        if not self.risk_manager_service:
+            logger.error(f"TC ({self.agent_id}): RiskManagerService not available. Cannot assess trade.")
+            return
+
+        # Use event.publisher_agent_id as the context for risk assessment
+        assessment_result = await self.risk_manager_service.assess_trade_risk(
+            agent_id_of_proposer=event.publisher_agent_id,
+            trade_signal=signal_payload
+        )
+
+        if assessment_result.signal_approved:
+            logger.info(f"TC ({self.agent_id}): External signal from {event.publisher_agent_id} for {signal_payload.symbol} APPROVED by RiskManager.")
+
+            if signal_payload.quantity is None:
+                logger.warning(f"TC ({self.agent_id}): TradeSignalEvent from {event.publisher_agent_id} for {signal_payload.symbol} has no quantity. Rejecting execution.")
+                return # Or apply default quantity from agent's op_params if such logic exists
+
+            trade_params = {
+                "action": signal_payload.action,
+                "symbol": signal_payload.symbol,
+                "quantity": signal_payload.quantity,
+                "order_type": "limit" if signal_payload.price_target else "market",
+                "price": signal_payload.price_target,
+                "stop_loss_price": signal_payload.stop_loss,
+                "take_profit_price": None, # Not in TradeSignalEventPayload currently
+                # These might be useful for logging/context within _execute_trade_decision
+                "strategy_name": signal_payload.strategy_name,
+                "confidence": signal_payload.confidence
+            }
+
+            # _execute_trade_decision's user_id should be the agent whose account/risk limits are affected.
+            # If TC is acting on behalf of the publisher_agent_id:
+            await self._execute_trade_decision(trade_params, user_id=event.publisher_agent_id)
+        else:
+            logger.warning(f"TC ({self.agent_id}): External signal from {event.publisher_agent_id} for {signal_payload.symbol} REJECTED by RiskManager: {assessment_result.rejection_reason}")
+
+    async def handle_market_condition_event(self, event: Event):
+        logger.info(f"TradingCoordinator ({self.agent_id}): Received MarketConditionEvent (ID: {event.event_id}) from agent {event.publisher_agent_id}.")
+        if not isinstance(event.payload, dict):
+            logger.error(f"TC ({self.agent_id}): Invalid payload type in MarketConditionEvent: {type(event.payload)}")
+            return
+        try:
+            condition_payload = MarketConditionEventPayload(**event.payload)
+            logger.debug(f"TC ({self.agent_id}): Market Condition for {condition_payload.symbol}: {condition_payload.regime}, Confidence: {condition_payload.confidence_score}. Data: {condition_payload.supporting_data}")
+            # TODO: Implement logic for TC to react to market conditions,
+            # e.g., adjust internal parameters, influence CrewAI tasks, or inform a meta-strategy.
+        except Exception as e:
+            logger.error(f"TC ({self.agent_id}): Failed to parse MarketConditionEventPayload: {e}. Payload: {event.payload}", exc_info=True)
 
 
     async def execute_trade(self, trade_request: Dict) -> Dict: # This method seems to be for external calls, not used by crew flow

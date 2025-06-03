@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Literal # Added Literal
 from datetime import datetime, timezone
 import uuid
 import json
@@ -48,6 +48,16 @@ class AgentManagementService:
                 strategy_data['darvas_params'] = AgentStrategyConfig.DarvasStrategyParams(**strategy_data['darvas_params'])
             if 'williams_alligator_params' in strategy_data and strategy_data['williams_alligator_params'] and isinstance(strategy_data['williams_alligator_params'], dict):
                 strategy_data['williams_alligator_params'] = AgentStrategyConfig.WilliamsAlligatorParams(**strategy_data['williams_alligator_params'])
+            # Added for MarketConditionClassifierParams
+            if 'market_condition_classifier_params' in strategy_data and strategy_data['market_condition_classifier_params'] and isinstance(strategy_data['market_condition_classifier_params'], dict):
+                strategy_data['market_condition_classifier_params'] = AgentStrategyConfig.MarketConditionClassifierParams(**strategy_data['market_condition_classifier_params'])
+            # Added for PortfolioOptimizerParams
+            if 'portfolio_optimizer_params' in strategy_data and strategy_data['portfolio_optimizer_params'] and isinstance(strategy_data['portfolio_optimizer_params'], dict):
+                 # PortfolioOptimizerParams contains a list of PortfolioOptimizerRule
+                rules_data = strategy_data['portfolio_optimizer_params'].get('rules', [])
+                parsed_rules = [AgentStrategyConfig.PortfolioOptimizerRule(**rule) for rule in rules_data]
+                strategy_data['portfolio_optimizer_params'] = AgentStrategyConfig.PortfolioOptimizerParams(rules=parsed_rules)
+
             strategy_config = AgentStrategyConfig(**strategy_data)
         except (json.JSONDecodeError, TypeError) as e_strat:
             logger.error(f"Error deserializing strategy_config_json for agent {db_agent.agent_id}: {e_strat}. Data: '{db_agent.strategy_config_json}'")
@@ -58,7 +68,7 @@ class AgentManagementService:
             risk_config = AgentRiskConfig(**risk_conf_dict)
         except (json.JSONDecodeError, TypeError) as e_risk:
             logger.error(f"Error deserializing risk_config_json for agent {db_agent.agent_id}: {e_risk}. Data: '{db_agent.risk_config_json}'")
-            risk_config = AgentRiskConfig(max_capital_allocation_usd=0, risk_per_trade_percentage=0.01) # Default
+            risk_config = AgentRiskConfig(max_capital_allocation_usd=0, risk_per_trade_percentage=0.01)
 
         try:
             hyperliquid_conf = json.loads(db_agent.hyperliquid_config_json) if db_agent.hyperliquid_config_json else None
@@ -95,7 +105,7 @@ class AgentManagementService:
             agent_type=pydantic_agent.agent_type, parent_agent_id=pydantic_agent.parent_agent_id,
             is_active=pydantic_agent.is_active,
             strategy_config_json=pydantic_agent.strategy.model_dump_json(),
-            risk_config_json=pydantic_agent.risk_config.model_dump_json(), # Serialize risk_config
+            risk_config_json=pydantic_agent.risk_config.model_dump_json(),
             hyperliquid_config_json=json.dumps(pydantic_agent.hyperliquid_config) if pydantic_agent.hyperliquid_config else None,
             operational_parameters_json=json.dumps(pydantic_agent.operational_parameters or {}),
             created_at=pydantic_agent.created_at, updated_at=pydantic_agent.updated_at
@@ -143,19 +153,32 @@ class AgentManagementService:
                 logger.warning(f"Agent with ID {agent_id} not found in DB for update.")
                 return None
 
-            pydantic_agent_current = self._db_to_pydantic(db_agent)
-            update_payload_dict = update_data.model_dump(exclude_unset=True)
+            pydantic_agent_current = self._db_to_pydantic(db_agent) # Current state as Pydantic model
+            update_payload_dict = update_data.model_dump(exclude_unset=True) # Changes from request
+
+            # Create a dictionary from the current Pydantic model to apply updates
             current_agent_dict = pydantic_agent_current.model_dump()
 
-            # Merge strategy
+            # Merge strategy (includes merging nested Darvas/Alligator/MCC/Optimizer params if provided)
             if 'strategy' in update_payload_dict and update_payload_dict['strategy'] is not None:
                 current_strategy_dict = current_agent_dict.get('strategy', {})
-                new_strategy_data = update_payload_dict['strategy']
-                # Deep merge for parameters, direct update for other strategy fields
+                new_strategy_data = update_payload_dict['strategy'] # This is a dict
+
+                # Parameters within strategy
                 if 'parameters' in new_strategy_data and isinstance(current_strategy_dict.get('parameters'), dict):
                     current_strategy_dict['parameters'].update(new_strategy_data['parameters'])
+
+                # Specific typed strategy params (darvas_params, etc.)
+                for param_key in ['darvas_params', 'williams_alligator_params', 'market_condition_classifier_params', 'portfolio_optimizer_params']:
+                    if param_key in new_strategy_data and new_strategy_data[param_key] is not None:
+                        if isinstance(current_strategy_dict.get(param_key), dict) and isinstance(new_strategy_data[param_key], dict):
+                            current_strategy_dict[param_key].update(new_strategy_data[param_key])
+                        else: # Overwrite if not dict or not existing
+                             current_strategy_dict[param_key] = new_strategy_data[param_key]
+
+                # Update other top-level fields within strategy
                 for key, value in new_strategy_data.items():
-                    if key != 'parameters':
+                    if key not in ['parameters', 'darvas_params', 'williams_alligator_params', 'market_condition_classifier_params', 'portfolio_optimizer_params']:
                         current_strategy_dict[key] = value
                 current_agent_dict['strategy'] = current_strategy_dict
 
@@ -169,23 +192,43 @@ class AgentManagementService:
                 current_op_params.update(update_payload_dict['operational_parameters'])
                 current_agent_dict['operational_parameters'] = current_op_params
 
+            # Update other top-level fields from AgentUpdateRequest (like name, description, is_active, etc.)
             for key, value in update_payload_dict.items():
-                if key not in ['strategy', 'operational_parameters', 'risk_config']:
+                if key not in ['strategy', 'operational_parameters', 'risk_config']: # Already handled
                     current_agent_dict[key] = value
 
             current_agent_dict['updated_at'] = datetime.now(timezone.utc)
-            updated_pydantic_agent = AgentConfigOutput(**current_agent_dict)
+            updated_pydantic_agent = AgentConfigOutput(**current_agent_dict) # Validate and get full model
 
+            # Update DB record from the validated Pydantic model
             db_agent.name = updated_pydantic_agent.name
             db_agent.description = updated_pydantic_agent.description
             db_agent.agent_type = updated_pydantic_agent.agent_type
             db_agent.parent_agent_id = updated_pydantic_agent.parent_agent_id
-            db_agent.is_active = updated_pydantic_agent.is_active
+            db_agent.is_active = updated_pydantic_agent.is_active # Persist is_active
             db_agent.strategy_config_json = updated_pydantic_agent.strategy.model_dump_json()
             db_agent.risk_config_json = updated_pydantic_agent.risk_config.model_dump_json()
             db_agent.hyperliquid_config_json = json.dumps(updated_pydantic_agent.hyperliquid_config) if updated_pydantic_agent.hyperliquid_config else None
             db_agent.operational_parameters_json = json.dumps(updated_pydantic_agent.operational_parameters or {})
             db_agent.updated_at = updated_pydantic_agent.updated_at
+
+            # If 'is_active' was part of the update and changed the state:
+            if 'is_active' in update_payload_dict and pydantic_agent_current.is_active != updated_pydantic_agent.is_active:
+                new_is_active_state = updated_pydantic_agent.is_active
+                logger.info(f"Agent {agent_id} 'is_active' state changed from {pydantic_agent_current.is_active} to {new_is_active_state} by update_agent.")
+                new_runtime_status_str: Literal["running", "stopped"] = "running" if new_is_active_state else "stopped"
+                current_mem_status = self._agent_statuses.get(agent_id)
+                if not current_mem_status or current_mem_status.status != new_runtime_status_str:
+                    self._agent_statuses[agent_id] = AgentStatus(
+                        agent_id=agent_id, status=new_runtime_status_str,
+                        message=f"Set to {new_runtime_status_str} by update_agent.",
+                        last_heartbeat=datetime.now(timezone.utc)
+                    )
+                    logger.info(f"In-memory status for agent {agent_id} updated to '{new_runtime_status_str}'.")
+                elif current_mem_status and current_mem_status.status == new_runtime_status_str:
+                     current_mem_status.last_heartbeat = datetime.now(timezone.utc)
+                     self._agent_statuses[agent_id] = current_mem_status
+                     logger.debug(f"In-memory status for agent {agent_id} already '{new_runtime_status_str}', heartbeat updated.")
 
             db.commit()
             db.refresh(db_agent)
@@ -273,10 +316,10 @@ class AgentManagementService:
         logger.debug(f"Retrieving status for agent ID: {agent_id}")
         status = self._agent_statuses.get(agent_id)
         if not status:
-            db_agent_pydantic = await self.get_agent(agent_id) # Checks DB via _db_to_pydantic
+            db_agent_pydantic = await self.get_agent(agent_id)
             if db_agent_pydantic:
                 logger.warning(f"Status not found in memory for existing agent {agent_id}, re-initializing from DB.")
-                current_status_val = "running" if db_agent_pydantic.is_active else "stopped"
+                current_status_val: Literal["running", "stopped"] = "running" if db_agent_pydantic.is_active else "stopped"
                 default_status = AgentStatus(agent_id=agent_id, status=current_status_val, message="Status initialized from DB is_active field.", last_heartbeat=db_agent_pydantic.updated_at)
                 self._agent_statuses[agent_id] = default_status
                 return default_status
@@ -289,7 +332,6 @@ class AgentManagementService:
         logger.debug(f"Received heartbeat for agent ID: {agent_id}")
         db: Session = self.session_factory()
         try:
-            # Check if agent config exists using a lightweight query.
             db_agent_data = db.query(AgentConfigDB.agent_id, AgentConfigDB.is_active).filter(AgentConfigDB.agent_id == agent_id).first()
             if not db_agent_data:
                 logger.error(f"Cannot update heartbeat: Agent config for ID {agent_id} not found in DB.")
@@ -301,7 +343,7 @@ class AgentManagementService:
             now = datetime.now(timezone.utc)
 
             if not status:
-                current_status_val = "running" if agent_is_active_in_db else "stopped"
+                current_status_val: Literal["running", "stopped"] = "running" if agent_is_active_in_db else "stopped"
                 logger.warning(f"Heartbeat for agent {agent_id}: No in-memory status. Initializing based on DB is_active ({agent_is_active_in_db}) as '{current_status_val}'.")
                 status = AgentStatus(agent_id=agent_id, status=current_status_val, message="Heartbeat received, status initialized from DB.", last_heartbeat=now)
 
@@ -320,10 +362,9 @@ class AgentManagementService:
             return True
         except Exception as e:
             logger.error(f"Error during heartbeat update for agent {agent_id}: {e}", exc_info=True)
+            # Do not rollback here as it's mostly a read operation with in-memory update.
             return False
         finally:
             db.close()
 
-# Removed _update_agent_status_internally as it's less relevant with DB and explicit start/stop
-# from typing import Literal # No longer needed
 ```

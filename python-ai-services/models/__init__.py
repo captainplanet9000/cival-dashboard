@@ -92,7 +92,10 @@ __all__ = [
     "AgentStrategyConfig", "AgentRiskConfig", "AgentConfigBase", "AgentConfigInput",
     "AgentConfigOutput", "AgentStatus", "AgentUpdateRequest",
     "AgentStrategyConfig.DarvasStrategyParams",
-    "AgentStrategyConfig.WilliamsAlligatorParams", # For exporting the nested model
+    "AgentStrategyConfig.WilliamsAlligatorParams",
+    "AgentStrategyConfig.MarketConditionClassifierParams",
+    "AgentStrategyConfig.PortfolioOptimizerRule", # For exporting nested models
+    "AgentStrategyConfig.PortfolioOptimizerParams",
     # dashboard_models
     "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
     # performance_models

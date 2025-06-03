@@ -11,7 +11,9 @@ from .risk_manager_service import RiskManagerService
 from .market_data_service import MarketDataService
 from .event_bus_service import EventBusService
 from .darvas_box_service import DarvasBoxTechnicalService
-from .williams_alligator_service import WilliamsAlligatorTechnicalService # Added
+from .williams_alligator_service import WilliamsAlligatorTechnicalService
+from .market_condition_classifier_service import MarketConditionClassifierService
+from .portfolio_optimizer_service import PortfolioOptimizerService # Added
 # Use the new factory
 from ..core.factories import get_hyperliquid_execution_service_instance
 from typing import Optional, Any, Dict, List
@@ -81,10 +83,12 @@ class AgentOrchestratorService:
             )
             # Set trade execution mode on the coordinator instance
             await coordinator.set_trade_execution_mode(agent_config.execution_provider)
-            logger.debug(f"TradingCoordinator instantiated for agent {agent_config.agent_id} in '{agent_config.execution_provider}' mode.")
+            # Setup event subscriptions for this TC instance
+            await coordinator.setup_event_subscriptions()
+            logger.debug(f"TradingCoordinator instantiated and subscriptions set up for agent {agent_config.agent_id} in '{agent_config.execution_provider}' mode.")
             return coordinator
         except Exception as e:
-            logger.error(f"Failed to instantiate TradingCoordinator for agent {agent_config.agent_id}: {e}", exc_info=True)
+            logger.error(f"Failed to instantiate or set up TradingCoordinator for agent {agent_config.agent_id}: {e}", exc_info=True)
             return None
 
     async def run_single_agent_cycle(self, agent_id: str):
@@ -146,6 +150,52 @@ class AgentOrchestratorService:
 
             await self.agent_management_service.update_agent_heartbeat(agent_id)
             logger.info(f"WilliamsAlligatorTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        elif agent_config.agent_type == "MarketConditionClassifierAgent":
+            if not self.market_data_service or not self.event_bus_service:
+                logger.error(f"Orchestrator: MarketDataService or EventBusService not configured. Cannot run MarketConditionClassifierAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id) # Still update heartbeat
+                return
+
+            mcc_service = MarketConditionClassifierService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service,
+                market_data_service=self.market_data_service
+            )
+            if not agent_config.strategy.watched_symbols:
+                logger.warning(f"MarketConditionClassifierAgent {agent_id} ({agent_config.name}) has no watched_symbols configured. No analysis will be run.")
+            else:
+                for symbol in agent_config.strategy.watched_symbols:
+                    try:
+                        await mcc_service.analyze_symbol_and_publish_condition(symbol)
+                    except Exception as e:
+                        logger.error(f"Error during MarketConditionClassifier analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"MarketConditionClassifierAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        elif agent_config.agent_type == "PortfolioOptimizerAgent":
+            # This agent is primarily event-driven via its EventBus subscriptions.
+            # The orchestrator's role for this agent type is mainly to keep its heartbeat updated.
+            # Actual logic (`on_market_condition_event`) is triggered by EventBus.
+            # Subscription setup is assumed to be handled when the agent/service is activated/initialized elsewhere.
+            # (e.g., in main.py or if AgentManagementService.start_agent was enhanced)
+
+            # For this subtask, we'll ensure the orchestrator can recognize it and heartbeat it.
+            # If it had periodic review tasks not triggered by events, they could be called here.
+            # Example:
+            # po_service = PortfolioOptimizerService(
+            #     agent_config=agent_config,
+            #     agent_management_service=self.agent_management_service,
+            #     event_bus=self.event_bus_service
+            # )
+            # await po_service.perform_periodic_review() # If such a method existed
+
+            logger.debug(f"PortfolioOptimizerAgent {agent_id} cycle: Is event-driven. Updating heartbeat.")
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"PortfolioOptimizerAgent cycle finished for agent_id: {agent_id}")
             return
 
         # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)

@@ -32,5 +32,7 @@ __all__ = [
     "RiskManagerService",
     "MarketDataService",
     "DarvasBoxTechnicalService",
-    "WilliamsAlligatorTechnicalService"
+    "WilliamsAlligatorTechnicalService",
+    "MarketConditionClassifierService",
+    "PortfolioOptimizerService"
 ]

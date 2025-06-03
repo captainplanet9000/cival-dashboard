@@ -33,6 +33,13 @@ class RiskAlertEventPayload(BaseModel):
     threshold: Any
     message: str
 
+class MarketConditionEventPayload(BaseModel):
+    symbol: str
+    regime: Literal["trending_up", "trending_down", "ranging", "volatile", "undetermined"]
+    confidence_score: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+    supporting_data: Dict[str, Any] = Field(default_factory=dict) # e.g., {"adx": 27, "ma_short_slope": 0.002}
+
+
 # --- Added for Phase 6, Step 6 (TradingCoordinator Refactor) ---
 
 class RiskAssessmentRequestData(BaseModel):
