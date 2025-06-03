@@ -38,16 +38,31 @@ def get_hyperliquid_service_factory_placeholder() -> Callable[[str], Optional[An
     return factory
 
 
+from python_ai_services.services.trade_history_service import TradeHistoryService # Added
+from pathlib import Path # Added for default fills_dir path
+
+# Dependency for TradeHistoryService (singleton)
+# This should ideally be in a central dependency management file or main.py
+# For now, defining here for clarity of this subtask.
+_trade_history_service_instance = TradeHistoryService(fills_dir=Path("agent_fills")) # Default path
+def get_trade_history_service_instance() -> TradeHistoryService:
+    return _trade_history_service_instance
+
 # Dependency for TradingDataService
 def get_trading_data_service(
     agent_service: AgentManagementService = Depends(get_agent_management_service_singleton),
-    hl_factory: Callable[[str], Optional[Any]] = Depends(get_hyperliquid_service_factory_placeholder) # Actual HLES type
+    hl_factory: Callable[[str], Optional[Any]] = Depends(get_hyperliquid_service_factory_placeholder), # Actual HLES type
+    trade_history_service: TradeHistoryService = Depends(get_trade_history_service_instance) # New dependency
 ) -> TradingDataService:
     # This ensures TradingDataService is created per request, or make it a singleton if preferred.
     # If AgentManagementService is a singleton, TradingDataService can also be a singleton
     # if hl_factory is also stable or if HLES instances are managed elsewhere (e.g., cached by factory).
     # For now, new instance per request is fine.
-    return TradingDataService(agent_service=agent_service, hyperliquid_service_factory=hl_factory)
+    return TradingDataService(
+        agent_service=agent_service,
+        hyperliquid_service_factory=hl_factory,
+        trade_history_service=trade_history_service # Pass it here
+    )
 
 
 @router.get("/agents/{agent_id}/portfolio/summary", response_model=PortfolioSummary)

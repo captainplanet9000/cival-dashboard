@@ -17,15 +17,19 @@ from .hyperliquid_execution_service import HyperliquidExecutionService, Hyperliq
 # Define a type for the HyperliquidExecutionService factory
 HyperliquidServiceFactory = Callable[[str], Optional[HyperliquidExecutionService]] # Takes cred_id, returns HLES or None
 
+from .trade_history_service import TradeHistoryService # Added import
+
 class TradingDataService:
     def __init__(
         self,
         agent_service: AgentManagementService,
-        hyperliquid_service_factory: HyperliquidServiceFactory
+        hyperliquid_service_factory: HyperliquidServiceFactory,
+        trade_history_service: TradeHistoryService # Added new parameter
     ):
         self.agent_service = agent_service
         self.hyperliquid_service_factory = hyperliquid_service_factory
-        logger.info("TradingDataService initialized.")
+        self.trade_history_service = trade_history_service # Store it
+        logger.info("TradingDataService initialized with TradeHistoryService.")
 
     async def _get_hles_instance(self, agent_id: str) -> Optional[HyperliquidExecutionService]:
         """Helper to get HLES instance for an agent."""
@@ -128,40 +132,19 @@ class TradingDataService:
             return None
 
     async def get_trade_history(self, agent_id: str, limit: int = 100, offset: int = 0) -> List[TradeLogItem]:
-        logger.info(f"Fetching trade history for agent {agent_id} (limit={limit}, offset={offset}).")
-        agent_config = await self.agent_service.get_agent(agent_id)
-        if not agent_config:
-            logger.warning(f"Agent {agent_id} not found for trade history.")
-            return []
-
-        # For this subtask, both Hyperliquid and Paper will return mocked data.
-        # Real implementation for Hyperliquid would involve processing fills from info.user_fills_by_time()
-        # and matching them to create "trades" with P&L, which is complex.
-        mock_trades: List[TradeLogItem] = []
-        provider = agent_config.execution_provider
-        logger.info(f"Provider for agent {agent_id} is {provider}. Returning mocked trade history.")
-
-        for i in range(5): # Create 5 mock trades
-            is_buy = (i % 2 == 0)
-            asset = "MOCK_COIN" if provider == "hyperliquid" else "PAPER_COIN"
-            price = 100.0 + i * 5
-            qty = 1.0 + i * 0.1
-            mock_trades.append(TradeLogItem(
-                trade_id=str(uuid.uuid4()),
-                timestamp=datetime.now(timezone.utc) - datetime.timedelta(hours=i),
-                agent_id=agent_id,
-                asset=asset,
-                side="buy" if is_buy else "sell",
-                order_type="limit" if i % 3 == 0 else "market",
-                quantity=qty,
-                price=price,
-                total_value=qty * price,
-                realized_pnl=10.0 - i if not is_buy else None, # Mock PnL on sells
-                fees=0.1
-            ))
-
-        # Apply limit and offset (conceptual for mock data)
-        return mock_trades[offset : offset + limit]
+        logger.info(f"Fetching trade history for agent {agent_id} (limit={limit}, offset={offset}) using TradeHistoryService.")
+        # Remove the existing mocked implementation.
+        # Call await self.trade_history_service.get_processed_trades(agent_id, limit=limit, offset=offset).
+        # Return the result directly.
+        try:
+            processed_trades = await self.trade_history_service.get_processed_trades(
+                agent_id=agent_id, limit=limit, offset=offset
+            )
+            logger.info(f"Retrieved {len(processed_trades)} processed trades for agent {agent_id} from TradeHistoryService.")
+            return processed_trades
+        except Exception as e:
+            logger.error(f"Error fetching processed trades for agent {agent_id} from TradeHistoryService: {e}", exc_info=True)
+            return [] # Return empty list on error, or re-raise depending on desired error handling
 
     async def get_open_orders(self, agent_id: str) -> List[OrderLogItem]:
         logger.info(f"Fetching open orders for agent {agent_id}.")

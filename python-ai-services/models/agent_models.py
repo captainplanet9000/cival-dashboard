@@ -6,6 +6,9 @@ import uuid
 class AgentStrategyConfig(BaseModel):
     strategy_name: str # e.g., "sma_crossover", "darvas_box"
     parameters: Dict[str, Any] # e.g., {"short_window": 20, "long_window": 50}
+    watched_symbols: List[str] = Field(default_factory=list, description="List of symbols the agent should primarily focus on.")
+    default_market_event_description: str = Field(default="Periodic market check for {symbol}", description="Default description for analysis crew if no specific event.")
+    default_additional_context: Optional[Dict[str, Any]] = Field(default=None, description="Default additional context for analysis crew.")
 
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float

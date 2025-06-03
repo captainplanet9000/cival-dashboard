@@ -82,7 +82,8 @@ __all__ = [
     # paper_trading_models
     "PaperTradeOrder", "PaperTradeFill", "PaperAccountSummary",
     # trading_history_models
-    "TradeSide", "OrderStatus", "OrderType", "TradeRecord", "TradingHistory",
+    "TradeSideType", "OrderStatusType", "OrderTypeType",
+    "TradeRecord", "TradingHistory", "TradeFillData",
     # hyperliquid_models
     "HyperliquidCredentials", "HyperliquidPlaceOrderParams", "HyperliquidOrderResponseData",
     "HyperliquidOrderStatusInfo", "HyperliquidAssetPosition", "HyperliquidOpenOrderItem",

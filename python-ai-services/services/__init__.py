@@ -25,5 +25,7 @@ __all__ = [
     "TradingDataService",
     "PerformanceCalculationService",
     "AlertConfigurationService",
-    "AlertMonitoringService"
+    "AlertMonitoringService",
+    "AgentOrchestratorService",
+    "TradeHistoryService"
 ]

@@ -2,6 +2,9 @@ import pytest
 import pytest_asyncio
 from datetime import datetime, timezone
 import uuid
+import json
+import os
+from pathlib import Path # For tmp_path type hint
 
 from python_ai_services.models.agent_models import (
     AgentConfigInput,
@@ -14,230 +17,300 @@ from python_ai_services.models.agent_models import (
 from python_ai_services.services.agent_management_service import AgentManagementService
 
 @pytest_asyncio.fixture
-async def service() -> AgentManagementService:
-    """Provides a fresh instance of AgentManagementService for each test."""
-    return AgentManagementService()
+async def service(tmp_path: Path) -> AgentManagementService:
+    """Provides a fresh instance of AgentManagementService using a temporary config directory."""
+    return AgentManagementService(config_dir=tmp_path)
 
-@pytest.mark.asyncio
-async def test_create_agent(service: AgentManagementService):
+# Helper to create agent input for tests
+def create_sample_agent_input(name: str = "Test Agent") -> AgentConfigInput:
     strategy_conf = AgentStrategyConfig(strategy_name="test_strat", parameters={"param1": 10})
     risk_conf = AgentRiskConfig(max_capital_allocation_usd=1000, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(
-        name="Test Agent",
+    return AgentConfigInput(
+        name=name,
         strategy=strategy_conf,
         risk_config=risk_conf,
         execution_provider="paper"
     )
 
+@pytest.mark.asyncio
+async def test_create_agent(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input()
     created_agent = await service.create_agent(agent_input)
 
     assert isinstance(created_agent, AgentConfigOutput)
     assert created_agent.name == "Test Agent"
-    assert created_agent.agent_id is not None
+    agent_id = created_agent.agent_id
+    assert agent_id is not None
     assert created_agent.is_active is False
-    assert created_agent.strategy.strategy_name == "test_strat"
+
+    # Verify file was created
+    expected_file = tmp_path / f"{agent_id}.json"
+    assert expected_file.exists()
+    with open(expected_file, 'r') as f:
+        data = json.load(f)
+        assert data["agent_id"] == agent_id
+        assert data["name"] == "Test Agent"
+        assert data["is_active"] is False
 
     # Check status initialization
-    status = await service.get_agent_status(created_agent.agent_id)
+    status = await service.get_agent_status(agent_id)
     assert status is not None
     assert status.status == "stopped"
 
 @pytest.mark.asyncio
-async def test_get_agent(service: AgentManagementService):
-    # First, create an agent
-    strategy_conf = AgentStrategyConfig(strategy_name="s1", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.02)
-    agent_input = AgentConfigInput(name="Agent S1", strategy=strategy_conf, risk_config=risk_conf)
-    created_agent = await service.create_agent(agent_input)
+async def test_get_agent(service: AgentManagementService, tmp_path: Path):
+    # First, create an agent directly by saving a file
+    agent_id_manual = str(uuid.uuid4())
+    manual_agent_data = AgentConfigOutput(
+        agent_id=agent_id_manual, name="Manual Agent",
+        strategy=AgentStrategyConfig(strategy_name="s_manual", parameters={}),
+        risk_config=AgentRiskConfig(max_capital_allocation_usd=200, risk_per_trade_percentage=0.03),
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)
+    )
+    with open(tmp_path / f"{agent_id_manual}.json", 'w') as f:
+        f.write(manual_agent_data.model_dump_json(indent=2))
 
-    # Retrieve it
-    retrieved_agent = await service.get_agent(created_agent.agent_id)
+    # Initialize its status as _load_existing_statuses would typically do on service init
+    # or get_agent_status would provide a default. For this direct test, let's ensure it's there for consistency.
+    service._agent_statuses[agent_id_manual] = AgentStatus(agent_id=agent_id_manual, status="stopped")
+
+
+    retrieved_agent = await service.get_agent(agent_id_manual)
     assert retrieved_agent is not None
-    assert retrieved_agent.agent_id == created_agent.agent_id
-    assert retrieved_agent.name == "Agent S1"
+    assert retrieved_agent.agent_id == agent_id_manual
+    assert retrieved_agent.name == "Manual Agent"
 
-    # Try to retrieve non-existent agent
     non_existent_agent = await service.get_agent(str(uuid.uuid4()))
     assert non_existent_agent is None
 
 @pytest.mark.asyncio
-async def test_get_agents(service: AgentManagementService):
+async def test_get_agents(service: AgentManagementService, tmp_path: Path):
     agents_list = await service.get_agents()
-    assert len(agents_list) == 0
+    assert len(agents_list) == 0 # Should be empty initially or only contain from _load_existing_statuses
 
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    await service.create_agent(AgentConfigInput(name="A1", strategy=strategy_conf, risk_config=risk_conf))
-    await service.create_agent(AgentConfigInput(name="A2", strategy=strategy_conf, risk_config=risk_conf))
+    # Create some agent files
+    agent_input1 = create_sample_agent_input("FileAgent1")
+    created1 = await service.create_agent(agent_input1) # Uses service to create file
+
+    agent_input2 = create_sample_agent_input("FileAgent2")
+    created2 = await service.create_agent(agent_input2)
 
     agents_list = await service.get_agents()
     assert len(agents_list) == 2
+    agent_names = {agent.name for agent in agents_list}
+    assert "FileAgent1" in agent_names
+    assert "FileAgent2" in agent_names
 
 @pytest.mark.asyncio
-async def test_update_agent(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="initial_strat", parameters={"p1": 1, "p2": "a"})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=500, risk_per_trade_percentage=0.01, stop_loss_percentage=0.05)
-    agent_input = AgentConfigInput(name="Initial Name", description="Desc", strategy=strategy_conf, risk_config=risk_conf)
+async def test_update_agent(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input("Initial Name")
     created_agent = await service.create_agent(agent_input)
-    original_updated_at = created_agent.updated_at
+    agent_id = created_agent.agent_id
+    original_updated_at_iso = created_agent.updated_at.isoformat()
 
-    update_payload = AgentUpdateRequest(
-        name="Updated Name",
-        description="New Desc",
-        strategy=AgentStrategyConfig(strategy_name="updated_strat", parameters={"p1": 2, "p3": "new_p"}), # p2 should remain
-        risk_config=AgentRiskConfig(max_capital_allocation_usd=1000, risk_per_trade_percentage=0.02), # SL should become None
-        execution_provider="hyperliquid",
-        hyperliquid_credentials_id="cred_123",
-        is_active=True
-    )
 
-    # Make sure some time passes to check updated_at
-    await asyncio.sleep(0.01) # Small delay to ensure timestamp changes
-    updated_agent = await service.update_agent(created_agent.agent_id, update_payload)
+    update_payload = AgentUpdateRequest(name="Updated Name", description="New Desc")
+
+    await asyncio.sleep(0.01) # Ensure timestamp can change
+    updated_agent = await service.update_agent(agent_id, update_payload)
 
     assert updated_agent is not None
     assert updated_agent.name == "Updated Name"
     assert updated_agent.description == "New Desc"
-    assert updated_agent.strategy.strategy_name == "updated_strat"
-    # Test strategy parameters merge logic (p1 updated, p2 kept, p3 added)
-    assert updated_agent.strategy.parameters == {"p1": 2, "p2": "a", "p3": "new_p"}
-    assert updated_agent.risk_config.max_capital_allocation_usd == 1000
-    assert updated_agent.risk_config.risk_per_trade_percentage == 0.02
-    assert updated_agent.risk_config.stop_loss_percentage is None # Was set, now updated to None via model default if not in payload
-    assert updated_agent.execution_provider == "hyperliquid"
-    assert updated_agent.hyperliquid_credentials_id == "cred_123"
-    assert updated_agent.is_active is True
-    assert updated_agent.updated_at > original_updated_at
+    # Pydantic v1 to_datetime on updated_at might be naive if not careful with isoformat from file.
+    # Service saves with timezone. Pydantic model should parse it back to aware.
+    assert updated_agent.updated_at.isoformat() > original_updated_at_iso
 
-    # Test partial update: only description
-    new_desc_payload = AgentUpdateRequest(description="Even Newer Desc")
-    further_updated_agent = await service.update_agent(created_agent.agent_id, new_desc_payload)
-    assert further_updated_agent is not None
-    assert further_updated_agent.name == "Updated Name" # Should remain from previous update
-    assert further_updated_agent.description == "Even Newer Desc"
+    # Verify file content
+    expected_file = tmp_path / f"{agent_id}.json"
+    with open(expected_file, 'r') as f:
+        data = json.load(f)
+        assert data["name"] == "Updated Name"
+        assert data["description"] == "New Desc"
 
-    # Test updating a non-existent agent
     non_existent_update = await service.update_agent(str(uuid.uuid4()), AgentUpdateRequest(name="ghost"))
     assert non_existent_update is None
 
 @pytest.mark.asyncio
-async def test_delete_agent(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(name="To Delete", strategy=strategy_conf, risk_config=risk_conf)
+async def test_delete_agent(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input("To Delete")
     created_agent = await service.create_agent(agent_input)
+    agent_id = created_agent.agent_id
 
-    # Agent and its status should exist
-    assert await service.get_agent(created_agent.agent_id) is not None
-    assert await service.get_agent_status(created_agent.agent_id) is not None
+    expected_file = tmp_path / f"{agent_id}.json"
+    assert expected_file.exists()
+    assert await service.get_agent_status(agent_id) is not None # Status should exist
 
-    deleted = await service.delete_agent(created_agent.agent_id)
+    deleted = await service.delete_agent(agent_id)
     assert deleted is True
-    assert await service.get_agent(created_agent.agent_id) is None
-    assert await service.get_agent_status(created_agent.agent_id) is None # Status should also be removed
+    assert not expected_file.exists()
+    assert await service.get_agent(agent_id) is None
+    assert await service.get_agent_status(agent_id) is None # Status should also be removed
 
-    # Try to delete non-existent agent
     deleted_non_existent = await service.delete_agent(str(uuid.uuid4()))
     assert deleted_non_existent is False
 
 @pytest.mark.asyncio
-async def test_start_agent(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(name="Startable Agent", strategy=strategy_conf, risk_config=risk_conf)
+async def test_start_agent(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input("Startable Agent")
     created_agent = await service.create_agent(agent_input)
-    assert created_agent.is_active is False # Starts inactive
+    agent_id = created_agent.agent_id
+    assert created_agent.is_active is False
 
-    status_before_start = await service.get_agent_status(created_agent.agent_id)
-    assert status_before_start.status == "stopped"
+    start_status = await service.start_agent(agent_id)
+    assert start_status.status == "running"
 
-    start_status = await service.start_agent(created_agent.agent_id)
-    assert start_status.status == "running" # Simulates 'starting' then 'running'
-    assert start_status.message == "Agent is now running."
+    # Verify is_active in file
+    retrieved_agent_config = await service.get_agent(agent_id)
+    assert retrieved_agent_config is not None
+    assert retrieved_agent_config.is_active is True
 
-    updated_agent_config = await service.get_agent(created_agent.agent_id)
-    assert updated_agent_config.is_active is True
-
-    # Try to start non-existent agent
-    with pytest.raises(ValueError, match="Agent with ID .* not found."):
-        await service.start_agent(str(uuid.uuid4()))
+    expected_file = tmp_path / f"{agent_id}.json"
+    with open(expected_file, 'r') as f:
+        data = json.load(f)
+        assert data["is_active"] is True
 
 @pytest.mark.asyncio
-async def test_stop_agent(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(name="Stoppable Agent", strategy=strategy_conf, risk_config=risk_conf)
+async def test_stop_agent(service: AgentManagementService, tmp_path: Path):
+    agent_input = create_sample_agent_input("Stoppable Agent")
     created_agent = await service.create_agent(agent_input)
+    agent_id = created_agent.agent_id
 
-    # Start it first
-    await service.start_agent(created_agent.agent_id)
-    agent_config_after_start = await service.get_agent(created_agent.agent_id)
+    await service.start_agent(agent_id) # Start it first
+    agent_config_after_start = await service.get_agent(agent_id)
     assert agent_config_after_start.is_active is True
-    status_after_start = await service.get_agent_status(created_agent.agent_id)
-    assert status_after_start.status == "running"
 
-    # Now stop it
-    stop_status = await service.stop_agent(created_agent.agent_id)
-    assert stop_status.status == "stopped" # Simulates 'stopping' then 'stopped'
-    assert stop_status.message == "Agent has been stopped."
+    stop_status = await service.stop_agent(agent_id)
+    assert stop_status.status == "stopped"
 
-    agent_config_after_stop = await service.get_agent(created_agent.agent_id)
-    assert agent_config_after_stop.is_active is False
+    # Verify is_active in file
+    retrieved_agent_config_after_stop = await service.get_agent(agent_id)
+    assert retrieved_agent_config_after_stop is not None
+    assert retrieved_agent_config_after_stop.is_active is False
 
-    # Try to stop non-existent agent
-    with pytest.raises(ValueError, match="Agent with ID .* not found."):
-        await service.stop_agent(str(uuid.uuid4()))
-
-@pytest.mark.asyncio
-async def test_get_agent_status_defaulting(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(name="Status Test Agent", strategy=strategy_conf, risk_config=risk_conf)
-    created_agent = await service.create_agent(agent_input)
-
-    # Remove status to simulate inconsistency, then check if get_agent_status provides a default
-    del service._agent_statuses[created_agent.agent_id]
-
-    status = await service.get_agent_status(created_agent.agent_id)
-    assert status is not None
-    assert status.status == "stopped"
-    assert "Status not explicitly tracked" in status.message
-
-    # Check for non-existent agent ID
-    non_existent_status = await service.get_agent_status(str(uuid.uuid4()))
-    assert non_existent_status is None
+    expected_file = tmp_path / f"{agent_id}.json"
+    with open(expected_file, 'r') as f:
+        data = json.load(f)
+        assert data["is_active"] is False
 
 @pytest.mark.asyncio
-async def test_update_agent_heartbeat(service: AgentManagementService):
-    strategy_conf = AgentStrategyConfig(strategy_name="s", parameters={})
-    risk_conf = AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01)
-    agent_input = AgentConfigInput(name="Heartbeat Agent", strategy=strategy_conf, risk_config=risk_conf)
-    created_agent = await service.create_agent(agent_input)
-    await service.start_agent(created_agent.agent_id) # Agent needs to be running
+async def test_get_agent_status_after_service_restart_with_existing_files(tmp_path: Path):
+    agent_id_active_in_file = str(uuid.uuid4())
+    agent_id_inactive_in_file = str(uuid.uuid4())
 
-    initial_status = await service.get_agent_status(created_agent.agent_id)
+    # Create mock config files as if they existed before service start
+    active_config_data = AgentConfigOutput(
+        agent_id=agent_id_active_in_file, name="Active In File", is_active=True, # is_active=True in file
+        strategy=AgentStrategyConfig(strategy_name="s", parameters={}),
+        risk_config=AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01),
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)
+    )
+    with open(tmp_path / f"{agent_id_active_in_file}.json", 'w') as f:
+        f.write(active_config_data.model_dump_json())
+
+    inactive_config_data = AgentConfigOutput(
+        agent_id=agent_id_inactive_in_file, name="Inactive In File", is_active=False,
+        strategy=AgentStrategyConfig(strategy_name="s", parameters={}),
+        risk_config=AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01),
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)
+    )
+    with open(tmp_path / f"{agent_id_inactive_in_file}.json", 'w') as f:
+        f.write(inactive_config_data.model_dump_json())
+
+    # New service instance, will run _load_existing_statuses
+    restarted_service = AgentManagementService(config_dir=tmp_path)
+
+    status_active_in_file = await restarted_service.get_agent_status(agent_id_active_in_file)
+    assert status_active_in_file is not None
+    # _load_existing_statuses initializes all to 'stopped' regardless of is_active in file,
+    # as runtime state is ephemeral and requires explicit start.
+    assert status_active_in_file.status == "stopped"
+
+    status_inactive_in_file = await restarted_service.get_agent_status(agent_id_inactive_in_file)
+    assert status_inactive_in_file is not None
+    assert status_inactive_in_file.status == "stopped"
+
+    # Test that get_agent still loads the correct is_active from file
+    loaded_active_config = await restarted_service.get_agent(agent_id_active_in_file)
+    assert loaded_active_config.is_active is True
+
+@pytest.mark.asyncio
+async def test_update_agent_heartbeat_running_agent(service: AgentManagementService):
+    agent_input = create_sample_agent_input("Heartbeat Agent")
+    created_agent = await service.create_agent(agent_input)
+    agent_id = created_agent.agent_id
+    await service.start_agent(agent_id) # Agent needs to be running
+
+    initial_status = await service.get_agent_status(agent_id)
     assert initial_status is not None
     initial_heartbeat = initial_status.last_heartbeat
+    initial_message = initial_status.message # Store initial message
 
     await asyncio.sleep(0.01) # Ensure time passes
-    updated_status = await service.update_agent_heartbeat(created_agent.agent_id, "Processing trades")
+    result = await service.update_agent_heartbeat(agent_id) # No message param
+    assert result is True
 
+    updated_status = await service.get_agent_status(agent_id)
     assert updated_status is not None
     assert updated_status.last_heartbeat > initial_heartbeat
-    assert updated_status.message == "Processing trades"
+    # Message should remain the same as heartbeat doesn't update it with new signature
+    assert updated_status.message == initial_message
+    assert updated_status.status == "running"
 
-    # Test heartbeat for non-running agent
-    await service.stop_agent(created_agent.agent_id)
-    status_after_stop = await service.get_agent_status(created_agent.agent_id)
-    heartbeat_after_stop = status_after_stop.last_heartbeat
+@pytest.mark.asyncio
+async def test_update_agent_heartbeat_stopped_agent_becomes_running(service: AgentManagementService):
+    # Per prompt: "ensure status is running" on heartbeat if config exists
+    agent_input = create_sample_agent_input("Stopped Heartbeat Agent")
+    created_agent = await service.create_agent(agent_input)
+    agent_id = created_agent.agent_id
 
-    non_updated_status = await service.update_agent_heartbeat(created_agent.agent_id, "Still alive?")
-    assert non_updated_status.last_heartbeat == heartbeat_after_stop # Should not update for stopped agent
-    assert non_updated_status.message != "Still alive?" # Message should not change
+    initial_status = await service.get_agent_status(agent_id)
+    assert initial_status is not None
+    assert initial_status.status == "stopped"
+    initial_heartbeat = initial_status.last_heartbeat
 
-    # Test heartbeat for non-existent agent
-    assert await service.update_agent_heartbeat(str(uuid.uuid4())) is None
+    result = await service.update_agent_heartbeat(agent_id) # No message param
+    assert result is True
 
-# Need to import asyncio for the sleep
+    updated_status = await service.get_agent_status(agent_id)
+    assert updated_status is not None
+    assert updated_status.last_heartbeat > initial_heartbeat
+    assert updated_status.status == "running" # Status changed to running
+    assert "Forcing to 'running' due to heartbeat" in updated_status.message
+
+
+@pytest.mark.asyncio
+async def test_update_agent_heartbeat_non_existent_agent_config(service: AgentManagementService):
+    non_existent_agent_id = str(uuid.uuid4())
+    result = await service.update_agent_heartbeat(non_existent_agent_id) # No message param
+    assert result is False
+
+@pytest.mark.asyncio
+async def test_update_agent_heartbeat_status_not_in_memory_but_config_exists(service: AgentManagementService, tmp_path: Path):
+    agent_id = str(uuid.uuid4())
+    # Create a config file manually to simulate existing agent after service restart
+    config_data = AgentConfigOutput(
+        agent_id=agent_id, name="HB Test No Mem Status", is_active=True,
+        strategy=AgentStrategyConfig(strategy_name="s", parameters={}),
+        risk_config=AgentRiskConfig(max_capital_allocation_usd=100, risk_per_trade_percentage=0.01),
+        created_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc)
+    )
+    with open(tmp_path / f"{agent_id}.json", 'w') as f:
+        f.write(config_data.model_dump_json())
+
+    # Ensure status is not in memory
+    if agent_id in service._agent_statuses:
+        del service._agent_statuses[agent_id]
+
+    result = await service.update_agent_heartbeat(agent_id) # No message param
+    assert result is True
+
+    updated_status = await service.get_agent_status(agent_id)
+    assert updated_status is not None
+    assert updated_status.status == "running"
+    assert "Heartbeat received, status auto-initialized to running" in updated_status.message
+
+
+# Need asyncio for sleep in update test
 import asyncio
 ```

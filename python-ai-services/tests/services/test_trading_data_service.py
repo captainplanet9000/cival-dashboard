@@ -37,14 +37,22 @@ def mock_hles_instance(mock_hles_factory: MagicMock) -> MagicMock:
     return mock_hles_factory.return_value
 
 
+from python_ai_services.services.trade_history_service import TradeHistoryService # Added import
+
+@pytest_asyncio.fixture
+def mock_trade_history_service() -> TradeHistoryService: # New fixture
+    return AsyncMock(spec=TradeHistoryService)
+
 @pytest_asyncio.fixture
 def trading_data_service(
     mock_agent_service: AgentManagementService,
-    mock_hles_factory: HyperliquidServiceFactory
+    mock_hles_factory: HyperliquidServiceFactory,
+    mock_trade_history_service: TradeHistoryService # Add new dependency
 ) -> TradingDataService:
     return TradingDataService(
         agent_service=mock_agent_service,
-        hyperliquid_service_factory=mock_hles_factory
+        hyperliquid_service_factory=mock_hles_factory,
+        trade_history_service=mock_trade_history_service # Pass it here
     )
 
 # --- Helper Functions ---
@@ -146,18 +154,43 @@ async def test_get_portfolio_summary_agent_not_found(trading_data_service: Tradi
     summary = await trading_data_service.get_portfolio_summary(agent_id)
     assert summary is None
 
-# --- Tests for get_trade_history (mocked data) ---
+# --- Tests for get_trade_history (now uses TradeHistoryService) ---
 
 @pytest.mark.asyncio
-async def test_get_trade_history_mocked(trading_data_service: TradingDataService, mock_agent_service: MagicMock):
-    agent_id = "agent_mock_trades"
-    mock_agent_service.get_agent = AsyncMock(return_value=create_mock_agent_config(agent_id))
+async def test_get_trade_history_uses_trade_history_service(
+    trading_data_service: TradingDataService,
+    mock_trade_history_service: MagicMock # Use the new mock fixture
+):
+    agent_id = "agent_real_trades"
+    limit_val = 50
+    offset_val = 10
 
-    history = await trading_data_service.get_trade_history(agent_id, limit=3)
-    assert len(history) == 3 # Mock service creates 5, limit applies
-    for item in history:
-        assert isinstance(item, TradeLogItem)
-        assert item.agent_id == agent_id
+    # Setup mock response from TradeHistoryService
+    mock_processed_trades = [
+        TradeLogItem(
+            agent_id=agent_id, trade_id=str(uuid.uuid4()), timestamp=datetime.now(timezone.utc),
+            asset="BTC/USD", side="buy", order_type="market", quantity=1, price=50000, total_value=50000, realized_pnl=100
+        )
+    ]
+    mock_trade_history_service.get_processed_trades = AsyncMock(return_value=mock_processed_trades)
+
+    history = await trading_data_service.get_trade_history(agent_id, limit=limit_val, offset=offset_val)
+
+    assert history == mock_processed_trades
+    mock_trade_history_service.get_processed_trades.assert_called_once_with(
+        agent_id=agent_id, limit=limit_val, offset=offset_val
+    )
+
+@pytest.mark.asyncio
+async def test_get_trade_history_service_error_returns_empty(
+    trading_data_service: TradingDataService,
+    mock_trade_history_service: MagicMock
+):
+    agent_id = "agent_th_error"
+    mock_trade_history_service.get_processed_trades = AsyncMock(side_effect=Exception("Failed to process trades"))
+
+    history = await trading_data_service.get_trade_history(agent_id)
+    assert history == [] # Should return empty list on error
 
 # --- Tests for get_open_orders ---
 
