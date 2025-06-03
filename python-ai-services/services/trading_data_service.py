@@ -14,40 +14,28 @@ from ..models.hyperliquid_models import HyperliquidAccountSnapshot, HyperliquidA
 from .agent_management_service import AgentManagementService
 from .hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
 
-# Define a type for the HyperliquidExecutionService factory
-HyperliquidServiceFactory = Callable[[str], Optional[HyperliquidExecutionService]] # Takes cred_id, returns HLES or None
+# Define a type for the HyperliquidExecutionService factory - REMOVED
+# HyperliquidServiceFactory = Callable[[str], Optional[HyperliquidExecutionService]]
 
 from .trade_history_service import TradeHistoryService # Added import
+# Use the new factory
+from ..core.factories import get_hyperliquid_execution_service_instance
 
 class TradingDataService:
     def __init__(
         self,
         agent_service: AgentManagementService,
-        hyperliquid_service_factory: HyperliquidServiceFactory,
-        trade_history_service: TradeHistoryService # Added new parameter
+        # hyperliquid_service_factory: HyperliquidServiceFactory, # REMOVED
+        trade_history_service: TradeHistoryService
     ):
         self.agent_service = agent_service
-        self.hyperliquid_service_factory = hyperliquid_service_factory
-        self.trade_history_service = trade_history_service # Store it
-        logger.info("TradingDataService initialized with TradeHistoryService.")
+        # self.hyperliquid_service_factory = hyperliquid_service_factory # REMOVED
+        self.trade_history_service = trade_history_service
+        logger.info("TradingDataService initialized with TradeHistoryService (and direct HLES factory usage).")
 
-    async def _get_hles_instance(self, agent_id: str) -> Optional[HyperliquidExecutionService]:
-        """Helper to get HLES instance for an agent."""
-        agent_config = await self.agent_service.get_agent(agent_id)
-        if not agent_config or agent_config.execution_provider != "hyperliquid":
-            logger.warning(f"Agent {agent_id} not found or not a hyperliquid agent.")
-            return None
-        if not agent_config.hyperliquid_credentials_id:
-            logger.warning(f"Hyperliquid agent {agent_id} has no credentials_id set.")
-            return None
-
-        # The factory is responsible for creating/fetching HLES with actual credentials
-        # This part needs proper implementation of credential fetching and HLES instantiation
-        # For now, it relies on the factory passed in.
-        hles = self.hyperliquid_service_factory(agent_config.hyperliquid_credentials_id)
-        if not hles:
-             logger.error(f"Failed to get HyperliquidExecutionService for agent {agent_id} using cred_id {agent_config.hyperliquid_credentials_id}.")
-        return hles
+    # _get_hles_instance helper is removed as HLES instantiation will be direct in methods needing it.
+    # Or, it can be kept and modified to use the new factory if preferred for DRY.
+    # For this refactor, let's try direct usage in methods first.
 
     def _safe_float(self, value: Optional[str]) -> Optional[float]:
         if value is None:
@@ -67,9 +55,11 @@ class TradingDataService:
         now_utc = datetime.now(timezone.utc)
 
         if agent_config.execution_provider == "hyperliquid":
-            hles = await self._get_hles_instance(agent_id)
+            # Use new factory directly
+            hles = get_hyperliquid_execution_service_instance(agent_config)
             if not hles:
-                return None # Error already logged by _get_hles_instance
+                logger.warning(f"Could not get HLES instance for agent {agent_id} in get_portfolio_summary.")
+                return None # Error already logged by factory
 
             try:
                 # We need both account snapshot (for positions) and margin summary (for overall values)
@@ -154,8 +144,10 @@ class TradingDataService:
             return []
 
         if agent_config.execution_provider == "hyperliquid":
-            hles = await self._get_hles_instance(agent_id)
+            # Use new factory directly
+            hles = get_hyperliquid_execution_service_instance(agent_config)
             if not hles:
+                logger.warning(f"Could not get HLES instance for agent {agent_id} in get_open_orders.")
                 return []
             try:
                 hl_open_orders: List[HyperliquidOpenOrderItem] = await hles.get_all_open_orders(hles.wallet_address)

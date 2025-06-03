@@ -41,46 +41,64 @@ def mock_hyperliquid_executor():
 
 @pytest_asyncio.fixture
 def trading_coordinator(
+from python_ai_services.services.trade_history_service import TradeHistoryService # Added
+from python_ai_services.models.trade_history_models import TradeFillData # Added
+from datetime import datetime, timezone # Added for fill timestamp
+
+@pytest_asyncio.fixture
+def mock_trade_history_service(): # Added
+    service = AsyncMock(spec=TradeHistoryService)
+    service.record_fill = AsyncMock() # Ensure record_fill is an AsyncMock
+    return service
+
+@pytest_asyncio.fixture
+def trading_coordinator(
     mock_google_bridge: MagicMock,
     mock_a2a_protocol: MagicMock,
     mock_simulated_executor: MagicMock,
-    mock_hyperliquid_executor: MagicMock # Add to params but make it optional in test if needed
+    mock_hyperliquid_executor: MagicMock,
+    mock_trade_history_service: MagicMock # Added
 ):
-    # Default initialization with both executors for general testing
+    # Default initialization with all services
     return TradingCoordinator(
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
-        hyperliquid_execution_service=mock_hyperliquid_executor
+        hyperliquid_execution_service=mock_hyperliquid_executor,
+        trade_history_service=mock_trade_history_service # Added
     )
 
 # --- Tests for __init__ ---
 
-def test_trading_coordinator_init_defaults(
-    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor
+def test_trading_coordinator_init_defaults( # Updated
+    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor, mock_trade_history_service
 ):
     coordinator = TradingCoordinator(
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
-        simulated_trade_executor=mock_simulated_executor
+        simulated_trade_executor=mock_simulated_executor,
+        trade_history_service=mock_trade_history_service
         # hyperliquid_execution_service is None by default
     )
     assert coordinator.google_bridge == mock_google_bridge
     assert coordinator.a2a_protocol == mock_a2a_protocol
     assert coordinator.simulated_trade_executor == mock_simulated_executor
     assert coordinator.hyperliquid_execution_service is None
+    assert coordinator.trade_history_service == mock_trade_history_service
     assert coordinator.trade_execution_mode == "paper"
 
-def test_trading_coordinator_init_with_hyperliquid(
-    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor, mock_hyperliquid_executor
+def test_trading_coordinator_init_with_hyperliquid_and_trade_history( # Renamed and Updated
+    mock_google_bridge, mock_a2a_protocol, mock_simulated_executor, mock_hyperliquid_executor, mock_trade_history_service
 ):
     coordinator = TradingCoordinator(
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
-        hyperliquid_execution_service=mock_hyperliquid_executor
+        hyperliquid_execution_service=mock_hyperliquid_executor,
+        trade_history_service=mock_trade_history_service
     )
     assert coordinator.hyperliquid_execution_service == mock_hyperliquid_executor
+    assert coordinator.trade_history_service == mock_trade_history_service
     assert coordinator.trade_execution_mode == "paper" # Still defaults to paper
 
 # --- Tests for set_trade_execution_mode and get_trade_execution_mode ---
@@ -253,8 +271,53 @@ async def test_execute_live_trade_buy_limit_success(trading_coordinator: Trading
     assert called_arg.asset == "ETH"
     assert called_arg.is_buy is True
     assert called_arg.order_type == {"limit": {"tif": "Gtc"}}
-    assert result["status"] == "live_executed"
-    assert result["details"]["oid"] == 67890
+    # Status changed in a previous subtask due to risk management additions
+    assert result["status"] == "live_executed_with_risk_management"
+    assert result["details"]["main_order"]["oid"] == 67890
+    # Check that record_fill was NOT called because simulated_fills was None in mock_hl_response
+    trading_coordinator.trade_history_service.record_fill.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_execute_live_trade_with_simulated_fills_records_history(
+    trading_coordinator: TradingCoordinator,
+    mock_hyperliquid_executor: MagicMock,
+    mock_trade_history_service: MagicMock # Added
+):
+    await trading_coordinator.set_trade_execution_mode("live")
+    user_id = str(uuid.uuid4())
+    # Market order, price is placeholder for sizing, actual fill price in sim_fill_data
+    trade_params = {"action": "buy", "symbol": "ETH", "quantity": 0.01, "order_type": "market", "price": 0.0}
+
+    # Create mock HLES response with simulated_fills
+    sim_fill_data_dict = {
+        "asset": "ETH", "side": "buy", "quantity": 0.01, "price": 2000.0, # Actual fill price
+        "timestamp": datetime.now(timezone.utc).isoformat(), "fee": 0.2, "fee_currency": "USD",
+        "exchange_order_id": "hl_oid_123", "exchange_trade_id": "hl_tid_abc"
+    }
+    mock_hl_response_with_fills = HyperliquidOrderResponseData(
+        status="filled", oid=12345,
+        order_type_info={"market": {"tif": "Ioc"}},
+        simulated_fills=[sim_fill_data_dict] # List of dicts
+    )
+    mock_hyperliquid_executor.place_order.return_value = mock_hl_response_with_fills
+    # mock_trade_history_service.record_fill is already an AsyncMock from the fixture
+
+    result = await trading_coordinator._execute_trade_decision(trade_params, user_id)
+
+    assert result["status"] == "live_executed_with_risk_management" # Status from risk management update
+    assert result["details"]["main_order"]["oid"] == 12345
+
+    # Verify record_fill was called
+    mock_trade_history_service.record_fill.assert_called_once()
+    called_fill_arg = mock_trade_history_service.record_fill.call_args[0][0]
+    assert isinstance(called_fill_arg, TradeFillData)
+    assert called_fill_arg.agent_id == user_id
+    assert called_fill_arg.asset == sim_fill_data_dict["asset"]
+    assert called_fill_arg.quantity == sim_fill_data_dict["quantity"]
+    assert called_fill_arg.price == sim_fill_data_dict["price"]
+    assert called_fill_arg.timestamp == datetime.fromisoformat(sim_fill_data_dict["timestamp"])
+
 
 @pytest.mark.asyncio
 async def test_execute_live_trade_hyperliquid_service_error(trading_coordinator: TradingCoordinator, mock_hyperliquid_executor: MagicMock):

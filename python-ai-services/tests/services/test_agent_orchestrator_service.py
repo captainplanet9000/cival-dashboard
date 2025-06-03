@@ -30,19 +30,18 @@ def mock_a2a_protocol() -> A2AProtocol:
 def mock_simulated_trade_executor() -> SimulatedTradeExecutor:
     return MagicMock(spec=SimulatedTradeExecutor)
 
-@pytest_asyncio.fixture
-def mock_hles_factory() -> MagicMock: # Callable[[str], Optional[HyperliquidExecutionService]]
-    factory = MagicMock() # Mock the factory callable
-    # What the factory returns should also be a mock or AsyncMock if its methods are async
-    # For now, assume it returns a MagicMock HLES instance
-    hles_instance_mock = MagicMock(spec=HyperliquidExecutionService)
-    factory.return_value = hles_instance_mock
-    return factory
+# mock_hles_factory and mock_hles_instance are removed as we'll patch the factory function directly
 
 @pytest_asyncio.fixture
-def mock_hles_instance(mock_hles_factory: MagicMock) -> MagicMock:
-    return mock_hles_factory.return_value
+def orchestrator_service(
+    mock_agent_service: AgentManagementService,
+    mock_google_bridge: GoogleSDKBridge,
+    mock_a2a_protocol: A2AProtocol,
+from python_ai_services.services.trade_history_service import TradeHistoryService # Added
 
+@pytest_asyncio.fixture
+def mock_trade_history_service() -> TradeHistoryService: # Added
+    return AsyncMock(spec=TradeHistoryService)
 
 @pytest_asyncio.fixture
 def orchestrator_service(
@@ -50,14 +49,16 @@ def orchestrator_service(
     mock_google_bridge: GoogleSDKBridge,
     mock_a2a_protocol: A2AProtocol,
     mock_simulated_trade_executor: SimulatedTradeExecutor,
-    mock_hles_factory: MagicMock
+    mock_trade_history_service: TradeHistoryService # Added
+    # mock_hles_factory removed
 ) -> AgentOrchestratorService:
+    # hles_factory and trade_history_service are now passed to AgentOrchestratorService constructor
     return AgentOrchestratorService(
         agent_service=mock_agent_service,
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_trade_executor,
-        hles_factory=mock_hles_factory
+        trade_history_service=mock_trade_history_service # Added
     )
 
 # --- Helper to create sample AgentConfigOutput ---
@@ -92,8 +93,8 @@ async def test_get_trading_coordinator_paper_agent(orchestrator_service: AgentOr
     agent_config = create_sample_agent_config("paper_agent", provider="paper")
 
     with patch('python_ai_services.services.agent_orchestrator_service.TradingCoordinator') as MockTradingCoordinator:
-        mock_tc_instance = AsyncMock(spec=TradingCoordinator) # Mock instance methods as async
-        mock_tc_instance.set_trade_execution_mode = AsyncMock() # Ensure this is async if called with await
+        mock_tc_instance = AsyncMock(spec=TradingCoordinator)
+        mock_tc_instance.set_trade_execution_mode = AsyncMock()
         MockTradingCoordinator.return_value = mock_tc_instance
 
         coordinator = await orchestrator_service._get_trading_coordinator_for_agent(agent_config)
@@ -103,18 +104,21 @@ async def test_get_trading_coordinator_paper_agent(orchestrator_service: AgentOr
             google_bridge=orchestrator_service.google_bridge,
             a2a_protocol=orchestrator_service.a2a_protocol,
             simulated_trade_executor=mock_simulated_trade_executor,
-            hyperliquid_execution_service=None
+            hyperliquid_execution_service=None,
+            trade_history_service=orchestrator_service.trade_history_service # Verify it's passed
         )
         mock_tc_instance.set_trade_execution_mode.assert_called_once_with("paper")
 
 
 @pytest.mark.asyncio
+@patch('python_ai_services.services.agent_orchestrator_service.get_hyperliquid_execution_service_instance')
 async def test_get_trading_coordinator_hyperliquid_agent_success(
-    orchestrator_service: AgentOrchestratorService,
-    mock_hles_factory: MagicMock,
-    mock_hles_instance: MagicMock
+    mock_get_hles_instance: MagicMock, # Patched factory function
+    orchestrator_service: AgentOrchestratorService
 ):
     agent_config = create_sample_agent_config("hl_agent", provider="hyperliquid", cred_id="cred1")
+    mock_hles_instance = MagicMock(spec=HyperliquidExecutionService) # What the factory returns
+    mock_get_hles_instance.return_value = mock_hles_instance
 
     with patch('python_ai_services.services.agent_orchestrator_service.TradingCoordinator') as MockTradingCoordinator:
         mock_tc_instance = AsyncMock(spec=TradingCoordinator)
@@ -124,29 +128,27 @@ async def test_get_trading_coordinator_hyperliquid_agent_success(
         coordinator = await orchestrator_service._get_trading_coordinator_for_agent(agent_config)
 
         assert coordinator is not None
-        mock_hles_factory.assert_called_once_with("cred1")
+        mock_get_hles_instance.assert_called_once_with(agent_config)
         MockTradingCoordinator.assert_called_once_with(
             google_bridge=orchestrator_service.google_bridge,
             a2a_protocol=orchestrator_service.a2a_protocol,
             simulated_trade_executor=orchestrator_service.simulated_trade_executor,
-            hyperliquid_execution_service=mock_hles_instance
+            hyperliquid_execution_service=mock_hles_instance,
+            trade_history_service=orchestrator_service.trade_history_service # Verify it's passed
         )
         mock_tc_instance.set_trade_execution_mode.assert_called_once_with("hyperliquid")
 
-@pytest.mark.asyncio
-async def test_get_trading_coordinator_hyperliquid_no_factory_returns_none(orchestrator_service: AgentOrchestratorService):
-    orchestrator_service.hles_factory = None # type: ignore # Override for test
-    agent_config = create_sample_agent_config("hl_agent_no_factory", provider="hyperliquid", cred_id="cred1")
-    coordinator = await orchestrator_service._get_trading_coordinator_for_agent(agent_config)
-    assert coordinator is None
 
-
-@pytest.mark.asyncio
-async def test_get_trading_coordinator_hyperliquid_factory_returns_none(orchestrator_service: AgentOrchestratorService, mock_hles_factory: MagicMock):
-    mock_hles_factory.return_value = None # Factory fails to create HLES
+@patch('python_ai_services.services.agent_orchestrator_service.get_hyperliquid_execution_service_instance')
+async def test_get_trading_coordinator_hyperliquid_factory_returns_none(
+    mock_get_hles_instance: MagicMock,
+    orchestrator_service: AgentOrchestratorService
+):
+    mock_get_hles_instance.return_value = None # Factory function returns None
     agent_config = create_sample_agent_config("hl_agent_factory_fail", provider="hyperliquid", cred_id="cred1")
     coordinator = await orchestrator_service._get_trading_coordinator_for_agent(agent_config)
     assert coordinator is None
+    mock_get_hles_instance.assert_called_once_with(agent_config)
 
 # --- Tests for run_single_agent_cycle ---
 

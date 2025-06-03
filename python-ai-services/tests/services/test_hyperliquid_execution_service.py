@@ -196,6 +196,47 @@ async def test_place_order_success(mock_hl_init_bypass): # param name should be 
     assert response_model.status == "resting" # Extracted from statuses[0] key
     assert response_model.oid == 12345
     assert response_model.order_type_info == order_params_data.order_type
+    # By default, for a non-market, non-"filled" status, simulated_fills should be None
+    assert response_model.simulated_fills is None
+
+
+@pytest.mark.asyncio
+@patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None) # Bypass __init__
+async def test_place_market_order_simulated_fills(mock_hl_init_bypass):
+    service = HyperliquidExecutionService("addr", "key")
+    service.exchange_client = MagicMock()
+
+    order_params_market = HyperliquidPlaceOrderParams(
+        asset="ETH", is_buy=True, sz=0.01, limit_px=0, # Market order often uses 0 or a far price
+        order_type={"market": {"tif": "Ioc"}}, # Market order
+    )
+
+    # SDK response indicating immediate fill (or just "ok" and we check market type)
+    sdk_market_fill_response = {
+        "status": "ok",
+        "response": {
+            "type": "order",
+            "data": {"statuses": [{"filled": {"oid": 54321, "totalSz": "0.01", "avgPx": "2001.0"}}]} # Simulate a fill status
+        }
+    }
+    service.exchange_client.order = MagicMock(return_value=sdk_market_fill_response)
+
+    response_model = await service.place_order(order_params_market)
+
+    assert isinstance(response_model, HyperliquidOrderResponseData)
+    assert response_model.status == "filled"
+    assert response_model.oid == 54321
+    assert response_model.simulated_fills is not None
+    assert len(response_model.simulated_fills) == 1
+    fill = response_model.simulated_fills[0]
+    assert fill["asset"] == order_params_market.asset
+    assert fill["side"] == "buy"
+    assert fill["quantity"] == order_params_market.sz
+    assert fill["price"] == order_params_market.limit_px # Using limit_px as stand-in
+    assert "timestamp" in fill
+    assert "fee" in fill
+    assert fill["exchange_order_id"] == str(response_model.oid)
+
 
 @pytest.mark.asyncio
 @patch.object(HyperliquidExecutionService, '__init__', lambda self, *args, **kwargs: None)

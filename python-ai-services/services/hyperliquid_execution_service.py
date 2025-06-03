@@ -173,8 +173,37 @@ class HyperliquidExecutionService:
                     parsed_response = HyperliquidOrderResponseData(
                         status=order_status_key, # "resting", "filled", etc.
                         oid=oid_info.get("oid") if isinstance(oid_info, dict) else None,
-                        order_type_info=order_params.order_type # Echo back the order type sent
+                        order_type_info=order_params.order_type, # Echo back the order type sent
+                        # Add simulated fills if applicable
+                        simulated_fills=None # Placeholder, will be set below if conditions met
                     )
+
+                    # Simulate Fill Generation for market orders or if status indicates immediate fill
+                    # For this example, let's assume 'filled' or if it's a market order
+                    is_market_order = "market" in order_params.order_type
+                    # Could also check order_status_key if it directly indicates a fill (e.g. "filled")
+                    # For simplicity, we'll primarily rely on it being a market order for simulation.
+                    # A real system might get actual fill data from the SDK response if available.
+                    if is_market_order or order_status_key == "filled":
+                        fill_list = []
+                        simulated_fill_dict = {
+                            "asset": order_params.asset,
+                            "side": "buy" if order_params.is_buy else "sell",
+                            "quantity": order_params.sz, # Full quantity fill
+                            # Use limit_px as stand-in for execution price.
+                            # For true market orders, limit_px might be 0 or a conventional far price.
+                            # Actual fill price would come from exchange if not simulating.
+                            "price": order_params.limit_px,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "fee": 0.001 * order_params.sz * order_params.limit_px, # Example: 0.1% fee
+                            "fee_currency": "USD", # Assuming USD for quote currency
+                            "exchange_order_id": str(parsed_response.oid) if parsed_response.oid else None,
+                            "exchange_trade_id": str(uuid.uuid4()) # Simulated unique fill/trade ID
+                        }
+                        fill_list.append(simulated_fill_dict)
+                        parsed_response.simulated_fills = fill_list
+                        logger.info(f"Generated simulated fills for order OID {parsed_response.oid}: {fill_list}")
+
                     logger.info(f"Order placed successfully on Hyperliquid. Status: {parsed_response.status}, OID: {parsed_response.oid}")
                     return parsed_response
                 else:

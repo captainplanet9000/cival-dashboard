@@ -6,57 +6,47 @@ from ..models.agent_models import AgentConfigOutput
 from ..models.api_models import TradingAnalysisCrewRequest
 from ..utils.google_sdk_bridge import GoogleSDKBridge
 from ..utils.a2a_protocol import A2AProtocol
-from typing import Callable, Optional, Any, Dict, List
+from .trade_history_service import TradeHistoryService # Added
+# Use the new factory
+from ..core.factories import get_hyperliquid_execution_service_instance
+from typing import Optional, Any, Dict, List
 from loguru import logger
 import asyncio
-from unittest.mock import MagicMock # For default mock dependencies
+from unittest.mock import MagicMock
 
 class AgentOrchestratorService:
     def __init__(
         self,
         agent_service: AgentManagementService,
+        trade_history_service: TradeHistoryService, # Added
         google_bridge: Optional[GoogleSDKBridge] = None,
         a2a_protocol: Optional[A2AProtocol] = None,
-        simulated_trade_executor: Optional[SimulatedTradeExecutor] = None,
-        hles_factory: Optional[Callable[[str], Optional[HyperliquidExecutionService]]] = None
+        simulated_trade_executor: Optional[SimulatedTradeExecutor] = None
     ):
         self.agent_service = agent_service
+        self.trade_history_service = trade_history_service # Store it
         self.google_bridge = google_bridge if google_bridge else MagicMock(spec=GoogleSDKBridge)
         self.a2a_protocol = a2a_protocol if a2a_protocol else MagicMock(spec=A2AProtocol)
         self.simulated_trade_executor = simulated_trade_executor if simulated_trade_executor else MagicMock(spec=SimulatedTradeExecutor)
 
-        if hles_factory:
-            self.hles_factory = hles_factory
-        else:
-            # Default factory returns None, ensuring no live HLES if not properly configured
-            def default_factory(cred_id: str) -> Optional[HyperliquidExecutionService]:
-                logger.warning(f"Default HLES factory called for cred_id {cred_id}: HLES not configured. Returning None.")
-                return None
-            self.hles_factory = default_factory
-
-        logger.info("AgentOrchestratorService initialized.")
+        logger.info("AgentOrchestratorService initialized with TradeHistoryService.")
 
     async def _get_trading_coordinator_for_agent(self, agent_config: AgentConfigOutput) -> Optional[TradingCoordinator]:
         logger.debug(f"Getting TradingCoordinator for agent: {agent_config.agent_id} ({agent_config.name})")
         hles_instance: Optional[HyperliquidExecutionService] = None
 
         if agent_config.execution_provider == "hyperliquid":
-            if self.hles_factory and agent_config.hyperliquid_credentials_id:
-                try:
-                    # The factory is responsible for creating HLES with actual credentials
-                    hles_instance = self.hles_factory(agent_config.hyperliquid_credentials_id)
-                    if not hles_instance:
-                        logger.error(f"HLES factory returned None for agent {agent_config.agent_id} with cred_id {agent_config.hyperliquid_credentials_id}.")
-                        return None
-                    logger.info(f"Successfully obtained HyperliquidExecutionService instance for agent {agent_config.agent_id}.")
-                except Exception as e:
-                    logger.error(f"Error creating HyperliquidExecutionService via factory for agent {agent_config.agent_id}: {e}", exc_info=True)
-                    return None
-            else:
-                logger.error(f"Agent {agent_config.agent_id} configured for Hyperliquid but HLES factory or credentials_id is missing.")
+            # Use the new factory function directly
+            hles_instance = get_hyperliquid_execution_service_instance(agent_config)
+            if not hles_instance:
+                # Error logging is handled by the factory function
+                logger.warning(f"Could not get HLES instance for Hyperliquid agent {agent_config.agent_id}. TradingCoordinator setup will proceed without it or fail if essential.")
+                # Depending on TradingCoordinator's strictness, it might still work if only paper trading part is used by mistake,
+                # or fail if HLES is strictly required for "hyperliquid" mode.
+                # For this logic, if provider is "hyperliquid", HLES is essential.
                 return None
 
-        # Ensure simulated_trade_executor is available if paper trading or if HLES fails and paper is fallback (not current logic)
+        # Ensure simulated_trade_executor is available if paper trading
         # For "paper" mode, simulated_trade_executor must be provided at Orchestrator init.
         if agent_config.execution_provider == "paper" and not self.simulated_trade_executor:
              logger.error(f"Agent {agent_config.agent_id} configured for paper trading, but SimulatedTradeExecutor not available in Orchestrator.")
@@ -69,8 +59,9 @@ class AgentOrchestratorService:
             coordinator = TradingCoordinator(
                 google_bridge=self.google_bridge,
                 a2a_protocol=self.a2a_protocol,
-                simulated_trade_executor=self.simulated_trade_executor, # Must be present for paper, can be present for HL
-                hyperliquid_execution_service=hles_instance # This will be None for paper mode
+                simulated_trade_executor=self.simulated_trade_executor,
+                hyperliquid_execution_service=hles_instance,
+                trade_history_service=self.trade_history_service # Pass it through
             )
             # Set trade execution mode on the coordinator instance
             await coordinator.set_trade_execution_mode(agent_config.execution_provider)

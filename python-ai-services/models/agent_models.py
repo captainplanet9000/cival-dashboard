@@ -22,15 +22,17 @@ class AgentConfigBase(BaseModel):
     strategy: AgentStrategyConfig
     risk_config: AgentRiskConfig
     execution_provider: Literal["paper", "hyperliquid"] = "paper"
-    hyperliquid_credentials_id: Optional[str] = None # ID to link to stored HL credentials
+    hyperliquid_credentials_id: Optional[str] = None # ID to link to stored HL credentials (DEPRECATED by hyperliquid_config)
+    hyperliquid_config: Optional[Dict[str, str]] = Field(default=None, description="Configuration for Hyperliquid: {'wallet_address': '0x...', 'private_key_env_var_name': 'AGENT_X_HL_PRIVKEY', 'network_mode': 'mainnet/testnet'}")
 
 class AgentConfigInput(AgentConfigBase):
     pass
 
 class AgentConfigOutput(AgentConfigBase):
     agent_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
+    # hyperliquid_config is inherited from AgentConfigBase
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) # Ensure timezone
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc)) # Ensure timezone
     is_active: bool = False # Is the agent's main trading loop active?
 
 class AgentStatus(BaseModel):
@@ -45,5 +47,6 @@ class AgentUpdateRequest(BaseModel):
     strategy: Optional[AgentStrategyConfig] = None
     risk_config: Optional[AgentRiskConfig] = None
     execution_provider: Optional[Literal["paper", "hyperliquid"]] = None
-    hyperliquid_credentials_id: Optional[str] = None
+    hyperliquid_credentials_id: Optional[str] = None # DEPRECATED by hyperliquid_config
+    hyperliquid_config: Optional[Dict[str, str]] = None
     is_active: Optional[bool] = None # Allow updating active status via this model too

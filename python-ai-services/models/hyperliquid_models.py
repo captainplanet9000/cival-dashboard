@@ -29,6 +29,7 @@ class HyperliquidOrderResponseData(BaseModel):
     status: str
     oid: Optional[int] = None
     order_type_info: Optional[Dict[str, Any]] = Field(default=None, alias="type")
+    simulated_fills: Optional[List[Dict[str, Any]]] = Field(default=None, description="Simulated fill data for orders that would fill immediately.")
 
 class HyperliquidOrderStatusInfo(BaseModel):
     order: Dict[str, Any]

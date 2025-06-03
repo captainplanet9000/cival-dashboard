@@ -17,25 +17,8 @@ from python_ai_services.api.v1.agent_management_routes import get_agent_manageme
 
 router = APIRouter()
 
-# Dependency for HyperliquidExecutionService Factory
-def get_hyperliquid_service_factory_placeholder() -> Callable[[str], Optional[Any]]: # Actual HLES type
-    """
-    Placeholder factory for HyperliquidExecutionService.
-    In a real setup, this would fetch credentials based on cred_id and initialize
-    a HyperliquidExecutionService instance.
-    """
-    def factory(credentials_id: str) -> Optional[Any]: # Actual HLES type
-        # This is where you would look up credentials by ID from a secure store
-        # and then instantiate the HyperliquidExecutionService.
-        # Example:
-        # creds = db.get_credentials(credentials_id)
-        # if creds:
-        #     return HyperliquidExecutionService(wallet_address=creds.wallet, private_key=creds.pk, ...)
-        logger.info(f"Hyperliquid service factory called for cred_id: {credentials_id} (placeholder).")
-        # Returning None to simulate that the actual HLES instance creation is pending.
-        # For testing or if a default mock HLES is available, it could be returned here.
-        return None # Or a mock instance of HyperliquidExecutionService
-    return factory
+# Dependency for HyperliquidExecutionService Factory - REMOVED
+# def get_hyperliquid_service_factory_placeholder()...
 
 
 from python_ai_services.services.trade_history_service import TradeHistoryService # Added
@@ -51,17 +34,13 @@ def get_trade_history_service_instance() -> TradeHistoryService:
 # Dependency for TradingDataService
 def get_trading_data_service(
     agent_service: AgentManagementService = Depends(get_agent_management_service_singleton),
-    hl_factory: Callable[[str], Optional[Any]] = Depends(get_hyperliquid_service_factory_placeholder), # Actual HLES type
-    trade_history_service: TradeHistoryService = Depends(get_trade_history_service_instance) # New dependency
+    # hl_factory removed from parameters
+    trade_history_service: TradeHistoryService = Depends(get_trade_history_service_instance)
 ) -> TradingDataService:
-    # This ensures TradingDataService is created per request, or make it a singleton if preferred.
-    # If AgentManagementService is a singleton, TradingDataService can also be a singleton
-    # if hl_factory is also stable or if HLES instances are managed elsewhere (e.g., cached by factory).
-    # For now, new instance per request is fine.
+    # TradingDataService no longer takes hyperliquid_service_factory
     return TradingDataService(
         agent_service=agent_service,
-        hyperliquid_service_factory=hl_factory,
-        trade_history_service=trade_history_service # Pass it here
+        trade_history_service=trade_history_service
     )
 
 
@@ -130,7 +109,11 @@ async def get_agent_order_history(
     order_history = await service.get_order_history(agent_id, limit, offset)
     return order_history
 
-# Need to import logger if used in factory, e.g. from loguru import logger
-from loguru import logger # Added for the factory placeholder
-from typing import Callable # Added for factory type hint
+# Need to import logger if used in factory, e.g. from loguru import logger - REMOVED
+# from loguru import logger
+from typing import Callable # Added for factory type hint - NO LONGER NEEDED for hl_factory
+# We still need Callable if we were to type hint the Depends more strictly, but not essential here.
+# For simplicity, can remove if not used elsewhere, or keep for general utility.
+# Let's remove to reflect that the specific HLES factory Callable is gone.
+# from typing import Callable
 ```

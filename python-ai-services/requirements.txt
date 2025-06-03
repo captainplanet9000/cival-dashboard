@@ -46,3 +46,6 @@ python-jose[cryptography]>=3.3.0
 
 # Letta Client (MemGPT)
 letta-client
+
+# Scheduler
+APScheduler>=3.0.0,<4.0.0
