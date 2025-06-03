@@ -1,335 +1,99 @@
-# This file makes the 'models' directory a Python package.
-# It can be used to store Pydantic models related to crew inputs, outputs, or shared data structures.
-# For example:
-# from .crew_models import TradeSignal, MarketAnalysisOutput
+# __init__.py for models
+from .api_models import (
+    TradingAnalysisCrewRequest,
+    TradingSignal,
+    BaseResponseModel,
+    ErrorDetail,
+    TradeDecisionAction,
+    TradingDecision,
+    ExecuteTradeRequest,
+    ExecuteTradeResponse,
+    RegisterAgentRequest,
+    RegisterAgentResponse,
+    AgentStatusResponse,
+    AgentTradingHistoryResponse,
+    TradeExecutionResult,
+    SetTradeExecutionModeRequest,
+    SetTradeExecutionModeResponse,
+    GetTradeExecutionModeResponse
+)
 
-# Export models from base_models.py (if it exists and is used)
-# This assumes base_models.py is in the same directory (models/)
-try:
-    from .base_models import MarketData, TradeSignal, ProposedTradeSignal # Added ProposedTradeSignal
-    __all__ = ['MarketData', 'TradeSignal', 'ProposedTradeSignal'] # Added ProposedTradeSignal
-except ImportError:
-    # Handle case where base_models might not exist or has issues
-    # Or if it's not intended to be part of the public API of this package
-    __all__ = [] 
-    pass
+from .paper_trading_models import (
+    PaperTradeOrder,
+    PaperTradeFill,
+    PaperAccountSummary
+)
 
-# Export models from agent_task_models.py
-try:
-    from .agent_task_models import AgentTask, AgentTaskStatus
-    # Append to __all__ if it was initialized
-    if '__all__' in globals():
-        __all__.extend(['AgentTask', 'AgentTaskStatus'])
-    else: # If base_models import failed and __all__ wasn't created
-        __all__ = ['AgentTask', 'AgentTaskStatus']
-except ImportError:
-    # Handle case where agent_task_models might not exist (should not happen here)
-    pass
+from .trading_history_models import (
+    TradeSide,
+    OrderStatus,
+    OrderType,
+    TradeRecord,
+    TradingHistory
+)
 
-# Export models from event_models.py
-try:
-    from .event_models import EventType, EventData, EventPriority, AlertEvent, AlertLevel
-    if '__all__' in globals():
-        __all__.extend(['EventType', 'EventData', 'EventPriority', 'AlertEvent', 'AlertLevel'])
-    else:
-        __all__ = ['EventType', 'EventData', 'EventPriority', 'AlertEvent', 'AlertLevel']
-except ImportError:
-    # This might happen if event_models.py hasn't been created with all these specific models yet.
-    try:
-        from .event_models import AlertEvent, AlertLevel
-        if '__all__' in globals():
-            __all__.extend(['AlertEvent', 'AlertLevel'])
-        else:
-            __all__ = ['AlertEvent', 'AlertLevel']
-    except ImportError:
-        pass
+from .hyperliquid_models import (
+    HyperliquidCredentials,
+    HyperliquidPlaceOrderParams,
+    HyperliquidOrderResponseData,
+    HyperliquidOrderStatusInfo,
+    HyperliquidAssetPosition,
+    HyperliquidOpenOrderItem,
+    HyperliquidMarginSummary,
+    HyperliquidAccountSnapshot
+)
 
-# Export models from watchlist_models.py
-try:
-    from .watchlist_models import (
-        WatchlistItemBase, WatchlistItemCreate, WatchlistItem,
-        WatchlistBase, WatchlistCreate, Watchlist, WatchlistWithItems,
-        AddWatchlistItemsRequest,
-        BatchQuotesRequest, BatchQuotesResponseItem, BatchQuotesResponse
-    )
-    new_watchlist_exports = [
-        "WatchlistItemBase", "WatchlistItemCreate", "WatchlistItem",
-        "WatchlistBase", "Watchlist", "WatchlistCreate", "WatchlistWithItems",
-        "AddWatchlistItemsRequest",
-        "BatchQuotesRequest", "BatchQuotesResponseItem", "BatchQuotesResponse"
-    ]listCreate", "Watchlist", "WatchlistWithItems",
-        "AddWatchlistItemsRequest",
-        "BatchQuotesRequest", "BatchQuotesResponseItem", "BatchQuotesResponse"
-    ]
-    if '__all__' in globals():
-        __all__.extend(new_watchlist_exports)
-    else:
-        __all__ = new_watchlist_exports
-except ImportError:
-    pass
+from .agent_models import (
+    AgentStrategyConfig,
+    AgentRiskConfig,
+    AgentConfigBase,
+    AgentConfigInput,
+    AgentConfigOutput,
+    AgentStatus,
+    AgentUpdateRequest
+)
 
-# Export models from auth_models.py
-try:
-    from .auth_models import AuthenticatedUser
-    if '__all__' in globals():
-        __all__.append("AuthenticatedUser")
-    else:
-        __all__ = ["AuthenticatedUser"]
-except ImportError:
-    pass
+from .dashboard_models import (
+    AssetPositionSummary,
+    PortfolioSummary,
+    TradeLogItem,
+    OrderLogItem
+)
 
-# Export models from user_models.py
-try:
-    from .user_models import UserPreferences
-    if '__all__' in globals():
-        __all__.append("UserPreferences")
-    else:
-        __all__ = ["UserPreferences"]
-except ImportError:
-    pass
+from .performance_models import (
+    PerformanceMetrics
+)
 
-# Export models from strategy_models.py
-try:
-    from .strategy_models import (
-        StrategyTimeframe, BaseStrategyConfig,
-        DarvasBoxParams, WilliamsAlligatorParams, RenkoParams, HeikinAshiParams, ElliottWaveParams,
-        StrategySpecificParams, StrategyConfig,
-        TradeStats, PerformanceMetrics,
-        Goal, StrategyGoalAlignment, StrategyPerformanceTeaser
-    )
-    strategy_model_exports = [
-        "StrategyTimeframe", "BaseStrategyConfig",
-        "DarvasBoxParams", "WilliamsAlligatorParams", "RenkoParams", "HeikinAshiParams", "ElliottWaveParams",
-        "StrategySpecificParams", "StrategyConfig",
-        "TradeStats", "PerformanceMetrics",
-        "Goal", "StrategyGoalAlignment", "StrategyPerformanceTeaser"
-    ]
-    if '__all__' in globals():
-        __all__.extend(strategy_model_exports)
-    else:
-        __all__ = strategy_model_exports
-except ImportError:
-    pass
+from .alert_models import (
+    AlertCondition,
+    AlertConfigBase,
+    AlertConfigInput,
+    AlertConfigOutput,
+    AlertNotification
+)
 
-# Export models from visualization_models.py
-try:
-    from .visualization_models import StrategyVisualizationRequest, StrategyVisualizationDataResponse, OHLCVBar, IndicatorDataPoint, SignalDataPoint
-    new_visualization_exports = ["StrategyVisualizationRequest", "StrategyVisualizationDataResponse", "OHLCVBar", "IndicatorDataPoint", "SignalDataPoint"]
-    if '__all__' in globals():
-        __all__.extend(new_visualization_exports)
-    else:
-        __all__ = new_visualization_exports
-except ImportError:
-    pass
-
-# Export models from agent_config_models.py
-try:
-    from .agent_config_models import CrewAgentConfig
-    if '__all__' in globals():
-        __all__.append('CrewAgentConfig') # Use append for single item
-    else:
-        __all__ = ['CrewAgentConfig']
-except ImportError:
-    pass
-
-# Export models from crew_models.py
-try:
-    from .crew_models import CrewBlueprint
-    if '__all__' in globals():
-        __all__.append('CrewBlueprint')
-    else:
-        __all__ = ['CrewBlueprint']
-except ImportError:
-    pass
-
-# Export models from knowledge_models.py
-try:
-    from .knowledge_models import SharedKnowledgeItem
-    if '__all__' in globals():
-        __all__.append('SharedKnowledgeItem')
-    else:
-        __all__ = ['SharedKnowledgeItem']
-except ImportError:
-    pass
-
-# Export models from monitoring_models.py
-try:
-    from .monitoring_models import AgentTaskSummary, TaskListResponse, DependencyStatus, SystemHealthSummary
-    if '__all__' in globals():
-        __all__.extend(["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"])
-    else:
-        __all__ = ["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"]
-except ImportError:
-    pass
-
-# Export models from trading_history_models.py
-try:
-    from .trading_history_models import TradeRecord, TradeSide, OrderStatus, OrderType
-    if '__all__' in globals():
-        __all__.extend(["TradeRecord", "TradeSide", "OrderStatus", "OrderType"])
-    else:
-        __all__ = ["TradeRecord", "TradeSide", "OrderStatus", "OrderType"]
-except ImportError:
-    pass
-
-<<<<<<< HEAD
-# Export models from trading_strategy.py
-try:
-    from .trading_strategy import StrategyType, StrategyConfig, StrategyPerformance
-    if '__all__' in globals():
-        __all__.extend(["StrategyType", "StrategyConfig", "StrategyPerformance"])
-    else:
-        __all__ = ["StrategyType", "StrategyConfig", "StrategyPerformance"]
-=======
-# Export models from context_models.py
-try:
-    from .context_models import RunContext
-    if '__all__' in globals():
-        __all__.append("RunContext") # Use append for single item
-    else:
-        __all__ = ["RunContext"]
-except ImportError:
-    pass
-
-# Export models from paper_trading_models.py
-try:
-    from .paper_trading_models import PaperTradeOrder, PaperTradeFill, PaperPosition, CreatePaperTradeOrderRequest
-    # Note: TradeSide, PaperOrderType, PaperOrderStatus are typically not re-exported
-    # if they are just aliases of types already exported from trading_history_models.py
-    # If they were unique types, they would be added here.
-    paper_trading_exports = ["PaperTradeOrder", "PaperTradeFill", "PaperPosition", "CreatePaperTradeOrderRequest"]
-    if '__all__' in globals():
-        __all__.extend(paper_trading_exports)
-    else:
-        __all__ = paper_trading_exports
-except ImportError:
-    pass
-
-# Export models from event_models.py
-try:
-    from .event_models import BaseEvent, AgentCallbackEvent, AgentTaskExecutionEvent, AgentLogEvent, CrewLifecycleEvent, AlertEvent, AlertLevel
-    # Note: Only add new, unique model types to __all__. BaseEvent might be internal.
-    # Assuming specific event types are what users of the package will import.
-    new_event_exports = ["AgentCallbackEvent", "AgentTaskExecutionEvent", "AgentLogEvent", "CrewLifecycleEvent", "AlertEvent", "AlertLevel"]
-    # Also BaseEvent if it's meant to be subclassed externally by users of the package
-    # new_event_exports.append("BaseEvent")
-    if '__all__' in globals():
-        __all__.extend(new_event_exports)
-    else:
-        __all__ = new_event_exports
-except ImportError:
-    # This might happen if event_models.py hasn't been created with all these specific models yet.
-    # For this step, we are adding AlertEvent and AlertLevel.
-    # A more targeted update if other event models are not yet defined:
-    try:
-        from .event_models import AlertEvent, AlertLevel
-        if '__all__' in globals():
-            __all__.extend(["AlertEvent", "AlertLevel"])
-        else:
-            __all__ = ["AlertEvent", "AlertLevel"]
-    except ImportError:
-        pass # Final fallback if even AlertEvent/AlertLevel can't be imported (should not happen if file was created)
-    pass
-
-# Export models from validation_models.py
-try:
-    from .validation_models import ValidationReport, ValidationCheckResult, ValidationStatus
-    new_validation_exports = ["ValidationReport", "ValidationCheckResult", "ValidationStatus"]
-    if '__all__' in globals():
-        __all__.extend(new_validation_exports)
-    else:
-        __all__ = new_validation_exports
-except ImportError:
-    pass
-
-# Export models from hyperliquid_models.py
-try:
-    from .hyperliquid_models import (
-        HyperliquidCredentials, HyperliquidPlaceOrderParams, HyperliquidOrderResponseData,
-        HyperliquidOrderStatusInfo, HyperliquidAssetPosition, HyperliquidOpenOrderItem,
-        HyperliquidMarginSummary, HyperliquidAccountSnapshot,
-        HyperliquidOrderType, HyperliquidOrderSide, HyperliquidOrderStatus
-    )
-    new_hyperliquid_exports = [
-        "HyperliquidCredentials", "HyperliquidPlaceOrderParams", "HyperliquidOrderResponseData",
-        "HyperliquidOrderStatusInfo", "HyperliquidAssetPosition", "HyperliquidOpenOrderItem",
-        "HyperliquidMarginSummary", "HyperliquidAccountSnapshot",
-        "HyperliquidOrderType", "HyperliquidOrderSide", "HyperliquidOrderStatus"
-    ]
-    if '__all__' in globals():
-        __all__.extend(new_hyperliquid_exports)
-    else:
-        __all__ = new_hyperliquid_exports
-except ImportError:
-    pass
-
-# Export models from agent_config_models.py
-try:
-    from .agent_config_models import CrewAgentConfig
-    if '__all__' in globals():
-        __all__.append('CrewAgentConfig') # Use append for single item
-    else:
-        __all__ = ['CrewAgentConfig']
-except ImportError:
-    pass
-
-# Export models from crew_models.py
-try:
-    from .crew_models import CrewBlueprint
-    if '__all__' in globals():
-        __all__.append('CrewBlueprint')
-    else:
-        __all__ = ['CrewBlueprint']
-except ImportError:
-    pass
-
-# Export models from knowledge_models.py
-try:
-    from .knowledge_models import SharedKnowledgeItem
-    if '__all__' in globals():
-        __all__.append('SharedKnowledgeItem')
-    else:
-        __all__ = ['SharedKnowledgeItem']
-except ImportError:
-    pass
-
-# Export models from monitoring_models.py
-try:
-    from .monitoring_models import AgentTaskSummary, TaskListResponse, DependencyStatus, SystemHealthSummary
-    if '__all__' in globals():
-        __all__.extend(["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"])
-    else:
-        __all__ = ["AgentTaskSummary", "TaskListResponse", "DependencyStatus", "SystemHealthSummary"]
-except ImportError:
-    pass
-
-# Export models from trading_history_models.py
-try:
-    from .trading_history_models import TradeRecord, TradeSide, OrderStatus, OrderType
-    if '__all__' in globals():
-        __all__.extend(["TradeRecord", "TradeSide", "OrderStatus", "OrderType"])
-    else:
-        __all__ = ["TradeRecord", "TradeSide", "OrderStatus", "OrderType"]
-except ImportError:
-    pass
-
-# Export models from trading_strategy.py
-try:
-    from .trading_strategy import StrategyType, StrategyConfig, StrategyPerformance
-    if '__all__' in globals():
-        __all__.extend(["StrategyType", "StrategyConfig", "StrategyPerformance"])
-    else:
-        __all__ = ["StrategyType", "StrategyConfig", "StrategyPerformance"]
-except ImportError:
-    pass
-
-# Export models from validation_models.py
-try:
-    from .validation_models import ValidationReport, ValidationCheckResult, ValidationStatus
-    new_validation_exports = ["ValidationReport", "ValidationCheckResult", "ValidationStatus"]
-    if '__all__' in globals():
-        __all__.extend(new_validation_exports)
-    else:
-        __all__ = new_validation_exports
-except ImportError:
-    pass
+__all__ = [
+    # api_models
+    "TradingAnalysisCrewRequest", "TradingSignal", "BaseResponseModel", "ErrorDetail",
+    "TradeDecisionAction", "TradingDecision", "ExecuteTradeRequest", "ExecuteTradeResponse",
+    "RegisterAgentRequest", "RegisterAgentResponse", "AgentStatusResponse",
+    "AgentTradingHistoryResponse", "TradeExecutionResult",
+    "SetTradeExecutionModeRequest", "SetTradeExecutionModeResponse", "GetTradeExecutionModeResponse",
+    # paper_trading_models
+    "PaperTradeOrder", "PaperTradeFill", "PaperAccountSummary",
+    # trading_history_models
+    "TradeSide", "OrderStatus", "OrderType", "TradeRecord", "TradingHistory",
+    # hyperliquid_models
+    "HyperliquidCredentials", "HyperliquidPlaceOrderParams", "HyperliquidOrderResponseData",
+    "HyperliquidOrderStatusInfo", "HyperliquidAssetPosition", "HyperliquidOpenOrderItem",
+    "HyperliquidMarginSummary", "HyperliquidAccountSnapshot",
+    # agent_models
+    "AgentStrategyConfig", "AgentRiskConfig", "AgentConfigBase", "AgentConfigInput",
+    "AgentConfigOutput", "AgentStatus", "AgentUpdateRequest",
+    # dashboard_models
+    "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
+    # performance_models
+    "PerformanceMetrics",
+    # alert_models
+    "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification"
+]
