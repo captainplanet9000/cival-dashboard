@@ -4,9 +4,15 @@ from typing import List, Optional, Any
 from python_ai_services.models.dashboard_models import (
     PortfolioSummary,
     TradeLogItem,
-    OrderLogItem
+    OrderLogItem,
+    PortfolioSnapshotOutput # Added
 )
 from python_ai_services.services.trading_data_service import TradingDataService
+from python_ai_services.services.portfolio_snapshot_service import PortfolioSnapshotService # Added
+from python_ai_services.core.database import SessionLocal # Added for PSS factory
+from python_ai_services.services.event_bus_service import EventBusService # Added for PSS factory (optional)
+from datetime import datetime # Ensure datetime is imported for Query type hint
+from fastapi import Query # Ensure Query is imported for Query type hint
 from python_ai_services.services.agent_management_service import AgentManagementService
 # Assuming the get_agent_management_service from agent_management_routes can be reused or a similar one exists
 # For simplicity, let's assume we can import the one from agent_management_routes if it provides the singleton
@@ -116,4 +122,73 @@ from typing import Callable # Added for factory type hint - NO LONGER NEEDED for
 # For simplicity, can remove if not used elsewhere, or keep for general utility.
 # Let's remove to reflect that the specific HLES factory Callable is gone.
 # from typing import Callable
+
+# Dependency for EventBusService (simplified for this subtask if not already global)
+# In a real app, this would be a singleton from main.py or a central DI provider.
+_event_bus_service_instance_temp: Optional[EventBusService] = None
+def get_event_bus_service_instance_temp() -> Optional[EventBusService]:
+    global _event_bus_service_instance_temp
+    if _event_bus_service_instance_temp is None:
+        # _event_bus_service_instance_temp = EventBusService() # Basic instantiation
+        # For this subtask, PortfolioSnapshotService makes EventBus optional, so pass None
+        pass
+    return _event_bus_service_instance_temp
+
+# Dependency for PortfolioSnapshotService
+_portfolio_snapshot_service_instance: Optional[PortfolioSnapshotService] = None
+def get_portfolio_snapshot_service_instance() -> PortfolioSnapshotService:
+    global _portfolio_snapshot_service_instance
+    if _portfolio_snapshot_service_instance is None:
+        _portfolio_snapshot_service_instance = PortfolioSnapshotService(
+            session_factory=SessionLocal,
+            event_bus=get_event_bus_service_instance_temp() # Pass optional event_bus
+        )
+    return _portfolio_snapshot_service_instance
+
+@router.get(
+    "/agents/{agent_id}/portfolio/equity-curve",
+    response_model=List[PortfolioSnapshotOutput],
+    summary="Get historical equity curve for an agent",
+    tags=["Dashboard Data", "Portfolio"] # Added Portfolio tag
+)
+async def get_agent_equity_curve(
+    agent_id: str,
+    start_time: Optional[datetime] = Query(None, description="ISO 8601 format start time, e.g., 2023-01-01T00:00:00Z"),
+    end_time: Optional[datetime] = Query(None, description="ISO 8601 format end time, e.g., 2023-12-31T23:59:59Z"),
+    limit: Optional[int] = Query(1000, ge=1, le=10000, description="Max number of data points. Default 1000."), # Increased max limit
+    sort_ascending: bool = Query(True, description="Sort snapshots by time ascending (chronological). False for descending."),
+    snapshot_service: PortfolioSnapshotService = Depends(get_portfolio_snapshot_service_instance)
+):
+    """
+    Retrieves historical portfolio equity data points for a given agent,
+    allowing for time-based filtering and pagination.
+    This data can be used to plot an equity curve.
+    """
+    try:
+        # Ensure timezone-aware datetimes if provided (FastAPI might handle this based on model)
+        # For direct Query params, it's good to be explicit if service expects aware datetimes.
+        # PortfolioSnapshotService now handles timezone awareness internally if naive is passed
+        # if start_time and start_time.tzinfo is None:
+        #     start_time = start_time.replace(tzinfo=timezone.utc) # timezone needs import from datetime
+        # if end_time and end_time.tzinfo is None:
+        #     end_time = end_time.replace(tzinfo=timezone.utc)
+
+        snapshots = await snapshot_service.get_historical_snapshots(
+            agent_id=agent_id,
+            start_time=start_time,
+            end_time=end_time,
+            limit=limit,
+            sort_ascending=sort_ascending
+        )
+        if not snapshots:
+            # Return 200 with empty list if no snapshots found, or 404 if agent itself not found (service doesn't check agent existence)
+            pass
+        return snapshots
+    except Exception as e:
+        # from loguru import logger # Import logger if used here, or ensure it's module level
+        # logger.error(f"Error fetching equity curve for agent {agent_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve equity curve: {str(e)}")
+
+
+@router.get("/agents/{agent_id}/portfolio/summary", response_model=PortfolioSummary)
 ```

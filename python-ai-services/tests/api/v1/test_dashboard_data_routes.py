@@ -2,12 +2,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, AsyncMock # AsyncMock for async service methods
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta # Added timedelta
 import uuid
+from typing import List, Optional # Added List, Optional
 
-from python_ai_services.models.dashboard_models import PortfolioSummary, TradeLogItem, OrderLogItem, AssetPositionSummary
+from python_ai_services.models.dashboard_models import PortfolioSummary, TradeLogItem, OrderLogItem, AssetPositionSummary, PortfolioSnapshotOutput # Added PortfolioSnapshotOutput
 from python_ai_services.services.trading_data_service import TradingDataService
-from python_ai_services.api.v1.dashboard_data_routes import router as dashboard_data_router, get_trading_data_service
+from python_ai_services.services.portfolio_snapshot_service import PortfolioSnapshotService # Added
+# Import the dependency provider function from the routes file
+from python_ai_services.api.v1.dashboard_data_routes import router as dashboard_data_router, get_trading_data_service, get_portfolio_snapshot_service_instance # Added get_portfolio_snapshot_service_instance
+from fastapi import Query # Added Query
 
 # Create a minimal FastAPI app for testing this specific router
 app = FastAPI()
@@ -21,6 +25,13 @@ def override_get_trading_data_service():
     return mock_service_tds
 
 app.dependency_overrides[get_trading_data_service] = override_get_trading_data_service
+
+# Mock and override for PortfolioSnapshotService
+mock_service_pss = MagicMock(spec=PortfolioSnapshotService)
+def override_get_portfolio_snapshot_service():
+    return mock_service_pss
+app.dependency_overrides[get_portfolio_snapshot_service_instance] = override_get_portfolio_snapshot_service
+
 
 client = TestClient(app)
 
@@ -147,4 +158,75 @@ def test_get_agent_order_history():
     assert response_json[0]["status"] == "filled"
     mock_service_tds.get_order_history.assert_called_once_with(agent_id, 10, 0)
 
+
+# --- Tests for /agents/{agent_id}/portfolio/equity-curve ---
+
+def _create_sample_portfolio_snapshot_output(agent_id: str, equity: float, offset_days: int = 0) -> PortfolioSnapshotOutput:
+    return PortfolioSnapshotOutput(
+        agent_id=agent_id,
+        timestamp=datetime.now(timezone.utc) - timedelta(days=offset_days),
+        total_equity_usd=equity
+    )
+
+def test_get_agent_equity_curve_success():
+    agent_id = "agent_equity_test"
+    mock_snapshots = [
+        _create_sample_portfolio_snapshot_output(agent_id, 10000.0, 2),
+        _create_sample_portfolio_snapshot_output(agent_id, 10100.0, 1),
+        _create_sample_portfolio_snapshot_output(agent_id, 10050.0, 0)
+    ]
+    mock_service_pss.get_historical_snapshots = AsyncMock(return_value=mock_snapshots)
+
+    start_time_iso = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    end_time_iso = datetime.now(timezone.utc).isoformat()
+
+    response = client.get(
+        f"/api/v1/agents/{agent_id}/portfolio/equity-curve",
+        params={"start_time": start_time_iso, "end_time": end_time_iso, "limit": 10, "sort_ascending": "true"}
+    )
+    assert response.status_code == 200
+    response_json = response.json()
+    assert len(response_json) == 3
+    assert response_json[0]["agent_id"] == agent_id
+    assert response_json[0]["total_equity_usd"] == 10000.0
+
+    mock_service_pss.get_historical_snapshots.assert_called_once()
+    call_args = mock_service_pss.get_historical_snapshots.call_args[1] # kwargs
+    assert call_args['agent_id'] == agent_id
+    assert isinstance(call_args['start_time'], datetime)
+    assert isinstance(call_args['end_time'], datetime)
+    assert call_args['limit'] == 10
+    assert call_args['sort_ascending'] is True
+
+
+def test_get_agent_equity_curve_no_snapshots():
+    agent_id = "agent_no_equity_data"
+    mock_service_pss.get_historical_snapshots = AsyncMock(return_value=[])
+
+    response = client.get(f"/api/v1/agents/{agent_id}/portfolio/equity-curve")
+    assert response.status_code == 200
+    assert response.json() == []
+    mock_service_pss.get_historical_snapshots.assert_called_once_with(
+        agent_id=agent_id, start_time=None, end_time=None, limit=1000, sort_ascending=True # Default limit, sort_ascending from route
+    )
+
+def test_get_agent_equity_curve_service_error():
+    agent_id = "agent_equity_error"
+    mock_service_pss.get_historical_snapshots = AsyncMock(side_effect=Exception("Database connection failed"))
+
+    response = client.get(f"/api/v1/agents/{agent_id}/portfolio/equity-curve")
+    assert response.status_code == 500
+    assert "Failed to retrieve equity curve: Database connection failed" in response.json()["detail"]
+
+def test_get_agent_equity_curve_invalid_limit_param():
+    agent_id = "agent_equity_limit_fail"
+    # Test value less than ge=1
+    response_low = client.get(f"/api/v1/agents/{agent_id}/portfolio/equity-curve?limit=0")
+    assert response_low.status_code == 422 # Unprocessable Entity for Pydantic/FastAPI validation
+
+    # Test value greater than le=10000 (as defined in the new endpoint)
+    response_high = client.get(f"/api/v1/agents/{agent_id}/portfolio/equity-curve?limit=10001")
+    assert response_high.status_code == 422
+
+    mock_service_pss.get_historical_snapshots.assert_not_called() # Should not be called if params fail validation
 ```

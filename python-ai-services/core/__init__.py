@@ -9,8 +9,10 @@ from .scheduler_setup import (
     start_scheduler,
     shutdown_scheduler
 )
+from .websocket_manager import connection_manager # Added
 
 __all__ = [
+    "connection_manager", # Added
     "get_hyperliquid_execution_service_instance",
     "scheduler",
     "schedule_agent_orchestration",

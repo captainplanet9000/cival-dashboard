@@ -4,20 +4,29 @@ from loguru import logger
 
 from ..models.alert_models import AlertConfigOutput, AlertCondition, AlertNotification
 from ..models.dashboard_models import PortfolioSummary, AssetPositionSummary # For type hinting
+from ..models.websocket_models import WebSocketEnvelope # Added
 from .alert_configuration_service import AlertConfigurationService
 from .trading_data_service import TradingDataService
+from ..core.websocket_manager import connection_manager as global_connection_manager # Added
 import operator as op_module # For comparing values based on operator string
 
 class AlertMonitoringService:
     def __init__(
         self,
         config_service: AlertConfigurationService,
-        data_service: TradingDataService
+        data_service: TradingDataService,
+        # Allow passing a specific connection_manager, default to global singleton
+        connection_mgr: Optional[Any] = None # Use Any to avoid circular type hint problems
     ):
         self.config_service = config_service
         self.data_service = data_service
+        self.connection_manager = connection_mgr if connection_mgr else global_connection_manager
         self._last_triggered_times: Dict[str, datetime] = {} # Key: alert_id
         logger.info("AlertMonitoringService initialized.")
+        if self.connection_manager:
+            logger.info("AlertMonitoringService: ConnectionManager available for WebSocket alerts.")
+        else:
+            logger.warning("AlertMonitoringService: ConnectionManager not available. WebSocket alerts will be skipped.")
 
     def _evaluate_condition(self, condition: AlertCondition, portfolio_summary: PortfolioSummary) -> (bool, Optional[Any]):
         """
@@ -81,6 +90,18 @@ class AlertMonitoringService:
                     logger.info(f"Placeholder: Would POST to {alert_config.target_webhook_url} with payload: {notification.model_dump_json()}")
                 else:
                     logger.error(f"Cannot send webhook for alert {alert_config.alert_id}: target_webhook_url not set.")
+            elif channel == "websocket":
+                if self.connection_manager:
+                    ws_payload_alert = WebSocketEnvelope(
+                        event_type="ALERT_TRIGGERED",
+                        agent_id=alert_config.agent_id, # Route to specific agent's dashboard if applicable
+                        payload=notification.model_dump(mode='json')
+                    )
+                    # Assuming client_id for WebSocket connection is the agent_id
+                    await self.connection_manager.send_to_client(alert_config.agent_id, ws_payload_alert)
+                    logger.info(f"Sent WebSocket ALERT_TRIGGERED for alert {alert_config.name} to agent {alert_config.agent_id}")
+                else:
+                    logger.warning(f"Cannot send WebSocket notification for alert {alert_config.alert_id}: ConnectionManager not available.")
             else:
                 logger.warning(f"Unknown notification channel '{channel}' for alert {alert_config.alert_id}.")
 

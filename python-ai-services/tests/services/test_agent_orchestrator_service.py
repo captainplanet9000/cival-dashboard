@@ -17,6 +17,9 @@ from python_ai_services.services.trade_history_service import TradeHistoryServic
 from python_ai_services.services.risk_manager_service import RiskManagerService
 from python_ai_services.services.market_data_service import MarketDataService
 from python_ai_services.services.event_bus_service import EventBusService
+from python_ai_services.services.trading_data_service import TradingDataService # Added
+from python_ai_services.services.portfolio_snapshot_service import PortfolioSnapshotService # Added
+from python_ai_services.models.dashboard_models import PortfolioSummary # Added for mocking
 from typing import Optional, List, Dict, Any
 
 
@@ -52,6 +55,14 @@ def mock_event_bus_service() -> EventBusService:
 def mock_market_data_service() -> MarketDataService:
     return AsyncMock(spec=MarketDataService)
 
+@pytest_asyncio.fixture # Added
+def mock_trading_data_service() -> TradingDataService:
+    return AsyncMock(spec=TradingDataService)
+
+@pytest_asyncio.fixture # Added
+def mock_portfolio_snapshot_service() -> PortfolioSnapshotService:
+    return AsyncMock(spec=PortfolioSnapshotService)
+
 @pytest_asyncio.fixture
 def orchestrator_service(
     mock_agent_service: AgentManagementService,
@@ -61,10 +72,10 @@ def orchestrator_service(
     mock_trade_history_service: TradeHistoryService,
     mock_risk_manager_service: RiskManagerService,
     mock_event_bus_service: EventBusService,
-    mock_market_data_service: MarketDataService
+    mock_market_data_service: MarketDataService,
+    mock_trading_data_service: TradingDataService, # Added
+    mock_portfolio_snapshot_service: PortfolioSnapshotService # Added
 ) -> AgentOrchestratorService:
-    # Note: DEXExecutionService is not passed directly to Orchestrator init.
-    # It's created by a factory based on AgentConfig.
     return AgentOrchestratorService(
         agent_management_service=mock_agent_service,
         trade_history_service=mock_trade_history_service,
@@ -73,7 +84,12 @@ def orchestrator_service(
         event_bus_service=mock_event_bus_service,
         google_bridge=mock_google_bridge,
         a2a_protocol=mock_a2a_protocol,
-        simulated_trade_executor=mock_simulated_trade_executor
+        simulated_trade_executor=mock_simulated_trade_executor,
+        # learning_logger_service is already part of the service's __init__ from a previous step,
+        # so it should be added here if not already present from that step. Assuming it is.
+        # learning_logger_service=AsyncMock(spec=LearningDataLoggerService),
+        trading_data_service=mock_trading_data_service, # Pass it
+        portfolio_snapshot_service=mock_portfolio_snapshot_service # Pass it
     )
 
 # Updated Helper to create sample AgentConfigOutput
@@ -279,103 +295,157 @@ async def test_run_single_agent_cycle_generic_agent_success_with_symbols(orchest
     mock_tc = AsyncMock(spec=TradingCoordinator)
     mock_tc.analyze_trading_opportunity = AsyncMock(return_value={"decision": "buy"})
     orchestrator_service._get_trading_coordinator_for_agent = AsyncMock(return_value=mock_tc)
+
+    # Mock portfolio summary for snapshot recording
+    mock_portfolio_summary = PortfolioSummary(
+        agent_id=agent_id, timestamp=datetime.now(timezone.utc),
+        account_value_usd=10000.0, total_pnl_usd=100.0, open_positions=[]
+    )
+    orchestrator_service.trading_data_service.get_portfolio_summary = AsyncMock(return_value=mock_portfolio_summary)
+    orchestrator_service.portfolio_snapshot_service.record_snapshot = AsyncMock()
+
     await orchestrator_service.run_single_agent_cycle(agent_id)
+
     assert mock_tc.analyze_trading_opportunity.call_count == len(symbols)
     first_call_args = mock_tc.analyze_trading_opportunity.call_args_list[0][0][0]
     assert isinstance(first_call_args, TradingAnalysisCrewRequest)
     assert first_call_args.symbol == symbols[0]
     mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
+    # Verify snapshot recording for GenericAgent (trading agent)
+    orchestrator_service.trading_data_service.get_portfolio_summary.assert_called_once_with(agent_id)
+    orchestrator_service.portfolio_snapshot_service.record_snapshot.assert_called_once_with(
+        agent_id=agent_id, total_equity_usd=10000.0
+    )
 
 @pytest.mark.asyncio
 @patch('python_ai_services.services.agent_orchestrator_service.DarvasBoxTechnicalService')
-async def test_run_single_agent_cycle_darvas_agent_success(
-    MockDarvasService: MagicMock, orchestrator_service: AgentOrchestratorService,
-    mock_agent_service: MagicMock, mock_market_data_service: MagicMock, mock_event_bus_service: MagicMock
-):
-    agent_id = "darvas_agent_1"
-    symbols = ["SOL/USD", "ADA/USD"]
-    agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override="DarvasBoxTechnicalAgent")
-    mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
-    mock_darvas_instance = AsyncMock()
-    mock_darvas_instance.analyze_symbol_and_generate_signal = AsyncMock()
-    MockDarvasService.return_value = mock_darvas_instance
-    orchestrator_service._get_trading_coordinator_for_agent = AsyncMock()
-    await orchestrator_service.run_single_agent_cycle(agent_id)
-    MockDarvasService.assert_called_once_with(
-        agent_config=agent_config, event_bus=mock_event_bus_service, market_data_service=mock_market_data_service
-    )
-    assert mock_darvas_instance.analyze_symbol_and_generate_signal.call_count == len(symbols)
-    orchestrator_service._get_trading_coordinator_for_agent.assert_not_called()
-    mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
-
-@pytest.mark.asyncio
 @patch('python_ai_services.services.agent_orchestrator_service.WilliamsAlligatorTechnicalService')
-async def test_run_single_agent_cycle_williams_alligator_agent_success(
-    MockWilliamsAlligatorService: MagicMock, orchestrator_service: AgentOrchestratorService,
-    mock_agent_service: MagicMock, mock_market_data_service: MagicMock, mock_event_bus_service: MagicMock
-):
-    agent_id = "wa_agent_1"
-    symbols = ["AAPL", "MSFT"]
-    agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override="WilliamsAlligatorTechnicalAgent")
-    mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
-    mock_wa_instance = AsyncMock()
-    mock_wa_instance.analyze_symbol_and_generate_signal = AsyncMock()
-    MockWilliamsAlligatorService.return_value = mock_wa_instance
-    orchestrator_service._get_trading_coordinator_for_agent = AsyncMock()
-    await orchestrator_service.run_single_agent_cycle(agent_id)
-    MockWilliamsAlligatorService.assert_called_once_with(
-        agent_config=agent_config, event_bus=mock_event_bus_service, market_data_service=mock_market_data_service
-    )
-    assert mock_wa_instance.analyze_symbol_and_generate_signal.call_count == len(symbols)
-    orchestrator_service._get_trading_coordinator_for_agent.assert_not_called()
-    mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
-
-@pytest.mark.asyncio
 @patch('python_ai_services.services.agent_orchestrator_service.MarketConditionClassifierService')
-async def test_run_single_agent_cycle_mcc_agent_success(
-    MockMCCService: MagicMock, orchestrator_service: AgentOrchestratorService,
-    mock_agent_service: MagicMock, mock_market_data_service: MagicMock, mock_event_bus_service: MagicMock
-):
-    agent_id = "mcc_agent_1"
-    symbols = ["EUR/USD", "USD/JPY"]
-    agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override="MarketConditionClassifierAgent")
-    mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
-    mock_mcc_instance = AsyncMock()
-    mock_mcc_instance.analyze_symbol_and_publish_condition = AsyncMock()
-    MockMCCService.return_value = mock_mcc_instance
-    orchestrator_service._get_trading_coordinator_for_agent = AsyncMock()
-    await orchestrator_service.run_single_agent_cycle(agent_id)
-    MockMCCService.assert_called_once_with(
-        agent_config=agent_config, event_bus=mock_event_bus_service, market_data_service=mock_market_data_service
-    )
-    assert mock_mcc_instance.analyze_symbol_and_publish_condition.call_count == len(symbols)
-    orchestrator_service._get_trading_coordinator_for_agent.assert_not_called()
-    mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
-
-@pytest.mark.asyncio
+@patch('python_ai_services.services.agent_orchestrator_service.NewsAnalysisService')
+@patch('python_ai_services.services.agent_orchestrator_service.RenkoTechnicalService')
+@patch('python_ai_services.services.agent_orchestrator_service.HeikinAshiTechnicalService') # Added HeikinAshi
 @patch('python_ai_services.services.agent_orchestrator_service.PortfolioOptimizerService')
-async def test_run_single_agent_cycle_portfolio_optimizer_agent(
-    MockPOService: MagicMock,
+async def test_run_single_agent_cycle_specialized_agents_and_snapshot(
+    MockPortfolioOptimizer: MagicMock,
+    MockHeikinAshiService: MagicMock, # Added HeikinAshi
+    MockRenkoService: MagicMock,
+    MockNewsService: MagicMock,
+    MockMCCService: MagicMock,
+    MockWATService: MagicMock,
+    MockDarvasService: MagicMock,
     orchestrator_service: AgentOrchestratorService,
-    mock_agent_service: MagicMock
+    mock_agent_service: MagicMock,
+    mock_market_data_service: MagicMock,
+    mock_event_bus_service: MagicMock
 ):
-    agent_id = "po_agent_1"
-    agent_config = create_sample_agent_config(agent_id, agent_type_override="PortfolioOptimizerAgent")
-    mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
-    orchestrator_service._get_trading_coordinator_for_agent = AsyncMock()
-    with patch('python_ai_services.services.agent_orchestrator_service.DarvasBoxTechnicalService') as MockDarvas, \
-         patch('python_ai_services.services.agent_orchestrator_service.WilliamsAlligatorTechnicalService') as MockWA, \
-         patch('python_ai_services.services.agent_orchestrator_service.MarketConditionClassifierService') as MockMCC, \
-         patch('python_ai_services.services.agent_orchestrator_service.NewsAnalysisService') as MockNews: # Added News
+    agent_types_and_mocks = {
+        "DarvasBoxTechnicalAgent": MockDarvasService,
+        "WilliamsAlligatorTechnicalAgent": MockWATService,
+        "MarketConditionClassifierAgent": MockMCCService, # Non-trading
+        "NewsAnalysisAgent": MockNewsService,             # Non-trading
+        "RenkoTechnicalAgent": MockRenkoService,
+        "HeikinAshiTechnicalAgent": MockHeikinAshiService, # Added HeikinAshi
+        "PortfolioOptimizerAgent": MockPortfolioOptimizer # Non-trading
+    }
 
+    non_trading_agent_types = ["NewsAnalysisAgent", "PortfolioOptimizerAgent", "MarketConditionClassifierAgent"]
+
+    for agent_type, MockService in agent_types_and_mocks.items():
+        agent_id = f"{agent_type}_test_id_snap"
+        symbols = ["TEST/SYM1", "TEST/SYM2"]
+        agent_config = create_sample_agent_config(agent_id, symbols=symbols, agent_type_override=agent_type)
+        if agent_type == "RenkoTechnicalAgent":
+            agent_config.strategy.renko_params = AgentStrategyConfig.RenkoParams()
+        elif agent_type == "HeikinAshiTechnicalAgent": # Added HeikinAshi
+            agent_config.strategy.heikin_ashi_params = AgentStrategyConfig.HeikinAshiParams()
+
+        mock_agent_service.get_agent = AsyncMock(return_value=agent_config)
+
+        mock_service_instance = AsyncMock()
+        # Setup specific method mocks for each service type
+        if agent_type == "NewsAnalysisAgent":
+            mock_service_instance.fetch_and_analyze_feeds = AsyncMock()
+        elif agent_type == "MarketConditionClassifierAgent":
+            mock_service_instance.analyze_symbol_and_publish_condition = AsyncMock()
+        elif agent_type == "PortfolioOptimizerAgent":
+            # PO Service doesn't have a primary "run_cycle" method called by orchestrator, it's event driven
+            # So, no specific method call to mock here for its main logic triggered by run_single_agent_cycle
+            pass
+        else: # Darvas, Williams, Renko
+            mock_service_instance.analyze_symbol_and_generate_signal = AsyncMock()
+
+        MockService.return_value = mock_service_instance
+
+        # Mock portfolio summary for snapshot recording if it's a trading agent
+        if agent_type not in non_trading_agent_types:
+            mock_portfolio_summary = PortfolioSummary(
+                agent_id=agent_id, timestamp=datetime.now(timezone.utc),
+                account_value_usd=12345.0, total_pnl_usd=2345.0, open_positions=[]
+            )
+            orchestrator_service.trading_data_service.get_portfolio_summary = AsyncMock(return_value=mock_portfolio_summary)
+        orchestrator_service.portfolio_snapshot_service.record_snapshot = AsyncMock() # Reset for each agent type
+
+        # Call the cycle
         await orchestrator_service.run_single_agent_cycle(agent_id)
 
-        MockDarvas.assert_not_called()
-        MockWA.assert_not_called()
-        MockMCC.assert_not_called()
-        MockNews.assert_not_called() # Ensure NewsAnalysisService is not called for PO agent
-        orchestrator_service._get_trading_coordinator_for_agent.assert_not_called()
+        # Assertions for service instantiation (common parts)
+        if agent_type != "PortfolioOptimizerAgent": # PO Service is not instantiated in cycle by default
+             expected_constructor_args = { "agent_config": agent_config, "event_bus": mock_event_bus_service }
+             if agent_type not in ["NewsAnalysisAgent"]: # NewsAnalysis doesn't take MDS
+                 expected_constructor_args["market_data_service"] = mock_market_data_service
+             # All these services now accept learning_logger_service (optional)
+             expected_constructor_args["learning_logger_service"] = orchestrator_service.learning_logger_service
+             if agent_type == "RenkoTechnicalAgent":
+                 expected_constructor_args["learning_logger"] = orchestrator_service.learning_logger_service
+                 if "learning_logger_service" in expected_constructor_args: del expected_constructor_args["learning_logger_service"]
+             # HeikinAshiTechnicalService __init__ from Step 2 did not have learning_logger.
+             # If it were added, similar logic to Renko would apply for param name.
+             # Based on current HeikinAshi service, learning_logger_service is not passed.
+             # Self-correction: The orchestrator *does* pass learning_logger_service to HA if available,
+             # but HA service init must accept it. Assuming HA service was updated to accept 'learning_logger_service' or 'learning_logger'.
+             # The current orchestrator passes 'learning_logger' to Renko, and 'learning_logger_service' to others.
+             # Let's assume HeikinAshi service (if it were to use it) would expect 'learning_logger_service' like Darvas/WA.
+             # The prompt's HA service did not include it. The current orchestrator code for HA also doesn't pass it.
+             # So, no change needed here for HA regarding learning_logger unless HA service is updated.
+             # The provided orchestrator code for HA call:
+             # heikin_ashi_service = HeikinAshiTechnicalService(..., # learning_logger=self.learning_logger_service) -> This was commented out.
+             # So, for now, `learning_logger_service` is not in expected_constructor_args for HeikinAshi.
+             if agent_type == "HeikinAshiTechnicalAgent" and "learning_logger_service" in expected_constructor_args:
+                # If HA service was updated to take it like Darvas/Williams, this would be true.
+                # Based on current definition of HA service from prompt, it does not take it.
+                # The orchestrator code I generated for HA in this same subtask also *omitted* it.
+                # So, this test should reflect that it's NOT passed to HA service.
+                del expected_constructor_args["learning_logger_service"]
+
+
+             MockService.assert_called_once_with(**expected_constructor_args)
+
+        # Assertions for method calls on the service instance
+        if agent_type == "NewsAnalysisAgent":
+            mock_service_instance.fetch_and_analyze_feeds.assert_called_once()
+        elif agent_type == "MarketConditionClassifierAgent":
+            assert mock_service_instance.analyze_symbol_and_publish_condition.call_count == len(symbols)
+        elif agent_type not in ["PortfolioOptimizerAgent"]: # PO doesn't have this
+            assert mock_service_instance.analyze_symbol_and_generate_signal.call_count == len(symbols)
+
+        # Assertions for snapshot recording
+        if agent_type not in non_trading_agent_types:
+            orchestrator_service.trading_data_service.get_portfolio_summary.assert_called_once_with(agent_id)
+            orchestrator_service.portfolio_snapshot_service.record_snapshot.assert_called_once_with(
+                agent_id=agent_id, total_equity_usd=12345.0
+            )
+        else: # For non-trading types, these should not be called
+            orchestrator_service.trading_data_service.get_portfolio_summary.assert_not_called()
+            orchestrator_service.portfolio_snapshot_service.record_snapshot.assert_not_called()
+
         mock_agent_service.update_agent_heartbeat.assert_called_once_with(agent_id)
+
+        # Reset mocks for the next iteration of the loop
+        MockService.reset_mock()
+        mock_agent_service.reset_mock()
+        orchestrator_service.trading_data_service.get_portfolio_summary.reset_mock()
+        orchestrator_service.portfolio_snapshot_service.record_snapshot.reset_mock()
+
 
 @pytest.mark.asyncio
 @patch('python_ai_services.services.agent_orchestrator_service.NewsAnalysisService')

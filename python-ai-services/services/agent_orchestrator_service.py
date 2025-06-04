@@ -21,6 +21,8 @@ from ..core.factories import get_hyperliquid_execution_service_instance, get_dex
 from typing import Optional, Any, Dict, List
 from .dex_execution_service import DEXExecutionService
 from .learning_data_logger_service import LearningDataLoggerService # Added
+from .portfolio_snapshot_service import PortfolioSnapshotService # Added
+from .trading_data_service import TradingDataService # Ensure TradingDataService is imported for portfolio_summary
 from loguru import logger
 import asyncio
 from unittest.mock import MagicMock
@@ -36,23 +38,29 @@ class AgentOrchestratorService:
         google_bridge: Optional[GoogleSDKBridge] = None,
         a2a_protocol: Optional[A2AProtocol] = None,
         simulated_trade_executor: Optional[SimulatedTradeExecutor] = None,
-        learning_logger_service: Optional[LearningDataLoggerService] = None # Added
+        learning_logger_service: Optional[LearningDataLoggerService] = None, # Added
+        portfolio_snapshot_service: Optional[PortfolioSnapshotService] = None, # Added
+        trading_data_service: Optional[TradingDataService] = None # Added for portfolio_summary
     ):
         self.agent_management_service = agent_management_service
         self.trade_history_service = trade_history_service
         self.risk_manager_service = risk_manager_service
         self.market_data_service = market_data_service
         self.event_bus_service = event_bus_service
-        self.learning_logger_service = learning_logger_service # Store it
+        self.learning_logger_service = learning_logger_service
+        self.portfolio_snapshot_service = portfolio_snapshot_service # Store it
+        self.trading_data_service = trading_data_service # Store it
         self.google_bridge = google_bridge if google_bridge else MagicMock(spec=GoogleSDKBridge)
         self.a2a_protocol = a2a_protocol if a2a_protocol else MagicMock(spec=A2AProtocol)
         self.simulated_trade_executor = simulated_trade_executor if simulated_trade_executor else MagicMock(spec=SimulatedTradeExecutor)
 
-        logger.info("AgentOrchestratorService initialized.") # Simplified log
-        if self.learning_logger_service:
-            logger.info("LearningDataLoggerService: Available to AgentOrchestratorService.")
-        else:
-            logger.warning("LearningDataLoggerService: Not Available to AgentOrchestratorService. Technical agent learning logs will be skipped.")
+        logger.info("AgentOrchestratorService initialized.")
+        if self.learning_logger_service: logger.info("LearningDataLoggerService: Available.")
+        else: logger.warning("LearningDataLoggerService: Not Available. Learning logs may be skipped by some agents.")
+        if self.portfolio_snapshot_service: logger.info("PortfolioSnapshotService: Available.")
+        else: logger.warning("PortfolioSnapshotService: Not Available. Portfolio snapshots will not be recorded by orchestrator.")
+        if self.trading_data_service: logger.info("TradingDataService: Available for portfolio summaries.")
+        else: logger.warning("TradingDataService: Not Available. Portfolio summaries for snapshots will not be fetched by orchestrator.")
 
 
     async def _get_trading_coordinator_for_agent(self, agent_config: AgentConfigOutput) -> Optional[TradingCoordinator]:
@@ -254,38 +262,88 @@ class AgentOrchestratorService:
             logger.info(f"RenkoTechnicalAgent cycle finished for agent_id: {agent_id}")
             return
 
-        # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)
-        # This block should be the last one for agent_type checks.
-        trading_coordinator = await self._get_trading_coordinator_for_agent(agent_config)
-        if not trading_coordinator:
-            logger.error(f"Failed to get TradingCoordinator for agent {agent_id} (type: {agent_config.agent_type}). Skipping analysis cycle.")
+        elif agent_config.agent_type == "HeikinAshiTechnicalAgent":
+            if not all([self.market_data_service, self.event_bus_service]):
+                logger.error(f"Orchestrator: Missing critical services for HeikinAshiTechnicalAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+            from .heikin_ashi_service import HeikinAshiTechnicalService # Local import
+
+            heikin_ashi_service = HeikinAshiTechnicalService(
+                agent_config=agent_config,
+                event_bus=self.event_bus_service,
+                market_data_service=self.market_data_service,
+                # learning_logger=self.learning_logger_service # Pass logger if service accepts
+            )
+            if agent_config.strategy.watched_symbols:
+                for symbol in agent_config.strategy.watched_symbols:
+                    try:
+                        await heikin_ashi_service.analyze_symbol_and_generate_signal(symbol)
+                    except Exception as e:
+                        logger.error(f"Error during Heikin Ashi analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+            else:
+                logger.warning(f"HeikinAshiTechnicalAgent {agent_id} has no watched_symbols configured.")
             await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"HeikinAshiTechnicalAgent cycle finished for agent_id: {agent_id}")
             return
 
-        symbols_to_watch = agent_config.strategy.watched_symbols
-        if not symbols_to_watch:
-            logger.info(f"Agent {agent_id} ({agent_config.name}, type: {agent_config.agent_type}) has no watched_symbols defined. No analysis will be run.")
-        else:
-            for symbol in symbols_to_watch:
-                event_description = agent_config.strategy.default_market_event_description.format(symbol=symbol)
-                additional_context = agent_config.strategy.default_additional_context
+        # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)
+        # This block should be the last one for agent_type checks.
+        else: # Fallback for GenericAgent or any other type that uses TradingCoordinator
+            trading_coordinator = await self._get_trading_coordinator_for_agent(agent_config)
+            if not trading_coordinator:
+                logger.error(f"Failed to get TradingCoordinator for agent {agent_id} (type: {agent_config.agent_type}). Skipping analysis cycle.")
+            else:
+                symbols_to_watch = agent_config.strategy.watched_symbols
+                if not symbols_to_watch:
+                    logger.info(f"Agent {agent_id} ({agent_config.name}, type: {agent_config.agent_type}) has no watched_symbols defined. No analysis will be run by TC.")
+                else:
+                    for symbol in symbols_to_watch:
+                        event_description = agent_config.strategy.default_market_event_description.format(symbol=symbol)
+                        additional_context = agent_config.strategy.default_additional_context
 
-                crew_request = TradingAnalysisCrewRequest(
-                    symbol=symbol,
-                    market_event_description=event_description,
-                    additional_context=additional_context,
-                    user_id=agent_id
-                )
+                        crew_request = TradingAnalysisCrewRequest(
+                            symbol=symbol,
+                            market_event_description=event_description,
+                            additional_context=additional_context,
+                            user_id=agent_id
+                        )
+                        logger.info(f"Initiating TradingCoordinator-based analysis for agent {agent_id} on symbol {symbol}.")
+                        try:
+                            analysis_result = await trading_coordinator.analyze_trading_opportunity(crew_request)
+                            logger.info(f"TradingCoordinator analysis completed for agent {agent_id}, symbol {symbol}. Result snippet: {str(analysis_result)[:200]}")
+                        except Exception as e:
+                            logger.error(f"Error during TradingCoordinator analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
 
-                logger.info(f"Initiating TradingCoordinator-based analysis for agent {agent_id} on symbol {symbol}.")
+        # Record portfolio snapshot for agents that might have traded or whose portfolio value could change
+        # Exclude agents that only provide analysis or manage others, unless their own state is tracked.
+        non_trading_agent_types = ["NewsAnalysisAgent", "PortfolioOptimizerAgent", "MarketConditionClassifierAgent"]
+        if agent_config.agent_type not in non_trading_agent_types:
+            if self.trading_data_service and self.portfolio_snapshot_service:
                 try:
-                    analysis_result = await trading_coordinator.analyze_trading_opportunity(crew_request)
-                    logger.info(f"TradingCoordinator analysis completed for agent {agent_id}, symbol {symbol}. Result snippet: {str(analysis_result)[:200]}")
-                except Exception as e:
-                    logger.error(f"Error during TradingCoordinator analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+                    logger.debug(f"Orchestrator: Attempting to fetch portfolio summary for snapshot - Agent {agent_id}")
+                    # Ensure trading_data_service is available on self if not passed to __init__ or if it's optional
+                    if not self.trading_data_service:
+                         logger.error("Orchestrator: TradingDataService not available, cannot fetch portfolio summary for snapshot.")
+                    else:
+                        portfolio_summary = await self.trading_data_service.get_portfolio_summary(agent_id)
+                        if portfolio_summary and isinstance(portfolio_summary.account_value_usd, float):
+                            logger.debug(f"Orchestrator: Recording snapshot for agent {agent_id}, equity: {portfolio_summary.account_value_usd}")
+                            await self.portfolio_snapshot_service.record_snapshot(
+                                agent_id=agent_id,
+                                total_equity_usd=portfolio_summary.account_value_usd
+                                # Timestamp will be auto-generated by snapshot service
+                            )
+                        elif portfolio_summary:
+                            logger.warning(f"Orchestrator: account_value_usd is not a float for agent {agent_id}, cannot record snapshot. Value: {portfolio_summary.account_value_usd}")
+                        else:
+                            logger.warning(f"Orchestrator: Portfolio summary not available for agent {agent_id}, cannot record snapshot.")
+                except Exception as e_snap:
+                    logger.error(f"Orchestrator: Error during portfolio snapshot for agent {agent_id}: {e_snap}", exc_info=True)
+            else:
+                logger.warning(f"Orchestrator: TradingDataService or PortfolioSnapshotService not available for agent {agent_id}. Skipping portfolio snapshot.")
 
-        heartbeat_updated = await self.agent_management_service.update_agent_heartbeat(agent_id)
-        logger.info(f"Heartbeat update for agent {agent_id}: {'Success' if heartbeat_updated else 'Failed'}")
+        await self.agent_management_service.update_agent_heartbeat(agent_id)
         logger.info(f"Agent cycle finished for agent_id: {agent_id}")
 
 

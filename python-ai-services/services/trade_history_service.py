@@ -37,9 +37,10 @@ class TradeHistoryService:
             exchange_trade_id=db_fill.exchange_trade_id
         )
 
-    async def record_fill(self, fill_data: TradeFillData):
+    async def record_fill(self, fill_data: TradeFillData) -> TradeFillData:
         """
         Records a single trade fill to the database for a specific agent.
+        Returns the recorded TradeFillData object (which includes the client-generated fill_id).
         """
         db: Session = self.session_factory()
         logger.debug(f"Recording fill for agent {fill_data.agent_id}. Fill ID: {fill_data.fill_id}")
@@ -53,8 +54,9 @@ class TradeHistoryService:
             db_fill = TradeFillDB(**db_fill_data_dict)
             db.add(db_fill)
             db.commit()
-            # db.refresh(db_fill) # Optional, if you need the committed state immediately including defaults set by DB
+            # db.refresh(db_fill) # Not strictly needed if fill_id is client-generated and no other DB defaults are read back
             logger.info(f"Fill {fill_data.fill_id} recorded to DB for agent {fill_data.agent_id}.")
+            return fill_data # Return the input Pydantic object
         except Exception as e: # Catch generic SQLAlchemy errors or other issues
             db.rollback()
             logger.error(f"Failed to record fill {fill_data.fill_id} for agent {fill_data.agent_id} to DB: {e}", exc_info=True)

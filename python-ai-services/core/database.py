@@ -5,7 +5,7 @@ from sqlalchemy.ext.declarative import declarative_base # For older SQLAlchemy v
 # Using declarative_base for wider compatibility as per prompt's initial suggestion style.
 import os
 # Import DB models to ensure they are registered with Base.metadata
-from python_ai_services.models.db_models import AgentConfigDB, TradeFillDB
+from python_ai_services.models.db_models import AgentConfigDB, TradeFillDB, OrderDB, PortfolioSnapshotDB # Added PortfolioSnapshotDB
 
 
 # SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./agent_configs.db")

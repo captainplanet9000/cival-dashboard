@@ -66,6 +66,13 @@ class AgentStrategyConfig(BaseModel):
         stop_loss_bricks_away: Optional[int] = Field(default=2, ge=1, description="Stop loss X bricks away from entry brick's open/close.")
     renko_params: Optional[RenkoParams] = None
 
+    class HeikinAshiParams(BaseModel):
+        trend_sma_period: int = Field(default=20, ge=1, description="SMA period on HA close for trend confirmation.")
+        signal_confirmation_candles: int = Field(default=2, ge=1, description="Number of consecutive strong HA candles for signal.")
+        stop_loss_atr_multiplier: float = Field(default=1.5, gt=0, description="ATR multiplier for stop-loss placement.")
+        atr_period_for_sl: int = Field(default=14, ge=1, description="ATR period for stop-loss calculation.")
+    heikin_ashi_params: Optional[HeikinAshiParams] = None
+
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float
     risk_per_trade_percentage: float

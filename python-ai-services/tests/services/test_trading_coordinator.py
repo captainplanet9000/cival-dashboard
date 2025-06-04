@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 
 # Models and Services to test or mock
 from python_ai_services.services.trading_coordinator import TradingCoordinator
+from python_ai_services.services.order_history_service import OrderHistoryService # Added
 from python_ai_services.services.simulated_trade_executor import SimulatedTradeExecutor
 from python_ai_services.services.hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
 from python_ai_services.services.dex_execution_service import DEXExecutionService, DEXExecutionServiceError # Added
@@ -17,6 +18,8 @@ from python_ai_services.models.hyperliquid_models import HyperliquidPlaceOrderPa
 
 from python_ai_services.utils.google_sdk_bridge import GoogleSDKBridge
 from python_ai_services.utils.a2a_protocol import A2AProtocol
+from python_ai_services.core.websocket_manager import ConnectionManager # Added
+from python_ai_services.models.websocket_models import WebSocketEnvelope # Added
 
 # --- Mock Fixtures ---
 
@@ -50,16 +53,34 @@ def mock_dex_executor(): # New fixture for DEX
     return executor
 
 @pytest_asyncio.fixture
+def mock_connection_manager() -> MagicMock: # Added
+    manager = MagicMock(spec=ConnectionManager)
+    manager.send_to_client = AsyncMock()
+    return manager
+
+@pytest_asyncio.fixture
+def mock_order_history_service() -> MagicMock: # Added
+    service = MagicMock(spec=OrderHistoryService)
+    service.record_order_submission = AsyncMock()
+    service.update_order_from_hl_response = AsyncMock()
+    service.update_order_from_dex_response = AsyncMock()
+    service.update_order_status = AsyncMock()
+    service.link_fill_to_order = AsyncMock()
+    return service
+
+@pytest_asyncio.fixture
 def trading_coordinator(
     mock_google_bridge: MagicMock,
     mock_a2a_protocol: MagicMock,
     mock_simulated_executor: MagicMock,
     mock_hyperliquid_executor: MagicMock,
-    mock_dex_executor: MagicMock, # Added
+    mock_dex_executor: MagicMock,
     mock_trade_history_service: MagicMock,
     mock_risk_manager_service: MagicMock,
     mock_agent_management_service: MagicMock,
-    mock_event_bus_service: MagicMock
+    mock_event_bus_service: MagicMock,
+    mock_connection_manager: MagicMock,
+    mock_order_history_service: MagicMock # Added
 ):
     return TradingCoordinator(
         agent_id="tc_main_test_id",
@@ -69,9 +90,11 @@ def trading_coordinator(
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
         hyperliquid_execution_service=mock_hyperliquid_executor,
-        dex_execution_service=mock_dex_executor, # Added
+        dex_execution_service=mock_dex_executor,
         trade_history_service=mock_trade_history_service,
-        event_bus_service=mock_event_bus_service
+        event_bus_service=mock_event_bus_service,
+        connection_mgr=mock_connection_manager,
+        order_history_service=mock_order_history_service # Added
     )
 
 # --- Tests for __init__ ---
@@ -80,7 +103,8 @@ def test_trading_coordinator_init(
     mock_google_bridge, mock_a2a_protocol, mock_simulated_executor,
     mock_hyperliquid_executor, mock_dex_executor, mock_trade_history_service,
     mock_risk_manager_service, mock_agent_management_service,
-    mock_event_bus_service
+    mock_event_bus_service, mock_connection_manager: MagicMock,
+    mock_order_history_service: MagicMock # Added
 ):
     coordinator = TradingCoordinator(
         agent_id="tc_test_init",
@@ -90,15 +114,19 @@ def test_trading_coordinator_init(
         a2a_protocol=mock_a2a_protocol,
         simulated_trade_executor=mock_simulated_executor,
         hyperliquid_execution_service=mock_hyperliquid_executor,
-        dex_execution_service=mock_dex_executor, # Check it's stored
+        dex_execution_service=mock_dex_executor,
         trade_history_service=mock_trade_history_service,
-        event_bus_service=mock_event_bus_service
+        event_bus_service=mock_event_bus_service,
+        connection_mgr=mock_connection_manager,
+        order_history_service=mock_order_history_service # Added
     )
     assert coordinator.agent_id == "tc_test_init"
     assert coordinator.event_bus_service == mock_event_bus_service
     assert coordinator.hyperliquid_execution_service == mock_hyperliquid_executor
-    assert coordinator.dex_execution_service == mock_dex_executor # New assert
+    assert coordinator.dex_execution_service == mock_dex_executor
     assert coordinator.trade_history_service == mock_trade_history_service
+    assert coordinator.connection_manager == mock_connection_manager
+    assert coordinator.order_history_service == mock_order_history_service # Added
     assert coordinator.trade_execution_mode == "paper"
 
 
@@ -323,89 +351,119 @@ async def test_execute_live_trade_buy_limit_success(trading_coordinator: Trading
 
 
 @pytest.mark.asyncio
-async def test_execute_live_trade_fetches_and_records_actual_fills( # Renamed test
+async def test_execute_live_trade_fetches_and_records_actual_fills(
     trading_coordinator: TradingCoordinator,
     mock_hyperliquid_executor: MagicMock,
-    mock_trade_history_service: MagicMock
+    mock_trade_history_service: MagicMock,
+    mock_order_history_service: MagicMock
 ):
-    await trading_coordinator.set_trade_execution_mode("live")
-    user_id = "agent_wallet_address_for_hl" # Simulate this user_id is the wallet address
-    trade_params = {"action": "buy", "symbol": "ETH", "quantity": 0.01, "order_type": "market", "price": 0.0}
+    await trading_coordinator.set_trade_execution_mode("hyperliquid")
+    user_id = "agent_wallet_address_for_hl"
+    trade_params = {"action": "buy", "symbol": "ETH", "quantity": 0.01, "order_type": "market", "price": 0.0, "strategy_name": "TestHLStrategy"}
 
-    # Mock successful order placement
+    mock_internal_order_id = f"internal_{uuid.uuid4()}"
+    mock_order_db_return = MagicMock()
+    type(mock_order_db_return).internal_order_id = mock_internal_order_id # Make it behave like an ORM object with this attr
+    mock_order_history_service.record_order_submission.return_value = mock_order_db_return
+
+    mock_recorded_fill = TradeFillData(fill_id=str(uuid.uuid4()), agent_id=user_id, asset="ETH", side="buy", quantity=0.01, price=2000.0, timestamp=datetime.now(timezone.utc))
+    mock_trade_history_service.record_fill.return_value = mock_recorded_fill
+
     mock_place_order_response = HyperliquidOrderResponseData(
-        status="filled", # Assume it filled for simplicity of test focus
-        oid=12345,
-        order_type_info={"market": {"tif": "Ioc"}}
-        # No simulated_fills here anymore
+        status="filled", oid=12345, order_type_info={"market": {"tif": "Ioc"}}
     )
     mock_hyperliquid_executor.place_order.return_value = mock_place_order_response
 
-    # Mock response from get_fills_for_order
     mock_hl_actual_fill_dict = {
         "coin": "ETH", "dir": "Open Long", "px": "2000.0", "qty": "0.01",
-        "time": int(datetime.now(timezone.utc).timestamp() * 1000), # HL time is ms timestamp
+        "time": int(datetime.now(timezone.utc).timestamp() * 1000),
         "fee": "0.2", "oid": 12345, "tid": "HLTradeID_XYZ"
     }
     mock_hyperliquid_executor.get_fills_for_order = AsyncMock(return_value=[mock_hl_actual_fill_dict])
 
     result = await trading_coordinator._execute_trade_decision(trade_params, user_id)
 
-    assert result["status"] == "live_executed_with_risk_management"
+    assert result["status"] == "live_executed"
     assert result["details"]["main_order"]["oid"] == 12345
 
-    # Verify get_fills_for_order was called
-    mock_hyperliquid_executor.get_fills_for_order.assert_called_once_with(
-        user_address=user_id, # user_id is passed as agent_wallet_address
-        oid=12345
+    mock_order_history_service.record_order_submission.assert_called_once()
+    record_call_args = mock_order_history_service.record_order_submission.call_args[1]
+    assert record_call_args['agent_id'] == user_id
+    assert record_call_args['order_params'] == trade_params
+    assert record_call_args['strategy_name'] == "TestHLStrategy"
+
+    mock_order_history_service.update_order_from_hl_response.assert_called_once_with(
+        internal_order_id=mock_internal_order_id,
+        hl_response=mock_place_order_response
     )
 
-    # Verify trade_history_service.record_fill was called with correctly mapped TradeFillData
+    mock_hyperliquid_executor.get_fills_for_order.assert_called_once_with(user_address=user_id, oid=12345)
     mock_trade_history_service.record_fill.assert_called_once()
-    called_fill_arg: TradeFillData = mock_trade_history_service.record_fill.call_args[0][0]
 
-    assert isinstance(called_fill_arg, TradeFillData)
-    assert called_fill_arg.agent_id == user_id # Should be the internal agent ID
-    assert called_fill_arg.asset == mock_hl_actual_fill_dict["coin"]
-    assert called_fill_arg.side == "buy" # From "Open Long"
-    assert called_fill_arg.quantity == float(mock_hl_actual_fill_dict["qty"])
-    assert called_fill_arg.price == float(mock_hl_actual_fill_dict["px"])
-    assert called_fill_arg.timestamp == datetime.fromtimestamp(mock_hl_actual_fill_dict["time"] / 1000, tz=timezone.utc)
-    assert called_fill_arg.fee == float(mock_hl_actual_fill_dict["fee"])
-    assert called_fill_arg.fee_currency == "USD"
-    assert called_fill_arg.exchange_order_id == str(mock_hl_actual_fill_dict["oid"])
-    assert called_fill_arg.exchange_trade_id == mock_hl_actual_fill_dict["tid"]
+    mock_order_history_service.link_fill_to_order.assert_called_once_with(
+        internal_order_id=mock_internal_order_id,
+        fill_id=mock_recorded_fill.fill_id
+    )
+
+    # WebSocket call verification
+    trading_coordinator.connection_manager.send_to_client.assert_called_once()
+    ws_call_args = trading_coordinator.connection_manager.send_to_client.call_args[0]
+    assert ws_call_args[0] == user_id
+    ws_envelope: WebSocketEnvelope = ws_call_args[1]
+    assert ws_envelope.event_type == "NEW_FILL"
+    assert ws_envelope.payload["fill_id"] == mock_recorded_fill.fill_id
 
 @pytest.mark.asyncio
 async def test_execute_live_trade_no_fills_found_for_order(
     trading_coordinator: TradingCoordinator,
     mock_hyperliquid_executor: MagicMock,
-    mock_trade_history_service: MagicMock
+    mock_trade_history_service: MagicMock,
+    mock_order_history_service: MagicMock
 ):
-    await trading_coordinator.set_trade_execution_mode("live")
+    await trading_coordinator.set_trade_execution_mode("hyperliquid")
     user_id = "agent_wallet_for_hl_no_fills"
     trade_params = {"action": "sell", "symbol": "BTC", "quantity": 0.001, "order_type": "market", "price": 0.0}
 
+    mock_internal_order_id = f"internal_{uuid.uuid4()}"
+    mock_order_history_service.record_order_submission.return_value = MagicMock(internal_order_id=mock_internal_order_id)
+
     mock_place_order_response = HyperliquidOrderResponseData(status="ok", oid=67890)
     mock_hyperliquid_executor.place_order.return_value = mock_place_order_response
-    mock_hyperliquid_executor.get_fills_for_order = AsyncMock(return_value=[]) # No fills returned
+    mock_hyperliquid_executor.get_fills_for_order = AsyncMock(return_value=[])
 
     await trading_coordinator._execute_trade_decision(trade_params, user_id)
 
+    mock_order_history_service.record_order_submission.assert_called_once()
+    mock_order_history_service.update_order_from_hl_response.assert_called_once_with(mock_internal_order_id, mock_place_order_response)
     mock_hyperliquid_executor.get_fills_for_order.assert_called_once_with(user_address=user_id, oid=67890)
     mock_trade_history_service.record_fill.assert_not_called()
+    mock_order_history_service.link_fill_to_order.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_execute_live_trade_hyperliquid_service_error(trading_coordinator: TradingCoordinator, mock_hyperliquid_executor: MagicMock):
-    await trading_coordinator.set_trade_execution_mode("live")
+async def test_execute_live_trade_hyperliquid_service_error(
+    trading_coordinator: TradingCoordinator,
+    mock_hyperliquid_executor: MagicMock,
+    mock_order_history_service: MagicMock
+):
+    await trading_coordinator.set_trade_execution_mode("hyperliquid")
     user_id = str(uuid.uuid4())
     trade_params = {"action": "sell", "symbol": "BTC", "quantity": 0.001, "order_type": "market"}
-    mock_hyperliquid_executor.place_order.side_effect = HyperliquidExecutionServiceError("Insufficient funds for HL")
+
+    mock_internal_order_id = f"internal_{uuid.uuid4()}"
+    mock_order_history_service.record_order_submission.return_value = MagicMock(internal_order_id=mock_internal_order_id)
+
+    error_message = "Insufficient funds for HL"
+    mock_hyperliquid_executor.place_order.side_effect = HyperliquidExecutionServiceError(error_message)
 
     result = await trading_coordinator._execute_trade_decision(trade_params, user_id)
+
     assert result["status"] == "live_failed"
-    assert result["error"] == "Insufficient funds for HL"
+    assert result["error"] == error_message
+    mock_order_history_service.record_order_submission.assert_called_once()
+    mock_order_history_service.update_order_status.assert_called_once_with(
+        mock_internal_order_id, "ERROR", error_message=f"HL Execution Error: {error_message}"
+    )
 
 @pytest.mark.asyncio
 async def test_execute_live_trade_general_exception(trading_coordinator: TradingCoordinator, mock_hyperliquid_executor: MagicMock):

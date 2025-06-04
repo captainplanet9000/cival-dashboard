@@ -87,6 +87,8 @@ from .compliance_models import ( # Added
 )
 
 from .learning_models import LearningLogEntry # Added
+from .websocket_models import WebSocketEnvelope # Added
+from .db_models import AgentConfigDB, TradeFillDB, OrderDB # Added TradeFillDB and OrderDB
 
 __all__ = [
     # api_models
@@ -114,7 +116,7 @@ __all__ = [
     "AgentStrategyConfig.PortfolioOptimizerParams",
     "AgentStrategyConfig.NewsAnalysisParams", # Added
     # dashboard_models
-    "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem",
+    "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem", "PortfolioSnapshotOutput", # Added PortfolioSnapshotOutput
     # performance_models
     "PerformanceMetrics",
     # alert_models
@@ -125,9 +127,11 @@ __all__ = [
     "ComplianceRule", "ComplianceCheckRequest", "ViolatedRuleInfo", "ComplianceCheckResult",
     # learning_models
     "LearningLogEntry", # Added
+    # websocket_models
+    "WebSocketEnvelope", # Added
     # event_bus_models
     "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
     "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload",
     # db_models
-    "AgentConfigDB"
+    "AgentConfigDB", "TradeFillDB", "OrderDB" # Added TradeFillDB and OrderDB
 ]

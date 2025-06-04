@@ -46,3 +46,12 @@ class OrderLogItem(BaseModel):
     avg_fill_price: Optional[float] = None
     status: Literal["open", "partially_filled", "filled", "canceled", "rejected", "expired", "unknown"]
     raw_details: Optional[Dict[str, Any]] = None # To store original exchange data if needed
+
+class PortfolioSnapshotOutput(BaseModel):
+    agent_id: str
+    timestamp: datetime
+    total_equity_usd: float
+    # snapshot_id: Optional[str] = None # Optional if not needed by frontend for e.g. direct linking
+
+    class Config:
+        orm_mode = True

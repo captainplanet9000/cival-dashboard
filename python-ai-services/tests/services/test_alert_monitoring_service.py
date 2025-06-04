@@ -9,6 +9,8 @@ from python_ai_services.services.alert_configuration_service import AlertConfigu
 from python_ai_services.services.trading_data_service import TradingDataService
 from python_ai_services.models.alert_models import AlertConfigOutput, AlertCondition, AlertNotification
 from python_ai_services.models.dashboard_models import PortfolioSummary, AssetPositionSummary
+from python_ai_services.core.websocket_manager import ConnectionManager # Added
+from python_ai_services.models.websocket_models import WebSocketEnvelope # Added
 
 @pytest_asyncio.fixture
 def mock_alert_config_service() -> AlertConfigurationService:
@@ -19,13 +21,21 @@ def mock_trading_data_service() -> TradingDataService:
     return MagicMock(spec=TradingDataService)
 
 @pytest_asyncio.fixture
+def mock_connection_manager() -> MagicMock: # Added
+    manager = MagicMock(spec=ConnectionManager)
+    manager.send_to_client = AsyncMock()
+    return manager
+
+@pytest_asyncio.fixture
 def alert_monitoring_service(
     mock_alert_config_service: AlertConfigurationService,
-    mock_trading_data_service: TradingDataService
+    mock_trading_data_service: TradingDataService,
+    mock_connection_manager: MagicMock # Added
 ) -> AlertMonitoringService:
     return AlertMonitoringService(
         config_service=mock_alert_config_service,
-        data_service=mock_trading_data_service
+        data_service=mock_trading_data_service,
+        connection_mgr=mock_connection_manager # Added
     )
 
 # --- Helper to create sample data ---
@@ -211,32 +221,74 @@ async def test_check_alerts_cooldown_prevents_trigger(
 
 
 @pytest.mark.asyncio
-async def test_send_notifications_logs_correctly(alert_monitoring_service: AlertMonitoringService):
-    alert_id = "alert_send_log"
-    agent_id = "agent_send_log"
+async def test_send_notifications_logs_and_websocket(alert_monitoring_service: AlertMonitoringService, mock_connection_manager: MagicMock): # Renamed and added mock_connection_manager
+    alert_id = "alert_send_log_ws"
+    agent_id = "agent_send_log_ws"
     alert_config = create_sample_alert_config(
         agent_id, alert_id,
         conditions=[],
-        name="Log Test",
-        notification_channels=["log", "email_placeholder", "webhook_placeholder"],
-        target_email="test@example.com",
-        target_webhook_url="http://localhost/webhook"
+        name="Log & WS Test",
+        notification_channels=["log", "websocket", "email_placeholder"], # Added "websocket"
+        target_email="test@example.com"
+        # target_webhook_url not used for this specific test focus
     )
     notification = AlertNotification(
-        alert_id=alert_id, alert_name="Log Test", agent_id=agent_id,
-        message="Test log notification message", triggered_conditions_details=[]
+        alert_id=alert_id, alert_name="Log & WS Test", agent_id=agent_id,
+        message="Test log and WebSocket notification message", triggered_conditions_details=[]
     )
 
-    with patch.object(logger, 'warning') as mock_log_warn, \
-         patch.object(logger, 'info') as mock_log_info, \
-         patch.object(logger, 'error') as mock_log_err: # Patch loguru's logger instance used by the service
+    # Patch loguru's logger instance if it's used within the service directly
+    # If the service uses self.logger (instance logger), then patch that.
+    # Assuming logger is imported globally in the service file for now.
+    with patch('python_ai_services.services.alert_monitoring_service.logger.warning') as mock_log_warn, \
+         patch('python_ai_services.services.alert_monitoring_service.logger.info') as mock_log_info:
 
         await alert_monitoring_service._send_notifications(alert_config, notification)
 
-        mock_log_warn.assert_any_call(f"ALERT TRIGGERED (Agent: {agent_id}, Alert: Log Test): Test log notification message")
-        mock_log_info.assert_any_call(f"Placeholder: Would send email to test@example.com: Test log notification message")
-        mock_log_info.assert_any_call(f"Placeholder: Would POST to http://localhost/webhook with payload: {notification.model_dump_json()}")
+        # Check log channel
+        mock_log_warn.assert_any_call(f"ALERT TRIGGERED (Agent: {agent_id}, Alert: Log & WS Test): Test log and WebSocket notification message")
+        # Check email placeholder channel
+        mock_log_info.assert_any_call(f"Placeholder: Would send email to test@example.com: Test log and WebSocket notification message")
+
+        # Check WebSocket channel
+        mock_connection_manager.send_to_client.assert_called_once()
+        call_args = mock_connection_manager.send_to_client.call_args[0]
+        assert call_args[0] == agent_id # client_id for websocket is agent_id
+
+        ws_envelope: WebSocketEnvelope = call_args[1]
+        assert isinstance(ws_envelope, WebSocketEnvelope)
+        assert ws_envelope.event_type == "ALERT_TRIGGERED"
+        assert ws_envelope.agent_id == agent_id
+        assert ws_envelope.payload == notification.model_dump(mode='json') # mode='json' for datetime serialization
+        # Check if the specific log for successful WS send was made
+        mock_log_info.assert_any_call(f"Sent WebSocket ALERT_TRIGGERED for alert {alert_config.name} to agent {alert_config.agent_id}")
+
+
+@pytest.mark.asyncio
+async def test_send_notifications_websocket_manager_unavailable(alert_monitoring_service: AlertMonitoringService, caplog):
+    # Temporarily set connection_manager to None for this service instance
+    # Need to correctly path the logger for caplog if it's instance logger or module logger
+    # For this test, directly check logger output related to the service.
+    alert_monitoring_service.connection_manager = None # Simulate no manager available
+
+    alert_id = "alert_no_ws_mgr"
+    agent_id = "agent_no_ws_mgr"
+    alert_config = create_sample_alert_config(
+        agent_id, alert_id, conditions=[], name="WS No Manager Test",
+        notification_channels=["websocket"] # Only websocket
+    )
+    notification = AlertNotification(
+        alert_id=alert_id, alert_name="WS No Manager Test", agent_id=agent_id,
+        message="Test WS no manager", triggered_conditions_details=[]
+    )
+
+    # Use caplog from pytest to capture loguru logs if logger is module-level
+    # If self.logger, then patch that specific logger instance.
+    # Assuming module-level logger for this example based on previous structure.
+    with patch('python_ai_services.services.alert_monitoring_service.logger.warning') as mock_log_warning_in_method:
+        await alert_monitoring_service._send_notifications(alert_config, notification)
+        mock_log_warning_in_method.assert_any_call(f"Cannot send WebSocket notification for alert {alert_id}: ConnectionManager not available.")
 
 # Need List, Optional from typing for helpers
-from typing import List, Optional
+from typing import List, Optional, Any # Added Any
 ```

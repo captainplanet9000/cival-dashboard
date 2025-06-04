@@ -16,9 +16,13 @@ from .simulation_service import SimulationService
 from .regulatory_compliance_service import RegulatoryComplianceService
 from .learning_data_logger_service import LearningDataLoggerService # Added
 from .renko_technical_service import RenkoTechnicalService # Added
+from .portfolio_snapshot_service import PortfolioSnapshotService # Added
+from .heikin_ashi_service import HeikinAshiTechnicalService # Added
 
 
 __all__ = [
+    "HeikinAshiTechnicalService", # Added
+    "PortfolioSnapshotService", # Added
     "RenkoTechnicalService", # Added
     "LearningDataLoggerService", # Added
     "RegulatoryComplianceService",
