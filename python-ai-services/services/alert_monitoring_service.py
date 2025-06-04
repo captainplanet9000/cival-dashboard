@@ -4,10 +4,14 @@ from loguru import logger
 
 from ..models.alert_models import AlertConfigOutput, AlertCondition, AlertNotification
 from ..models.dashboard_models import PortfolioSummary, AssetPositionSummary # For type hinting
-from ..models.websocket_models import WebSocketEnvelope # Added
+# WebSocketEnvelope no longer directly used here, EventBus + Relay will handle it.
+# from ..models.websocket_models import WebSocketEnvelope
 from .alert_configuration_service import AlertConfigurationService
 from .trading_data_service import TradingDataService
-from ..core.websocket_manager import connection_manager as global_connection_manager # Added
+# connection_manager no longer directly used here
+# from ..core.websocket_manager import connection_manager as global_connection_manager
+from ..services.event_bus_service import EventBusService # Added
+from ..models.event_bus_models import Event # Added
 import operator as op_module # For comparing values based on operator string
 
 class AlertMonitoringService:
@@ -15,18 +19,18 @@ class AlertMonitoringService:
         self,
         config_service: AlertConfigurationService,
         data_service: TradingDataService,
-        # Allow passing a specific connection_manager, default to global singleton
-        connection_mgr: Optional[Any] = None # Use Any to avoid circular type hint problems
+        event_bus: Optional[EventBusService] = None # Added event_bus
+        # connection_mgr: Optional[Any] = None # Removed direct connection_mgr
     ):
         self.config_service = config_service
         self.data_service = data_service
-        self.connection_manager = connection_mgr if connection_mgr else global_connection_manager
+        self.event_bus = event_bus # Store it
         self._last_triggered_times: Dict[str, datetime] = {} # Key: alert_id
         logger.info("AlertMonitoringService initialized.")
-        if self.connection_manager:
-            logger.info("AlertMonitoringService: ConnectionManager available for WebSocket alerts.")
+        if self.event_bus:
+            logger.info("AlertMonitoringService: EventBusService available for publishing alert events.")
         else:
-            logger.warning("AlertMonitoringService: ConnectionManager not available. WebSocket alerts will be skipped.")
+            logger.warning("AlertMonitoringService: EventBusService not available. Alert events will not be published for relay.")
 
     def _evaluate_condition(self, condition: AlertCondition, portfolio_summary: PortfolioSummary) -> (bool, Optional[Any]):
         """
@@ -90,20 +94,27 @@ class AlertMonitoringService:
                     logger.info(f"Placeholder: Would POST to {alert_config.target_webhook_url} with payload: {notification.model_dump_json()}")
                 else:
                     logger.error(f"Cannot send webhook for alert {alert_config.alert_id}: target_webhook_url not set.")
-            elif channel == "websocket":
-                if self.connection_manager:
-                    ws_payload_alert = WebSocketEnvelope(
-                        event_type="ALERT_TRIGGERED",
-                        agent_id=alert_config.agent_id, # Route to specific agent's dashboard if applicable
-                        payload=notification.model_dump(mode='json')
-                    )
-                    # Assuming client_id for WebSocket connection is the agent_id
-                    await self.connection_manager.send_to_client(alert_config.agent_id, ws_payload_alert)
-                    logger.info(f"Sent WebSocket ALERT_TRIGGERED for alert {alert_config.name} to agent {alert_config.agent_id}")
-                else:
-                    logger.warning(f"Cannot send WebSocket notification for alert {alert_config.alert_id}: ConnectionManager not available.")
-            else:
-                logger.warning(f"Unknown notification channel '{channel}' for alert {alert_config.alert_id}.")
+            # The "websocket" channel is now implicitly handled by publishing to EventBus
+            # if WebSocketRelayService is subscribed to "AlertTriggeredEvent".
+            # No direct ConnectionManager interaction here anymore.
+            # If a channel named "websocket" is still in config, it might just mean "make this available for websocket relay"
+            # which is achieved by publishing to event bus.
+            else: # Log other configured channels as unknown if not handled above.
+                 if channel != "websocket": # Avoid warning if "websocket" is just a marker now
+                    logger.warning(f"Unknown or unhandled notification channel '{channel}' for alert {alert_config.alert_id}.")
+
+        # After handling traditional notifications, publish to Event Bus for other consumers (like WebSocketRelay)
+        if self.event_bus:
+            try:
+                event_payload_dict = notification.model_dump(mode='json') # mode='json' for datetime
+                await self.event_bus.publish(Event(
+                    publisher_agent_id=alert_config.agent_id, # Or a system ID like "AlertMonitoringService"
+                    message_type="AlertTriggeredEvent",
+                    payload=event_payload_dict
+                ))
+                logger.info(f"Published AlertTriggeredEvent for alert '{alert_config.name}', agent {alert_config.agent_id}")
+            except Exception as e_event:
+                logger.error(f"Error publishing AlertTriggeredEvent for alert {alert_config.alert_id}: {e_event}", exc_info=True)
 
 
     async def check_and_trigger_alerts_for_agent(self, agent_id: str) -> List[AlertNotification]:

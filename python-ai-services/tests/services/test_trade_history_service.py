@@ -13,6 +13,9 @@ from python_ai_services.models.db_models import TradeFillDB # The DB model to te
 from python_ai_services.services.trade_history_service import TradeHistoryService, TradeHistoryServiceError
 from python_ai_services.models.trade_history_models import TradeFillData
 from python_ai_services.models.dashboard_models import TradeLogItem
+from python_ai_services.services.event_bus_service import EventBusService # Added
+from python_ai_services.models.event_bus_models import Event # Added
+from unittest.mock import MagicMock, AsyncMock # Added for mock_event_bus
 
 # --- In-Memory SQLite Test Database Setup ---
 DATABASE_URL_TEST = "sqlite:///:memory:"
@@ -32,10 +35,13 @@ async def db_session() -> Session: # Renamed from service to db_session for clar
         Base.metadata.drop_all(bind=engine_test) # Drop tables after test
 
 @pytest_asyncio.fixture
-async def service(db_session: Session) -> TradeHistoryService: # db_session is not directly used by service init
+def mock_event_bus() -> MagicMock: # Added fixture
+    return AsyncMock(spec=EventBusService)
+
+@pytest_asyncio.fixture
+async def service(db_session: Session, mock_event_bus: MagicMock) -> TradeHistoryService: # Added mock_event_bus
     """Provides a fresh instance of TradeHistoryService using the test session factory."""
-    # The service needs a factory (a callable that returns a new session)
-    return TradeHistoryService(session_factory=TestSessionLocal)
+    return TradeHistoryService(session_factory=TestSessionLocal, event_bus=mock_event_bus) # Pass mock_event_bus
 
 # Helper to create TradeFillData instances
 def create_fill_pydantic(
@@ -75,6 +81,13 @@ async def test_record_fill_db(service: TradeHistoryService, db_session: Session)
     assert retrieved_db_fill.price == 50000.0
     # Ensure timestamp is stored (default UTC handling in model/service is important)
     assert retrieved_db_fill.timestamp.replace(tzinfo=None) == fill_to_record.timestamp.replace(tzinfo=None)
+
+    # Verify event bus publish
+    mock_event_bus.publish.assert_called_once()
+    event_arg: Event = mock_event_bus.publish.call_args[0][0]
+    assert event_arg.message_type == "NewFillRecordedEvent"
+    assert event_arg.publisher_agent_id == agent_id
+    assert event_arg.payload == fill_to_record.model_dump(mode='json')
 
 
 @pytest.mark.asyncio
@@ -150,25 +163,46 @@ async def test_get_processed_trades_no_fills_db(service: TradeHistoryService):
 @pytest.mark.asyncio
 async def test_get_processed_trades_simple_match_db(service: TradeHistoryService):
     agent_id = "agent_simple_match_db"
-    fills_config = [
-        {"asset": "DOT/USD", "side": "buy", "qty": 10, "price": 7.0, "fee": 0.07, "offset": 10},
-        {"asset": "DOT/USD", "side": "sell", "qty": 10, "price": 8.0, "fee": 0.08, "offset": 0}
-    ]
-    await _setup_fills_for_pnl_test(service, agent_id, fills_config)
+    # Create fills with known timestamps for holding period calculation
+    now = datetime.now(timezone.utc)
+    buy_timestamp = now - timedelta(seconds=10)
+    sell_timestamp = now
+
+    # Use create_fill_pydantic directly to control timestamps precisely for test assertions
+    buy_fill = create_fill_pydantic(agent_id, "DOT/USD", "buy", 10, 7.0, fee=0.07, timestamp_offset_seconds=0) # Will be overridden
+    buy_fill.timestamp = buy_timestamp
+    sell_fill = create_fill_pydantic(agent_id, "DOT/USD", "sell", 10, 8.0, fee=0.08, timestamp_offset_seconds=0) # Will be overridden
+    sell_fill.timestamp = sell_timestamp
+
+    await service.record_fill(buy_fill)
+    await service.record_fill(sell_fill)
 
     trades = await service.get_processed_trades(agent_id)
     assert len(trades) == 1
-    trade_log = trades[0]
+    trade_log: TradeLogItem = trades[0]
+
+    assert trade_log.agent_id == agent_id
     assert trade_log.asset == "DOT/USD"
+    assert trade_log.opening_side == "buy"
+    assert trade_log.order_type == "limit" # Default placeholder
     assert trade_log.quantity == 10
-    assert trade_log.side == "sell"
-    assert trade_log.price == 8.0
-    expected_pnl = (8.0 - 7.0) * 10 - (0.07 + 0.08)
-    assert pytest.approx(trade_log.realized_pnl) == expected_pnl
-    assert pytest.approx(trade_log.fees) == 0.15
-    # Timestamps are tricky with now(), ensure it's the sell fill's timestamp
-    # This requires getting the fill back or knowing its exact timestamp.
-    # For now, check P&L and structure.
+    assert trade_log.entry_price_avg == pytest.approx(7.0)
+    assert trade_log.exit_price_avg == pytest.approx(8.0)
+    assert trade_log.entry_timestamp == buy_timestamp
+    assert trade_log.exit_timestamp == sell_timestamp
+    assert trade_log.holding_period_seconds == pytest.approx((sell_timestamp - buy_timestamp).total_seconds())
+
+    expected_initial_value = 10 * 7.0
+    expected_final_value = 10 * 8.0
+    expected_total_fees = 0.07 + 0.08
+    expected_pnl = expected_final_value - expected_initial_value - expected_total_fees
+    expected_perc_pnl = (expected_pnl / expected_initial_value) * 100 if expected_initial_value else 0
+
+    assert trade_log.initial_value_usd == pytest.approx(expected_initial_value)
+    assert trade_log.final_value_usd == pytest.approx(expected_final_value)
+    assert trade_log.total_fees == pytest.approx(expected_total_fees)
+    assert trade_log.realized_pnl == pytest.approx(expected_pnl)
+    assert trade_log.percentage_pnl == pytest.approx(expected_perc_pnl)
 
 @pytest.mark.asyncio
 async def test_get_processed_trades_one_buy_multiple_sells_db(service: TradeHistoryService):
@@ -182,25 +216,53 @@ async def test_get_processed_trades_one_buy_multiple_sells_db(service: TradeHist
 
     trades = await service.get_processed_trades(agent_id)
     assert len(trades) == 2
-    trades.sort(key=lambda t: t.timestamp) # Sort by exit time (service already does newest first, so this makes it oldest exit first)
+    trades.sort(key=lambda t: t.exit_timestamp) # Sort by exit time for assertion consistency
 
-    # First sell (6 units @ $16) closes part of the buy
-    trade1 = trades[0]
+    buy_fill_original_qty = 10.0
+    buy_fill_price = 15.0
+    buy_fill_total_fee = 0.15
+
+    # First sell (6 units @ $16)
+    trade1: TradeLogItem = trades[0]
     assert trade1.quantity == 6
-    assert trade1.price == 16.0
-    buy_fee_p1 = (6/10) * 0.15
-    sell_fee_p1 = 0.096
-    expected_pnl1 = (16.0 - 15.0) * 6 - (buy_fee_p1 + sell_fee_p1)
-    assert pytest.approx(trade1.realized_pnl) == expected_pnl1
+    assert trade1.opening_side == "buy"
+    assert trade1.entry_price_avg == pytest.approx(buy_fill_price)
+    assert trade1.exit_price_avg == pytest.approx(16.0)
+    # Assuming fills_config[0] is the buy, fills_config[1] is the first sell for timestamps
+    # This requires fills_config to be available or timestamps to be more explicitly managed in test setup
+    # For simplicity, we'll focus on P&L and key fields here. Holding period would need precise timestamps.
 
-    # Second sell (4 units @ $17) closes rest of the buy
-    trade2 = trades[1]
+    buy_fee_p1 = (6 / buy_fill_original_qty) * buy_fill_total_fee
+    sell_fee_p1 = 0.096
+    initial_value1 = 6 * buy_fill_price
+    final_value1 = 6 * 16.0
+    expected_pnl1 = final_value1 - initial_value1 - (buy_fee_p1 + sell_fee_p1)
+
+    assert pytest.approx(trade1.realized_pnl) == expected_pnl1
+    assert pytest.approx(trade1.total_fees) == (buy_fee_p1 + sell_fee_p1)
+    assert pytest.approx(trade1.initial_value_usd) == initial_value1
+    assert pytest.approx(trade1.final_value_usd) == final_value1
+    assert pytest.approx(trade1.percentage_pnl) == (expected_pnl1 / initial_value1 * 100) if initial_value1 else 0
+
+
+    # Second sell (4 units @ $17)
+    trade2: TradeLogItem = trades[1]
     assert trade2.quantity == 4
-    assert trade2.price == 17.0
-    buy_fee_p2 = (4/10) * 0.15
+    assert trade2.opening_side == "buy"
+    assert trade2.entry_price_avg == pytest.approx(buy_fill_price)
+    assert trade2.exit_price_avg == pytest.approx(17.0)
+
+    buy_fee_p2 = (4 / buy_fill_original_qty) * buy_fill_total_fee
     sell_fee_p2 = 0.068
-    expected_pnl2 = (17.0 - 15.0) * 4 - (buy_fee_p2 + sell_fee_p2)
+    initial_value2 = 4 * buy_fill_price
+    final_value2 = 4 * 17.0
+    expected_pnl2 = final_value2 - initial_value2 - (buy_fee_p2 + sell_fee_p2)
+
     assert pytest.approx(trade2.realized_pnl) == expected_pnl2
+    assert pytest.approx(trade2.total_fees) == (buy_fee_p2 + sell_fee_p2)
+    assert pytest.approx(trade2.initial_value_usd) == initial_value2
+    assert pytest.approx(trade2.final_value_usd) == final_value2
+    assert pytest.approx(trade2.percentage_pnl) == (expected_pnl2 / initial_value2 * 100) if initial_value2 else 0
 
 @pytest.mark.asyncio
 async def test_get_processed_trades_multiple_assets_db(service: TradeHistoryService):
@@ -232,18 +294,36 @@ async def test_get_processed_trades_multiple_assets_db(service: TradeHistoryServ
     eth_trades.sort(key=lambda t: t.timestamp) # Oldest exit first for easier assertion
 
     # PNL from first ETH sell (5 units @ $3100 against 10 units @ $3000)
-    eth_buy_fee_total = 30
+    eth_buy_fill_original_qty = 10.0 # Original quantity of the ETH buy
+    eth_buy_fee_total = 30.0 # Total fee for the original 10 ETH buy
+
+    eth_sell1_qty = 5.0
+    eth_sell1_price = 3100.0
     eth_sell1_fee = 15.5
-    eth_buy_fee_p1 = (5/10) * eth_buy_fee_total
-    expected_pnl_eth1 = (3100 - 3000) * 5 - (eth_buy_fee_p1 + eth_sell1_fee)
-    assert pytest.approx(eth_trades[0].realized_pnl) == expected_pnl_eth1
+    eth_buy_fee_p1 = (eth_sell1_qty / eth_buy_fill_original_qty) * eth_buy_fee_total
+    expected_pnl_eth1 = (eth_sell1_price * eth_sell1_qty) - (3000.0 * eth_sell1_qty) - (eth_buy_fee_p1 + eth_sell1_fee)
+
+    # Find the trade log item for the first sell
+    trade_log_eth1 = next(t for t in eth_trades if abs(t.exit_price_avg - eth_sell1_price) < 1e-9 and abs(t.quantity - eth_sell1_qty) < 1e-9 )
+    assert pytest.approx(trade_log_eth1.realized_pnl) == expected_pnl_eth1
+    assert trade_log_eth1.opening_side == "buy"
+    assert trade_log_eth1.entry_price_avg == pytest.approx(3000.0)
+
 
     # PNL from second ETH sell (remaining 5 units @ $3200 against 10 units @ $3000)
-    eth_sell2_fee = 16
-    eth_buy_fee_p2 = (5/10) * eth_buy_fee_total
-    expected_pnl_eth2 = (3200 - 3000) * 5 - (eth_buy_fee_p2 + eth_sell2_fee)
-    assert pytest.approx(eth_trades[1].realized_pnl) == expected_pnl_eth2
+    eth_sell2_qty = 5.0
+    eth_sell2_price = 3200.0
+    eth_sell2_fee = 16.0
+    eth_buy_fee_p2 = (eth_sell2_qty / eth_buy_fill_original_qty) * eth_buy_fee_total # Fee for the remaining part of the original buy
+    expected_pnl_eth2 = (eth_sell2_price * eth_sell2_qty) - (3000.0 * eth_sell2_qty) - (eth_buy_fee_p2 + eth_sell2_fee)
+
+    trade_log_eth2 = next(t for t in eth_trades if abs(t.exit_price_avg - eth_sell2_price) < 1e-9 and abs(t.quantity - eth_sell2_qty) < 1e-9 )
+    assert pytest.approx(trade_log_eth2.realized_pnl) == expected_pnl_eth2
+    assert trade_log_eth2.opening_side == "buy"
+    assert trade_log_eth2.entry_price_avg == pytest.approx(3000.0)
+
 
 # Optional: Import for type hinting if not already present
 from typing import Optional
+from unittest.mock import MagicMock, AsyncMock # Ensure these are at the top if used by new fixtures
 ```

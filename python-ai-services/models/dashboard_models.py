@@ -22,16 +22,31 @@ class PortfolioSummary(BaseModel):
 
 class TradeLogItem(BaseModel):
     trade_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime
     agent_id: str
     asset: str
-    side: Literal["buy", "sell"]
-    order_type: Literal["market", "limit"] # Execution order type
-    quantity: float
-    price: float # Execution price
-    total_value: float # quantity * price
-    realized_pnl: Optional[float] = None # PnL for this specific trade if it's a closing trade
-    fees: Optional[float] = None
+    opening_side: Literal["buy", "sell"] # Side of the trade that opened the position
+
+    order_type: Literal["market", "limit"] # Assuming type of the entry order
+
+    quantity: float # Matched quantity for this closed trade portion
+    entry_price_avg: float # Average entry price for the matched quantity
+    exit_price_avg: float # Average exit price for the matched quantity
+
+    entry_timestamp: Optional[datetime] = None
+    exit_timestamp: datetime # Timestamp of the fill that closed this trade portion
+    holding_period_seconds: Optional[float] = None
+
+    initial_value_usd: Optional[float] = None # Gross value at entry (qty * entry_price_avg)
+    final_value_usd: Optional[float] = None   # Gross value at exit (qty * exit_price_avg)
+
+    realized_pnl: Optional[float] = None # Net PnL (Final - Initial - Fees)
+    percentage_pnl: Optional[float] = None # (realized_pnl / initial_value_usd) * 100
+
+    total_fees: Optional[float] = None # Sum of fees for this matched trade portion
+
+    # Optional: Could include list of fill_ids involved
+    # entry_fill_ids: List[str] = Field(default_factory=list)
+    # exit_fill_ids: List[str] = Field(default_factory=list)
 
 class OrderLogItem(BaseModel):
     order_id: str # Could be int from exchange or UUID string for paper/internal
@@ -54,4 +69,4 @@ class PortfolioSnapshotOutput(BaseModel):
     # snapshot_id: Optional[str] = None # Optional if not needed by frontend for e.g. direct linking
 
     class Config:
-        orm_mode = True
+        from_attributes = True # Renamed from orm_mode for Pydantic v2
