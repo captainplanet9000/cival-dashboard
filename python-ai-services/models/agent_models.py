@@ -71,7 +71,16 @@ class AgentStrategyConfig(BaseModel):
         signal_confirmation_candles: int = Field(default=2, ge=1, description="Number of consecutive strong HA candles for signal.")
         stop_loss_atr_multiplier: float = Field(default=1.5, gt=0, description="ATR multiplier for stop-loss placement.")
         atr_period_for_sl: int = Field(default=14, ge=1, description="ATR period for stop-loss calculation.")
+
+    # Nested model for Elliott Wave parameters
+    class ElliottWaveParams(BaseModel):
+        impulse_wave_min_candles: int = Field(default=5, description="Minimum candles to consider for an impulse wave.")
+        impulse_wave_min_total_change_pct: float = Field(default=5.0, description="Minimum percentage change for an impulse wave.")
+        correction_fib_levels: List[float] = Field(default_factory=lambda: [0.382, 0.5, 0.618], description="Fibonacci levels for corrective waves.")
+        min_wave_3_extension_pct_of_wave_1: float = Field(default=161.8, description="Minimum extension of wave 3 relative to wave 1 length.")
+
     heikin_ashi_params: Optional[HeikinAshiParams] = None
+    elliott_wave_params: Optional[ElliottWaveParams] = None
 
 class AgentRiskConfig(BaseModel):
     max_capital_allocation_usd: float

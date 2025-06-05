@@ -21,6 +21,8 @@ from .heikin_ashi_service import HeikinAshiTechnicalService # Added
 
 
 __all__ = [
+    "ElliottWaveTechnicalServiceError",
+    "ElliottWaveTechnicalService",
     "HeikinAshiTechnicalService", # Added
     "PortfolioSnapshotService", # Added
     "RenkoTechnicalService", # Added
@@ -53,3 +55,4 @@ __all__ = [
     "PortfolioOptimizerService",
     "NewsAnalysisService"
 ]
+from .elliott_wave_service import ElliottWaveTechnicalService, ElliottWaveTechnicalServiceError
