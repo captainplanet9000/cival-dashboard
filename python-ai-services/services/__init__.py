@@ -1,7 +1,7 @@
 # __init__.py for services
 
 from .google_vertex_service import GoogleVertexService
-from .market_data_service import MarketDataService
+from .market_data_service import MarketDataService, MarketDataServiceError
 from .simulated_trade_executor import SimulatedTradeExecutor
 from .trading_history_service import TradingHistoryService
 from .hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
@@ -31,6 +31,7 @@ __all__ = [
     "DEXExecutionServiceError",
     "GoogleVertexService",
     "MarketDataService",
+    "MarketDataServiceError",
     "SimulatedTradeExecutor",
     "TradingHistoryService",
     "HyperliquidExecutionService",

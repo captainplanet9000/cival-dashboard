@@ -1,64 +1,85 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta, timezone
 from loguru import logger
+from python_ai_services.models.market_data_models import Kline, OrderBookSnapshot, Trade
+from python_ai_services.utils.hyperliquid_data_fetcher import HyperliquidMarketDataFetcher, HyperliquidMarketDataFetcherError
+
+class MarketDataServiceError(Exception):
+    pass
 
 class MarketDataService:
-    async def get_historical_klines(self, symbol: str, interval: str = "1d", limit: int = 100) -> List[Dict[str, Any]]:
-        logger.info(f"MockMarketDataService: Fetching {limit} klines for {symbol} (interval: {interval})")
-        # Generate some deterministic mock data for testing Darvas logic
-        klines = []
-        # Ensure current time is timezone-aware for proper timedelta arithmetic
-        now_aware = datetime.now(timezone.utc)
-        start_time = now_aware - timedelta(days=limit)
-        
-        # Base values for generating somewhat predictable data
-        base_low = 90.0
-        # Define a clear box top for the consolidation phase
-        box_consolidation_top = 105.0
-        box_consolidation_bottom = 100.0
+    def __init__(self, fetcher: HyperliquidMarketDataFetcher):
+        if not fetcher:
+            logger.error("MarketDataService initialized with no fetcher.")
+            raise ValueError("HyperliquidMarketDataFetcher instance is required.")
+        self.fetcher = fetcher
+        logger.info("MarketDataService initialized with HyperliquidMarketDataFetcher.")
 
-        for i in range(limit):
-            ts = start_time + timedelta(days=i)
+    async def get_historical_klines(
+        self,
+        symbol: str,
+        interval: str,
+        start_time: datetime,
+        end_time: datetime,
+        # limit: int = 100 # Limit is often implicit in start/end for klines, or handled by fetcher if applicable
+    ) -> List[Kline]:
+        logger.info(f"MarketDataService: Fetching klines for {symbol} (interval: {interval}) from {start_time} to {end_time}")
 
-            if i < limit - 15: # Initial phase, data varies more widely below the box
-                mock_open = base_low + ((i*3) % 10) # Some variation to keep it below box_consolidation_bottom mostly
-                mock_close = base_low + 2 + ((i*2) % 8)
-                mock_high = max(mock_open, mock_close) + ((i*1) % 4)
-                mock_low = min(mock_open, mock_close) - ((i*1) % 3)
-                # Ensure initial data stays below potential box bottom for clarity
-                mock_high = min(mock_high, box_consolidation_bottom -1)
-                mock_close = min(mock_close, box_consolidation_bottom -1)
-                mock_open = min(mock_open, box_consolidation_bottom -1)
-                mock_low = min(mock_low, box_consolidation_bottom-2)
+        if not symbol:
+            raise MarketDataServiceError("Symbol must be provided for fetching klines.")
+        if not interval:
+            raise MarketDataServiceError("Interval must be provided for fetching klines.")
+        if not start_time or not end_time:
+            raise MarketDataServiceError("Start time and end time must be provided for fetching klines.")
+        if start_time >= end_time:
+            raise MarketDataServiceError("Start time must be before end time.")
 
+        # Convert datetimes to milliseconds for Hyperliquid API
+        start_time_ms = int(start_time.timestamp() * 1000)
+        end_time_ms = int(end_time.timestamp() * 1000)
 
-            elif i < limit -1: # Consolidation phase to form a box
-                # Prices oscillate within the box_consolidation_bottom and box_consolidation_top
-                # Make highs consistently hit box_consolidation_top
-                # Make lows consistently hit box_consolidation_bottom
-                mock_high = box_consolidation_top
-                mock_low = box_consolidation_bottom
-                if i % 2 == 0:
-                    mock_open = box_consolidation_bottom + 1
-                    mock_close = box_consolidation_top -1
-                else:
-                    mock_open = box_consolidation_top - 1
-                    mock_close = box_consolidation_bottom + 1
-            else: # Last candle - potential breakout
-                mock_open = box_consolidation_top -1 # Opens just below/at the box top
-                mock_low = box_consolidation_top - 2 # Low also below/near box top
-                mock_high = box_consolidation_top + 5 # Clear breakout high
-                mock_close = box_consolidation_top + 4 # Clear breakout close above box top
+        try:
+            klines = await self.fetcher.get_klines(
+                symbol=symbol,
+                interval=interval,
+                start_time_ms=start_time_ms,
+                end_time_ms=end_time_ms
+            )
+            logger.info(f"MarketDataService: Successfully fetched {len(klines)} klines for {symbol}.")
+            return klines
+        except HyperliquidMarketDataFetcherError as e:
+            logger.error(f"MarketDataService: Error fetching klines for {symbol}: {e}")
+            raise MarketDataServiceError(f"Failed to fetch klines for {symbol}: {e}")
+        except Exception as e: # Catch any other unexpected errors
+            logger.error(f"MarketDataService: Unexpected error fetching klines for {symbol}: {e}")
+            raise MarketDataServiceError(f"An unexpected error occurred while fetching klines for {symbol}.")
 
-            klines.append({
-                "timestamp": int(ts.timestamp() * 1000), # Milliseconds
-                "open": round(mock_open, 2),
-                "high": round(mock_high, 2),
-                "low": round(mock_low, 2),
-                "close": round(mock_close, 2),
-                "volume": 1000 + (i * 10),
-            })
+    async def get_current_order_book(self, symbol: str, n_levels: int = 20) -> OrderBookSnapshot:
+        logger.info(f"MarketDataService: Fetching order book for {symbol} (top {n_levels} levels)")
+        if not symbol:
+            raise MarketDataServiceError("Symbol must be provided for fetching order book.")
+        try:
+            order_book = await self.fetcher.get_order_book(symbol=symbol, n_levels=n_levels)
+            logger.info(f"MarketDataService: Successfully fetched order book for {symbol}.")
+            return order_book
+        except HyperliquidMarketDataFetcherError as e:
+            logger.error(f"MarketDataService: Error fetching order book for {symbol}: {e}")
+            raise MarketDataServiceError(f"Failed to fetch order book for {symbol}: {e}")
+        except Exception as e:
+            logger.error(f"MarketDataService: Unexpected error fetching order book for {symbol}: {e}")
+            raise MarketDataServiceError(f"An unexpected error occurred while fetching order book for {symbol}.")
 
-        logger.debug(f"Generated {len(klines)} mock klines for {symbol}. Last kline: {klines[-1] if klines else 'N/A'}")
-        return klines
-```
+    async def get_recent_trades(self, symbol: str, limit: int = 100) -> List[Trade]:
+        logger.info(f"MarketDataService: Fetching last {limit} trades for {symbol}")
+        if not symbol:
+            raise MarketDataServiceError("Symbol must be provided for fetching recent trades.")
+        try:
+            trades = await self.fetcher.get_trades(symbol=symbol, limit=limit)
+            logger.info(f"MarketDataService: Successfully fetched {len(trades)} trades for {symbol}.")
+            return trades
+        except HyperliquidMarketDataFetcherError as e:
+            logger.error(f"MarketDataService: Error fetching recent trades for {symbol}: {e}")
+            raise MarketDataServiceError(f"Failed to fetch recent trades for {symbol}: {e}")
+        except Exception as e:
+            logger.error(f"MarketDataService: Unexpected error fetching recent trades for {symbol}: {e}")
+            raise MarketDataServiceError(f"An unexpected error occurred while fetching recent trades for {symbol}.")

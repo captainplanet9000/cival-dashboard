@@ -1,105 +1,142 @@
 import pytest
 import pytest_asyncio
-from typing import List, Dict, Any
-from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
+from typing import List
+from datetime import datetime, timezone, timedelta
 
-from python_ai_services.services.market_data_service import MarketDataService
+from python_ai_services.services.market_data_service import MarketDataService, MarketDataServiceError
+from python_ai_services.utils.hyperliquid_data_fetcher import HyperliquidMarketDataFetcher, HyperliquidMarketDataFetcherError
+from python_ai_services.models.market_data_models import Kline, OrderBookSnapshot, OrderBookLevel, Trade
+
+# --- Mocks ---
 
 @pytest_asyncio.fixture
-async def market_service() -> MarketDataService:
-    return MarketDataService()
+def mock_fetcher() -> MagicMock:
+    fetcher = AsyncMock(spec=HyperliquidMarketDataFetcher) # Use AsyncMock for async methods
+    # Configure the 'info' attribute if it's accessed directly by the fetcher's constructor or methods
+    # For this test structure, we are mocking the fetcher instance itself, so direct info access isn't an issue here.
+    return fetcher
+
+@pytest_asyncio.fixture
+def market_service(mock_fetcher: MagicMock) -> MarketDataService:
+    # Ensure the mock_fetcher passed to MarketDataService is adequate.
+    # If MarketDataService's __init__ expects a fully initialized fetcher (with .info),
+    # the mock_fetcher might need more setup, or we mock at a higher level.
+    # For now, assuming direct pass-through is fine as fetcher methods are mocked.
+    return MarketDataService(fetcher=mock_fetcher)
+
+# --- Sample Data ---
+
+def create_sample_klines(count: int) -> List[Kline]:
+    return [
+        Kline(
+            timestamp=datetime.now(timezone.utc) - timedelta(minutes=i),
+            open=100.0 + i, high=105.0 + i, low=95.0 + i, close=102.0 + i, volume=1000.0 + i * 10
+        ) for i in range(count)
+    ]
+
+def create_sample_order_book(symbol: str) -> OrderBookSnapshot:
+    return OrderBookSnapshot(
+        symbol=symbol,
+        timestamp=datetime.now(timezone.utc),
+        bids=[OrderBookLevel(price=99.0, quantity=10.0), OrderBookLevel(price=98.0, quantity=5.0)],
+        asks=[OrderBookLevel(price=101.0, quantity=12.0), OrderBookLevel(price=102.0, quantity=6.0)]
+    )
+
+def create_sample_trades(symbol: str, count: int) -> List[Trade]:
+    return [
+        Trade(
+            trade_id=f"trade_{i}", timestamp=datetime.now(timezone.utc) - timedelta(seconds=i),
+            symbol=symbol, price=100.0 + i*0.1, quantity=1.0 + i*0.1, side="buy" if i % 2 == 0 else "sell"
+        ) for i in range(count)
+    ]
+
+# --- Tests for get_historical_klines ---
 
 @pytest.mark.asyncio
-async def test_get_historical_klines_returns_list_of_dicts(market_service: MarketDataService):
-    symbol = "TEST/USD"
+async def test_get_historical_klines_success(market_service: MarketDataService, mock_fetcher: MagicMock):
+    symbol = "ETH/USD"
+    interval = "1h"
+    start_time = datetime(2023, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    end_time = datetime(2023, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    expected_klines = create_sample_klines(5)
+
+    mock_fetcher.get_klines.return_value = expected_klines
+
+    result = await market_service.get_historical_klines(symbol, interval, start_time, end_time)
+
+    mock_fetcher.get_klines.assert_called_once_with(
+        symbol=symbol,
+        interval=interval,
+        start_time_ms=int(start_time.timestamp() * 1000),
+        end_time_ms=int(end_time.timestamp() * 1000)
+    )
+    assert result == expected_klines
+    assert all(isinstance(k, Kline) for k in result)
+
+@pytest.mark.asyncio
+async def test_get_historical_klines_fetcher_error(market_service: MarketDataService, mock_fetcher: MagicMock):
+    mock_fetcher.get_klines.side_effect = HyperliquidMarketDataFetcherError("Test fetcher error")
+
+    with pytest.raises(MarketDataServiceError, match="Failed to fetch klines for TEST/USD: Test fetcher error"):
+        await market_service.get_historical_klines(
+            "TEST/USD", "1m", datetime.now(timezone.utc) - timedelta(hours=1), datetime.now(timezone.utc)
+        )
+
+@pytest.mark.asyncio
+async def test_get_historical_klines_input_validation(market_service: MarketDataService):
+    with pytest.raises(MarketDataServiceError, match="Symbol must be provided"):
+        await market_service.get_historical_klines("", "1m", datetime.now(timezone.utc), datetime.now(timezone.utc) + timedelta(hours=1))
+    with pytest.raises(MarketDataServiceError, match="Start time must be before end time"):
+        await market_service.get_historical_klines("S/U", "1m", datetime.now(timezone.utc), datetime.now(timezone.utc) - timedelta(hours=1))
+
+# --- Tests for get_current_order_book ---
+
+@pytest.mark.asyncio
+async def test_get_current_order_book_success(market_service: MarketDataService, mock_fetcher: MagicMock):
+    symbol = "BTC/USD"
+    n_levels = 10
+    expected_ob = create_sample_order_book(symbol)
+
+    mock_fetcher.get_order_book.return_value = expected_ob
+
+    result = await market_service.get_current_order_book(symbol, n_levels)
+
+    mock_fetcher.get_order_book.assert_called_once_with(symbol=symbol, n_levels=n_levels)
+    assert result == expected_ob
+    assert isinstance(result, OrderBookSnapshot)
+
+@pytest.mark.asyncio
+async def test_get_current_order_book_fetcher_error(market_service: MarketDataService, mock_fetcher: MagicMock):
+    mock_fetcher.get_order_book.side_effect = HyperliquidMarketDataFetcherError("OB fetch error")
+
+    with pytest.raises(MarketDataServiceError, match="Failed to fetch order book for TEST/OB: OB fetch error"):
+        await market_service.get_current_order_book("TEST/OB", 5)
+
+# --- Tests for get_recent_trades ---
+
+@pytest.mark.asyncio
+async def test_get_recent_trades_success(market_service: MarketDataService, mock_fetcher: MagicMock):
+    symbol = "SOL/USD"
     limit = 50
-    klines = await market_service.get_historical_klines(symbol, limit=limit)
+    expected_trades = create_sample_trades(symbol, limit)
 
-    assert isinstance(klines, list)
-    assert len(klines) == limit
-    if limit > 0:
-        assert isinstance(klines[0], dict)
+    mock_fetcher.get_trades.return_value = expected_trades
 
-@pytest.mark.asyncio
-async def test_get_historical_klines_content_and_keys(market_service: MarketDataService):
-    symbol = "MOCK/COIN"
-    limit = 3 # Small limit for easier inspection if needed
-    klines = await market_service.get_historical_klines(symbol, limit=limit)
+    result = await market_service.get_recent_trades(symbol, limit)
 
-    assert len(klines) == limit
-    for kline in klines:
-        assert "timestamp" in kline
-        assert "open" in kline
-        assert "high" in kline
-        assert "low" in kline
-        assert "close" in kline
-        assert "volume" in kline
-
-        assert isinstance(kline["timestamp"], int)
-        assert isinstance(kline["open"], float)
-        assert isinstance(kline["high"], float)
-        assert isinstance(kline["low"], float)
-        assert isinstance(kline["close"], float)
-        assert isinstance(kline["volume"], (int, float)) # Volume can sometimes be float
-
-        assert kline["high"] >= kline["low"]
-        assert kline["high"] >= kline["open"]
-        assert kline["high"] >= kline["close"]
-        assert kline["low"] <= kline["open"]
-        assert kline["low"] <= kline["close"]
+    mock_fetcher.get_trades.assert_called_once_with(symbol=symbol, limit=limit)
+    assert result == expected_trades
+    assert all(isinstance(t, Trade) for t in result)
 
 @pytest.mark.asyncio
-async def test_get_historical_klines_limit_respected(market_service: MarketDataService):
-    symbol = "LIMIT/TEST"
-    test_limits = [1, 10, 100] # Default is 100
-    for limit_val in test_limits:
-        klines = await market_service.get_historical_klines(symbol, limit=limit_val)
-        assert len(klines) == limit_val
+async def test_get_recent_trades_fetcher_error(market_service: MarketDataService, mock_fetcher: MagicMock):
+    mock_fetcher.get_trades.side_effect = HyperliquidMarketDataFetcherError("Trades fetch error")
 
-@pytest.mark.asyncio
-async def test_get_historical_klines_timestamps_are_increasing(market_service: MarketDataService):
-    symbol = "TIME/TEST"
-    limit = 20
-    klines = await market_service.get_historical_klines(symbol, limit=limit)
+    with pytest.raises(MarketDataServiceError, match="Failed to fetch recent trades for TEST/TRADES: Trades fetch error"):
+        await market_service.get_recent_trades("TEST/TRADES", 25)
 
-    assert len(klines) == limit
-    timestamps = [kline["timestamp"] for kline in klines]
-    for i in range(len(timestamps) - 1):
-        assert timestamps[i] < timestamps[i+1]
-
-@pytest.mark.asyncio
-async def test_get_historical_klines_mock_data_pattern(market_service: MarketDataService):
-    """
-    More specific test for the mock data generation pattern, especially the breakout.
-    This test is tightly coupled to the mock implementation but useful for Darvas testing.
-    """
-    symbol = "DARVAS/MOCK"
-    limit = 30 # Needs to be enough to see the pattern: initial, consolidation, breakout
-                # Initial phase < limit - 15. Consolidation < limit - 1. Breakout = last.
-                # So limit = 15 (initial) + some consolidation (e.g. 10) + 1 (breakout) = 26+
-
-    klines = await market_service.get_historical_klines(symbol, limit=limit)
-    assert len(klines) == limit
-
-    box_consolidation_top = 105.0 # From mock service
-
-    # Check last candle for breakout characteristics
-    last_candle = klines[-1]
-    assert last_candle["high"] > box_consolidation_top
-    assert last_candle["close"] > box_consolidation_top
-
-    # Check a candle in consolidation phase
-    # Example: candle at index limit - 5 (should be in consolidation)
-    if limit - 5 >= limit - 15 : # Ensure it's in consolidation part
-        consolidation_candle_index = limit - 5
-        consolidation_candle = klines[consolidation_candle_index]
-        assert consolidation_candle["high"] == box_consolidation_top # Mock makes highs hit the top
-        # Other checks for consolidation can be added if pattern is more complex
-
-    # Check a candle in initial phase
-    if limit > 15: # Ensure there's an initial phase
-        initial_phase_candle = klines[0] # First candle
-        assert initial_phase_candle["high"] < box_consolidation_top
-        # (More specific assertions depend on the exact mock generation logic for initial phase)
-
-```
+# --- Test initialization error ---
+def test_market_service_init_no_fetcher():
+    with pytest.raises(ValueError, match="HyperliquidMarketDataFetcher instance is required."):
+        MarketDataService(fetcher=None)
