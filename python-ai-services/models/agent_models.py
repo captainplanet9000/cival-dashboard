@@ -17,6 +17,14 @@ class AgentStrategyConfig(BaseModel):
         stop_loss_percentage_from_box_bottom: float = 0.01
     darvas_params: Optional[DarvasStrategyParams] = None
 
+
+    # Nested model for SMA Crossover parameters
+    class SMACrossoverParams(BaseModel):
+        short_window: int = Field(default=20, gt=0, description="Short moving average window.")
+        long_window: int = Field(default=50, gt=0, description="Long moving average window.")
+        sma_type: Literal["SMA", "EMA"] = Field(default="SMA", description="Type of moving average (SMA or EMA).")
+        # Optional: trend_filter_period: Optional[int] = Field(default=None, gt=0, description="Period for a longer-term trend filter MA.")
+
     class WilliamsAlligatorParams(BaseModel):
         jaw_period: int = 13
         jaw_shift: int = 8
@@ -24,6 +32,7 @@ class AgentStrategyConfig(BaseModel):
         teeth_shift: int = 5
         lips_period: int = 5
         lips_shift: int = 3
+    sma_crossover_params: Optional[SMACrossoverParams] = None
     williams_alligator_params: Optional[WilliamsAlligatorParams] = None
 
     class MarketConditionClassifierParams(BaseModel):

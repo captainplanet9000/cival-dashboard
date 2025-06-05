@@ -21,6 +21,12 @@ from .heikin_ashi_service import HeikinAshiTechnicalService # Added
 
 
 __all__ = [
+    "ExecutionSpecialistServiceError",
+    "ExecutionSpecialistService",
+    "StrategyDeveloperServiceError",
+    "StrategyDeveloperService",
+    "SMACrossoverTechnicalServiceError",
+    "SMACrossoverTechnicalService",
     "ElliottWaveTechnicalServiceError",
     "ElliottWaveTechnicalService",
     "HeikinAshiTechnicalService", # Added
@@ -56,3 +62,6 @@ __all__ = [
     "NewsAnalysisService"
 ]
 from .elliott_wave_service import ElliottWaveTechnicalService, ElliottWaveTechnicalServiceError
+from .sma_crossover_service import SMACrossoverTechnicalService, SMACrossoverTechnicalServiceError
+from .strategy_developer_service import StrategyDeveloperService, StrategyDeveloperServiceError
+from .execution_specialist_service import ExecutionSpecialistService, ExecutionSpecialistServiceError
