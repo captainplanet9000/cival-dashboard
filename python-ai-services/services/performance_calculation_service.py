@@ -233,4 +233,3 @@ class PerformanceCalculationService:
 
         return metrics
 
-```

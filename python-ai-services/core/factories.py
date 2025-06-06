@@ -118,4 +118,3 @@ def get_dex_execution_service_instance(
     except Exception as e: # Catch any other unexpected errors
         logger.error(f"DEX Factory: Agent {agent_config.agent_id}: Unexpected error creating DEXExecutionService: {e}", exc_info=True)
         return None
-```

@@ -60,4 +60,3 @@ class TradeFillData(BaseModel):
     fee_currency: Optional[str] = None # e.g., "USD" or the asset itself
     exchange_order_id: Optional[str] = None
     exchange_trade_id: Optional[str] = None # Often exchanges have a separate trade/fill ID
-```

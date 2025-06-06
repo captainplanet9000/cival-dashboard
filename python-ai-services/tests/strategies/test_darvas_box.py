@@ -271,4 +271,3 @@ def test_run_darvas_box_parameter_sensitivity_min_duration(default_darvas_config
 # - test_run_darvas_box_multiple_boxes_and_signals (requires more complex data setup)
 # - test_run_darvas_box_box_definition_period_timeout
 # - test_run_darvas_box_bottom_violation_after_confirmation (box breaks down, no signal)
-```

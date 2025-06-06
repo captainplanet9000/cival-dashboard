@@ -196,4 +196,3 @@ async def test_calculate_cagr_negative_total_return(performance_service: Perform
     metrics = await performance_service.calculate_performance_metrics("test_agent_neg_return")
     assert metrics.compounding_annual_return_percentage is not None
     assert metrics.compounding_annual_return_percentage < 0
-```

@@ -174,4 +174,3 @@ def test_ha_no_signals_insufficient_data(default_ha_config: HeikinAshiConfig):
 # - test_ha_exit_long_on_weak_green_candle
 # - test_ha_hold_in_strong_bullish_trend_after_buy
 # - test_ha_small_wick_threshold_impact
-```

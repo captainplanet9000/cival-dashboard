@@ -192,4 +192,3 @@ async def get_agent_equity_curve(
 # The following @router.get an exact duplicate of the one defined earlier in the file.
 # This was likely a copy-paste error during previous modifications. Removing it.
 # @router.get("/agents/{agent_id}/portfolio/summary", response_model=PortfolioSummary)
-```

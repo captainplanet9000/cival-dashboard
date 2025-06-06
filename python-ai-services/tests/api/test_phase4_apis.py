@@ -906,4 +906,3 @@ async def test_get_strategy_chart_data_redis_get_error(
         delattr(app.state, 'redis_cache_client')
 
 # TODO: Add tests for Redis SET error and JSONDecodeError for visualization endpoint cache.
-```

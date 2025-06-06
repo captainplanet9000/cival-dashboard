@@ -381,4 +381,3 @@ async def test_on_news_article_event_invalid_payload(
 # Ensure all type hints are imported
 from typing import List, Dict, Any, Optional, Literal
 from datetime import datetime, timezone
-```

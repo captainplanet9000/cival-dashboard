@@ -183,4 +183,3 @@ def test_get_system_health_summary_success(mock_get_deep_health: AsyncMock, clie
 
     mock_get_deep_health.assert_called_once()
 
-```

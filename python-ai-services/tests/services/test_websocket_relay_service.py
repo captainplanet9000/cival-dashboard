@@ -178,4 +178,3 @@ async def test_event_handler_invalid_payload_type(websocket_relay_service: WebSo
     await websocket_relay_service.on_new_fill_recorded(event_invalid_payload)
     mock_connection_manager.send_to_client.assert_not_called()
     assert "Invalid payload type for NewFillRecordedEvent: <class 'str'>. Expected dict." in caplog.text
-```

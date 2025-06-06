@@ -91,4 +91,3 @@ class RegulatoryComplianceService:
             for v_rule in result.violated_rules:
                 logger.warning(f"  - Violated Rule ID: {v_rule.rule_id}, Description: {v_rule.description}, Reason: {v_rule.reason}")
         return result
-```

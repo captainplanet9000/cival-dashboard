@@ -158,4 +158,3 @@ async def test_get_historical_snapshots_no_records(snapshot_service: PortfolioSn
 
 # Need to import MagicMock for the mock_event_bus fixture
 from unittest.mock import MagicMock
-```

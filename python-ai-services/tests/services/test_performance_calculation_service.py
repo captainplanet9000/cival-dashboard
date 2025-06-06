@@ -189,4 +189,3 @@ async def test_calculate_performance_invalid_pnl_values(
 
 # Need uuid for helper
 import uuid
-```

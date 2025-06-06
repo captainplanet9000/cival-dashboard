@@ -212,4 +212,3 @@ async def test_get_strategy_visualization_data_no_price_data(
 # - Test case where price_df is empty after fetching. (Covered by "Could not fetch price data" if None, but also for empty DataFrame)
 # - Test indicator extraction logic with more complex scenarios (e.g. multi-value indicators, all NaNs)
 # - Test OHLCVBar creation with missing Volume data.
-```

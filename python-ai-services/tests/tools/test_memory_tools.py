@@ -192,4 +192,3 @@ def test_recall_memories_tool_args_schema():
     else:
         pytest.fail("Tool schema attribute not found for recall_memories_tool.")
 
-```

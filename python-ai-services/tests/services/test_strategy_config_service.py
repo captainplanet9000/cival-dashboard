@@ -265,4 +265,3 @@ async def test_get_all_user_strategies_with_performance_teasers_no_strategies(st
     assert len(teasers) == 0
     strategy_config_service_instance.get_latest_performance_metrics.assert_not_called()
 
-```

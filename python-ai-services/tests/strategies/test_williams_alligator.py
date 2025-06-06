@@ -227,4 +227,3 @@ def test_alligator_no_signals_insufficient_data(default_alligator_config: Willia
 # - test_alligator_price_source_hlc3 (verifying SMMA calculation uses hlc3)
 # - test_alligator_handles_initial_nans_in_indicators_for_signals (ensure no signals if lines are NaN)
 
-```

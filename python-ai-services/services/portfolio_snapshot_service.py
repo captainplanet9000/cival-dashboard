@@ -104,4 +104,3 @@ class PortfolioSnapshotService:
             raise PortfolioSnapshotServiceError(f"Failed to fetch historical snapshots: {e}")
         finally:
             db.close()
-```

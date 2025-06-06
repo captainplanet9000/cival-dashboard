@@ -65,4 +65,3 @@ class NewsArticleEventPayload(BaseModel):
     sentiment_label: Literal["positive", "negative", "neutral"] = "neutral"
     matched_keywords: List[str] = Field(default_factory=list)
     raw_content_snippet: Optional[str] = None # Optional: a snippet of original text
-```
