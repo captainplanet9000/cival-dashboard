@@ -7,15 +7,22 @@ from collections import deque
 from ..models.trade_history_models import TradeFillData
 from ..models.dashboard_models import TradeLogItem
 from ..models.db_models import TradeFillDB # New DB model import
+from ..services.event_bus_service import EventBusService # Added
+from ..models.event_bus_models import Event # Added
 from loguru import logger
 
 class TradeHistoryServiceError(Exception): # Custom error for the service
     pass
 
 class TradeHistoryService:
-    def __init__(self, session_factory: Callable[[], Session]):
+    def __init__(self, session_factory: Callable[[], Session], event_bus: Optional[EventBusService] = None): # Added event_bus
         self.session_factory = session_factory
+        self.event_bus = event_bus # Store it
         logger.info("TradeHistoryService initialized with database session factory.")
+        if self.event_bus:
+            logger.info("EventBusService available to TradeHistoryService.")
+        else:
+            logger.warning("EventBusService not available to TradeHistoryService. Fill events will not be published.")
 
     def _pydantic_fill_to_db_dict(self, fill_data: TradeFillData) -> Dict[str, Any]:
         """Converts TradeFillData Pydantic model to a dictionary suitable for TradeFillDB ORM model."""
@@ -56,6 +63,20 @@ class TradeHistoryService:
             db.commit()
             # db.refresh(db_fill) # Not strictly needed if fill_id is client-generated and no other DB defaults are read back
             logger.info(f"Fill {fill_data.fill_id} recorded to DB for agent {fill_data.agent_id}.")
+
+            # Publish event if event_bus is available
+            if self.event_bus:
+                try:
+                    event_payload_dict = fill_data.model_dump(mode='json') # Ensure datetimes are ISO strings
+                    await self.event_bus.publish(Event(
+                        publisher_agent_id=fill_data.agent_id,
+                        message_type="NewFillRecordedEvent",
+                        payload=event_payload_dict
+                    ))
+                    logger.debug(f"Published NewFillRecordedEvent for fill {fill_data.fill_id}, agent {fill_data.agent_id}")
+                except Exception as e_event:
+                    logger.error(f"Error publishing NewFillRecordedEvent for fill {fill_data.fill_id}: {e_event}", exc_info=True)
+
             return fill_data # Return the input Pydantic object
         except Exception as e: # Catch generic SQLAlchemy errors or other issues
             db.rollback()
@@ -131,20 +152,36 @@ class TradeHistoryService:
                         sell_fee_for_match = (matched_qty / current_fill.quantity) * current_fill.fee if current_fill.quantity > 0 else 0
                         total_fees_for_match = buy_fee_for_match + sell_fee_for_match
 
-                        pnl = (current_fill.price - oldest_buy.price) * matched_qty - total_fees_for_match
+                        entry_price_avg = oldest_buy.price
+                        exit_price_avg = current_fill.price
+
+                        initial_value = matched_qty * entry_price_avg
+                        final_value = matched_qty * exit_price_avg
+
+                        # PnL calculation: (exit_value - entry_value) - total_fees
+                        pnl = final_value - initial_value - total_fees_for_match
+
+                        percentage_pnl_val = (pnl / initial_value * 100) if initial_value != 0 else 0
+
+                        holding_period_sec = (current_fill.timestamp - oldest_buy.timestamp).total_seconds()
 
                         trade_log = TradeLogItem(
                             agent_id=agent_id,
                             asset=asset,
-                            trade_id=f"closed_{oldest_buy.fill_id}_{current_fill.fill_id}",
-                            timestamp=current_fill.timestamp,
-                            side="sell", # This log item represents the closing part of a round trip
-                            order_type="limit", # Simplification
+                            trade_id=f"closed_{oldest_buy.fill_id}_{current_fill.fill_id}", # Composite ID
+                            opening_side="buy", # Current logic processes longs being closed
+                            order_type="limit", # Placeholder, as fill data doesn't have order type
                             quantity=matched_qty,
-                            price=current_fill.price, # Exit price
-                            total_value=matched_qty * current_fill.price,
+                            entry_price_avg=entry_price_avg,
+                            exit_price_avg=exit_price_avg,
+                            entry_timestamp=oldest_buy.timestamp,
+                            exit_timestamp=current_fill.timestamp,
+                            holding_period_seconds=holding_period_sec,
+                            initial_value_usd=initial_value,
+                            final_value_usd=final_value,
                             realized_pnl=pnl,
-                            fees=total_fees_for_match
+                            percentage_pnl=percentage_pnl_val,
+                            total_fees=total_fees_for_match
                         )
                         processed_trades.append(trade_log)
                         logger.debug(f"Closed trade for {asset}: Matched Qty {matched_qty}, P&L {pnl:.2f}")

@@ -3,14 +3,18 @@ from datetime import datetime, timezone
 from loguru import logger
 import math # For checking isnan or isinf
 
-from ..models.dashboard_models import TradeLogItem
+from ..models.dashboard_models import TradeLogItem, PortfolioSnapshotOutput # Added PortfolioSnapshotOutput
 from ..models.performance_models import PerformanceMetrics
 from .trading_data_service import TradingDataService
+from .portfolio_snapshot_service import PortfolioSnapshotService # Added
+import numpy as np # Added
+import math # For checking isnan or isinf
 
 class PerformanceCalculationService:
-    def __init__(self, trading_data_service: TradingDataService):
+    def __init__(self, trading_data_service: TradingDataService, portfolio_snapshot_service: PortfolioSnapshotService): # Added portfolio_snapshot_service
         self.trading_data_service = trading_data_service
-        logger.info("PerformanceCalculationService initialized.")
+        self.portfolio_snapshot_service = portfolio_snapshot_service # Store it
+        logger.info("PerformanceCalculationService initialized with TradingDataService and PortfolioSnapshotService.")
 
     async def calculate_performance_metrics(self, agent_id: str) -> PerformanceMetrics:
         logger.info(f"Calculating performance metrics for agent_id: {agent_id}")
@@ -132,7 +136,101 @@ class PerformanceCalculationService:
             average_loss_amount=average_loss_amount,
             profit_factor=profit_factor,
             # max_drawdown_percentage and sharpe_ratio are placeholders
-            notes="; ".join(notes_list) if notes_list else None
+            notes="; ".join(notes_list) if notes_list else None,
+            # Initialize new advanced metric fields, to be populated below
+            max_drawdown_percentage=None,
+            annualized_sharpe_ratio=None,
+            compounding_annual_return_percentage=None,
+            annualized_volatility_percentage=None
         )
+
+        # --- Advanced Metrics Calculation using Portfolio Snapshots ---
+        snapshots: List[PortfolioSnapshotOutput] = []
+        try:
+            snapshots = await self.portfolio_snapshot_service.get_historical_snapshots(
+                agent_id=agent_id,
+                sort_ascending=True,
+                limit=None # Fetch all available snapshots for comprehensive calculation
+            )
+        except Exception as e_snap:
+            logger.error(f"PCS: Error fetching snapshots for agent {agent_id}: {e_snap}", exc_info=True)
+            metrics.notes = (metrics.notes + "; " if metrics.notes else "") + "Snapshot data unavailable for advanced metrics."
+            return metrics
+
+        if len(snapshots) < 2:
+            logger.info(f"PCS: Less than 2 snapshots for agent {agent_id}. Cannot calculate advanced portfolio metrics.")
+            metrics.notes = (metrics.notes + "; " if metrics.notes else "") + "Advanced metrics (Sharpe, MDD, CAGR, Volatility) require at least 2 portfolio snapshots."
+        else:
+            equity_series = np.array([s.total_equity_usd for s in snapshots])
+            timestamps = [s.timestamp for s in snapshots]
+
+            # Periodic Returns (daily if snapshots are daily)
+            periodic_returns = (equity_series[1:] / equity_series[:-1]) - 1
+
+            # Max Drawdown
+            peak_equity = equity_series[0]
+            max_dd_val = 0.0
+            for equity_value in equity_series:
+                if equity_value > peak_equity:
+                    peak_equity = equity_value
+                drawdown = (peak_equity - equity_value) / peak_equity if peak_equity > 0 else 0
+                if drawdown > max_dd_val:
+                    max_dd_val = drawdown
+            metrics.max_drawdown_percentage = max_dd_val * 100 if max_dd_val > 0 else 0.0
+
+            # Time Calculation for Annualization
+            first_timestamp = timestamps[0]
+            last_timestamp = timestamps[-1]
+            duration_seconds = (last_timestamp - first_timestamp).total_seconds()
+            duration_days = duration_seconds / (24 * 60 * 60)
+            duration_years = duration_days / 365.25
+
+            if duration_years < (1/365.25): # Less than a day's worth of data
+                logger.warning(f"PCS: Snapshot duration for agent {agent_id} is less than a day ({duration_days:.2f} days). Annualized metrics might be misleading or None.")
+                metrics.notes = (metrics.notes + "; " if metrics.notes else "") + "Short snapshot duration; annualized metrics may be misleading."
+                # Set annualized metrics to None if duration is too short for meaningful annualization
+                metrics.compounding_annual_return_percentage = None
+                metrics.annualized_volatility_percentage = None
+                metrics.annualized_sharpe_ratio = None
+            else:
+                # Compounding Annual Return (CAGR)
+                if equity_series[0] != 0: # Avoid division by zero
+                    total_return_multiple = equity_series[-1] / equity_series[0]
+                    if total_return_multiple > 0: # Avoid issues with log or power of negative numbers
+                        metrics.compounding_annual_return_percentage = \
+                            ((total_return_multiple ** (1 / duration_years)) - 1) * 100
+                    else: # Handle negative total_return_multiple if needed (e.g. -100% if equity becomes <=0)
+                        metrics.compounding_annual_return_percentage = -100.0 if equity_series[-1] <=0 else None
+
+
+                # Annualized Volatility
+                if len(periodic_returns) >= 2: # Need at least 2 returns to calculate std dev
+                    std_dev_periodic = np.std(periodic_returns, ddof=1) # ddof=1 for sample std dev
+
+                    # Estimate periods per year based on average time between snapshots
+                    # This is more robust than assuming daily (252)
+                    avg_days_between_snapshots = duration_days / len(periodic_returns) if len(periodic_returns) > 0 else 0
+                    periods_per_year = 365.25 / avg_days_between_snapshots if avg_days_between_snapshots > 0 else 252 # Fallback to 252
+                    if periods_per_year <=0 : periods_per_year = 252 # Ensure positive
+
+                    metrics.annualized_volatility_percentage = std_dev_periodic * np.sqrt(periods_per_year) * 100
+
+                    # Annualized Sharpe Ratio
+                    if metrics.annualized_volatility_percentage is not None and metrics.annualized_volatility_percentage > 1e-9: # Avoid division by zero or near-zero volatility
+                        if metrics.compounding_annual_return_percentage is not None:
+                            risk_free_rate_annual_percentage = 0.0 # Assume 0%
+                            excess_return_percentage = metrics.compounding_annual_return_percentage - risk_free_rate_annual_percentage
+                            metrics.annualized_sharpe_ratio = excess_return_percentage / metrics.annualized_volatility_percentage
+                        # Fallback to simpler Sharpe if CAGR is None but returns are available
+                        elif len(periodic_returns) > 0 :
+                            mean_periodic_return = np.mean(periodic_returns)
+                            # std_dev_periodic is already calculated
+                            if std_dev_periodic > 1e-9:
+                                sharpe_periodic = mean_periodic_return / std_dev_periodic # Assuming Rf=0 for periodic
+                                metrics.annualized_sharpe_ratio = sharpe_periodic * np.sqrt(periods_per_year)
+                    elif metrics.compounding_annual_return_percentage is not None and metrics.compounding_annual_return_percentage > 0 and metrics.annualized_volatility_percentage is not None and metrics.annualized_volatility_percentage < 1e-9 :
+                        metrics.annualized_sharpe_ratio = float('inf') # Positive return with zero volatility
+
+        return metrics
 
 ```

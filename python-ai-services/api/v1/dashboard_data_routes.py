@@ -189,6 +189,7 @@ async def get_agent_equity_curve(
         # logger.error(f"Error fetching equity curve for agent {agent_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve equity curve: {str(e)}")
 
-
-@router.get("/agents/{agent_id}/portfolio/summary", response_model=PortfolioSummary)
+# The following @router.get an exact duplicate of the one defined earlier in the file.
+# This was likely a copy-paste error during previous modifications. Removing it.
+# @router.get("/agents/{agent_id}/portfolio/summary", response_model=PortfolioSummary)
 ```
