@@ -1,224 +1,214 @@
 import pytest
-import os
 from unittest.mock import patch, MagicMock
+import os
+from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 
-from python_ai_services.core.factories import get_hyperliquid_execution_service_instance
-from python_ai_services.models.agent_models import AgentConfigOutput, AgentStrategyConfig, AgentRiskConfig
+from python_ai_services.core.factories import get_hyperliquid_execution_service_instance, get_dex_execution_service_instance
+from python_ai_services.models.agent_models import AgentConfigOutput, AgentStrategyConfig, AgentRiskConfig, AgentConfigBase
 from python_ai_services.services.hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
+from python_ai_services.services.dex_execution_service import DEXExecutionService, DEXExecutionServiceError
 
-# Helper to create AgentConfigOutput for tests
+# --- Helper to create AgentConfigOutput ---
+# Using AgentConfigBase fields for simplicity in helper, then constructing AgentConfigOutput
 def create_test_agent_config(
     agent_id: str,
-    provider: str = "hyperliquid",
-    wallet: Optional[str] = "0xWallet",
-    priv_key_env_var: Optional[str] = "TEST_PRIV_KEY_VAR",
-    network: str = "mainnet"
+    name: str,
+    execution_provider: str,
+    hyperliquid_config: Optional[Dict[str, str]] = None,
+    dex_config: Optional[Dict[str, Any]] = None,
+    user_id: str = "test_user",
+    is_active: bool = True
 ) -> AgentConfigOutput:
-    config_dict: Dict[str, Any] = {
-        "wallet_address": wallet,
-        "private_key_env_var_name": priv_key_env_var,
-        "network_mode": network
-    }
-    # Filter out None values if we want to test missing keys
-    if wallet is None: del config_dict["wallet_address"]
-    if priv_key_env_var is None: del config_dict["private_key_env_var_name"]
+
+    base_config = AgentConfigBase(
+        name=name,
+        description="Test agent " + name,
+        strategy=AgentStrategyConfig(strategy_name="test_strat", parameters={}, watched_symbols=["TEST/USD"]),
+        risk_config=AgentRiskConfig(
+            max_capital_allocation_usd=1000.0,
+            risk_per_trade_percentage=0.01,
+            max_loss_per_trade_percentage_balance=0.02, # Ensure all required fields are present
+            max_concurrent_open_trades=5,
+            max_exposure_per_asset_usd=500.0
+        ),
+        execution_provider=execution_provider, # type: ignore
+        hyperliquid_config=hyperliquid_config,
+        dex_config=dex_config,
+        agent_type="GenericAgent",
+        parent_agent_id=None,
+        operational_parameters={}
+    )
 
     return AgentConfigOutput(
+        **base_config.model_dump(),
         agent_id=agent_id,
-        name=f"Agent {agent_id}",
-        execution_provider=provider, #type: ignore
-        hyperliquid_config=config_dict if provider == "hyperliquid" else None,
-        strategy=AgentStrategyConfig(strategy_name="test", parameters={}),
-        risk_config=AgentRiskConfig(max_capital_allocation_usd=1000, risk_per_trade_percentage=0.01)
+        user_id=user_id,
+        is_active=is_active,
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        last_heartbeat=datetime.now(timezone.utc),
+        message="Online"
     )
 
-def test_get_hles_agent_not_hyperliquid():
-    agent_config = create_test_agent_config("agent1", provider="paper")
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
+# --- Tests for get_hyperliquid_execution_service_instance ---
 
-def test_get_hles_no_hyperliquid_config():
-    agent_config = create_test_agent_config("agent2", provider="hyperliquid")
-    agent_config.hyperliquid_config = None # Explicitly set to None
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
+@patch.dict(os.environ, {"TEST_HL_PRIVKEY": "fake_private_key"})
+@patch('python_ai_services.core.factories.HyperliquidExecutionService')
+def test_get_hl_service_success(MockHLService: MagicMock):
+    mock_hl_instance = MagicMock(spec=HyperliquidExecutionService)
+    MockHLService.return_value = mock_hl_instance
 
-def test_get_hles_missing_wallet_address():
-    agent_config = create_test_agent_config("agent3", wallet=None)
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
+    config = create_test_agent_config(
+        agent_id="hl_agent_01", name="HL Test Agent", execution_provider="hyperliquid",
+        hyperliquid_config={
+            "wallet_address": "0x123",
+            "private_key_env_var_name": "TEST_HL_PRIVKEY",
+            "network_mode": "testnet"
+        }
+    )
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service == mock_hl_instance
+    MockHLService.assert_called_once_with(
+        wallet_address="0x123", private_key="fake_private_key", network_mode="testnet"
+    )
 
-def test_get_hles_missing_priv_key_env_var():
-    agent_config = create_test_agent_config("agent4", priv_key_env_var=None)
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
+def test_get_hl_service_wrong_provider():
+    config = create_test_agent_config("agent1", "Test", "dex")
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
+
+def test_get_hl_service_missing_hl_config():
+    config = create_test_agent_config("agent1", "Test", "hyperliquid", hyperliquid_config=None)
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
+
+def test_get_hl_service_missing_wallet_address():
+    config = create_test_agent_config(
+        "hl_agent_02", "HL Test", "hyperliquid",
+        hyperliquid_config={"private_key_env_var_name": "TEST_HL_PRIVKEY"}
+    )
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
+
+def test_get_hl_service_missing_privkey_env_var_name():
+    config = create_test_agent_config(
+        "hl_agent_03", "HL Test", "hyperliquid",
+        hyperliquid_config={"wallet_address": "0x123"}
+    )
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
 
 @patch.dict(os.environ, {}, clear=True) # Ensure env var is not set
-def test_get_hles_priv_key_env_var_not_set():
-    env_var_name = "UNSET_TEST_KEY_VAR"
-    agent_config = create_test_agent_config("agent5", priv_key_env_var=env_var_name)
-    # os.environ.pop(env_var_name, None) # Ensure it's not set
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
-
-@patch.object(HyperliquidExecutionService, '__init__', return_value=None) # Mock HLES constructor
-@patch.dict(os.environ, {"VALID_KEY_VAR": "0x123privkey"})
-def test_get_hles_success(mock_hles_init: MagicMock):
-    agent_config = create_test_agent_config(
-        "agent_success",
-        priv_key_env_var="VALID_KEY_VAR",
-        wallet="0xRealWallet",
-        network="testnet"
+def test_get_hl_service_privkey_env_var_not_set():
+    config = create_test_agent_config(
+        "hl_agent_04", "HL Test", "hyperliquid",
+        hyperliquid_config={
+            "wallet_address": "0x123",
+            "private_key_env_var_name": "UNSET_HL_PRIVKEY"
+        }
     )
-    instance = get_hyperliquid_execution_service_instance(agent_config)
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
 
-    assert instance is not None
-    mock_hles_init.assert_called_once_with(
-        wallet_address="0xRealWallet",
-        private_key="0x123privkey",
-        network_mode="testnet"
+@patch.dict(os.environ, {"TEST_HL_PRIVKEY": "fake_private_key"})
+@patch('python_ai_services.core.factories.HyperliquidExecutionService', side_effect=HyperliquidExecutionServiceError("Init error"))
+def test_get_hl_service_init_fails(MockHLService: MagicMock):
+    config = create_test_agent_config(
+        "hl_agent_05", "HL Test", "hyperliquid",
+        hyperliquid_config={
+            "wallet_address": "0x123",
+            "private_key_env_var_name": "TEST_HL_PRIVKEY"
+        }
     )
-
-@patch.object(HyperliquidExecutionService, '__init__', side_effect=HyperliquidExecutionServiceError("SDK Init Fail"))
-@patch.dict(os.environ, {"FAIL_KEY_VAR": "0xanotherkey"})
-def test_get_hles_constructor_raises_hles_error(mock_hles_init_fail: MagicMock):
-    agent_config = create_test_agent_config("agent_hles_fail", priv_key_env_var="FAIL_KEY_VAR")
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
-    mock_hles_init_fail.assert_called_once()
-
-
-@patch.object(HyperliquidExecutionService, '__init__', side_effect=ValueError("Other Init Fail")) # Some other unexpected error
-@patch.dict(os.environ, {"UNEXPECTED_FAIL_KEY_VAR": "0xunexpectedkey"})
-def test_get_hles_constructor_raises_unexpected_error(mock_hles_init_unexpected_fail: MagicMock):
-    agent_config = create_test_agent_config("agent_unexpected_fail", priv_key_env_var="UNEXPECTED_FAIL_KEY_VAR")
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is None
-    mock_hles_init_unexpected_fail.assert_called_once()
-
-@patch.object(HyperliquidExecutionService, '__init__', return_value=None)
-@patch.dict(os.environ, {"DEFAULT_NET_KEY": "0xdefaultnetkey"})
-def test_get_hles_invalid_network_mode_defaults_to_mainnet(mock_hles_init: MagicMock):
-    agent_config = create_test_agent_config(
-        "agent_invalid_network",
-        priv_key_env_var="DEFAULT_NET_KEY",
-        network="moonnet" # Invalid network
-    )
-    instance = get_hyperliquid_execution_service_instance(agent_config)
-    assert instance is not None
-    mock_hles_init.assert_called_once_with(
-        wallet_address=agent_config.hyperliquid_config["wallet_address"], #type: ignore
-        private_key="0xdefaultnetkey",
-        network_mode="mainnet" # Should default to mainnet
-    )
+    service = get_hyperliquid_execution_service_instance(config)
+    assert service is None
+    MockHLService.assert_called_once()
 
 
 # --- Tests for get_dex_execution_service_instance ---
-from ..services.dex_execution_service import DEXExecutionService, DEXExecutionServiceError # Adjusted for factory context
 
-# Helper to create AgentConfigOutput for DEX tests
-def create_dex_test_agent_config(
-    agent_id: str,
-    provider: str = "dex",
-    dex_config_override: Optional[Dict[str, Any]] = None
-) -> AgentConfigOutput:
-    default_dex_config = {
-        "wallet_address": "0xDexWallet",
-        "private_key_env_var_name": "TEST_DEX_PK_VAR",
-        "rpc_url_env_var_name": "TEST_RPC_URL_VAR",
-        "dex_router_address": "0xDexRouter",
-        "weth_address": "0xWETHAddress",
-        "default_chain_id": 1,
-        "default_gas_limit": 350000
-    }
-    if dex_config_override is not None:
-        default_dex_config.update(dex_config_override)
+@patch.dict(os.environ, {"TEST_DEX_PRIVKEY": "fake_dex_key", "TEST_RPC_URL": "http://localhost:8545"})
+@patch('python_ai_services.core.factories.DEXExecutionService')
+def test_get_dex_service_success(MockDEXService: MagicMock):
+    mock_dex_instance = MagicMock(spec=DEXExecutionService)
+    MockDEXService.return_value = mock_dex_instance
 
-    return AgentConfigOutput(
-        agent_id=agent_id,
-        name=f"DexAgent {agent_id}",
-        execution_provider=provider, # type: ignore
-        dex_config=default_dex_config if provider == "dex" else None,
-        strategy=AgentStrategyConfig(strategy_name="dex_strat", parameters={}),
-        risk_config=AgentRiskConfig(max_capital_allocation_usd=5000, risk_per_trade_percentage=0.01)
-    )
-
-def test_get_dex_service_agent_not_dex_provider():
-    agent_config = create_dex_test_agent_config("agent_paper", provider="paper")
-    instance = get_dex_execution_service_instance(agent_config)
-    assert instance is None
-
-def test_get_dex_service_no_dex_config():
-    agent_config = create_dex_test_agent_config("agent_no_dex_conf", provider="dex")
-    agent_config.dex_config = None # Explicitly remove
-    instance = get_dex_execution_service_instance(agent_config)
-    assert instance is None
-
-@patch.dict(os.environ, {}, clear=True)
-def test_get_dex_service_missing_env_vars():
-    # Test missing RPC URL env var
-    agent_config_no_rpc_env = create_dex_test_agent_config("agent_dex_rpc_env_missing")
-    with patch.dict(os.environ, {agent_config_no_rpc_env.dex_config["private_key_env_var_name"]: "0xkey"}): # type: ignore
-        os.environ.pop(agent_config_no_rpc_env.dex_config["rpc_url_env_var_name"], None) # type: ignore
-        instance = get_dex_execution_service_instance(agent_config_no_rpc_env)
-        assert instance is None
-
-    # Test missing Private Key env var
-    agent_config_no_pk_env = create_dex_test_agent_config("agent_dex_pk_env_missing")
-    with patch.dict(os.environ, {agent_config_no_pk_env.dex_config["rpc_url_env_var_name"]: "http://rpc"}): # type: ignore
-        os.environ.pop(agent_config_no_pk_env.dex_config["private_key_env_var_name"], None) # type: ignore
-        instance = get_dex_execution_service_instance(agent_config_no_pk_env)
-        assert instance is None
-
-def test_get_dex_service_missing_config_fields():
-    # Missing wallet_address
-    agent_config_mw = create_dex_test_agent_config("agent_mw", dex_config_override={"wallet_address": None})
-    instance_mw = get_dex_execution_service_instance(agent_config_mw)
-    assert instance_mw is None
-
-    # Missing dex_router_address
-    agent_config_mr = create_dex_test_agent_config("agent_mr", dex_config_override={"dex_router_address": None})
-    instance_mr = get_dex_execution_service_instance(agent_config_mr)
-    assert instance_mr is None
-
-
-@patch.object(DEXExecutionService, '__init__', return_value=None) # Mock DEXExecutionService constructor
-@patch.dict(os.environ, {
-    "TEST_RPC_URL_VALID": "http://localhost:8545",
-    "TEST_DEX_PK_VALID": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-})
-def test_get_dex_service_success(mock_dex_init: MagicMock):
-    agent_config = create_dex_test_agent_config(
-        "agent_dex_success",
-        dex_config_override={
-            "rpc_url_env_var_name": "TEST_RPC_URL_VALID",
-            "private_key_env_var_name": "TEST_DEX_PK_VALID",
-            "default_chain_id": 5, # Goerli for PoA middleware test
-            "default_gas_limit": 400000
+    config = create_test_agent_config(
+        "dex_agent_01", "DEX Test", "dex",
+        dex_config={
+            "wallet_address": "0xabc",
+            "private_key_env_var_name": "TEST_DEX_PRIVKEY",
+            "rpc_url_env_var_name": "TEST_RPC_URL",
+            "dex_router_address": "0xrouter",
+            "default_chain_id": 1,
+            "weth_address": "0xweth",
+            "default_gas_limit": 500000
         }
     )
-    instance = get_dex_execution_service_instance(agent_config)
-    assert instance is not None
-    mock_dex_init.assert_called_once_with(
-        wallet_address="0xDexWallet",
-        private_key="0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
-        rpc_url="http://localhost:8545",
-        router_address="0xDexRouter",
-        chain_id=5,
-        weth_address="0xWETHAddress",
-        default_gas_limit=400000
+    service = get_dex_execution_service_instance(config)
+    assert service == mock_dex_instance
+    MockDEXService.assert_called_once_with(
+        wallet_address="0xabc", private_key="fake_dex_key", rpc_url="http://localhost:8545",
+        router_address="0xrouter", chain_id=1, weth_address="0xweth", default_gas_limit=500000
     )
 
-@patch.object(DEXExecutionService, '__init__', side_effect=DEXExecutionServiceError("DEX Init Fail"))
-@patch.dict(os.environ, {"TEST_RPC_URL_FAIL": "http://rpc", "TEST_DEX_PK_FAIL": "0xpk"})
-def test_get_dex_service_constructor_raises_dex_error(mock_dex_init_fail: MagicMock):
-    agent_config = create_dex_test_agent_config("agent_dex_init_fail", dex_config_override={
-        "rpc_url_env_var_name": "TEST_RPC_URL_FAIL", "private_key_env_var_name": "TEST_DEX_PK_FAIL"
-    })
-    instance = get_dex_execution_service_instance(agent_config)
-    assert instance is None
+def test_get_dex_service_wrong_provider():
+    config = create_test_agent_config("agent_dx", "Test", "hyperliquid")
+    service = get_dex_execution_service_instance(config)
+    assert service is None
 
+def test_get_dex_service_missing_dex_config():
+    config = create_test_agent_config("agent_dx1", "Test", "dex", dex_config=None)
+    service = get_dex_execution_service_instance(config)
+    assert service is None
 
-# Need to import Optional, Dict, Any for helper type hints
-from typing import Optional, Dict, Any
-```
+@patch.dict(os.environ, {}, clear=True) # Start with a clean environment for this test
+def test_get_dex_service_missing_privkey_env_var():
+    config = create_test_agent_config(
+        "dex_agent_02", "DEX Test", "dex",
+        dex_config={
+            "wallet_address": "0xabc", "private_key_env_var_name": "UNSET_DEX_KEY",
+            "rpc_url_env_var_name": "TEST_RPC_URL", "dex_router_address": "0xrouter", "default_chain_id": 1
+        }
+    )
+    # Mock only the RPC URL env var for this specific test case
+    with patch.dict(os.environ, {"TEST_RPC_URL": "http://localhost:8545"}, clear=True):
+        service = get_dex_execution_service_instance(config)
+        assert service is None
+
+@patch.dict(os.environ, {}, clear=True) # Start with a clean environment
+def test_get_dex_service_missing_rpc_env_var():
+    config = create_test_agent_config(
+        "dex_agent_03", "DEX Test", "dex",
+        dex_config={
+            "wallet_address": "0xabc", "private_key_env_var_name": "TEST_DEX_PRIVKEY",
+            "rpc_url_env_var_name": "UNSET_RPC_URL", "dex_router_address": "0xrouter", "default_chain_id": 1
+        }
+    )
+    # Mock only the private key env var for this specific test case
+    with patch.dict(os.environ, {"TEST_DEX_PRIVKEY": "fake_dex_key"}, clear=True):
+        service = get_dex_execution_service_instance(config)
+        assert service is None
+
+@patch.dict(os.environ, {"TEST_DEX_PRIVKEY": "fake_dex_key", "TEST_RPC_URL": "http://localhost:8545"})
+@patch('python_ai_services.core.factories.DEXExecutionService', side_effect=DEXExecutionServiceError("DEX Init error"))
+def test_get_dex_service_init_fails(MockDEXService: MagicMock):
+    config = create_test_agent_config(
+        "dex_agent_04", "DEX Test", "dex",
+        dex_config={
+            "wallet_address": "0xabc", "private_key_env_var_name": "TEST_DEX_PRIVKEY",
+            "rpc_url_env_var_name": "TEST_RPC_URL", "dex_router_address": "0xrouter", "default_chain_id": 1
+        }
+    )
+    service = get_dex_execution_service_instance(config)
+    assert service is None
+    MockDEXService.assert_called_once()
+
+def test_get_dex_service_missing_required_config_key():
+    config = create_test_agent_config(
+        "dex_agent_05", "DEX Test", "dex",
+        dex_config={"wallet_address": "0xabc"} # Missing other required keys like private_key_env_var_name etc.
+    )
+    service = get_dex_execution_service_instance(config)
+    assert service is None

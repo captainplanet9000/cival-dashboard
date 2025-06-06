@@ -1,7 +1,7 @@
 # __init__.py for services
 
 from .google_vertex_service import GoogleVertexService
-from .market_data_service import MarketDataService
+from .market_data_service import MarketDataService, MarketDataServiceError
 from .simulated_trade_executor import SimulatedTradeExecutor
 from .trading_history_service import TradingHistoryService
 from .hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
@@ -21,6 +21,14 @@ from .heikin_ashi_service import HeikinAshiTechnicalService # Added
 
 
 __all__ = [
+    "ExecutionSpecialistServiceError",
+    "ExecutionSpecialistService",
+    "StrategyDeveloperServiceError",
+    "StrategyDeveloperService",
+    "SMACrossoverTechnicalServiceError",
+    "SMACrossoverTechnicalService",
+    "ElliottWaveTechnicalServiceError",
+    "ElliottWaveTechnicalService",
     "HeikinAshiTechnicalService", # Added
     "PortfolioSnapshotService", # Added
     "RenkoTechnicalService", # Added
@@ -31,6 +39,7 @@ __all__ = [
     "DEXExecutionServiceError",
     "GoogleVertexService",
     "MarketDataService",
+    "MarketDataServiceError",
     "SimulatedTradeExecutor",
     "TradingHistoryService",
     "HyperliquidExecutionService",
@@ -52,3 +61,7 @@ __all__ = [
     "PortfolioOptimizerService",
     "NewsAnalysisService"
 ]
+from .elliott_wave_service import ElliottWaveTechnicalService, ElliottWaveTechnicalServiceError
+from .sma_crossover_service import SMACrossoverTechnicalService, SMACrossoverTechnicalServiceError
+from .strategy_developer_service import StrategyDeveloperService, StrategyDeveloperServiceError
+from .execution_specialist_service import ExecutionSpecialistService, ExecutionSpecialistServiceError
