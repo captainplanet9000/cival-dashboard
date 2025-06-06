@@ -14,7 +14,6 @@ from .darvas_box_service import DarvasBoxTechnicalService
 from .williams_alligator_service import WilliamsAlligatorTechnicalService
 from .market_condition_classifier_service import MarketConditionClassifierService
 from .portfolio_optimizer_service import PortfolioOptimizerService
-from .portfolio_optimizer_service import PortfolioOptimizerService
 from .news_analysis_service import NewsAnalysisService
 # Use the new factories
 from ..core.factories import get_hyperliquid_execution_service_instance, get_dex_execution_service_instance
@@ -367,5 +366,3 @@ class AgentOrchestratorService:
             else:
                 logger.info(f"Successfully completed agent cycle for {agent.agent_id} ({agent.name}).")
         logger.info("Finished run_all_active_agents_once cycle.")
-
-```
