@@ -25,6 +25,8 @@ scikit-learn==1.6.0
 ta-lib==0.4.32
 yfinance==0.2.50
 alpha-vantage==2.3.1
+hyperliquid>=0.1.9
+hyperliquid-python-sdk>=0.2.0
 
 # Development
 pytest==8.3.4
@@ -32,20 +34,28 @@ pytest-asyncio==0.25.0
 black==24.10.0
 isort==5.13.2
 mypy==1.13.0
-supabase-py
-python-dotenv
-requests
-ag-ui-protocol
+
+# Core Service Dependencies (Added/Ensured)
+python-dotenv>=1.0.0
 crewai>=0.28.0
-crewai-tools>=0.1.0
-datamodel-code-generator>=0.25.2
+crewai_tools>=0.1.6
+supabase>=1.0.0
+langchain-openai>=0.1.0
 langchain-google-genai>=0.1.0
+datamodel-code-generator>=0.25.2
+python-jose[cryptography]>=3.3.0
 
-# MemGPT for agent memory
-pymemgpt[postgres,pgvector]~=0.3.5 
-# If the above doesn't pull these, they might be needed explicitly:
-# psycopg2-binary # For PostgreSQL connection
-# pgvector # For vector similarity search in PostgreSQL
+# Letta Client (MemGPT)
+letta-client
 
-# For SharedKnowledgeService embedding generation
-sentence-transformers>=2.2.0
+# Scheduler
+APScheduler>=3.0.0,<4.0.0
+
+# Database ORM
+SQLAlchemy>=2.0.0,<2.1.0
+
+# RSS Feed Parsing
+feedparser>=6.0.0,<7.0.0
+
+# Web3 for DEX interaction
+web3>=6.0,<7.0

@@ -1,64 +1,148 @@
-# This file makes the 'models' directory a Python package.
+# __init__.py for models
+from .api_models import (
+    TradingAnalysisCrewRequest,
+    TradingSignal,
+    BaseResponseModel,
+    ErrorDetail,
+    TradeDecisionAction,
+    TradingDecision,
+    ExecuteTradeRequest,
+    ExecuteTradeResponse,
+    RegisterAgentRequest,
+    RegisterAgentResponse,
+    AgentStatusResponse,
+    AgentTradingHistoryResponse,
+    TradeExecutionResult,
+    SetTradeExecutionModeRequest,
+    SetTradeExecutionModeResponse,
+    GetTradeExecutionModeResponse
+)
 
-# Export models from base_models.py (if it exists and is used)
-# This assumes base_models.py is in the same directory (models/)
-try:
-    from .base_models import MarketData, TradeSignal, ProposedTradeSignal # Added ProposedTradeSignal
-    __all__ = ['MarketData', 'TradeSignal', 'ProposedTradeSignal'] # Added ProposedTradeSignal
-except ImportError:
-    # Handle case where base_models might not exist or has issues
-    # Or if it's not intended to be part of the public API of this package
-    __all__ = [] 
-    pass
+from .paper_trading_models import (
+    PaperTradeOrder,
+    PaperTradeFill,
+    PaperAccountSummary
+)
 
-# Export models from agent_task_models.py
-try:
-    from .agent_task_models import AgentTask, AgentTaskStatus
-    # Append to __all__ if it was initialized
-    if '__all__' in globals():
-        __all__.extend(['AgentTask', 'AgentTaskStatus'])
-    else: # If base_models import failed and __all__ wasn't created
-        __all__ = ['AgentTask', 'AgentTaskStatus']
-except ImportError:
-    # Handle case where agent_task_models might not exist (should not happen here)
-    pass
+from .trading_history_models import (
+    TradeSide,
+    OrderStatus,
+    OrderType,
+    TradeRecord,
+    TradingHistory
+)
 
-# Export models from api_models.py
-try:
-    from .api_models import CrewRunRequest, CrewRunResponse
-    if '__all__' in globals():
-        __all__.extend(['CrewRunRequest', 'CrewRunResponse'])
-    else:
-        __all__ = ['CrewRunRequest', 'CrewRunResponse']
-except ImportError:
-    pass
+from .hyperliquid_models import (
+    HyperliquidCredentials,
+    HyperliquidPlaceOrderParams,
+    HyperliquidOrderResponseData,
+    HyperliquidOrderStatusInfo,
+    HyperliquidAssetPosition,
+    HyperliquidOpenOrderItem,
+    HyperliquidMarginSummary,
+    HyperliquidAccountSnapshot
+)
 
-# Export models from agent_config_models.py
-try:
-    from .agent_config_models import CrewAgentConfig
-    if '__all__' in globals():
-        __all__.append('CrewAgentConfig') # Use append for single item
-    else:
-        __all__ = ['CrewAgentConfig']
-except ImportError:
-    pass
+from .agent_models import (
+    AgentStrategyConfig,
+    AgentRiskConfig,
+    AgentConfigBase,
+    AgentConfigInput,
+    AgentConfigOutput,
+    AgentStatus,
+    AgentUpdateRequest
+)
 
-# Export models from crew_models.py
-try:
-    from .crew_models import CrewBlueprint
-    if '__all__' in globals():
-        __all__.append('CrewBlueprint')
-    else:
-        __all__ = ['CrewBlueprint']
-except ImportError:
-    pass
+from .dashboard_models import (
+    AssetPositionSummary,
+    PortfolioSummary,
+    TradeLogItem,
+    OrderLogItem
+)
 
-# Export models from knowledge_models.py
-try:
-    from .knowledge_models import SharedKnowledgeItem
-    if '__all__' in globals():
-        __all__.append('SharedKnowledgeItem')
-    else:
-        __all__ = ['SharedKnowledgeItem']
-except ImportError:
-    pass
+from .performance_models import (
+    PerformanceMetrics
+)
+
+from .alert_models import (
+    AlertCondition,
+    AlertConfigBase,
+    AlertConfigInput,
+    AlertConfigOutput,
+    AlertNotification
+)
+
+from .simulation_models import ( # Added
+    BacktestRequest,
+    BacktestResult,
+    SimulatedTrade,
+    EquityDataPoint
+)
+
+from .compliance_models import ( # Added
+    ComplianceRule,
+    ComplianceCheckRequest,
+    ViolatedRuleInfo,
+    ComplianceCheckResult
+)
+
+from .learning_models import LearningLogEntry # Added
+from .websocket_models import WebSocketEnvelope # Added
+from .db_models import AgentConfigDB, TradeFillDB, OrderDB # Added TradeFillDB and OrderDB
+
+__all__ = [
+    "ExecutionReceipt",
+    "ExecutionFillLeg",
+    "ExecutionRequest",
+    "StrategyDevResponse",
+    "StrategyDevRequest",
+    # api_models
+    "TradingAnalysisCrewRequest", "TradingSignal", "BaseResponseModel", "ErrorDetail",
+    "TradeDecisionAction", "TradingDecision", "ExecuteTradeRequest", "ExecuteTradeResponse",
+    "RegisterAgentRequest", "RegisterAgentResponse", "AgentStatusResponse",
+    "AgentTradingHistoryResponse", "TradeExecutionResult",
+    "SetTradeExecutionModeRequest", "SetTradeExecutionModeResponse", "GetTradeExecutionModeResponse",
+    # paper_trading_models
+    "PaperTradeOrder", "PaperTradeFill", "PaperAccountSummary",
+    # trading_history_models
+    "TradeSideType", "OrderStatusType", "OrderTypeType",
+    "TradeRecord", "TradingHistory", "TradeFillData",
+    # hyperliquid_models
+    "HyperliquidCredentials", "HyperliquidPlaceOrderParams", "HyperliquidOrderResponseData",
+    "HyperliquidOrderStatusInfo", "HyperliquidAssetPosition", "HyperliquidOpenOrderItem",
+    "HyperliquidMarginSummary", "HyperliquidAccountSnapshot",
+    # agent_models
+    "AgentStrategyConfig", "AgentRiskConfig", "AgentConfigBase", "AgentConfigInput",
+    "AgentConfigOutput", "AgentStatus", "AgentUpdateRequest",
+    "AgentStrategyConfig.DarvasStrategyParams",
+    "AgentStrategyConfig.WilliamsAlligatorParams",
+    "AgentStrategyConfig.MarketConditionClassifierParams",
+    "AgentStrategyConfig.PortfolioOptimizerRule", # For exporting nested models
+    "AgentStrategyConfig.PortfolioOptimizerParams",
+    "AgentStrategyConfig.NewsAnalysisParams", # Added
+    # dashboard_models
+    "AssetPositionSummary", "PortfolioSummary", "TradeLogItem", "OrderLogItem", "PortfolioSnapshotOutput", # Added PortfolioSnapshotOutput
+    # performance_models
+    "PerformanceMetrics",
+    # alert_models
+    "AlertCondition", "AlertConfigBase", "AlertConfigInput", "AlertConfigOutput", "AlertNotification",
+    # simulation_models
+    "BacktestRequest", "BacktestResult", "SimulatedTrade", "EquityDataPoint",
+    # compliance_models
+    "ComplianceRule", "ComplianceCheckRequest", "ViolatedRuleInfo", "ComplianceCheckResult",
+    # learning_models
+    "LearningLogEntry", # Added
+    # websocket_models
+    "WebSocketEnvelope", # Added
+    # event_bus_models
+    "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
+    "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload",
+    # db_models
+    "AgentConfigDB", "TradeFillDB", "OrderDB" # Added TradeFillDB and OrderDB
+]
+
+from .market_data_models import Kline, OrderBookLevel, OrderBookSnapshot, Trade
+
+from .strategy_dev_models import StrategyDevRequest, StrategyDevResponse
+
+from .execution_models import ExecutionRequest, ExecutionFillLeg, ExecutionReceipt

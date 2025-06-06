@@ -1,25 +1,67 @@
-# This file makes the 'services' directory a Python package.
+# __init__.py for services
 
-from .strategy_executor import StrategyExecutor
-from .market_data_service import MarketDataService
+from .google_vertex_service import GoogleVertexService
+from .market_data_service import MarketDataService, MarketDataServiceError
 from .simulated_trade_executor import SimulatedTradeExecutor
-from .agent_task_service import AgentTaskService
-from .agent_service import AgentService
-from .vault_service import VaultService
-from .memory_service import MemoryService
-from .knowledge_service import SharedKnowledgeService # Added import
-# from .agent_state_manager import AgentStateManager # If exists and needed
-# from .trading_coordinator import TradingCoordinator # If exists and needed
+from .trading_history_service import TradingHistoryService
+from .hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError
+from .trading_coordinator import TradingCoordinator
+from .agent_management_service import AgentManagementService
+from .trading_data_service import TradingDataService
+from .performance_calculation_service import PerformanceCalculationService
+from .alert_configuration_service import AlertConfigurationService
+from .alert_monitoring_service import AlertMonitoringService
+from .dex_execution_service import DEXExecutionService, DEXExecutionServiceError
+from .simulation_service import SimulationService
+from .regulatory_compliance_service import RegulatoryComplianceService
+from .learning_data_logger_service import LearningDataLoggerService # Added
+from .renko_technical_service import RenkoTechnicalService # Added
+from .portfolio_snapshot_service import PortfolioSnapshotService # Added
+from .heikin_ashi_service import HeikinAshiTechnicalService # Added
+
 
 __all__ = [
-    "StrategyExecutor",
+    "ExecutionSpecialistServiceError",
+    "ExecutionSpecialistService",
+    "StrategyDeveloperServiceError",
+    "StrategyDeveloperService",
+    "SMACrossoverTechnicalServiceError",
+    "SMACrossoverTechnicalService",
+    "ElliottWaveTechnicalServiceError",
+    "ElliottWaveTechnicalService",
+    "HeikinAshiTechnicalService", # Added
+    "PortfolioSnapshotService", # Added
+    "RenkoTechnicalService", # Added
+    "LearningDataLoggerService", # Added
+    "RegulatoryComplianceService",
+    "SimulationService",
+    "DEXExecutionService",
+    "DEXExecutionServiceError",
+    "GoogleVertexService",
     "MarketDataService",
+    "MarketDataServiceError",
     "SimulatedTradeExecutor",
-    "AgentTaskService",
-    "AgentService",
-    "VaultService",
-    "MemoryService",
-    "SharedKnowledgeService", # Added to __all__
-    # "AgentStateManager",
-    # "TradingCoordinator",
+    "TradingHistoryService",
+    "HyperliquidExecutionService",
+    "HyperliquidExecutionServiceError",
+    "TradingCoordinator",
+    "AgentManagementService",
+    "TradingDataService",
+    "PerformanceCalculationService",
+    "AlertConfigurationService",
+    "AlertMonitoringService",
+    "AgentOrchestratorService",
+    # "TradeHistoryService", # Duplicate removed
+    "EventBusService",
+    "RiskManagerService",
+    # "MarketDataService", # Duplicate removed
+    "DarvasBoxTechnicalService",
+    "WilliamsAlligatorTechnicalService",
+    "MarketConditionClassifierService",
+    "PortfolioOptimizerService",
+    "NewsAnalysisService"
 ]
+from .elliott_wave_service import ElliottWaveTechnicalService, ElliottWaveTechnicalServiceError
+from .sma_crossover_service import SMACrossoverTechnicalService, SMACrossoverTechnicalServiceError
+from .strategy_developer_service import StrategyDeveloperService, StrategyDeveloperServiceError
+from .execution_specialist_service import ExecutionSpecialistService, ExecutionSpecialistServiceError

@@ -153,6 +153,54 @@ class MemoryService:
             logger.error(f"Error listing memories from MemGPT agent {self.memgpt_agent_name}: {e}", exc_info=True)
             return [{"error": f"Failed to list memories: {str(e)}"}]
 
+    async def get_agent_memory_stats(self) -> Dict[str, Any]:
+        """
+        Retrieves statistics about the agent's memory. (Functional Stub)
+        This is a stub and returns mock data. Future implementation should query MemGPT.
+        """
+        if not self.memgpt_agent_instance:
+            logger.warning(f"MemGPT not initialized for agent {self.memgpt_agent_name}. Cannot get memory stats.")
+            return {
+                "status": "error",
+                "message": "MemGPT client/agent not initialized.",
+                "stats": None
+            }
+
+        try:
+            # In a real implementation, you would query the MemGPT agent instance or its underlying storage
+            # for actual statistics. For example:
+            # - Count of messages in recall memory: len(self.memgpt_agent_instance.persistence_manager.recall_memory)
+            # - Count of passages in archival memory: self.memgpt_agent_instance.persistence_manager.archival_memory.storage.size() (if available)
+            # This often requires direct interaction with the persistence manager components.
+
+            logger.info(f"Generating STUBBED memory stats for MemGPT agent: {self.memgpt_agent_name}")
+
+            # Mock data for the stub
+            mock_stats = {
+                "memgpt_agent_name": self.memgpt_agent_name,
+                "total_memories": 125, # Example value
+                "recall_memory_entries": 25, # Example value (e.g., self.memgpt_agent_instance.recall_memory.size())
+                "archival_memory_entries": 100, # Example value (e.g., self.memgpt_agent_instance.archival_memory.size())
+                "last_memory_update_timestamp": datetime.now(timezone.utc).isoformat(),
+                "core_memory_tokens": 500, # Example: self.memgpt_agent_instance.persistence_manager.agent_state.llm_config.model_max_context_tokens
+                "persona_tokens": 200, # Example
+                "human_tokens": 150, # Example
+                "notes": "These are stubbed values and do not reflect actual memory usage yet."
+            }
+
+            return {
+                "status": "success",
+                "message": "Memory stats retrieved successfully (stubbed data).",
+                "stats": mock_stats
+            }
+        except Exception as e:
+            logger.error(f"Error generating stubbed memory stats for MemGPT agent {self.memgpt_agent_name}: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "message": f"Failed to generate stubbed memory stats: {str(e)}",
+                "stats": None
+            }
+
 # To use this service, it would typically be instantiated per request or per agent interaction context.
 # For example, in an agent's execution flow:
 # memory_service = MemoryService(user_id=current_user_id, agent_id_context=current_agent_id) # This might raise MemoryInitializationError
