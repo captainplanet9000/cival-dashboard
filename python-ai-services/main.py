@@ -33,6 +33,7 @@ from services.agent_persistence_service import AgentPersistenceService
 from services.agent_state_manager import AgentStateManager
 from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE
 from crews.trading_crew_service import TradingCrewService, TradingCrewRequest
+from api.v1.agent_management_routes import get_agent_management_service
 
 # Added for monitoring API
 from fastapi import Query # Query for pagination params
@@ -335,6 +336,15 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize MemoryService: {e}. Memory capabilities may be unavailable.")
         if "memory_service" not in services: # Ensure it's None if init fails badly
             services["memory_service"] = None
+
+    # Load agent runtime statuses at startup
+    try:
+        agent_management_service = get_agent_management_service()
+        services["agent_management_service"] = agent_management_service
+        logger.info("Loading agent statuses from database...")
+        await agent_management_service.load_all_agent_statuses_from_db()
+    except Exception as e:
+        logger.error(f"Failed loading agent statuses on startup: {e}", exc_info=True)
 
 
     logger.info("✅ All services initialized (or initialization attempted).")

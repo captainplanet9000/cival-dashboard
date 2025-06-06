@@ -41,6 +41,13 @@ class AgentManagementService:
         finally:
             db.close()
 
+    async def load_all_agent_statuses_from_db(self) -> None:
+        """Public wrapper to initialize in-memory agent statuses from the database."""
+        await self._load_existing_statuses_from_db()
+        logger.info(
+            f"Loaded agent runtime statuses for {len(self._agent_statuses)} agents from DB."
+        )
+
     def _db_to_pydantic(self, db_agent: AgentConfigDB) -> AgentConfigOutput:
         try:
             strategy_data = json.loads(db_agent.strategy_config_json or "{}")
