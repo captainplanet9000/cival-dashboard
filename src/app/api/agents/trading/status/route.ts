@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { 
-  getAgentPermissions, 
-  updateAgentStatus, 
-  AgentStatus 
+import {
+  getAgentPermissions,
+  updateAgentStatus,
+  AgentStatus
 } from '@/lib/agents/agent-trading-service';
+import { checkAuth } from '@/lib/auth/checkAuth';
 
-// Mock authentication for now - replace with your actual auth
-async function checkAuth(req: NextRequest) {
-  // TODO: Implement actual authentication
-  return { user: { id: 'demo-user' } };
-}
+// API key authentication for agent requests
 
 export async function GET(req: NextRequest) {
   try {

@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import supabaseService from '@/lib/services/supabase-service';
+import { checkAuth } from '@/lib/auth/checkAuth';
 
-// Mock authentication for now - replace with your actual auth
-async function checkAuth(req: NextRequest) {
-  // TODO: Implement actual authentication
-  return { user: { id: 'demo-user' } };
-}
+// API key authentication for agent requests
 
-// In-memory storage for demo - replace with database
-const agentPermissions = new Map();
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,40 +28,39 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid agent ID' }, { status: 400 });
     }
 
-    // Check if agent already exists
-    if (agentPermissions.has(agentId)) {
+    // Check if agent already exists in Supabase
+    const existing = await supabaseService.getAgentTradingPermission(agentId).catch(() => null);
+    if (existing) {
       return NextResponse.json({ error: 'Agent already registered' }, { status: 409 });
     }
 
-    // Create agent trading permissions
-    const agent = {
-      agentId,
-      accountId: session.user.id,
-      maxTradeSize,
-      maxPositionSize,
-      maxDailyTrades,
-      allowedSymbols,
-      allowedStrategies,
-      riskLevel,
-      isActive: true,
-      createdAt: new Date(),
-      tradesToday: 0,
-      positionValue: 0
-    };
-
-    agentPermissions.set(agentId, agent);
+    // Create agent trading permissions in Supabase
+    const agent = await supabaseService.createAgentTradingPermission({
+      agent_id: agentId,
+      user_id: session.user.id,
+      account_id: session.user.id,
+      max_trade_size: maxTradeSize,
+      max_position_size: maxPositionSize,
+      max_daily_trades: maxDailyTrades,
+      allowed_symbols: allowedSymbols,
+      allowed_strategies: allowedStrategies,
+      risk_level: riskLevel,
+      is_active: true,
+      trades_today: 0,
+      position_value: 0
+    });
 
     return NextResponse.json({
       success: true,
       agent: {
-        agentId: agent.agentId,
+        agentId: agent.agent_id,
         permissions: {
-          maxTradeSize: agent.maxTradeSize,
-          maxPositionSize: agent.maxPositionSize,
-          maxDailyTrades: agent.maxDailyTrades,
-          allowedSymbols: agent.allowedSymbols,
-          allowedStrategies: agent.allowedStrategies,
-          riskLevel: agent.riskLevel
+          maxTradeSize: agent.max_trade_size,
+          maxPositionSize: agent.max_position_size,
+          maxDailyTrades: agent.max_daily_trades,
+          allowedSymbols: agent.allowed_symbols,
+          allowedStrategies: agent.allowed_strategies,
+          riskLevel: agent.risk_level
         },
         status: 'active'
       }
@@ -87,25 +82,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get all registered agents for the user
-    const agents = Array.from(agentPermissions.values())
-      .filter(agent => agent.accountId === session.user.id && agent.isActive);
+    // Get all registered agents for the user from Supabase
+    const agents = await supabaseService.getAgentTradingPermissions(session.user.id);
 
     return NextResponse.json({
       agents: agents.map(agent => ({
-        agentId: agent.agentId,
+        agentId: agent.agent_id,
         permissions: {
-          maxTradeSize: agent.maxTradeSize,
-          maxPositionSize: agent.maxPositionSize,
-          maxDailyTrades: agent.maxDailyTrades,
-          allowedSymbols: agent.allowedSymbols,
-          allowedStrategies: agent.allowedStrategies,
-          riskLevel: agent.riskLevel
+          maxTradeSize: agent.max_trade_size,
+          maxPositionSize: agent.max_position_size,
+          maxDailyTrades: agent.max_daily_trades,
+          allowedSymbols: agent.allowed_symbols,
+          allowedStrategies: agent.allowed_strategies,
+          riskLevel: agent.risk_level
         },
-        status: agent.isActive ? 'active' : 'inactive',
-        tradesToday: agent.tradesToday,
-        positionValue: agent.positionValue,
-        createdAt: agent.createdAt
+        status: agent.is_active ? 'active' : 'inactive',
+        tradesToday: agent.trades_today,
+        positionValue: agent.position_value,
+        createdAt: agent.created_at
       }))
     });
 

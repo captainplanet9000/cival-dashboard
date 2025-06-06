@@ -34,6 +34,7 @@
     "ai:start": "cd python-ai-services && python main.py",
     "ai:dev": "cd python-ai-services && python -m uvicorn main:app --reload --port 9000",
     "ai:test": "cd python-ai-services && python -m pytest",
+    "db:setup": "node scripts/run-supabase.js",
     "dev:full": "concurrently \"npm run ai:dev\" \"npm run dev\"",
     "setup:ai": "cd python-ai-services && python -m venv venv && venv/Scripts/activate && pip install -r requirements.txt"
   },

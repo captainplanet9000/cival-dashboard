@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { checkAuth } from '@/lib/auth/checkAuth';
 
 /**
  * @swagger
@@ -24,6 +25,10 @@ import { NextResponse } from 'next/server';
  *                   example: success
  */
 export async function GET(request: Request) {
+  const session = checkAuth(request as any);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   // TODO: Implement agent trading GET logic
   return NextResponse.json({ message: 'TODO: Implement agent trading GET endpoint', status: 'success' });
 }
@@ -82,13 +87,11 @@ export async function GET(request: Request) {
  *         description: Internal server error
  */
 export async function POST(request: Request) {
+  const session = checkAuth(request as any);
+  if (!session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   // TODO: Implement agent trading POST logic
-  // const body = await request.json();
-  // const { agentId, action, symbol, quantity } = body;
-  // Basic validation example (you'll want more robust validation)
-  // if (!agentId || !action || !symbol || !quantity) {
-  //   return NextResponse.json({ message: 'Missing required parameters', status: 'error' }, { status: 400 });
-  // }
   return NextResponse.json({ message: 'TODO: Implement agent trading POST endpoint', data: {} });
 }
 
