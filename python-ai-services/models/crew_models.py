@@ -139,4 +139,3 @@ class AgentTask(BaseModel):
         use_enum_values = True # Ensures enum values (strings) are used in serialization
         # For FastAPI, orm_mode or from_attributes = True might be needed if creating from ORM objects
         # For now, this is a data transfer object.
-```

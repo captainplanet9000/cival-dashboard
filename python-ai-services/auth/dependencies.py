@@ -99,4 +99,3 @@ async def get_current_active_user(
         logger.error(f"Unexpected error during token validation: {e}", exc_info=True)
         raise credentials_exception from e
 
-```

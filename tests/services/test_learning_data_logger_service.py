@@ -152,4 +152,3 @@ async def test_log_entry_handles_serialization_failure(learning_logger_service: 
     # The exact error message for serialization failure can vary.
     # Example check:
     assert "is not JSON serializable" in caplog.text or "PydanticSerializationError" in caplog.text
-```

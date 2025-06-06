@@ -84,4 +84,3 @@ async def run_backtest_endpoint(
 # To integrate this router into your main FastAPI application:
 # from .simulation_routes import router as simulation_router
 # app.include_router(simulation_router, prefix="/api/v1")
-```

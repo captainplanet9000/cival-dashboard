@@ -277,4 +277,3 @@ async def main_async_example():
 if __name__ == '__main__':
     import asyncio
     asyncio.run(main_async_example())
-```

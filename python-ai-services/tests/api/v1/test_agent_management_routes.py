@@ -242,4 +242,3 @@ def test_get_agent_status_not_found():
     assert response.status_code == 404
     assert "not found or no status available" in response.json()["detail"]
 
-```

@@ -184,4 +184,3 @@ if __name__ == '__main__':
     ta_empty_data_output = run_technical_analysis_tool(market_data_json=empty_data_json)
     logger.info(f"Technical Analysis Tool Output (Empty data list input):\n{json.dumps(json.loads(ta_empty_data_output), indent=2)}")
 
-```

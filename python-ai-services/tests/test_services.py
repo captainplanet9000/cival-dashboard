@@ -862,4 +862,3 @@ async def test_memory_service_initialization_failure_propagates():
         with pytest.raises(MemoryInitializationError, match="Failed to initialize MemGPT: MemGPT Global Init Failed"):
             # Attempt to instantiate MemoryService, which should trigger the mocked MemGPT error
             MemoryService(user_id=uuid.uuid4(), agent_id_context=uuid.uuid4())
-```

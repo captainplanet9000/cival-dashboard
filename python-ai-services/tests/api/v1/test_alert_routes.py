@@ -214,4 +214,3 @@ def test_delete_alert_config_not_found_or_wrong_agent():
     assert response.status_code == 404
     mock_service_alert_config.delete_alert_config.assert_not_called()
 
-```

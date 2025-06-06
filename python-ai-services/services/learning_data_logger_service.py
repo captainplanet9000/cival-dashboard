@@ -54,4 +54,3 @@ class LearningDataLoggerService:
         except Exception as e_generic: # Catch any other unexpected errors during file write
             logger.error(f"Unexpected error writing to learning log {self.log_file_path}: {e_generic}", exc_info=True)
             raise
-```

@@ -213,4 +213,3 @@ class MarketConditionClassifierService:
         )
         await self.event_bus.publish(event)
 
-```

@@ -252,4 +252,3 @@ async def test_analyze_sell_signal_generated(renko_service: RenkoTechnicalServic
     assert payload.price_target == pytest.approx(98.5)
     # First signal brick is [101,100] down. SL is its open.
     assert payload.stop_loss == pytest.approx(101.0)
-```

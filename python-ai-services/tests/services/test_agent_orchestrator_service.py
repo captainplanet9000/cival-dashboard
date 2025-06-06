@@ -512,4 +512,3 @@ async def test_run_all_active_agents_one_cycle_fails(orchestrator_service: Agent
     assert orchestrator_service.run_single_agent_cycle.call_count == 2
 
 from typing import Optional, List, Dict, Any # Ensure all type hints are imported
-```

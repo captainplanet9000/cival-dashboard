@@ -336,4 +336,3 @@ def test_trading_coordinator_init_with_all_services(
     )
     assert tc.compliance_service == mock_compliance_service
     assert tc.learning_logger_service == mock_learning_logger_service # Added
-```

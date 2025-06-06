@@ -324,7 +324,6 @@ class ElliottWaveConfig(BaseModel):
         ElliottWaveConfig(**invalid_ew_data_extra)
     except ValidationError as e:
         logger.error(f"Error creating invalid EW config (extra field) (as expected): {e}")
-```
 
 import uuid
 from datetime import datetime

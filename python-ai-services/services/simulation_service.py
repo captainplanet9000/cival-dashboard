@@ -229,4 +229,3 @@ class SimulationService:
             list_of_simulated_trades=simulated_trades,
             equity_curve=equity_curve
         )
-```

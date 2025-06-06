@@ -406,4 +406,3 @@ async def test_place_swap_order_parses_amount_out_from_logs(dex_service):
     assert result["amount_out_wei_actual"] == actual_amount_out_wei
     assert result["amount_out_wei_minimum_requested"] == MIN_AMOUNT_OUT_WEI
 
-```

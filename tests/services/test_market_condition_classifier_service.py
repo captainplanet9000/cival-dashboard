@@ -127,4 +127,3 @@ async def test_analyze_mcc_insufficient_data(
     # No learning log expected if it exits early due to insufficient data,
     # unless a specific "ProcessingError" or "InsufficientData" log is added.
     mock_learning_logger_service.log_entry.assert_not_called()
-```

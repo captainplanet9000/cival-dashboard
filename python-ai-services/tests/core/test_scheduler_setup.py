@@ -187,4 +187,3 @@ def test_shutdown_scheduler_when_stopped(mock_scheduler: MagicMock):
 
     scheduler_setup.shutdown_scheduler()
     mock_scheduler.shutdown.assert_not_called() # Should not call shutdown if not running
-```

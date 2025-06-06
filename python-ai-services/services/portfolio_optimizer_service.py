@@ -225,4 +225,3 @@ class PortfolioOptimizerService:
                     notes=f"No effective changes to apply for rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
                 )
 
-```

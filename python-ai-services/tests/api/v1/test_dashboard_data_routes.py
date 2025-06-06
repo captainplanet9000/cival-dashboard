@@ -229,4 +229,3 @@ def test_get_agent_equity_curve_invalid_limit_param():
     assert response_high.status_code == 422
 
     mock_service_pss.get_historical_snapshots.assert_not_called() # Should not be called if params fail validation
-```

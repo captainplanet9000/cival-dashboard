@@ -190,4 +190,3 @@ class AlertMonitoringService:
 
         return triggered_notifications
 
-```

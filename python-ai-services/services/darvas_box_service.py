@@ -138,4 +138,3 @@ class DarvasBoxTechnicalService:
                 notes=f"No Darvas Box breakout for {symbol}.",
                 tags=["darvas_box", "no_signal"]
             )
-```

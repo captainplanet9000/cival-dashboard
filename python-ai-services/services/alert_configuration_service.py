@@ -96,4 +96,3 @@ class AlertConfigurationService:
         logger.warning(f"Alert config {alert_id} not found for deletion.")
         return False
 
-```

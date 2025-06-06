@@ -239,4 +239,3 @@ async def test_analyze_no_signal(mock_event_bus, mock_market_data_service):
 # Need Optional from typing for helper
 from typing import Optional
 from datetime import datetime, timezone, timedelta # For helper
-```

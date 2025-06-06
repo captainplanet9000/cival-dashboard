@@ -183,4 +183,3 @@ async def test_mcc_ranging_signal_narrow_bbw(
 
 # Need Optional from typing for helper
 from typing import Optional
-```

@@ -220,4 +220,3 @@ async def test_max_daily_trades_missing_symbol_in_params(compliance_service: Reg
     result = await service.check_action_compliance(request)
     assert result.is_compliant is True
     assert "is missing 'symbol' in parameters. Skipping rule." in caplog.text
-```

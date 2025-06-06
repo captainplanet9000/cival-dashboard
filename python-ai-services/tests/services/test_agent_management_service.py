@@ -319,4 +319,3 @@ async def test_update_agent_heartbeat_db(service: AgentManagementService): # Alr
     assert updated_status.last_heartbeat > initial_heartbeat
     assert updated_status.status == "running"
 
-```

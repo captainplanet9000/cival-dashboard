@@ -190,4 +190,3 @@ async def test_fetch_limit_per_feed(mock_feedparser_parse: MagicMock, mock_event
     payload = NewsArticleEventPayload(**mock_event_bus.publish.call_args[0][0].payload)
     assert payload.headline == "Title 1"
 
-```

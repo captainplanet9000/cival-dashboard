@@ -723,4 +723,3 @@ def apply_elliott_wave_tool(processed_market_data_json: str, elliott_wave_config
     error_output_ew_cfg = apply_elliott_wave_tool(**tool_args_invalid_ew_cfg.dict())
     logger.info(f"Apply Elliott Wave Strategy Tool (Stub) Output (Invalid Config):\n{json.dumps(json.loads(error_output_ew_cfg), indent=2, default=str)}")
 
-```
