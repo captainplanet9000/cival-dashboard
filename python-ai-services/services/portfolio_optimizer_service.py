@@ -70,6 +70,10 @@ class PortfolioOptimizerService:
         else:
             logger.error(f"PortfolioOptimizerService ({self.agent_config.agent_id}): EventBusService not provided. Cannot setup subscriptions.")
 
+    async def setup_event_subscriptions(self):
+        """Alias for setup_subscriptions for external callers."""
+        await self.setup_subscriptions()
+
     async def on_market_condition_event(self, event: Event):
         if not isinstance(event.payload, dict):
             logger.error(f"PO ({self.agent_config.agent_id}): Received MarketConditionEvent with non-dict payload: {event.payload}")
@@ -225,4 +229,3 @@ class PortfolioOptimizerService:
                     notes=f"No effective changes to apply for rule '{rule.rule_name}' to agent {agent_to_update.agent_id}."
                 )
 
-```

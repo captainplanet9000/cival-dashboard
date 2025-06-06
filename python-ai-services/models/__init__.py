@@ -89,6 +89,16 @@ from .compliance_models import ( # Added
 from .learning_models import LearningLogEntry # Added
 from .websocket_models import WebSocketEnvelope # Added
 from .db_models import AgentConfigDB, TradeFillDB, OrderDB # Added TradeFillDB and OrderDB
+from .event_bus_models import (
+    Event,
+    TradeSignalEventPayload,
+    MarketInsightEventPayload,
+    RiskAlertEventPayload,
+    RiskAssessmentRequestData,
+    RiskAssessmentResponseData,
+    NewsArticleEventPayload,
+    HyperliquidRawFillEventPayload,
+)
 
 __all__ = [
     "ExecutionReceipt",
@@ -137,6 +147,7 @@ __all__ = [
     # event_bus_models
     "Event", "TradeSignalEventPayload", "MarketInsightEventPayload", "RiskAlertEventPayload",
     "RiskAssessmentRequestData", "RiskAssessmentResponseData", "NewsArticleEventPayload",
+    "HyperliquidRawFillEventPayload",
     # db_models
     "AgentConfigDB", "TradeFillDB", "OrderDB" # Added TradeFillDB and OrderDB
 ]

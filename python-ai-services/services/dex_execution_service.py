@@ -4,6 +4,9 @@ import json # For ABI loading
 import asyncio # For _run_sync_web3_call
 from decimal import Decimal, ROUND_DOWN
 from typing import Optional, Dict, Any, List
+from datetime import datetime, timezone
+import uuid
+from ..models.trading_history_models import TradeFillData
 from web3 import Web3, HTTPProvider
 from web3.middleware import geth_poa_middleware
 from web3.exceptions import ContractLogicError, TransactionNotFound
@@ -116,6 +119,14 @@ class DEXExecutionService:
             logger.error(f"DEX: Error during token approval for {token_address_cs}: {e}", exc_info=True)
             return False
 
+    async def _get_token_decimals(self, token_address_cs: str) -> int:
+        try:
+            token_contract = self._get_erc20_contract(token_address_cs)
+            decimals = await self._run_sync_web3_call(token_contract.functions.decimals().call)
+            return int(decimals)
+        except Exception:
+            return 18
+
     async def place_swap_order(
         self, token_in_address: str, token_out_address: str, amount_in_wei: int,
         min_amount_out_wei: int, fee_tier: int = 3000,
@@ -197,19 +208,58 @@ class DEXExecutionService:
                                 actual_amount_out = Web3.to_int(hexstr=log_entry['data'].hex())
                                 logger.info(f"DEX: Found Transfer event in logs. Actual amountOut: {actual_amount_out} of {token_out_cs}")
                                 break
-                return {"tx_hash": tx_hash_hex, "status": "success", "error": None, "amount_out_wei_actual": actual_amount_out, "amount_out_wei_minimum_requested": min_amount_out_wei}
+                decimals_in = await self._get_token_decimals(token_in_cs)
+                decimals_out = await self._get_token_decimals(token_out_cs)
+                amount_in_decimal = Decimal(amount_in_wei) / (Decimal(10) ** decimals_in)
+                actual_amount_out_decimal = Decimal(actual_amount_out) / (Decimal(10) ** decimals_out)
+
+                price_in = (actual_amount_out_decimal / amount_in_decimal) if amount_in_decimal != 0 else Decimal(0)
+                price_out = (amount_in_decimal / actual_amount_out_decimal) if actual_amount_out_decimal != 0 else Decimal(0)
+
+                fill_in = TradeFillData(
+                    agent_id=self.wallet_address_cs,
+                    asset=token_in_address,
+                    side="sell",
+                    quantity=float(amount_in_decimal),
+                    price=float(price_in),
+                    timestamp=datetime.now(timezone.utc),
+                    fee=float(amount_in_decimal * Decimal("0.003")),
+                    fee_currency=token_in_address,
+                    exchange_order_id=f"{tx_hash_hex}_dex_sim_in",
+                    exchange_trade_id=str(uuid.uuid4())
+                )
+                fill_out = TradeFillData(
+                    agent_id=self.wallet_address_cs,
+                    asset=token_out_address,
+                    side="buy",
+                    quantity=float(actual_amount_out_decimal),
+                    price=float(price_out),
+                    timestamp=datetime.now(timezone.utc),
+                    fee=0.0,
+                    fee_currency=None,
+                    exchange_order_id=f"{tx_hash_hex}_dex_sim_out",
+                    exchange_trade_id=str(uuid.uuid4())
+                )
+                return {
+                    "tx_hash": tx_hash_hex,
+                    "status": "success",
+                    "error": None,
+                    "amount_out_wei_actual": actual_amount_out,
+                    "amount_out_wei_minimum_requested": min_amount_out_wei,
+                    "simulated_fills": [fill_in.model_dump(mode='json'), fill_out.model_dump(mode='json')]
+                }
             else:
                 logger.error(f"DEX: Swap transaction failed. Tx: {tx_hash_hex}, Receipt: {receipt}")
-                return {"tx_hash": tx_hash_hex, "status": "failed", "error": "Transaction reverted", "receipt": dict(receipt)}
+                return {"tx_hash": tx_hash_hex, "status": "failed", "error": "Transaction reverted", "receipt": dict(receipt), "simulated_fills": []}
         except ContractLogicError as cle:
             logger.error(f"DEX: Swap contract logic error: {cle} (TxHash: {tx_hash_hex})", exc_info=True)
-            return {"status": "failed", "error": f"Contract logic error: {cle}", "tx_hash": tx_hash_hex}
+            return {"status": "failed", "error": f"Contract logic error: {cle}", "tx_hash": tx_hash_hex, "simulated_fills": []}
         except TransactionNotFound:
             logger.error(f"DEX: Swap transaction not found after timeout (TxHash: {tx_hash_hex}). Might have been dropped from mempool.", exc_info=True)
-            return {"status": "failed", "error": "Transaction not found or timed out waiting for receipt.", "tx_hash": tx_hash_hex}
+            return {"status": "failed", "error": "Transaction not found or timed out waiting for receipt.", "tx_hash": tx_hash_hex, "simulated_fills": []}
         except Exception as e:
             logger.error(f"DEX: Error during swap (TxHash: {tx_hash_hex}): {e}", exc_info=True)
-            return {"status": "failed", "error": str(e), "tx_hash": tx_hash_hex}
+            return {"status": "failed", "error": str(e), "tx_hash": tx_hash_hex, "simulated_fills": []}
 
 async def main_test():
     logger.add(lambda _: print(_.getMessage()))

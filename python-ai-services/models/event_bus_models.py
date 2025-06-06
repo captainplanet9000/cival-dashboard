@@ -65,4 +65,8 @@ class NewsArticleEventPayload(BaseModel):
     sentiment_label: Literal["positive", "negative", "neutral"] = "neutral"
     matched_keywords: List[str] = Field(default_factory=list)
     raw_content_snippet: Optional[str] = None # Optional: a snippet of original text
-```
+
+class HyperliquidRawFillEventPayload(BaseModel):
+    agent_id: str
+    raw_fill_data: Dict[str, Any]
+    received_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

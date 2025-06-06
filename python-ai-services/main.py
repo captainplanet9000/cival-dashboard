@@ -33,6 +33,8 @@ from services.agent_persistence_service import AgentPersistenceService
 from services.agent_state_manager import AgentStateManager
 from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE
 from crews.trading_crew_service import TradingCrewService, TradingCrewRequest
+from services.agent_management_service import AgentManagementService
+from core.database import create_db_and_tables, SessionLocal
 
 # Added for monitoring API
 from fastapi import Query # Query for pagination params
@@ -107,7 +109,6 @@ from models.hyperliquid_models import (
     HyperliquidOrderStatusInfo
 )
 
->>>>>>> origin/jules_wip_8513275856943102493
 
 # Global services registry
 services: Dict[str, Any] = {}
@@ -151,14 +152,9 @@ class StrategyVisualizationQueryParams(BaseModel): # For the refactored visualiz
 async def lifespan(app: FastAPI):
     """Initialize and cleanup AI services"""
     logger.info("🚀 Starting PydanticAI Enhanced Services")
-<<<<<<< HEAD
-    app.state.redis_cache_client = None  # Initialize with None
-=======
     app.state.redis_cache_client = None
-    app.state.supabase_client = None # Initialize with None
-    app.state.hyperliquid_execution_service = None # Initialize Hyperliquid service state
-
->>>>>>> origin/jules_wip_8513275856943102493
+    app.state.supabase_client = None
+    app.state.hyperliquid_execution_service = None
     try:
         # Initialize Redis Cache Client
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
@@ -335,6 +331,16 @@ async def lifespan(app: FastAPI):
         logger.error(f"Failed to initialize MemoryService: {e}. Memory capabilities may be unavailable.")
         if "memory_service" not in services: # Ensure it's None if init fails badly
             services["memory_service"] = None
+
+    # Database setup and agent status loading
+    try:
+        create_db_and_tables()
+        agent_management_service = AgentManagementService(session_factory=SessionLocal)
+        services["agent_management_service"] = agent_management_service
+        await agent_management_service.load_all_agent_statuses_from_db()
+        logger.info("Loaded agent statuses from DB on startup")
+    except Exception as e:
+        logger.error(f"Error initializing AgentManagementService: {e}")
 
 
     logger.info("✅ All services initialized (or initialization attempted).")
@@ -792,8 +798,6 @@ async def websocket_agent_updates(websocket):
     finally:
         await websocket.close()
 
-<<<<<<< HEAD
-=======
 # --- Monitoring API Endpoints ---
 MONITORING_API_PREFIX = "/api/v1/monitoring"
 
@@ -2020,8 +2024,6 @@ async def update_my_user_preferences(
         logger.error(f"Unexpected API error updating preferences for user {current_user.id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update user preferences.")
 
->>>>>>> origin/jules_wip_8513275856943102493
-if __name__ == "__main__":
     # Run the enhanced AI services
     uvicorn.run(
         "main:app",
