@@ -282,4 +282,3 @@ async def test_send_notifications_event_bus_unavailable(alert_monitoring_service
 
 # Need List, Optional from typing for helpers
 from typing import List, Optional, Any # Added Any
-```

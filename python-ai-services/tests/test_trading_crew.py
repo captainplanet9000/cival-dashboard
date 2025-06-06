@@ -437,4 +437,3 @@ async def test_run_analysis_task_creation_fails(trading_crew_service: TradingCre
     trading_crew_service._get_llm_instance.assert_not_called()
     mock_persistence_service.update_agent_task_status.assert_not_called()
     mock_persistence_service.update_agent_task_result.assert_not_called()
-```

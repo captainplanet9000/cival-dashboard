@@ -32,4 +32,3 @@ class ViolatedRuleInfo(BaseModel):
 class ComplianceCheckResult(BaseModel):
     is_compliant: bool = True
     violated_rules: List[ViolatedRuleInfo] = Field(default_factory=list)
-```

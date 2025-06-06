@@ -31,4 +31,3 @@ class LearningLogEntry(BaseModel):
         #     uuid.UUID: lambda v: str(v),
         # }
         pass
-```

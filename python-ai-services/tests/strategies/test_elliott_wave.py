@@ -200,4 +200,3 @@ def test_run_elliott_wave_config_usage_in_output(custom_elliott_wave_config: Ell
             expected_high = round(last_wave_price * (1 + custom_elliott_wave_config.zigzag_threshold_percent / 100), 2)
             assert target_high == expected_high
 
-```

@@ -151,4 +151,3 @@ async def test_delete_alert_config(service: AlertConfigurationService):
 
 # Need asyncio for sleep
 import asyncio
-```

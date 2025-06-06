@@ -272,4 +272,3 @@ async def test_get_order_history_mocked(trading_data_service: TradingDataService
         assert isinstance(item, OrderLogItem)
         assert item.agent_id == agent_id
 
-```

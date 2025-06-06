@@ -326,4 +326,3 @@ async def test_get_processed_trades_multiple_assets_db(service: TradeHistoryServ
 # Optional: Import for type hinting if not already present
 from typing import Optional
 from unittest.mock import MagicMock, AsyncMock # Ensure these are at the top if used by new fixtures
-```

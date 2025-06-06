@@ -323,4 +323,3 @@ async def test_on_news_article_event_invalid_payload(
     # Check that no "OptimizerRuleMatched" learning log was made
     assert not any(c[0][0].event_type == "OptimizerRuleMatched" for c in mock_learning_logger_service.log_entry.call_args_list)
 
-```

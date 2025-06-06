@@ -292,4 +292,3 @@ async def test_assess_risk_max_exposure_per_asset_usd_exceeded(
 
 # Need Optional and List for type hints in helper
 from typing import Optional, List
-```

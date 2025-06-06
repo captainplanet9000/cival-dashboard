@@ -1029,4 +1029,3 @@ async def test_get_fills_for_order_info_client_not_initialized(mock_hl_init_bypa
     fills = await service.get_fills_for_order("user", 130)
     assert fills == []
     assert "Hyperliquid Info client not initialized. Cannot fetch fills." in caplog.text
-```

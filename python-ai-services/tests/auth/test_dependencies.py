@@ -150,4 +150,3 @@ async def test_get_current_active_user_pydantic_validation_error(mock_jwt_decode
         await get_current_active_user(token=mock_auth_creds)
     assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Invalid user data structure in token" in exc_info.value.detail
-```

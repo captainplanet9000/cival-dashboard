@@ -98,4 +98,3 @@ class WebSocketRelayService:
             payload=event.payload # event.payload is already dict of PortfolioSnapshotOutput
         )
         await self.connection_manager.send_to_client(agent_id, ws_envelope)
-```

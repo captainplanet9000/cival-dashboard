@@ -198,4 +198,3 @@ def test_run_renko_signal_buy_after_two_up_bricks(fixed_renko_config_default: Re
     assert buy_signals[0]["brick_type"] == "up"
     assert "Two consecutive 'up' bricks" in buy_signals[0]["reason"]
 
-```

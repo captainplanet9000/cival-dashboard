@@ -171,4 +171,3 @@ async def test_fetch_market_data_tool_default_days_with_service_call():
     assert data["historical_days"] == 30 # Field name updated
     assert data["limit_calculated"] == expected_limit
     assert data["data_points_returned"] == expected_limit
-```

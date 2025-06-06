@@ -282,4 +282,3 @@ class OrderHistoryService:
         finally:
             db.close()
 
-```

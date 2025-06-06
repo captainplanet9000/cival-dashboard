@@ -222,4 +222,3 @@ async def test_db_order_to_pydantic_log_item(order_history_service: OrderHistory
     assert pydantic_item.strategy_name == "TestStrategyOrderLog"
     # Check if timestamp_created is used for 'timestamp' field in OrderLogItem
     assert pydantic_item.timestamp_created == db_order.timestamp_created
-```

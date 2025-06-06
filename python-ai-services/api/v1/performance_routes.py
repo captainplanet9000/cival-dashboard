@@ -46,4 +46,3 @@ async def get_agent_performance_metrics(
         # Catch any unexpected errors from the service layer
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while calculating performance metrics: {str(e)}")
 
-```

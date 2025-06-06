@@ -178,4 +178,3 @@ def test_run_backtest_endpoint_invalid_request_payload(#client: TestClient
     }
     response = client.post("/api/v1/simulations/backtest", json=invalid_payload)
     assert response.status_code == 422 # FastAPI's unprocessable entity for Pydantic validation errors
-```

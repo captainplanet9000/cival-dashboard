@@ -201,4 +201,3 @@ class HeikinAshiTechnicalService:
             logger.success(f"HeikinAshiSvc ({self.agent_config.agent_id}): Published {action.upper()} signal for {symbol} at {current_actual_price:.4f}. SL: {sl_price_rounded if sl_price_rounded else 'N/A'}")
         else:
             logger.info(f"HeikinAshiSvc ({self.agent_config.agent_id}): No signal generated for {symbol}.")
-```
