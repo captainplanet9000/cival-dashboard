@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TradingManager } from '@/lib/trading/trading-manager';
+import supabaseService from '@/lib/services/supabase-service';
+import { checkAuth } from '@/lib/auth/checkAuth';
 
-// Mock authentication and permissions
-async function checkAuth(req: NextRequest) {
-  return { user: { id: 'demo-user' } };
-}
+// API key authentication for agent requests
 
-// In-memory storage - replace with database
-const agentPermissions = new Map();
-const agentTrades = new Map();
 
 // Initialize trading manager
 const tradingManager = new TradingManager();
@@ -41,11 +37,11 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Check agent permissions
-    const agent = agentPermissions.get(agentId);
-    if (!agent || !agent.isActive) {
-      return NextResponse.json({ 
-        error: 'Agent not registered or inactive' 
+    // Check agent permissions from Supabase
+    const agent = await supabaseService.getAgentTradingPermission(agentId).catch(() => null);
+    if (!agent || !agent.is_active) {
+      return NextResponse.json({
+        error: 'Agent not registered or inactive'
       }, { status: 403 });
     }
 
@@ -53,30 +49,30 @@ export async function POST(req: NextRequest) {
     const validationErrors = [];
     
     // Check symbol permission
-    if (!agent.allowedSymbols.includes(symbol)) {
+    if (!agent.allowed_symbols.includes(symbol)) {
       validationErrors.push(`Symbol ${symbol} not allowed for agent`);
     }
     
     // Check strategy permission
-    if (strategy && !agent.allowedStrategies.includes(strategy)) {
+    if (strategy && !agent.allowed_strategies.includes(strategy)) {
       validationErrors.push(`Strategy ${strategy} not allowed for agent`);
     }
     
     // Check trade size
     const tradeValue = quantity * (price || 0);
-    if (tradeValue > agent.maxTradeSize) {
-      validationErrors.push(`Trade size ${tradeValue} exceeds max ${agent.maxTradeSize}`);
+    if (tradeValue > agent.max_trade_size) {
+      validationErrors.push(`Trade size ${tradeValue} exceeds max ${agent.max_trade_size}`);
     }
     
     // Check daily trade limit
-    if (agent.tradesToday >= agent.maxDailyTrades) {
-      validationErrors.push(`Daily trade limit reached: ${agent.maxDailyTrades}`);
+    if (agent.trades_today >= agent.max_daily_trades) {
+      validationErrors.push(`Daily trade limit reached: ${agent.max_daily_trades}`);
     }
     
     // Check position size
-    const newPositionValue = agent.positionValue + (side === 'buy' ? tradeValue : -tradeValue);
-    if (Math.abs(newPositionValue) > agent.maxPositionSize) {
-      validationErrors.push(`Position size would exceed max ${agent.maxPositionSize}`);
+    const newPositionValue = agent.position_value + (side === 'buy' ? tradeValue : -tradeValue);
+    if (Math.abs(newPositionValue) > agent.max_position_size) {
+      validationErrors.push(`Position size would exceed max ${agent.max_position_size}`);
     }
     
     if (validationErrors.length > 0) {
@@ -101,47 +97,37 @@ export async function POST(req: NextRequest) {
       
       const result = await tradingManager.placeOrder(tradeParams, exchange);
       
-      // Record trade
-      const trade = {
-        id: `trade-${Date.now()}`,
-        agentId,
-        orderId: result.orderId,
+      // Record trade in Supabase
+      const trade = await supabaseService.createAgentTrade({
+        agent_id: agentId,
+        user_id: session.user.id,
         symbol,
         side,
         quantity,
-        price: result.price || price,
-        orderType,
+        price: result.price || price || 0,
+        order_type: orderType,
         strategy,
         reasoning,
-        confidenceScore: confidence,
+        confidence_score: confidence,
         status: result.status,
         exchange,
-        executedAt: new Date(),
-        createdAt: new Date()
-      };
-      
-      // Store trade (in-memory for demo)
-      if (!agentTrades.has(agentId)) {
-        agentTrades.set(agentId, []);
-      }
-      agentTrades.get(agentId).push(trade);
-      
-      // Update agent stats
-      agent.tradesToday += 1;
-      if (side === 'buy') {
-        agent.positionValue += tradeValue;
-      } else {
-        agent.positionValue -= tradeValue;
-      }
+        order_id: result.orderId
+      });
+
+      // Update agent stats in Supabase
+      await supabaseService.updateAgentTradingPermission(agentId, {
+        trades_today: agent.trades_today + 1,
+        position_value: newPositionValue
+      });
       
       return NextResponse.json({
         success: true,
         trade: {
-          orderId: result.orderId,
-          status: result.status,
-          executedPrice: result.price,
-          executedQuantity: result.quantity,
-          timestamp: trade.executedAt
+          orderId: trade.order_id,
+          status: trade.status,
+          executedPrice: trade.price,
+          executedQuantity: trade.quantity,
+          timestamp: trade.created_at
         }
       });
       

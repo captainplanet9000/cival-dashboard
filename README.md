@@ -69,7 +69,12 @@ npm run setup:env
 # See env.template for all required variables
 ```
 
-### 3. Start Redis (Required)
+### 3. Apply Database Migrations
+```bash
+npm run db:setup
+```
+
+### 4. Start Redis (Required)
 ```bash
 # Start Redis using Docker
 npm run redis:start
@@ -78,7 +83,7 @@ npm run redis:start
 npm run redis:logs
 ```
 
-### 4. Development Mode
+### 5. Development Mode
 ```bash
 # Start the dashboard in development mode
 npm run dev

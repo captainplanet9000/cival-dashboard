@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TradingManager } from '@/lib/trading/trading-manager';
-import { 
+import {
   createMarketDataSubscription,
   cancelMarketDataSubscription,
   getAgentPermissions
 } from '@/lib/agents/agent-trading-service';
+import { checkAuth } from '@/lib/auth/checkAuth';
 
-// Mock authentication for now - replace with your actual auth
-async function checkAuth(req: NextRequest) {
-  // TODO: Implement actual authentication
-  return { user: { id: 'demo-user' } };
-}
+// API key authentication for agent requests
 
 // Initialize trading manager
 const tradingManager = new TradingManager();

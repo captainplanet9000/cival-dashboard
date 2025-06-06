@@ -3,6 +3,7 @@
  * Provides utilities for agent trading API interactions
  */
 import { TradingManager } from '@/lib/trading/trading-manager';
+import supabaseService from '@/lib/services/supabase-service';
 
 // Types for agent trading
 export interface AgentPermission {
@@ -11,6 +12,8 @@ export interface AgentPermission {
   maxTradeSize: number;
   maxPositionSize: number;
   maxDailyTrades: number;
+  maxLossPerTrade?: number;
+  maxDailyLoss?: number;
   allowedSymbols: string[];
   allowedStrategies: string[];
   riskLevel: string;
@@ -61,8 +64,8 @@ export interface MarketDataSubscription {
   createdAt: Date;
 }
 
-// In-memory storage - will be replaced with database
-const agentPermissions = new Map<string, AgentPermission>();
+// In-memory caches (trades, status and market subscriptions)
+// Agent permissions are persisted via Supabase
 const agentTrades = new Map<string, AgentTrade[]>();
 const agentStatus = new Map<string, AgentStatus>();
 const marketDataSubscriptions = new Map<string, MarketDataSubscription>();
@@ -74,7 +77,12 @@ const tradingManager = new TradingManager();
  * Get agent permissions
  */
 export async function getAgentPermissions(agentId: string): Promise<AgentPermission | null> {
-  return agentPermissions.get(agentId) || null;
+  try {
+    const permission = await supabaseService.getAgentTradingPermission(agentId);
+    return permission as unknown as AgentPermission;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -87,18 +95,20 @@ export async function registerAgent(agentConfig: Partial<AgentPermission>): Prom
     throw new Error('Agent ID and account ID are required');
   }
   
-  // Check if agent already exists
-  if (agentPermissions.has(agentId)) {
+  // Check if agent already exists in database
+  const existing = await getAgentPermissions(agentId);
+  if (existing) {
     throw new Error('Agent already registered');
   }
-  
-  // Create agent permissions
+
   const agent: AgentPermission = {
     agentId,
     accountId,
     maxTradeSize: agentConfig.maxTradeSize || 10000,
     maxPositionSize: agentConfig.maxPositionSize || 50000,
     maxDailyTrades: agentConfig.maxDailyTrades || 100,
+    maxLossPerTrade: agentConfig.maxLossPerTrade || 0,
+    maxDailyLoss: agentConfig.maxDailyLoss || 0,
     allowedSymbols: agentConfig.allowedSymbols || ['BTC', 'ETH', 'SOL'],
     allowedStrategies: agentConfig.allowedStrategies || ['momentum', 'mean_reversion', 'arbitrage'],
     riskLevel: agentConfig.riskLevel || 'moderate',
@@ -107,8 +117,23 @@ export async function registerAgent(agentConfig: Partial<AgentPermission>): Prom
     positionValue: 0,
     createdAt: new Date()
   };
-  
-  agentPermissions.set(agentId, agent);
+
+  await supabaseService.createAgentTradingPermission({
+    agent_id: agent.agentId,
+    user_id: '',
+    account_id: agent.accountId,
+    max_trade_size: agent.maxTradeSize,
+    max_position_size: agent.maxPositionSize,
+    max_daily_trades: agent.maxDailyTrades,
+    max_loss_per_trade: agent.maxLossPerTrade,
+    max_daily_loss: agent.maxDailyLoss,
+    allowed_symbols: agent.allowedSymbols,
+    allowed_strategies: agent.allowedStrategies,
+    risk_level: agent.riskLevel,
+    is_active: agent.isActive,
+    trades_today: agent.tradesToday,
+    position_value: agent.positionValue
+  } as any);
   
   // Initialize empty trades array
   agentTrades.set(agentId, []);
@@ -147,7 +172,7 @@ export async function executeTrade(tradeParams: {
   const { agentId, symbol, side, quantity, price, strategy, reasoning, confidence, exchange = 'hyperliquid' } = tradeParams;
   
   // Get agent permissions
-  const agent = agentPermissions.get(agentId);
+  const agent = await getAgentPermissions(agentId);
   if (!agent || !agent.isActive) {
     throw new Error('Agent not registered or inactive');
   }
@@ -233,6 +258,11 @@ function validateTradePermissions(agent: AgentPermission, tradeParams: any): voi
   if (tradeValue > agent.maxTradeSize) {
     validationErrors.push(`Trade size ${tradeValue} exceeds max ${agent.maxTradeSize}`);
   }
+
+  // Max loss per trade (if defined)
+  if (agent.maxLossPerTrade && tradeValue > agent.maxLossPerTrade) {
+    validationErrors.push(`Trade value ${tradeValue} exceeds loss limit ${agent.maxLossPerTrade}`);
+  }
   
   // Check daily trade limit
   if (agent.tradesToday >= agent.maxDailyTrades) {
@@ -243,6 +273,11 @@ function validateTradePermissions(agent: AgentPermission, tradeParams: any): voi
   const newPositionValue = agent.positionValue + (tradeParams.side === 'buy' ? tradeValue : -tradeValue);
   if (Math.abs(newPositionValue) > agent.maxPositionSize) {
     validationErrors.push(`Position size would exceed max ${agent.maxPositionSize}`);
+  }
+
+  // Check daily loss limit
+  if (agent.maxDailyLoss && Math.abs(agent.positionValue) > agent.maxDailyLoss) {
+    validationErrors.push(`Daily loss limit ${agent.maxDailyLoss} exceeded`);
   }
   
   if (validationErrors.length > 0) {

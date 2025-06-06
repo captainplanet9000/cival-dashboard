@@ -17,6 +17,8 @@ export interface AgentTradingPermissions {
   max_trade_size: number;
   max_position_size: number;
   max_daily_trades: number;
+  max_loss_per_trade?: number;
+  max_daily_loss?: number;
   allowed_symbols: string[];
   allowed_strategies: string[];
   risk_level: string;
