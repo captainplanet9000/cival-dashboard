@@ -169,4 +169,3 @@ async def test_publish_with_non_async_subscriber_is_skipped(event_bus: EventBusS
         args, _ = mock_log_error.call_args
         assert "is not an async function as expected. Skipping." in args[0]
 
-```

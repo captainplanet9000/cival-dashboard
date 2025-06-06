@@ -268,4 +268,3 @@ def test_assess_trade_risk_tool_invalid_input_via_pydantic_schema():
     assert "Failed to assess risk due to input validation errors" in data["assessment_summary"]
     assert any("Input tag 'MAYBEBUY' found using 'str_to_instance'" in detail_msg for detail_msg in data["warnings"])
 
-```

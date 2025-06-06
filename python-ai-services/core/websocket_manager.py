@@ -104,4 +104,3 @@ class ConnectionManager:
 
 # Singleton instance
 connection_manager = ConnectionManager()
-```

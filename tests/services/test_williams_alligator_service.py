@@ -176,4 +176,3 @@ async def test_analyze_alligator_insufficient_data(
     # No learning log for this specific early exit, as per current service code.
     # If a "ProcessingError" or "InsufficientData" log were added, this test would check for it.
     mock_learning_logger_service.log_entry.assert_not_called()
-```

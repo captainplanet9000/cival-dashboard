@@ -190,4 +190,3 @@ async def test_analyze_no_signal_choppy_market(ha_service: HeikinAshiTechnicalSe
 # Add more tests:
 # - ATR calculation for SL returns None (SL should be None)
 # - Kline data has NaNs or missing columns (graceful handling)
-```

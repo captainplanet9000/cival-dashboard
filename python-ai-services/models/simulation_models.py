@@ -54,4 +54,3 @@ class BacktestResult(BaseModel):
     list_of_simulated_trades: List[SimulatedTrade] = Field(default_factory=list)
     equity_curve: List[EquityDataPoint] = Field(default_factory=list)
     # Optional: Sharpe Ratio, Sortino, etc. - defer for now
-```

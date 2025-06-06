@@ -146,4 +146,3 @@ def test_connection_manager_singleton_instance_exists():
     except ImportError:
         pytest.fail("Could not import global connection_manager instance from core.websocket_manager")
 
-```

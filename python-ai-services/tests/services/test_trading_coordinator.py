@@ -683,4 +683,3 @@ async def test_handle_market_condition_event_logs_info(trading_coordinator: Trad
 # Need to import 'call' for assert_has_calls
 from unittest.mock import call
 
-```

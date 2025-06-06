@@ -227,4 +227,3 @@ class RenkoTechnicalService:
             await self._log_learning_event("SignalEvaluation", data=log_data_snapshot, outcome={"signal_generated": False}, notes="No Renko signal based on consecutive bricks.", tags=["renko", "no_signal"])
             logger.info(f"RenkoSvc ({self.agent_config.agent_id}): No signal for {symbol} based on last {self.params.signal_confirmation_bricks} bricks.")
 
-```

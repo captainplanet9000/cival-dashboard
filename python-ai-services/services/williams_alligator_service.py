@@ -193,4 +193,3 @@ class WilliamsAlligatorTechnicalService:
                     tags=["williams_alligator", "no_signal"]
                 )
 
-```

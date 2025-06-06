@@ -203,4 +203,3 @@ class TradeHistoryService:
         logger.info(f"Generated {len(processed_trades)} processed (closed) trades for agent {agent_id} from DB data.")
         return processed_trades[offset : offset + limit]
 
-```

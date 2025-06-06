@@ -186,4 +186,3 @@ def test_get_order_status_other_service_error(client: TestClient, mock_auth_user
     assert response.json()["detail"] == "HL API timeout"
     app.dependency_overrides.clear()
 
-```

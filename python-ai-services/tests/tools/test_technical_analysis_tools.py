@@ -146,4 +146,3 @@ def test_run_technical_analysis_tool_args_schema():
     else:
         pytest.skip("Tool schema attribute not found, decorator might be a simple stub or crewai internal changed.")
 
-```

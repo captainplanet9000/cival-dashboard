@@ -186,4 +186,3 @@ class NewsAnalysisService:
                 await self.event_bus.publish(event)
                 logger.debug(f"NewsSvc ({self.agent_config.agent_id}): Published NewsArticleEvent for: {headline[:50]}...")
         logger.info(f"NewsSvc ({self.agent_config.agent_id}): Finished feed fetch and analysis cycle.")
-```

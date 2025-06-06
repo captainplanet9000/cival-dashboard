@@ -202,4 +202,3 @@ class TradingDataService:
             logger.error(f"Error fetching order history for agent {agent_id}: {e}", exc_info=True)
             return []
 
-```

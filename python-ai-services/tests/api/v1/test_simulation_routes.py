@@ -170,4 +170,3 @@ def test_run_backtest_endpoint_unexpected_error(
 
 # Need to import datetime and timezone for create_mock_backtest_result
 from datetime import datetime, timezone
-```

@@ -533,4 +533,3 @@ class TestAgentTaskPersistence:
         assert total == 5  # Total count was successfully retrieved
         assert "Supabase API error during data query" in caplog.text
         assert service.supabase_client.execute.call_count == 2 # Both count and data queries executed
-```

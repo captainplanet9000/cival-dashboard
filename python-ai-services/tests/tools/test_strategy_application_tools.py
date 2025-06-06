@@ -534,4 +534,3 @@ def test_all_tools_args_schema_linkage():
             # or if the tool is a native CrewAI tool that doesn't use 'args_schema' in the same way.
             pytest.fail(f"Tool schema attribute not found or not matching for {tool_func.__name__} using common patterns. Tool object: {tool_func}")
 
-```

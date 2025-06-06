@@ -165,4 +165,3 @@ async def test_analyze_darvas_insufficient_data(
     for call_arg in mock_learning_logger_service.log_entry.call_args_list:
         entry_arg: LearningLogEntry = call_arg[0][0]
         assert entry_arg.event_type not in ["SignalGenerated", "SignalEvaluation"]
-```

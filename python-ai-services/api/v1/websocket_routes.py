@@ -49,4 +49,3 @@ async def websocket_dashboard_endpoint(websocket: WebSocket, client_id: str):
 # To include this router in your main FastAPI application (e.g., in main.py):
 # from python_ai_services.api.v1 import websocket_routes
 # app.include_router(websocket_routes.router) # No prefix for /ws routes typically, or specific like /ws_api/v1
-```

@@ -90,4 +90,3 @@ class PortfolioSnapshotDB(Base):
     agent_id = Column(String, ForeignKey("agent_configs.agent_id", ondelete="CASCADE"), nullable=False, index=True)
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
     total_equity_usd = Column(Float, nullable=False)
-```

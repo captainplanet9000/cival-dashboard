@@ -250,4 +250,3 @@ async def test_run_backtest_no_signals_no_trades(simulation_service: SimulationS
 # - Test using agent_id_to_simulate (mocking AMS.get_agent)
 # - Test equity curve values at various points
 # - Test calculation of other BacktestResult metrics (win_rate, etc.) once PnL logic is robust
-```

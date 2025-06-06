@@ -259,4 +259,3 @@ async def test_flow_market_data_triggers_analysis(agent_state_manager_fixture: m
         f"{market_data_payload_from_a2a['symbol']}_insight",
         "ETH showing consolidation around 3k, RSI neutral." # from llm_insight
     )
-```

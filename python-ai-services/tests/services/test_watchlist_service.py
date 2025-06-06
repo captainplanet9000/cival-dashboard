@@ -561,4 +561,3 @@ async def test_get_batch_quotes_for_symbols_empty_list(watchlist_service: Watchl
     # Assert
     assert len(response.results) == 0
 
-```

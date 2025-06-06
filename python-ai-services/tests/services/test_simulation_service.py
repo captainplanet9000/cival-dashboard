@@ -249,4 +249,3 @@ async def test_run_backtest_insufficient_capital_for_buy(simulation_service: Sim
 # TODO: Add tests for sell logic and round trip P&L calculation when implemented more fully
 # TODO: Test for date parsing errors in request
 # TODO: Test for empty klines from market_data_service (should raise error or return empty result)
-```

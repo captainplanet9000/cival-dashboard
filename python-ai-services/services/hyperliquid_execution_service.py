@@ -639,4 +639,3 @@ class HyperliquidExecutionService:
         except Exception as e:
             logger.error(f"HLES: Error fetching fills for order OID {oid}: {e}", exc_info=True)
             raise HyperliquidExecutionServiceError(f"Failed to fetch fills for order {oid}: {e}")
-```

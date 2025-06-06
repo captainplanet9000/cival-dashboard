@@ -110,4 +110,3 @@ def test_get_agent_performance_metrics_unexpected_error():
     assert "Unexpected internal error" in response.json()["detail"]
     mock_service_perf.calculate_performance_metrics.assert_called_once_with(agent_id)
 
-```

@@ -88,4 +88,3 @@ class EventBusService:
 
         logger.debug(f"Finished publishing event ID {event.event_id} to {len(tasks)} subscriber(s).")
 
-```

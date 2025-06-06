@@ -475,4 +475,3 @@ async def test_close_letta_client(memory_service_fixture: MemoryService, caplog)
 
     assert memory_service_fixture.letta_client is None
     assert "MEMORY_SERVICE: Letta client connection conceptually closed." in caplog.text
-```
