@@ -112,4 +112,3 @@ async def delete_specific_alert_config(
     if not deleted: # Should ideally not happen if previous check passed
         raise HTTPException(status_code=404, detail=f"Alert config {alert_id} could not be deleted or was already deleted.")
     return None # For 204 response
-```

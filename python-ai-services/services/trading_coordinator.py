@@ -33,6 +33,7 @@ from .order_history_service import OrderHistoryService, OrderHistoryServiceError
 from ..core.websocket_manager import connection_manager as global_connection_manager
 from ..models.websocket_models import WebSocketEnvelope
 from ..models.trading_history_models import TradeFillData # For linking fills
+from ..models.event_bus_models import Event, HyperliquidRawFillEventPayload
 
 # Add imports for PaperTradeOrder and related enums
 from ..models.paper_trading_models import PaperTradeOrder, PaperTradeFill
@@ -90,6 +91,34 @@ class TradingCoordinator:
         else: logger.warning("OrderHistoryService: Not available. Order lifecycle will not be recorded.")
         # Add other logs as needed
         logger.info(f"Default trade execution mode: {self.trade_execution_mode}")
+
+    async def setup_event_subscriptions(self):
+        if self.event_bus_service:
+            await self.event_bus_service.subscribe("HyperliquidRawFillEvent", self.on_hyperliquid_raw_fill_event)
+
+    async def on_hyperliquid_raw_fill_event(self, event: Event):
+        try:
+            payload = HyperliquidRawFillEventPayload(**event.payload)
+            raw = payload.raw_fill_data
+            mapped_side = "buy" if str(raw.get("dir", "")).lower().startswith("b") else "sell"
+            fill_obj = TradeFillData(
+                agent_id=payload.agent_id,
+                asset=str(raw.get("coin")),
+                side=mapped_side,
+                quantity=float(raw.get("qty", 0)),
+                price=float(raw.get("px", 0)),
+                timestamp=datetime.fromtimestamp(int(raw.get("time", 0))/1000, tz=timezone.utc),
+                fee=float(raw.get("fee", 0)),
+                fee_currency="USD",
+                exchange_order_id=str(raw.get("oid")),
+                exchange_trade_id=str(raw.get("tid", uuid.uuid4())),
+            )
+            await self.trade_history_service.record_fill(fill_obj)
+            if self.connection_manager:
+                ws_env = WebSocketEnvelope(event_type="NEW_FILL", agent_id=payload.agent_id, payload=fill_obj.model_dump(mode='json'))
+                await self.connection_manager.send_to_client(payload.agent_id, ws_env)
+        except Exception as e:
+            logger.error(f"TC ({self.agent_id}): Error processing HyperliquidRawFillEvent: {e}")
 
     async def set_trade_execution_mode(self, mode: str) -> Dict[str, str]:
         """Sets the trade execution mode for the TradingCoordinator."""
@@ -225,30 +254,35 @@ class TradingCoordinator:
                     )
                     internal_order_id_for_dex = new_dex_order_db.internal_order_id
 
-                logger.info(f"TC ({self.agent_id}): DEX path for agent {agent_id_executing_trade} - current logic is placeholder.")
-                # Placeholder for DEX parameter mapping and call
-                symbol_pair = trade_params.get("symbol", "UNKNOWN/UNKNOWN")
-                mock_token_in_address = f"0xMOCK_IN_{symbol_pair.split('/')[0]}"
-                mock_token_out_address = f"0xMOCK_OUT_{symbol_pair.split('/')[1] if '/' in symbol_pair else ''}"
-                mock_amount_in_wei = int(float(trade_params.get("quantity",0)) * 10**18)
-                mock_min_amount_out_wei = 0
-                mock_fee_tier = 3000
+                logger.info(f"TC ({self.agent_id}): Executing DEX trade for agent {agent_id_executing_trade}.")
+                symbol_pair = trade_params.get("symbol", "TOKEN_IN/TOKEN_OUT")
+                token_in = f"0x{symbol_pair.split('/')[0]}"
+                token_out = f"0x{symbol_pair.split('/')[1]}" if '/' in symbol_pair else "0xOUT"
+                amount_in_wei = int(float(trade_params.get("quantity",0)) * 10**18)
+                min_amount_out_wei = 0
+                fee_tier = 3000
 
-                # dex_swap_result = await self.dex_execution_service.place_swap_order(...) # Actual call
-                dex_swap_result = {
-                    "tx_hash": f"0xMOCK_DEX_{uuid.uuid4().hex}", "status": "success_mocked_dex", "error": None,
-                    "amount_out_wei_actual": mock_min_amount_out_wei,
-                    "amount_out_wei_minimum_requested": mock_min_amount_out_wei,
-                    "amount_in_wei": mock_amount_in_wei, "token_in": mock_token_in_address,
-                    "token_out": mock_token_out_address
-                } # Mocked result
+                dex_swap_result = await self.dex_execution_service.place_swap_order(
+                    token_in, token_out, amount_in_wei, min_amount_out_wei, fee_tier
+                )
 
                 if internal_order_id_for_dex and self.order_history_service:
                     await self.order_history_service.update_order_from_dex_response(internal_order_id_for_dex, dex_swap_result)
-                    # Conceptual fill linking for DEX (if fills were part of dex_swap_result)
-                    # if self.trade_history_service and dex_swap_result.get("fills"): ... link them ...
 
-                return {"status": "dex_executed_placeholder", "details": dex_swap_result}
+                simulated_fills = dex_swap_result.get("simulated_fills", [])
+                for fill_dict in simulated_fills:
+                    try:
+                        fill_obj = TradeFillData(**fill_dict)
+                        fill_obj.agent_id = agent_id_executing_trade
+                        await self.trade_history_service.record_fill(fill_obj)
+                        if internal_order_id_for_dex and self.order_history_service and hasattr(fill_obj, 'fill_id'):
+                            await self.order_history_service.link_fill_to_order(internal_order_id_for_dex, fill_obj.fill_id)
+                        if self.connection_manager:
+                            ws_env = WebSocketEnvelope(event_type="NEW_FILL", agent_id=agent_id_executing_trade, payload=fill_obj.model_dump(mode='json'))
+                            await self.connection_manager.send_to_client(agent_id_executing_trade, ws_env)
+                    except Exception as e_f:
+                        logger.error(f"TC ({self.agent_id}): Error processing simulated DEX fill: {e_f}", exc_info=True)
+                return {"status": dex_swap_result.get("status", "dex_executed"), "details": dex_swap_result}
 
             except (DEXExecutionServiceError, ValueError) as e:
                 logger.error(f"DEX trade execution failed for agent {agent_id_executing_trade}: {e}", exc_info=True)

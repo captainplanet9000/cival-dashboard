@@ -27,6 +27,8 @@ from ..models.hyperliquid_models import (
     HyperliquidAccountSnapshot, HyperliquidMarginSummary # New/Refined
 )
 from datetime import datetime, timezone # Ensure datetime and timezone are imported
+from ..services.event_bus_service import EventBusService
+from ..models.event_bus_models import Event, HyperliquidRawFillEventPayload
 
 logger = getLogger(__name__)
 
@@ -38,7 +40,8 @@ class HyperliquidExecutionService:
                  wallet_address: str,
                  private_key: str,
                  api_url: Optional[str] = None, # Defaults to mainnet if None
-                 network_mode: Literal["mainnet", "testnet"] = "mainnet"
+                 network_mode: Literal["mainnet", "testnet"] = "mainnet",
+                 event_bus_service: Optional['EventBusService'] = None
                 ):
         if not Exchange or not Info or not Account or not HL_CONSTANTS: # Check all required imports
             raise HyperliquidExecutionServiceError("Hyperliquid SDK or eth_account not installed/imported correctly.")
@@ -54,6 +57,7 @@ class HyperliquidExecutionService:
             raise HyperliquidExecutionServiceError(f"Invalid private key: {e}")
 
         self.wallet_address = self.account.address # Derive address from private key for consistency
+        self.event_bus_service = event_bus_service
         # Log a warning if provided wallet_address doesn't match the one from private_key
         if wallet_address.lower() != self.wallet_address.lower():
             logger.warning(
@@ -639,4 +643,27 @@ class HyperliquidExecutionService:
         except Exception as e:
             logger.error(f"HLES: Error fetching fills for order OID {oid}: {e}", exc_info=True)
             raise HyperliquidExecutionServiceError(f"Failed to fetch fills for order {oid}: {e}")
-```
+
+    async def _handle_raw_fill(self, raw_fill_message: Dict[str, Any]):
+        if not self.event_bus_service:
+            return
+        try:
+            payload = HyperliquidRawFillEventPayload(
+                agent_id=self.wallet_address,
+                raw_fill_data=raw_fill_message,
+            )
+            await self.event_bus_service.publish(
+                Event(
+                    publisher_agent_id=self.wallet_address,
+                    message_type="HyperliquidRawFillEvent",
+                    payload=payload.model_dump(mode='json'),
+                )
+            )
+        except Exception as e:
+            logger.error(f"HLES: Error handling raw fill message: {e}")
+
+    async def start_fill_listener(self, agent_id: str):
+        if not self.info_client:
+            logger.error("HLES: Info client not initialized, cannot start fill listener.")
+            return
+        self.info_client.user_fills(user=self.wallet_address, callback=self._handle_raw_fill)

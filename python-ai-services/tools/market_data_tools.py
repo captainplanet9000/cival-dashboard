@@ -230,6 +230,7 @@ def _generate_mock_ohlcv_data(symbol: str, timeframe: str, limit: int) -> List[D
 async def main_async_example():
     logger.remove()
     logger.add(lambda msg: print(msg, end=''), colorize=True, format="<level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>", level="INFO")
+    global app_services
 
     # This example assumes app_services might be populated if run within a broader context.
     # For standalone tool test, it will likely use mock data.
@@ -247,7 +248,6 @@ async def main_async_example():
                     return [{"timestamp": (pd.Timestamp.utcnow() - pd.Timedelta(days=1)).isoformat(), "open": 100, "high": 102, "low": 99, "close": 101, "volume": 5000}]
                 return [] # Simulate service returning no data for other symbols
 
-        global app_services # Allow modification of global for this example context
         app_services = {"market_data_service": MockMarketDataServiceForExample()} # type: ignore
         logger.info("Using a temporary mock MarketDataService for this example run.")
 
@@ -277,4 +277,3 @@ async def main_async_example():
 if __name__ == '__main__':
     import asyncio
     asyncio.run(main_async_example())
-```

@@ -240,4 +240,3 @@ async def get_system_health_summary(request: Request):
         # timestamp will use default_factory
     )
 
-```

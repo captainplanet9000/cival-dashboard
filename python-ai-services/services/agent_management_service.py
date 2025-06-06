@@ -41,6 +41,10 @@ class AgentManagementService:
         finally:
             db.close()
 
+    async def load_all_agent_statuses_from_db(self):
+        """Public method to populate internal status cache from the database."""
+        await self._load_existing_statuses_from_db()
+
     def _db_to_pydantic(self, db_agent: AgentConfigDB) -> AgentConfigOutput:
         try:
             strategy_data = json.loads(db_agent.strategy_config_json or "{}")
@@ -367,4 +371,3 @@ class AgentManagementService:
         finally:
             db.close()
 
-```

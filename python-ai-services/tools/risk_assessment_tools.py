@@ -319,4 +319,3 @@ if __name__ == '__main__':
     logger.info(f"\n--- Example 5: Existing Position ({args5_dict['symbol']}) ---")
     result5_json = assess_trade_risk_tool(**args5_dict)
     logger.info(f"Risk Assessment Tool Output 5:\n{json.dumps(json.loads(result5_json), indent=2)}")
-```

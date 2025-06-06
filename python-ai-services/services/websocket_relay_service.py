@@ -24,6 +24,10 @@ class WebSocketRelayService:
         await self.event_bus.subscribe("PortfolioSnapshotTakenEvent", self.on_portfolio_snapshot_taken)
         logger.info("WebSocketRelayService: Subscribed to NewFillRecordedEvent, AlertTriggeredEvent, and PortfolioSnapshotTakenEvent.")
 
+    async def setup_event_subscriptions(self):
+        """Alias for setup_subscriptions for external callers."""
+        await self.setup_subscriptions()
+
     async def _get_agent_id_from_event(self, event: Event) -> Optional[str]:
         """Helper to consistently extract agent_id from event or its payload."""
         agent_id = event.publisher_agent_id
@@ -98,4 +102,3 @@ class WebSocketRelayService:
             payload=event.payload # event.payload is already dict of PortfolioSnapshotOutput
         )
         await self.connection_manager.send_to_client(agent_id, ws_envelope)
-```

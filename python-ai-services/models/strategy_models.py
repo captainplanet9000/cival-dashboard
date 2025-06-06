@@ -100,16 +100,13 @@ class RenkoConfig(BaseModel):
         extra = "forbid"
         use_enum_values = True
 
-<<<<<<< HEAD
-    @model_validator(mode='after')
+    @model_validator(mode="after")
     def check_fixed_brick_size_value(cls, values: Any) -> Any:
         if isinstance(values, BaseModel):
             method = values.brick_size_method
             val = values.brick_size_value
-
-            if method == RenkoBrickSizeMethod.FIXED:
-                if val is None or val <= 0:
-                    raise ValueError("brick_size_value must be a positive float when brick_size_method is 'fixed'.")
+            if method == RenkoBrickSizeMethod.FIXED and (val is None or val <= 0):
+                raise ValueError("brick_size_value must be a positive float when brick_size_method is 'fixed'.")
         return values
 
 
@@ -324,7 +321,6 @@ class ElliottWaveConfig(BaseModel):
         ElliottWaveConfig(**invalid_ew_data_extra)
     except ValidationError as e:
         logger.error(f"Error creating invalid EW config (extra field) (as expected): {e}")
-```
 
 import uuid
 from datetime import datetime

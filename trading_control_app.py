@@ -9,7 +9,7 @@ class TradingControlApp:
         self.page = page
         self.page.title = "🏦 Trading Dashboard Control"
         self.page.theme_mode = ft.ThemeMode.DARK
-        self.page.bgcolor = ft.colors.BLUE_GREY_900
+        self.page.bgcolor = ft.Colors.BLUE_GREY_900
         self.api_base = "http://localhost:8000"  # Your FastAPI backend
         
         # State variables
@@ -17,13 +17,6 @@ class TradingControlApp:
         self.risk_level = 25.0
         self.vault_balance = 1258473.25
         self.allocated_amount = 987654.32
-        
-        # UI References
-        self.balance_text = None
-        self.allocated_text = None
-        self.progress_bar = None
-        self.auto_trading_switch = None
-        self.risk_slider = None
         
     async def call_api(self, endpoint, data=None, method="POST"):
         """Call the FastAPI backend"""
@@ -38,14 +31,14 @@ class TradingControlApp:
                                           headers={'Content-Type': 'application/json'}) as response:
                         return await response.json()
         except Exception as e:
-            self.show_snackbar(f"API Error: {str(e)}", ft.colors.RED)
+            self.show_snackbar(f"API Error: {str(e)}", ft.Colors.RED)
             return None
     
-    def show_snackbar(self, message, color=ft.colors.GREEN):
+    def show_snackbar(self, message, color=ft.Colors.GREEN):
         """Show notification"""
         self.page.show_snack_bar(
             ft.SnackBar(
-                content=ft.Text(message, color=ft.colors.WHITE),
+                content=ft.Text(message, color=ft.Colors.WHITE),
                 bgcolor=color
             )
         )
@@ -58,17 +51,38 @@ class TradingControlApp:
             content=ft.Container(
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.icons.ACCOUNT_BALANCE, color=ft.colors.BLUE_400),
+                        ft.Icon(ft.icons.ACCOUNT_BALANCE, color=ft.Colors.BLUE_400),
                         ft.Text("Master Trading Vault", 
                                size=20, 
                                weight=ft.FontWeight.BOLD,
-                               color=ft.colors.WHITE)
+                               color=ft.Colors.WHITE)
                     ]),
-                    ft.Divider(color=ft.colors.BLUE_GREY_700),
+                    ft.Divider(color=ft.Colors.BLUE_GREY_700),
                     
                     # Balance Display
                     ft.Row([
-                                                ft.Column([                            ft.Text("Total Balance",                                    size=14,                                    color=ft.colors.BLUE_GREY_400),                            ft.Text(                                f"${self.vault_balance:,.2f}",                                 size=24,                                 weight=ft.FontWeight.BOLD,                                color=ft.colors.GREEN_400                            )                        ], expand=True),                        ft.Column([                            ft.Text("Allocated",                                    size=14,                                    color=ft.colors.BLUE_GREY_400),                            ft.Text(                                f"${self.allocated_amount:,.2f}",                                 size=18,                                 weight=ft.FontWeight.W_500,                                color=ft.colors.ORANGE_400                            )                        ], expand=True)
+                        ft.Column([
+                            ft.Text("Total Balance", 
+                                   size=14, 
+                                   color=ft.Colors.BLUE_GREY_400),
+                            ft.Text(
+                                f"${self.vault_balance:,.2f}", 
+                                size=24, 
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.GREEN_400
+                            )
+                        ], expand=True),
+                        ft.Column([
+                            ft.Text("Allocated", 
+                                   size=14, 
+                                   color=ft.Colors.BLUE_GREY_400),
+                            ft.Text(
+                                f"${self.allocated_amount:,.2f}", 
+                                size=18, 
+                                weight=ft.FontWeight.W_500,
+                                color=ft.Colors.ORANGE_400
+                            )
+                        ], expand=True)
                     ]),
                     
                     # Progress Bar
@@ -76,15 +90,15 @@ class TradingControlApp:
                         ft.Row([
                             ft.Text("Capital Allocation", 
                                    size=14, 
-                                   color=ft.colors.BLUE_GREY_400),
+                                   color=ft.Colors.BLUE_GREY_400),
                             ft.Text(f"{(self.allocated_amount/self.vault_balance)*100:.1f}%", 
                                    size=14, 
-                                   color=ft.colors.WHITE)
+                                   color=ft.Colors.WHITE)
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.progress_bar := ft.ProgressBar(
+                        ft.ProgressBar(
                             value=(self.allocated_amount/self.vault_balance),
-                            color=ft.colors.BLUE_400,
-                            bgcolor=ft.colors.BLUE_GREY_800
+                            color=ft.Colors.BLUE_400,
+                            bgcolor=ft.Colors.BLUE_GREY_800
                         )
                     ]),
                     
@@ -93,23 +107,23 @@ class TradingControlApp:
                         ft.ElevatedButton(
                             text="Transfer Funds",
                             icon=ft.icons.SWAP_HORIZ,
-                            bgcolor=ft.colors.BLUE_600,
-                            color=ft.colors.WHITE,
+                            bgcolor=ft.Colors.BLUE_600,
+                            color=ft.Colors.WHITE,
                             on_click=self.show_transfer_dialog,
                             expand=True
                         ),
                         ft.ElevatedButton(
                             text="Emergency Stop",
                             icon=ft.icons.STOP_CIRCLE,
-                            bgcolor=ft.colors.RED_600,
-                            color=ft.colors.WHITE,
+                            bgcolor=ft.Colors.RED_600,
+                            color=ft.Colors.WHITE,
                             on_click=self.emergency_stop,
                             expand=True
                         )
                     ], spacing=10)
                 ], spacing=15),
                 padding=20,
-                bgcolor=ft.colors.BLUE_GREY_800,
+                bgcolor=ft.Colors.BLUE_GREY_800,
                 border_radius=10
             )
         )
@@ -121,26 +135,26 @@ class TradingControlApp:
                     ft.Text("Sub-Vaults Status", 
                            size=18, 
                            weight=ft.FontWeight.BOLD,
-                           color=ft.colors.WHITE),
-                    ft.Divider(color=ft.colors.BLUE_GREY_700),
+                           color=ft.Colors.WHITE),
+                    ft.Divider(color=ft.Colors.BLUE_GREY_700),
                     
                     # Vault Status Items
-                    self.create_vault_status_item("Algorithmic Trading", 425847.50, "Active", ft.colors.GREEN),
-                    self.create_vault_status_item("DeFi Operations", 287954.12, "Active", ft.colors.GREEN),
-                    self.create_vault_status_item("Risk Hedging", 156234.89, "Active", ft.colors.GREEN),
-                    self.create_vault_status_item("Emergency Reserve", 89876.54, "Locked", ft.colors.ORANGE),
+                    self.create_vault_status_item("Algorithmic Trading", 425847.50, "Active", ft.Colors.GREEN),
+                    self.create_vault_status_item("DeFi Operations", 287954.12, "Active", ft.Colors.GREEN),
+                    self.create_vault_status_item("Risk Hedging", 156234.89, "Active", ft.Colors.GREEN),
+                    self.create_vault_status_item("Emergency Reserve", 89876.54, "Locked", ft.Colors.ORANGE),
                     
                     ft.ElevatedButton(
                         text="View All Vaults",
                         icon=ft.icons.VISIBILITY,
-                        bgcolor=ft.colors.BLUE_GREY_700,
-                        color=ft.colors.WHITE,
+                        bgcolor=ft.Colors.BLUE_GREY_700,
+                        color=ft.Colors.WHITE,
                         on_click=lambda _: self.show_snackbar("Opening vault details..."),
                         width=200
                     )
                 ], spacing=10),
                 padding=20,
-                bgcolor=ft.colors.BLUE_GREY_800,
+                bgcolor=ft.Colors.BLUE_GREY_800,
                 border_radius=10
             )
         )
@@ -152,13 +166,13 @@ class TradingControlApp:
         return ft.Row([
             ft.Icon(ft.icons.ACCOUNT_BALANCE_WALLET, 
                    size=20, 
-                   color=ft.colors.BLUE_400),
+                   color=ft.Colors.BLUE_400),
             ft.Column([
-                ft.Text(name, size=14, weight=ft.FontWeight.W_500, color=ft.colors.WHITE),
-                ft.Text(f"${balance:,.2f}", size=12, color=ft.colors.BLUE_GREY_400)
+                ft.Text(name, size=14, weight=ft.FontWeight.W_500, color=ft.Colors.WHITE),
+                ft.Text(f"${balance:,.2f}", size=12, color=ft.Colors.BLUE_GREY_400)
             ], expand=True, spacing=2),
             ft.Container(
-                content=ft.Text(status, size=12, color=ft.colors.WHITE),
+                content=ft.Text(status, size=12, color=ft.Colors.WHITE),
                 bgcolor=status_color,
                 padding=ft.padding.symmetric(horizontal=8, vertical=4),
                 border_radius=5
@@ -168,49 +182,53 @@ class TradingControlApp:
     def create_trading_controls(self):
         """Create trading management interface"""
         
+        auto_trading_switch = ft.Switch(
+            value=self.auto_trading,
+            active_color=ft.Colors.GREEN_400,
+            on_change=self.toggle_auto_trading
+        )
+        
+        risk_slider = ft.Slider(
+            min=0,
+            max=100,
+            value=self.risk_level,
+            divisions=20,
+            active_color=ft.Colors.ORANGE_400,
+            inactive_color=ft.Colors.BLUE_GREY_700,
+            on_change=self.update_risk_level
+        )
+        
         trading_card = ft.Card(
             content=ft.Container(
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.icons.TRENDING_UP, color=ft.colors.GREEN_400),
+                        ft.Icon(ft.icons.TRENDING_UP, color=ft.Colors.GREEN_400),
                         ft.Text("Trading Controls", 
                                size=20, 
                                weight=ft.FontWeight.BOLD,
-                               color=ft.colors.WHITE)
+                               color=ft.Colors.WHITE)
                     ]),
-                    ft.Divider(color=ft.colors.BLUE_GREY_700),
+                    ft.Divider(color=ft.Colors.BLUE_GREY_700),
                     
                     # Auto Trading Toggle
                     ft.Row([
-                        ft.Icon(ft.icons.SMART_TOY, color=ft.colors.BLUE_400),
+                        ft.Icon(ft.icons.SMART_TOY, color=ft.Colors.BLUE_400),
                         ft.Text("Automated Trading", 
                                size=16, 
-                               color=ft.colors.WHITE),
-                        self.auto_trading_switch := ft.Switch(
-                            value=self.auto_trading,
-                            active_color=ft.colors.GREEN_400,
-                            on_change=self.toggle_auto_trading
-                        )
+                               color=ft.Colors.WHITE),
+                        auto_trading_switch
                     ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                     
                     # Risk Level Slider
                     ft.Column([
                         ft.Row([
-                            ft.Text("Risk Level", size=16, color=ft.colors.WHITE),
+                            ft.Text("Risk Level", size=16, color=ft.Colors.WHITE),
                             ft.Text(f"{self.risk_level:.0f}%", 
                                    size=16, 
                                    weight=ft.FontWeight.BOLD,
                                    color=self.get_risk_color(self.risk_level))
                         ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                        self.risk_slider := ft.Slider(
-                            min=0,
-                            max=100,
-                            value=self.risk_level,
-                            divisions=20,
-                            active_color=ft.colors.ORANGE_400,
-                            inactive_color=ft.colors.BLUE_GREY_700,
-                            on_change=self.update_risk_level
-                        )
+                        risk_slider
                     ]),
                     
                     # Quick Actions
@@ -218,16 +236,16 @@ class TradingControlApp:
                         ft.ElevatedButton(
                             text="Pause All",
                             icon=ft.icons.PAUSE,
-                            bgcolor=ft.colors.ORANGE_600,
-                            color=ft.colors.WHITE,
+                            bgcolor=ft.Colors.ORANGE_600,
+                            color=ft.Colors.WHITE,
                             on_click=self.pause_all_trading,
                             expand=True
                         ),
                         ft.ElevatedButton(
                             text="Resume All",
                             icon=ft.icons.PLAY_ARROW,
-                            bgcolor=ft.colors.GREEN_600,
-                            color=ft.colors.WHITE,
+                            bgcolor=ft.Colors.GREEN_600,
+                            color=ft.Colors.WHITE,
                             on_click=self.resume_all_trading,
                             expand=True
                         )
@@ -235,7 +253,7 @@ class TradingControlApp:
                     
                 ], spacing=20),
                 padding=20,
-                bgcolor=ft.colors.BLUE_GREY_800,
+                bgcolor=ft.Colors.BLUE_GREY_800,
                 border_radius=10
             )
         )
@@ -247,20 +265,20 @@ class TradingControlApp:
                     ft.Text("Performance Metrics", 
                            size=18, 
                            weight=ft.FontWeight.BOLD,
-                           color=ft.colors.WHITE),
-                    ft.Divider(color=ft.colors.BLUE_GREY_700),
+                           color=ft.Colors.WHITE),
+                    ft.Divider(color=ft.Colors.BLUE_GREY_700),
                     
                     ft.Row([
-                        self.create_metric_item("Daily P&L", "+$1,234.56", ft.colors.GREEN_400),
-                        self.create_metric_item("Win Rate", "78.5%", ft.colors.BLUE_400)
+                        self.create_metric_item("Daily P&L", "+$1,234.56", ft.Colors.GREEN_400),
+                        self.create_metric_item("Win Rate", "78.5%", ft.Colors.BLUE_400)
                     ]),
                     ft.Row([
-                        self.create_metric_item("Active Positions", "12", ft.colors.ORANGE_400),
-                        self.create_metric_item("Total Trades", "156", ft.colors.PURPLE_400)
+                        self.create_metric_item("Active Positions", "12", ft.Colors.ORANGE_400),
+                        self.create_metric_item("Total Trades", "156", ft.Colors.PURPLE_400)
                     ])
                 ], spacing=15),
                 padding=20,
-                bgcolor=ft.colors.BLUE_GREY_800,
+                bgcolor=ft.Colors.BLUE_GREY_800,
                 border_radius=10
             )
         )
@@ -270,7 +288,7 @@ class TradingControlApp:
     def create_metric_item(self, label, value, color):
         """Create a metric display item"""
         return ft.Column([
-            ft.Text(label, size=12, color=ft.colors.BLUE_GREY_400),
+            ft.Text(label, size=12, color=ft.Colors.BLUE_GREY_400),
             ft.Text(value, size=18, weight=ft.FontWeight.BOLD, color=color)
         ], expand=True, horizontal_alignment=ft.CrossAxisAlignment.CENTER)
     
@@ -281,39 +299,39 @@ class TradingControlApp:
             content=ft.Container(
                 content=ft.Column([
                     ft.Row([
-                        ft.Icon(ft.icons.NOTIFICATIONS, color=ft.colors.ORANGE_400),
+                        ft.Icon(ft.icons.NOTIFICATIONS, color=ft.Colors.ORANGE_400),
                         ft.Text("Active Alerts", 
                                size=20, 
                                weight=ft.FontWeight.BOLD,
-                               color=ft.colors.WHITE)
+                               color=ft.Colors.WHITE)
                     ]),
-                    ft.Divider(color=ft.colors.BLUE_GREY_700),
+                    ft.Divider(color=ft.Colors.BLUE_GREY_700),
                     
                     # Alert Items
                     self.create_alert_item("Compliance Action Required", 
                                          "2 compliance actions need attention", 
-                                         ft.colors.ORANGE_400,
+                                         ft.Colors.ORANGE_400,
                                          "2 min ago"),
                     self.create_alert_item("High Risk Position", 
                                          "DeFi vault exceeds risk threshold", 
-                                         ft.colors.RED_400,
+                                         ft.Colors.RED_400,
                                          "5 min ago"),
                     self.create_alert_item("Transfer Completed", 
                                          "Successfully moved $50K to Algo vault", 
-                                         ft.colors.GREEN_400,
+                                         ft.Colors.GREEN_400,
                                          "10 min ago"),
                     
                     ft.ElevatedButton(
                         text="Clear All Alerts",
                         icon=ft.icons.CLEAR_ALL,
-                        bgcolor=ft.colors.BLUE_GREY_700,
-                        color=ft.colors.WHITE,
+                        bgcolor=ft.Colors.BLUE_GREY_700,
+                        color=ft.Colors.WHITE,
                         on_click=lambda _: self.show_snackbar("All alerts cleared"),
                         width=200
                     )
                 ], spacing=15),
                 padding=20,
-                bgcolor=ft.colors.BLUE_GREY_800,
+                bgcolor=ft.Colors.BLUE_GREY_800,
                 border_radius=10
             )
         )
@@ -326,27 +344,27 @@ class TradingControlApp:
             content=ft.Row([
                 ft.Icon(ft.icons.CIRCLE, size=12, color=color),
                 ft.Column([
-                    ft.Text(title, size=14, weight=ft.FontWeight.W_500, color=ft.colors.WHITE),
-                    ft.Text(description, size=12, color=ft.colors.BLUE_GREY_400)
+                    ft.Text(title, size=14, weight=ft.FontWeight.W_500, color=ft.Colors.WHITE),
+                    ft.Text(description, size=12, color=ft.Colors.BLUE_GREY_400)
                 ], expand=True, spacing=2),
-                ft.Text(time, size=12, color=ft.colors.BLUE_GREY_500)
+                ft.Text(time, size=12, color=ft.Colors.BLUE_GREY_500)
             ]),
             padding=10,
-            bgcolor=ft.colors.BLUE_GREY_900,
+            bgcolor=ft.Colors.BLUE_GREY_900,
             border_radius=5,
-            border=ft.border.all(1, ft.colors.BLUE_GREY_700)
+            border=ft.border.all(1, ft.Colors.BLUE_GREY_700)
         )
     
     def get_risk_color(self, risk_level):
         """Get color based on risk level"""
         if risk_level < 25:
-            return ft.colors.GREEN_400
+            return ft.Colors.GREEN_400
         elif risk_level < 50:
-            return ft.colors.YELLOW_400
+            return ft.Colors.YELLOW_400
         elif risk_level < 75:
-            return ft.colors.ORANGE_400
+            return ft.Colors.ORANGE_400
         else:
-            return ft.colors.RED_400
+            return ft.Colors.RED_400
     
     # Event Handlers
     async def show_transfer_dialog(self, e):
@@ -371,9 +389,9 @@ class TradingControlApp:
                     self.show_snackbar(f"Transferred ${amount:,.2f} from {from_vault} to {to_vault}")
                     close_dialog(e)
                 else:
-                    self.show_snackbar("Transfer failed", ft.colors.RED)
+                    self.show_snackbar("Transfer failed", ft.Colors.RED)
             else:
-                self.show_snackbar("Please fill all fields", ft.colors.ORANGE)
+                self.show_snackbar("Please fill all fields", ft.Colors.ORANGE)
         
         amount_field = ft.TextField(label="Amount ($)", width=200)
         from_dropdown = ft.Dropdown(
@@ -417,9 +435,7 @@ class TradingControlApp:
         """Emergency stop all trading"""
         result = await self.call_api('/api/trading/emergency-stop')
         if result:
-            self.show_snackbar("EMERGENCY STOP ACTIVATED!", ft.colors.RED)
-            self.auto_trading_switch.value = False
-            self.page.update()
+            self.show_snackbar("EMERGENCY STOP ACTIVATED!", ft.Colors.RED)
     
     async def toggle_auto_trading(self, e):
         """Toggle automated trading"""
@@ -437,31 +453,26 @@ class TradingControlApp:
         result = await self.call_api('/api/trading/risk-level', {
             'level': self.risk_level
         })
-        
-        # Update risk level display color
-        risk_text = self.page.controls[1].content.tabs[1].content.controls[0].content.content.controls[2].controls[0].controls[1]
-        risk_text.color = self.get_risk_color(self.risk_level)
-        risk_text.value = f"{self.risk_level:.0f}%"
         self.page.update()
     
     async def pause_all_trading(self, e):
         """Pause all trading activities"""
         result = await self.call_api('/api/trading/pause-all')
         if result:
-            self.show_snackbar("All trading paused", ft.colors.ORANGE)
+            self.show_snackbar("All trading paused", ft.Colors.ORANGE)
     
     async def resume_all_trading(self, e):
         """Resume all trading activities"""
         result = await self.call_api('/api/trading/resume-all')
         if result:
-            self.show_snackbar("All trading resumed", ft.colors.GREEN)
+            self.show_snackbar("All trading resumed", ft.Colors.GREEN)
     
     def main(self):
         """Main app setup"""
         # App Bar
         self.page.appbar = ft.AppBar(
-            title=ft.Text("🏦 Trading Control", color=ft.colors.WHITE),
-            bgcolor=ft.colors.BLUE_GREY_800,
+            title=ft.Text("🏦 Trading Control", color=ft.Colors.WHITE),
+            bgcolor=ft.Colors.BLUE_GREY_800,
             actions=[
                 ft.IconButton(
                     ft.icons.REFRESH,

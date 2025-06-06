@@ -12,8 +12,9 @@ from .market_data_service import MarketDataService
 from .event_bus_service import EventBusService
 from .darvas_box_service import DarvasBoxTechnicalService
 from .williams_alligator_service import WilliamsAlligatorTechnicalService
+from .elliott_wave_service import ElliottWaveTechnicalService
+from .sma_crossover_service import SMACrossoverTechnicalService
 from .market_condition_classifier_service import MarketConditionClassifierService
-from .portfolio_optimizer_service import PortfolioOptimizerService
 from .portfolio_optimizer_service import PortfolioOptimizerService
 from .news_analysis_service import NewsAnalysisService
 # Use the new factories
@@ -73,6 +74,11 @@ class AgentOrchestratorService:
             if not hles_instance:
                 logger.error(f"Orchestrator: Failed to get HyperliquidExecutionService for agent {agent_config.agent_id}.")
                 return None
+            try:
+                await hles_instance.start_fill_listener(agent_config.agent_id)
+                logger.info(f"Started Hyperliquid fill listener for {agent_config.agent_id}")
+            except Exception as e:
+                logger.error(f"Failed to start fill listener for agent {agent_config.agent_id}: {e}")
         elif agent_config.execution_provider == "dex":
             dex_instance = get_dex_execution_service_instance(agent_config) # Use the correct factory
             if not dex_instance:
@@ -287,6 +293,48 @@ class AgentOrchestratorService:
             logger.info(f"HeikinAshiTechnicalAgent cycle finished for agent_id: {agent_id}")
             return
 
+        elif agent_config.agent_type == "ElliottWaveTechnicalAgent":
+            if not all([self.market_data_service, self.event_bus_service]):
+                logger.error(f"Orchestrator: Missing critical services for ElliottWaveTechnicalAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+
+            ew_service = ElliottWaveTechnicalService(
+                agent_config=agent_config,
+                market_data_service=self.market_data_service,
+                event_bus_service=self.event_bus_service,
+                learning_logger_service=self.learning_logger_service
+            )
+            for symbol in agent_config.strategy.watched_symbols or []:
+                try:
+                    await ew_service.run_analysis_for_symbol(symbol)
+                except Exception as e:
+                    logger.error(f"Error during ElliottWave analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"ElliottWaveTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
+        elif agent_config.agent_type == "SMACrossoverTechnicalAgent":
+            if not all([self.market_data_service, self.event_bus_service]):
+                logger.error(f"Orchestrator: Missing critical services for SMACrossoverTechnicalAgent {agent_id}.")
+                await self.agent_management_service.update_agent_heartbeat(agent_id)
+                return
+
+            sma_service = SMACrossoverTechnicalService(
+                agent_config=agent_config,
+                market_data_service=self.market_data_service,
+                event_bus_service=self.event_bus_service,
+                learning_logger_service=self.learning_logger_service
+            )
+            for symbol in agent_config.strategy.watched_symbols or []:
+                try:
+                    await sma_service.analyze_symbol_and_generate_signal(symbol)
+                except Exception as e:
+                    logger.error(f"Error during SMACrossover analysis for agent {agent_id}, symbol {symbol}: {e}", exc_info=True)
+            await self.agent_management_service.update_agent_heartbeat(agent_id)
+            logger.info(f"SMACrossoverTechnicalAgent cycle finished for agent_id: {agent_id}")
+            return
+
         # Default handling for other agent types (e.g., "GenericAgent" or those using TradingCoordinator)
         # This block should be the last one for agent_type checks.
         else: # Fallback for GenericAgent or any other type that uses TradingCoordinator
@@ -368,4 +416,3 @@ class AgentOrchestratorService:
                 logger.info(f"Successfully completed agent cycle for {agent.agent_id} ({agent.name}).")
         logger.info("Finished run_all_active_agents_once cycle.")
 
-```
