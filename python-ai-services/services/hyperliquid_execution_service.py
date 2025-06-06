@@ -19,6 +19,8 @@ except ImportError:
 
 from eth_account import Account # Standard library for Ethereum account management
 import asyncio # For running sync SDK methods in async context
+from .event_bus_service import EventBusService
+from ..models.event_bus_models import Event
 
 # Import Pydantic models
 from ..models.hyperliquid_models import (
@@ -62,6 +64,10 @@ class HyperliquidExecutionService:
             )
 
         self.api_url = api_url or (HL_CONSTANTS.MAINNET_API_URL if network_mode == "mainnet" else HL_CONSTANTS.TESTNET_API_URL)
+
+        # Listener task setup
+        self._fill_listener_task: Optional[asyncio.Task] = None
+        self._stop_listener = asyncio.Event()
 
         try:
             self.info_client = Info(self.api_url, skip_ws=True)
@@ -639,4 +645,50 @@ class HyperliquidExecutionService:
         except Exception as e:
             logger.error(f"HLES: Error fetching fills for order OID {oid}: {e}", exc_info=True)
             raise HyperliquidExecutionServiceError(f"Failed to fetch fills for order {oid}: {e}")
-```
+
+    async def _fill_listener_loop(self, agent_id: str, event_bus: Optional[EventBusService], poll_interval: float) -> None:
+        """Internal loop to poll fills and publish events."""
+        last_timestamp = 0
+        while not self._stop_listener.is_set():
+            try:
+                loop = asyncio.get_event_loop()
+                fills = await loop.run_in_executor(None, self.info_client.user_fills, self.wallet_address)
+                for fill in fills or []:
+                    fill_time = int(fill.get("time", 0))
+                    if fill_time <= last_timestamp:
+                        continue
+                    last_timestamp = fill_time
+                    if event_bus:
+                        try:
+                            await event_bus.publish(Event(
+                                publisher_agent_id=agent_id,
+                                message_type="RawFillEvent",
+                                payload=fill if isinstance(fill, dict) else {"fill": fill}
+                            ))
+                        except Exception as e_pub:
+                            logger.error(f"HLES: Error publishing raw fill event: {e_pub}", exc_info=True)
+            except Exception as e:
+                logger.error(f"HLES: Error in fill listener loop: {e}", exc_info=True)
+            await asyncio.sleep(poll_interval)
+        logger.info("HLES: Fill listener loop exited.")
+
+    async def start_fill_listener(self, agent_id: str, event_bus: Optional[EventBusService] = None, poll_interval: float = 1.0) -> None:
+        """Starts a background task to listen for fills."""
+        if self._fill_listener_task and not self._fill_listener_task.done():
+            logger.warning("HLES: Fill listener already running. Start request ignored.")
+            return
+        self._stop_listener.clear()
+        self._fill_listener_task = asyncio.create_task(self._fill_listener_loop(agent_id, event_bus, poll_interval))
+        logger.info(f"HLES: Fill listener started for agent {agent_id}.")
+
+    async def stop_fill_listener(self) -> None:
+        """Stops the background fill listener task if running."""
+        if self._fill_listener_task:
+            self._stop_listener.set()
+            await self._fill_listener_task
+            self._fill_listener_task = None
+            logger.info("HLES: Fill listener stopped.")
+
+    async def cleanup(self) -> None:
+        """Cleanup resources for service."""
+        await self.stop_fill_listener()

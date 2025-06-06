@@ -153,4 +153,3 @@ class AgentUpdateRequest(BaseModel):
     parent_agent_id: Optional[str] = None
     operational_parameters: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
-```

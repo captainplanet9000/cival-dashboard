@@ -162,4 +162,3 @@ class RiskManagerService:
         logger.info(f"RiskManager: Trade signal for {trade_signal.symbol} from agent {agent_id_of_proposer} approved by all active checks.")
         return RiskAssessmentResponseData(signal_approved=True)
 
-```

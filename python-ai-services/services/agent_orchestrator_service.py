@@ -73,6 +73,10 @@ class AgentOrchestratorService:
             if not hles_instance:
                 logger.error(f"Orchestrator: Failed to get HyperliquidExecutionService for agent {agent_config.agent_id}.")
                 return None
+            try:
+                await hles_instance.start_fill_listener(agent_config.agent_id, self.event_bus_service)
+            except Exception as e:
+                logger.error(f"Orchestrator: Failed to start fill listener for agent {agent_config.agent_id}: {e}", exc_info=True)
         elif agent_config.execution_provider == "dex":
             dex_instance = get_dex_execution_service_instance(agent_config) # Use the correct factory
             if not dex_instance:
@@ -368,4 +372,3 @@ class AgentOrchestratorService:
                 logger.info(f"Successfully completed agent cycle for {agent.agent_id} ({agent.name}).")
         logger.info("Finished run_all_active_agents_once cycle.")
 
-```

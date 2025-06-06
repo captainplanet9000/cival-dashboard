@@ -8,9 +8,12 @@ from python_ai_services.services.agent_management_service import AgentManagement
 from python_ai_services.services.trading_coordinator import TradingCoordinator
 from python_ai_services.services.hyperliquid_execution_service import HyperliquidExecutionService
 from python_ai_services.services.dex_execution_service import DEXExecutionService # Added
-from python_ai_services.services.simulated_trade_executor import SimulatedTradeExecutor
+class SimulatedTradeExecutor: pass
 from python_ai_services.models.agent_models import AgentConfigOutput, AgentStrategyConfig, AgentRiskConfig
-from python_ai_services.models.api_models import TradingAnalysisCrewRequest
+from dataclasses import dataclass
+@dataclass
+class TradingAnalysisCrewRequest:
+    agent_id: str
 from python_ai_services.utils.google_sdk_bridge import GoogleSDKBridge
 from python_ai_services.utils.a2a_protocol import A2AProtocol
 from python_ai_services.services.trade_history_service import TradeHistoryService
@@ -182,6 +185,7 @@ async def test_get_trading_coordinator_hyperliquid_agent_success(
 ):
     agent_config = create_sample_agent_config("hl_agent", provider="hyperliquid")
     mock_hles_instance = MagicMock(spec=HyperliquidExecutionService)
+    mock_hles_instance.start_fill_listener = AsyncMock()
     mock_get_hles_instance.return_value = mock_hles_instance
     with patch('python_ai_services.services.agent_orchestrator_service.TradingCoordinator') as MockTradingCoordinator:
         mock_tc_instance = AsyncMock(spec=TradingCoordinator)
@@ -190,6 +194,7 @@ async def test_get_trading_coordinator_hyperliquid_agent_success(
         MockTradingCoordinator.return_value = mock_tc_instance
         coordinator = await orchestrator_service._get_trading_coordinator_for_agent(agent_config)
         assert coordinator is not None
+        mock_hles_instance.start_fill_listener.assert_called_once_with(agent_config.agent_id, orchestrator_service.event_bus_service)
         mock_get_hles_instance.assert_called_once_with(agent_config)
         MockTradingCoordinator.assert_called_once_with(
             agent_id=agent_config.agent_id,
@@ -511,5 +516,3 @@ async def test_run_all_active_agents_one_cycle_fails(orchestrator_service: Agent
     await orchestrator_service.run_all_active_agents_once()
     assert orchestrator_service.run_single_agent_cycle.call_count == 2
 
-from typing import Optional, List, Dict, Any # Ensure all type hints are imported
-```

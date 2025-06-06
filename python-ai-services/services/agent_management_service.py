@@ -367,4 +367,3 @@ class AgentManagementService:
         finally:
             db.close()
 
-```
