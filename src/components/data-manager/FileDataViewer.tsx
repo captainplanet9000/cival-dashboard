@@ -174,7 +174,7 @@ export const FileDataViewer: React.FC<FileDataViewerProps> = ({
       
       setJsonData({
         data,
-        itemCount: isArray ? data.length : null,
+        itemCount: isArray ? data.length : undefined,
         isArray,
         properties
       })

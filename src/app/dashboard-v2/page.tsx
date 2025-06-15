@@ -1080,7 +1080,7 @@ function AITab({ aiAnalyses, aiQuery, setAiQuery, aiResponse, aiLoading, handleA
               </div>
             </div>
           </CardContent>
-        </div>
+        </Card>
       </div>
     </div>
   );
@@ -3547,7 +3547,7 @@ function AgentTradingTab({ agents }: any) {
                           <div>
                             <label className="text-xs text-muted-foreground">Approval Required</label>
                             <div className="text-sm mt-1">
-                              Amount > ${agent.permissions.requireApproval.amount.toLocaleString()} or Volatility > {agent.permissions.requireApproval.volatility}%
+                              Amount {'>'}${agent.permissions.requireApproval.amount.toLocaleString()} or Volatility {'>'} {agent.permissions.requireApproval.volatility}%
                             </div>
                           </div>
                           <div>

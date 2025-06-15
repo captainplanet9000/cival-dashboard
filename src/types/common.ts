@@ -1,4 +1,7 @@
 // Common Types for Cival Dashboard
+
+// UUID type alias for string
+export type UUID = string;
 export interface Alert {
   id: string;
   type: 'trading' | 'risk' | 'system' | 'compliance' | 'performance' | 'security';

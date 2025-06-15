@@ -14,4 +14,36 @@ export * from './market-data';
 export * from './state';
 export * from './checkpoints';
 export * from './decisions';
-export * from './common';
+export * from './enhanced-types';
+// Export common types but rename the AgentStatus enum to avoid conflict
+export type { 
+  UUID,
+  TradeSide, 
+  PositionSide, 
+  PositionStatus, 
+  RiskLevel, 
+  TradeStatus, 
+  OrderType, 
+  ApiResponse, 
+  PaginationParams, 
+  PaginatedResponse, 
+  TimeRange,
+} from './common';
+
+export { 
+  AgentStatus as AgentStatusEnum
+} from './common';
+
+export type { 
+  TradingStrategy, 
+  TradingDecision,
+  AgentTradingPermissionRow,
+  AgentTradeRow,
+  AgentPositionRow,
+  AgentPerformanceRow,
+  AgentStatusRow,
+  AgentMarketDataSubscriptionRow,
+  AgentStateRow,
+  AgentCheckpointRow,
+  AgentDecisionRow
+} from './common';

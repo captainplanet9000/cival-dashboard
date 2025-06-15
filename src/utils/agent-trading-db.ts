@@ -427,6 +427,66 @@ export async function getServerAgentTradingDb() {
         console.error(`Server: Failed to get performance for agent ${agentId}:`, err);
         return { data: null, error: formatError(err) };
       }
+    },
+
+    /**
+     * Create a new trading permission (server-side)
+     */
+    async createTradingPermission(permission: AgentTradingPermissionInsert): Promise<DbResult<AgentTradingPermission>> {
+      try {
+        const { data, error } = await supabase
+          .from('agent_trading_permissions')
+          .insert(permission)
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        return { data, error: null };
+      } catch (err) {
+        console.error('Server: Failed to create trading permission:', err);
+        return { data: null, error: formatError(err) };
+      }
+    },
+
+    /**
+     * Create a new trade (server-side)
+     */
+    async createTrade(trade: AgentTradeInsert): Promise<DbResult<AgentTrade>> {
+      try {
+        const { data, error } = await supabase
+          .from('agent_trades')
+          .insert(trade)
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        return { data, error: null };
+      } catch (err) {
+        console.error('Server: Failed to create trade:', err);
+        return { data: null, error: formatError(err) };
+      }
+    },
+
+    /**
+     * Create a new checkpoint (server-side)
+     */
+    async createCheckpoint(checkpoint: AgentCheckpointInsert): Promise<DbResult<AgentCheckpoint>> {
+      try {
+        const { data, error } = await supabase
+          .from('agent_checkpoints')
+          .insert(checkpoint)
+          .select()
+          .single();
+
+        if (error) throw error;
+        
+        return { data, error: null };
+      } catch (err) {
+        console.error('Server: Failed to create checkpoint:', err);
+        return { data: null, error: formatError(err) };
+      }
     }
   };
 }

@@ -76,6 +76,14 @@ export interface AGUIConfirmationEvent extends AGUIBaseEvent {
   timeout?: number;
 }
 
+export interface AGUIUserActionEvent extends AGUIBaseEvent {
+  type: 'user_action';
+  action: string;
+  value: any;
+  original_event_id?: string;
+  data?: Record<string, any>;
+}
+
 export interface AGUIProgressEvent extends AGUIBaseEvent {
   type: 'progress';
   current: number;
@@ -135,6 +143,95 @@ export interface AGUIRiskAssessmentEvent extends AGUIBaseEvent {
   };
 }
 
+// Phase 8: Knowledge Management Events
+export interface AGUIKnowledgeAccessEvent extends AGUIBaseEvent {
+  type: 'knowledge_access';
+  action: 'search' | 'access' | 'recommend' | 'learn';
+  resource?: {
+    id: string;
+    title: string;
+    type: 'trading_books' | 'sops' | 'strategies' | 'research' | 'training' | 'documentation';
+    summary?: string;
+    relevance_score?: number;
+  };
+  query?: string;
+  results_count?: number;
+  agent_id: string;
+}
+
+export interface AGUIGoalManagementEvent extends AGUIBaseEvent {
+  type: 'goal_management';
+  action: 'create' | 'update' | 'complete' | 'analyze' | 'recommend';
+  goal?: {
+    id: string;
+    name: string;
+    type: string;
+    progress: number;
+    target_value: number;
+    current_value: number;
+    complexity: 'simple' | 'moderate' | 'complex' | 'advanced';
+  };
+  natural_language_input?: string;
+  ai_analysis?: {
+    confidence_score: number;
+    feasibility: string;
+    success_criteria: string[];
+    risk_factors: string[];
+  };
+  agent_id: string;
+}
+
+export interface AGUILearningProgressEvent extends AGUIBaseEvent {
+  type: 'learning_progress';
+  agent_id: string;
+  skill_area: string;
+  progress: {
+    current_level: 'beginner' | 'intermediate' | 'advanced';
+    completion_percentage: number;
+    resources_completed: number;
+    time_spent_minutes: number;
+  };
+  recommendations: Array<{
+    resource_id: string;
+    title: string;
+    reason: string;
+    estimated_time: number;
+  }>;
+}
+
+export interface AGUIKnowledgeRecommendationEvent extends AGUIBaseEvent {
+  type: 'knowledge_recommendation';
+  agent_id: string;
+  recommendation_type: 'skill_gap' | 'performance_improvement' | 'goal_related' | 'trending';
+  recommendations: Array<{
+    resource_id: string;
+    title: string;
+    reason: string;
+    confidence: number;
+    estimated_impact: string;
+  }>;
+  context?: {
+    current_goal?: string;
+    performance_issues?: string[];
+    skill_gaps?: string[];
+  };
+}
+
+export interface AGUIResourceUploadEvent extends AGUIBaseEvent {
+  type: 'resource_upload';
+  action: 'upload_started' | 'upload_completed' | 'upload_failed' | 'processing_started' | 'processing_completed';
+  resource: {
+    id: string;
+    title: string;
+    type: 'trading_books' | 'sops' | 'strategies' | 'research' | 'training' | 'documentation';
+    size: number;
+    status: 'uploading' | 'processing' | 'completed' | 'error';
+  };
+  progress?: number;
+  error?: string;
+  uploaded_by: string;
+}
+
 // Union type for all possible events
 export type AGUIEvent = 
   | AGUITextEvent
@@ -145,11 +242,17 @@ export type AGUIEvent =
   | AGUIGenerativeUIEvent
   | AGUIErrorEvent
   | AGUIConfirmationEvent
+  | AGUIUserActionEvent
   | AGUIProgressEvent
   | AGUIStreamEvent
   | AGUITradingSignalEvent
   | AGUIMarketAnalysisEvent
-  | AGUIRiskAssessmentEvent;
+  | AGUIRiskAssessmentEvent
+  | AGUIKnowledgeAccessEvent
+  | AGUIGoalManagementEvent
+  | AGUILearningProgressEvent
+  | AGUIKnowledgeRecommendationEvent
+  | AGUIResourceUploadEvent;
 
 // AG UI Client Configuration
 export interface AGUIClientConfig {

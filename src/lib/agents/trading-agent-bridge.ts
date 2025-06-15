@@ -1,6 +1,7 @@
 // Trading Agent Bridge - Connects AI agents to trading execution
 import { Agent, AgentMessage } from '@/types/agent';
-import { Order, Trade, Portfolio } from '@/types/trading';
+import { Order } from '@/types/trading';
+import { Trade } from '@/lib/trading/exchange-connectors/base-connector';
 import { tradingClient } from '@/lib/clients/trading-client';
 
 export class TradingAgentBridge {
@@ -45,19 +46,19 @@ export class TradingAgentBridge {
     const order = await tradingClient.placeOrder(
       tradeRequest.accountId,
       {
+        account_id: tradeRequest.accountId,
         symbol: tradeRequest.symbol,
         order_type: tradeRequest.orderType,
         side: tradeRequest.side,
         quantity: tradeRequest.quantity,
         price: tradeRequest.price,
-        time_in_force: 'gtc',
-        agent_id: agentId,
-        metadata: {
-          strategy: tradeRequest.strategy,
-          reasoning: tradeRequest.reasoning
-        }
+        time_in_force: 'gtc'
       }
     );
+
+    if (!order) {
+      throw new Error('Order placement failed');
+    }
 
     return {
       orderId: order.id,

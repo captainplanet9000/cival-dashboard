@@ -437,7 +437,7 @@ export default function OverviewPage() {
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{((position.market_value / portfolioSummary.total_equity) * 100).toFixed(1)}%</p>
+                    <p className="font-medium">{portfolioSummary ? ((position.market_value / portfolioSummary.total_equity) * 100).toFixed(1) : '0'}%</p>
                     <p className="text-muted-foreground">allocation</p>
                   </div>
                 </div>

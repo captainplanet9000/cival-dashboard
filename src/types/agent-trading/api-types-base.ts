@@ -4,7 +4,8 @@
  * Common type definitions for API requests and responses in the agent trading system.
  */
 
-import { AgentTrade, AgentPerformance } from './enhanced-types';
+import { AgentTrade } from './trades';
+import { AgentPerformance } from './performance';
 import { AgentStateData } from './state-types';
 
 /**

@@ -1,6 +1,6 @@
 import { createBrowserClient } from '@/utils/supabase/client'
 import { createServerClient } from '@/utils/supabase/server'
-import { Database } from '@/types/supabase'
+import { Database } from '@/types/database.types'
 import supabaseStorageService from './supabase-storage-service'
 
 /**

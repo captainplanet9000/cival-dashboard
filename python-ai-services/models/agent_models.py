@@ -1,7 +1,36 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, Dict, Any, Literal, List
 from datetime import datetime, timezone
+from decimal import Decimal
+from enum import Enum
 import uuid
+
+# Phase 11: Additional enums and models for autonomous agent coordination
+class AgentStatus(Enum):
+    """Agent status states"""
+    INITIALIZING = "initializing"
+    ACTIVE = "active"
+    BUSY = "busy"
+    PAUSED = "paused"
+    ERROR = "error"
+    SHUTDOWN = "shutdown"
+
+class DecisionType(Enum):
+    """Types of agent decisions"""
+    TRADING = "trading"
+    RISK_MANAGEMENT = "risk_management"
+    PORTFOLIO_ALLOCATION = "portfolio_allocation"
+    GOAL_ADJUSTMENT = "goal_adjustment"
+    STRATEGY_MODIFICATION = "strategy_modification"
+    EMERGENCY_ACTION = "emergency_action"
+
+class CoordinationMode(Enum):
+    """Agent coordination modes"""
+    INDEPENDENT = "independent"
+    COLLABORATIVE = "collaborative"
+    HIERARCHICAL = "hierarchical"
+    CONSENSUS_REQUIRED = "consensus_required"
+    EMERGENCY = "emergency"
 
 class AgentStrategyConfig(BaseModel):
     strategy_name: str
@@ -153,3 +182,96 @@ class AgentUpdateRequest(BaseModel):
     parent_agent_id: Optional[str] = None
     operational_parameters: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
+
+# ===== Phase 11: Autonomous Agent Coordination Models =====
+
+class AutonomousAgent(BaseModel):
+    """Autonomous agent model for Phase 11 coordination"""
+    agent_id: str
+    name: str
+    agent_type: str
+    status: AgentStatus
+    configuration: Dict[str, Any] = Field(default_factory=dict)
+    performance_metrics: Dict[str, Any] = Field(default_factory=dict)
+    current_tasks: List[str] = Field(default_factory=list)
+    last_activity: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AgentDecision(BaseModel):
+    """Agent decision model"""
+    decision_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    agent_id: str
+    decision_type: DecisionType
+    recommendation: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    reasoning: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+    risk_assessment: Dict[str, Any] = Field(default_factory=dict)
+    expected_outcome: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_executed: bool = False
+    execution_result: Optional[Dict[str, Any]] = None
+
+class AgentPerformance(BaseModel):
+    """Agent performance metrics model"""
+    agent_id: str
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    total_pnl: Decimal = Decimal("0")
+    win_rate: float = 0.0
+    max_drawdown: float = 0.0
+    sharpe_ratio: float = 0.0
+    sortino_ratio: float = 0.0
+    profit_factor: float = 0.0
+    avg_trade_duration: float = 0.0
+    largest_win: Decimal = Decimal("0")
+    largest_loss: Decimal = Decimal("0")
+    consecutive_wins: int = 0
+    consecutive_losses: int = 0
+    performance_score: float = 0.0
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class CoordinationTask(BaseModel):
+    """Agent coordination task model"""
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    task_type: str
+    description: str
+    priority: int = Field(ge=1, le=10)
+    assigned_agents: List[str] = Field(default_factory=list)
+    status: str = "pending"
+    context: Dict[str, Any] = Field(default_factory=dict)
+    deadline: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    result: Optional[Dict[str, Any]] = None
+
+class AgentCommunication(BaseModel):
+    """Agent communication model"""
+    communication_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    sender_id: str
+    recipient_id: str  # Can be "all" for broadcast
+    message_type: str
+    content: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+    priority: int = Field(default=5, ge=1, le=10)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    is_read: bool = False
+    response_required: bool = False
+    response_deadline: Optional[datetime] = None
+
+class DecisionConsensus(BaseModel):
+    """Multi-agent decision consensus model"""
+    consensus_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    decision_context_id: str
+    participating_agents: List[str]
+    voting_method: str = "majority"
+    required_agreement: float = Field(default=0.7, ge=0.5, le=1.0)
+    agent_votes: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    consensus_reached: bool = False
+    final_decision: Optional[Dict[str, Any]] = None
+    agreement_level: float = 0.0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: Optional[datetime] = None
+    deadline: Optional[datetime] = None

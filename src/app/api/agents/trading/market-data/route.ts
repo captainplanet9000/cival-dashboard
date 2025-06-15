@@ -12,8 +12,28 @@ async function checkAuth(req: NextRequest) {
   return { user: { id: 'demo-user' } };
 }
 
-// Initialize trading manager
-const tradingManager = new TradingManager();
+// Initialize trading manager with mock config for demo
+const tradingManagerConfig = {
+  exchanges: {
+    hyperliquid: {
+      type: 'hyperliquid' as const,
+      credentials: { apiKey: 'demo', apiSecret: 'demo' },
+      enabled: true,
+      priority: 1
+    }
+  },
+  defaultExchange: 'hyperliquid',
+  realTimeDataEnabled: false,
+  aggregateOrderBooks: false,
+  riskManagement: {
+    maxPositionSize: 10000,
+    maxDailyLoss: 1000,
+    stopLossPercentage: 5,
+    takeProfitPercentage: 10
+  }
+};
+
+const tradingManager = new TradingManager(tradingManagerConfig);
 
 export async function GET(req: NextRequest) {
   try {
@@ -33,18 +53,26 @@ export async function GET(req: NextRequest) {
     
     // Get market data from trading manager
     try {
-      const marketData = await tradingManager.getMarketData(symbol, interval, limit);
+      const marketData = await tradingManager.getMarketData(symbol);
       
       return NextResponse.json({
         symbol,
         interval,
-        candles: marketData.candles || [],
+        price: marketData.price,
+        volume: marketData.volume,
+        high24h: marketData.high24h,
+        low24h: marketData.low24h,
+        change24h: marketData.change24h,
+        changePercent24h: marketData.changePercent24h,
+        bid: marketData.bid,
+        ask: marketData.ask,
+        spread: marketData.spread,
         timestamp: new Date()
       });
     } catch (error) {
       console.error('Error fetching market data:', error);
       return NextResponse.json(
-        { error: 'Failed to fetch market data', details: error.message }, 
+        { error: 'Failed to fetch market data', details: error instanceof Error ? error.message : 'Unknown error' }, 
         { status: 500 }
       );
     }

@@ -154,7 +154,9 @@ class BackendApiClient {
       try {
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          ...options.headers,
+          ...(options.headers && typeof options.headers === 'object' && !(options.headers instanceof Headers) 
+            ? options.headers as Record<string, string> 
+            : {}),
         };
 
         // Skip auth for solo operator mode
@@ -349,6 +351,77 @@ class BackendApiClient {
     }
   }
 
+  // Enhanced Agent Management
+  async executeAgentDecision(agentId: string, decisionParams: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/${agentId}/execute-decision`, {
+        method: 'POST',
+        body: JSON.stringify(decisionParams)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to execute agent decision',
+        status: 0,
+      };
+    }
+  }
+
+  async startAgent(agentId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/${agentId}/start`, {
+        method: 'POST'
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to start agent',
+        status: 0,
+      };
+    }
+  }
+
+  async stopAgent(agentId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/${agentId}/stop`, {
+        method: 'POST'
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to stop agent',
+        status: 0,
+      };
+    }
+  }
+
+  async getAgentDecisions(agentId: string, limit: number = 10): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/${agentId}/decisions?limit=${limit}`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to get agent decisions',
+        status: 0,
+      };
+    }
+  }
+
+  async coordinateAgentDecision(coordinationParams: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/coordinate-decision`, {
+        method: 'POST',
+        body: JSON.stringify(coordinationParams)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to coordinate agent decision',
+        status: 0,
+      };
+    }
+  }
+
   // Performance
   async getPerformanceMetrics(): Promise<ApiResponse<PerformanceMetrics>> {
     try {
@@ -449,6 +522,119 @@ class BackendApiClient {
     } catch (error) {
       return {
         error: error instanceof Error ? error.message : 'Failed to get user info',
+        status: 0,
+      };
+    }
+  }
+
+  // Strategy Management
+  async getStrategies(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to get strategies',
+        status: 0,
+      };
+    }
+  }
+
+  async getStrategy(strategyId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies/${strategyId}`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to get strategy',
+        status: 0,
+      };
+    }
+  }
+
+  async createStrategy(strategyData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies`, {
+        method: 'POST',
+        body: JSON.stringify(strategyData)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to create strategy',
+        status: 0,
+      };
+    }
+  }
+
+  async updateStrategy(strategyId: string, strategyData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies/${strategyId}`, {
+        method: 'PUT',
+        body: JSON.stringify(strategyData)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to update strategy',
+        status: 0,
+      };
+    }
+  }
+
+  async deleteStrategy(strategyId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies/${strategyId}`, {
+        method: 'DELETE'
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to delete strategy',
+        status: 0,
+      };
+    }
+  }
+
+  async backtestStrategy(strategyId: string, backtestParams: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/strategies/${strategyId}/backtest`, {
+        method: 'POST',
+        body: JSON.stringify(backtestParams)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to run backtest',
+        status: 0,
+      };
+    }
+  }
+
+  // Trading Orders
+  async createOrder(orderData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/trading/orders`, {
+        method: 'POST',
+        body: JSON.stringify(orderData)
+      });
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to create order',
+        status: 0,
+      };
+    }
+  }
+
+  async getOrders(status?: string): Promise<ApiResponse<any>> {
+    try {
+      const params = status ? `?status=${status}` : '';
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/trading/orders${params}`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to get orders',
         status: 0,
       };
     }

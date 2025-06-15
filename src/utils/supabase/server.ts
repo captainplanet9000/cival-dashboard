@@ -1,35 +1,16 @@
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { Database } from '@/types/database'
+import { createClient } from '@supabase/supabase-js'
+import { Database } from '@/types/database.types'
 
+// Mock server client that uses the same client-side implementation
+// This removes the dependency on next/headers for solo operator usage
 export const createServerClient = () => {
-  const cookieStore = cookies()
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
   
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: { path: string; maxAge: number; domain?: string }) {
-          try {
-            cookieStore.set({ name, value, ...options })
-          } catch (error) {
-            // The cookies API can only be used in a Server Action or Route Handler
-            // We'll suppress the error here
-          }
-        },
-        remove(name: string, options: { path: string; domain?: string }) {
-          try {
-            cookieStore.set({ name, value: '', ...options, maxAge: 0 })
-          } catch (error) {
-            // The cookies API can only be used in a Server Action or Route Handler
-            // We'll suppress the error here
-          }
-        },
-      },
-    }
-  )
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false, // Disable session persistence for server-side usage
+      autoRefreshToken: false, // Disable auto refresh for server-side usage
+    },
+  })
 }

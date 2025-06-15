@@ -47,11 +47,14 @@ export function AgentTradingList() {
   const handleCreateSample = async () => {
     const newPermission = {
       agent_id: `agent-${Date.now()}`,
-      user_id: 'placeholder-user-id', // This would be replaced with auth.uid() in a real app
       account_id: 'demo-account',
+      max_trade_size: 10000,
+      max_position_size: 50000,
+      max_daily_trades: 20,
       risk_level: 'moderate',
       allowed_symbols: ['BTC', 'ETH', 'SOL'],
       allowed_strategies: ['momentum', 'mean_reversion'],
+      is_active: true,
     };
 
     const result = await agentTradingDb.createTradingPermission(newPermission);

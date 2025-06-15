@@ -1,5 +1,8 @@
 import { Database } from '../database.types';
 
+// UUID type definition
+export type UUID = string;
+
 // Type aliases for database tables
 export type AgentTradingPermissionRow = Database['public']['Tables']['agent_trading_permissions']['Row'];
 export type AgentTradeRow = Database['public']['Tables']['agent_trades']['Row'];

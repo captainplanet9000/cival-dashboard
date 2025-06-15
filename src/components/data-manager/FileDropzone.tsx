@@ -74,12 +74,11 @@ export const FileDropzone: React.FC<FileDropzoneProps> = ({
           
           // Add metadata for this file in our database
           await updateFileMetadata(fileName, {
-            contentType: file.type,
-            fileType,
-            fileName: file.name,
-            fileSize: file.size,
-            uploadedBy: user.id,
-            dataFormat: fileType === 'csv' ? 'csv' : 
+            content_type: file.type,
+            file_type: fileType,
+            filename: file.name,
+            file_size: file.size,
+            data_format: fileType === 'csv' ? 'csv' : 
                       fileType === 'json' ? 'json' : 
                       fileType === 'txt' ? 'text' : fileType
           })

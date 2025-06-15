@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { SupabaseClient } from '@supabase/supabase-js'
 import { createBrowserClient } from '@/utils/supabase/client'
-import { Database } from '@/types/supabase'
+import { Database } from '@/types/database.types'
 
 // Type for agent permissions
 export type AgentPermission = {

@@ -151,8 +151,16 @@ export async function POST(request: NextRequest) {
     console.error('Enhanced trading analysis error:', error);
     
     // Final fallback
-    const body = await request.json();
-    return await fallbackTradingAnalysis(body);
+    try {
+      const body = await request.json();
+      const fallbackResult = await fallbackTradingAnalysis(body);
+      return NextResponse.json(fallbackResult);
+    } catch (fallbackError) {
+      return NextResponse.json(
+        { error: 'Trading analysis service unavailable' },
+        { status: 503 }
+      );
+    }
   }
 }
 

@@ -127,9 +127,15 @@ export function AGUIProvider({
                   }`}
                   onClick={() => {
                     agUIClient.sendEvent({
-                      type: 'confirmation_response',
-                      response: option.value,
-                      original_event_id: event.id
+                      type: 'user_action',
+                      action: 'confirmation_response',
+                      value: option.value,
+                      original_event_id: event.id,
+                      data: {
+                        confirmed: option.value === 'confirm',
+                        option_id: option.id,
+                        option_label: option.label
+                      }
                     });
                     toast.dismiss(t.id);
                   }}

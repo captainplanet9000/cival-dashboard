@@ -1,0 +1,9 @@
+[phases.build]
+cmds = ["pip install -r requirements.txt"]
+
+[phases.start]
+cmd = "python main_consolidated.py"
+
+[variables]
+PYTHONPATH = "."
+PORT = "8000"

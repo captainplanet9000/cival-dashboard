@@ -31,7 +31,29 @@ export class TradingAgentBridge {
 
   constructor(agentId: string) {
     this.agentId = agentId;
-    this.tradingManager = new TradingManager();
+    
+    // Initialize trading manager with mock config
+    const tradingManagerConfig = {
+      exchanges: {
+        hyperliquid: {
+          type: 'hyperliquid' as const,
+          credentials: { apiKey: 'demo', apiSecret: 'demo' },
+          enabled: true,
+          priority: 1
+        }
+      },
+      defaultExchange: 'hyperliquid',
+      realTimeDataEnabled: false,
+      aggregateOrderBooks: false,
+      riskManagement: {
+        maxPositionSize: 10000,
+        maxDailyLoss: 1000,
+        stopLossPercentage: 5,
+        takeProfitPercentage: 10
+      }
+    };
+    
+    this.tradingManager = new TradingManager(tradingManagerConfig);
   }
 
   async connect(wsUrl?: string) {
@@ -137,7 +159,7 @@ export class TradingAgent extends TradingAgentBridge {
     this.strategy = strategy;
   }
 
-  protected handleMarketUpdate(data: any) {
+  protected onMarketUpdate(data: any) {
     // Implement your trading logic here
     this.analyzeAndTrade(data);
   }

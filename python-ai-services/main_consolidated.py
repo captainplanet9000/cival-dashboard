@@ -582,6 +582,141 @@ async def get_all_agents_status():
         logger.error(f"Failed to get agents status: {e}")
         raise HTTPException(status_code=500, detail=f"Agents status error: {str(e)}")
 
+# Enhanced Agent Management Endpoints
+@app.post("/api/v1/agents/{agent_id}/execute-decision")
+async def execute_agent_decision(agent_id: str, decision_params: dict):
+    """Execute a trading decision for a specific agent"""
+    try:
+        # Simulate agent decision making
+        decision_result = {
+            "agent_id": agent_id,
+            "decision": decision_params.get("action", "hold"),
+            "symbol": decision_params.get("symbol", "BTC"),
+            "confidence": 0.85,
+            "reasoning": f"Agent {agent_id} analyzed market conditions and decided to {decision_params.get('action', 'hold')}",
+            "risk_assessment": {
+                "risk_level": "medium",
+                "expected_return": 0.034,
+                "max_loss": 0.021,
+                "position_size": 0.1
+            },
+            "execution": {
+                "status": "executed",
+                "order_id": f"order_{agent_id}_{int(datetime.now().timestamp())}",
+                "executed_price": 67234.85,
+                "executed_quantity": 0.1,
+                "execution_time": datetime.now(timezone.utc).isoformat()
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Broadcast agent decision via WebSocket
+        await websocket_manager.broadcast_agent_update(decision_result)
+        
+        return decision_result
+    except Exception as e:
+        logger.error(f"Failed to execute agent decision for {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent decision error: {str(e)}")
+
+@app.post("/api/v1/agents/{agent_id}/start")
+async def start_agent(agent_id: str):
+    """Start an agent for trading"""
+    try:
+        agent_status = {
+            "agent_id": agent_id,
+            "status": "active",
+            "started_at": datetime.now(timezone.utc).isoformat(),
+            "message": f"Agent {agent_id} started successfully"
+        }
+        return agent_status
+    except Exception as e:
+        logger.error(f"Failed to start agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent start error: {str(e)}")
+
+@app.post("/api/v1/agents/{agent_id}/stop") 
+async def stop_agent(agent_id: str):
+    """Stop an agent from trading"""
+    try:
+        agent_status = {
+            "agent_id": agent_id,
+            "status": "stopped",
+            "stopped_at": datetime.now(timezone.utc).isoformat(),
+            "message": f"Agent {agent_id} stopped successfully"
+        }
+        return agent_status
+    except Exception as e:
+        logger.error(f"Failed to stop agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent stop error: {str(e)}")
+
+@app.get("/api/v1/agents/{agent_id}/decisions")
+async def get_agent_decisions(agent_id: str, limit: int = 10):
+    """Get recent decisions made by an agent"""
+    try:
+        decisions = [
+            {
+                "id": f"decision_{i}",
+                "agent_id": agent_id,
+                "action": "buy" if i % 3 == 0 else "sell" if i % 3 == 1 else "hold",
+                "symbol": "BTC" if i % 2 == 0 else "ETH",
+                "confidence": 0.75 + (i * 0.05) % 0.25,
+                "reasoning": f"Decision {i}: Market analysis suggests favorable conditions",
+                "executed": i < 7,
+                "pnl": (i * 23.45) if i < 7 else None,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            for i in range(min(limit, 10))
+        ]
+        return {"decisions": decisions, "agent_id": agent_id}
+    except Exception as e:
+        logger.error(f"Failed to get decisions for agent {agent_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent decisions error: {str(e)}")
+
+@app.post("/api/v1/agents/coordinate-decision")
+async def coordinate_multi_agent_decision(coordination_params: dict):
+    """Coordinate a decision between multiple agents"""
+    try:
+        participating_agents = coordination_params.get("agents", ["agent_marcus_momentum", "agent_alex_arbitrage"])
+        decision_type = coordination_params.get("type", "collaborative")
+        
+        coordination_result = {
+            "coordination_id": f"coord_{int(datetime.now().timestamp())}",
+            "participating_agents": participating_agents,
+            "decision_type": decision_type,
+            "consensus": {
+                "action": "buy",
+                "symbol": "BTC",
+                "confidence": 0.82,
+                "agreement_level": 0.89
+            },
+            "individual_inputs": [
+                {
+                    "agent_id": "agent_marcus_momentum",
+                    "recommendation": "buy",
+                    "confidence": 0.85,
+                    "reasoning": "Strong momentum signals detected"
+                },
+                {
+                    "agent_id": "agent_alex_arbitrage", 
+                    "recommendation": "buy",
+                    "confidence": 0.78,
+                    "reasoning": "Arbitrage opportunity identified"
+                }
+            ],
+            "final_decision": {
+                "action": "buy",
+                "symbol": "BTC",
+                "position_size": 0.15,
+                "execution_plan": "immediate",
+                "risk_controls": ["stop_loss_2%", "take_profit_4%"]
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        return coordination_result
+    except Exception as e:
+        logger.error(f"Failed to coordinate agent decision: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent coordination error: {str(e)}")
+
 @app.get("/api/v1/performance/metrics")
 async def get_performance_metrics():
     """Get detailed performance metrics"""
@@ -607,6 +742,199 @@ async def get_performance_metrics():
     except Exception as e:
         logger.error(f"Failed to get performance metrics: {e}")
         raise HTTPException(status_code=500, detail=f"Performance metrics error: {str(e)}")
+
+# Trading Strategy Management Endpoints
+@app.get("/api/v1/strategies")
+async def get_strategies():
+    """Get all trading strategies"""
+    try:
+        strategies = [
+            {
+                "id": "momentum_v1",
+                "name": "Momentum Trading v1",
+                "description": "Trend-following strategy with volume confirmation",
+                "status": "active",
+                "type": "momentum",
+                "risk_level": "medium",
+                "allocated_capital": 25000.0,
+                "pnl": 1847.32,
+                "pnl_percent": 7.39,
+                "trades_today": 12,
+                "win_rate": 0.68,
+                "sharpe_ratio": 1.84,
+                "max_drawdown": 0.045,
+                "created_at": "2025-06-01T09:00:00Z",
+                "last_executed": "2025-06-14T15:28:00Z"
+            },
+            {
+                "id": "arbitrage_v2",
+                "name": "Cross-Exchange Arbitrage v2",
+                "description": "Multi-exchange price difference exploitation",
+                "status": "active",
+                "type": "arbitrage",
+                "risk_level": "low",
+                "allocated_capital": 30000.0,
+                "pnl": 892.45,
+                "pnl_percent": 2.97,
+                "trades_today": 8,
+                "win_rate": 0.89,
+                "sharpe_ratio": 2.34,
+                "max_drawdown": 0.012,
+                "created_at": "2025-06-01T09:00:00Z",
+                "last_executed": "2025-06-14T15:25:00Z"
+            },
+            {
+                "id": "mean_reversion_v1",
+                "name": "Mean Reversion Strategy",
+                "description": "Bollinger Bands with RSI confirmation",
+                "status": "paused",
+                "type": "mean_reversion",
+                "risk_level": "high",
+                "allocated_capital": 15000.0,
+                "pnl": -234.67,
+                "pnl_percent": -1.56,
+                "trades_today": 3,
+                "win_rate": 0.52,
+                "sharpe_ratio": 0.89,
+                "max_drawdown": 0.087,
+                "created_at": "2025-06-01T09:00:00Z",
+                "last_executed": "2025-06-14T14:15:00Z"
+            }
+        ]
+        return {"strategies": strategies}
+    except Exception as e:
+        logger.error(f"Failed to get strategies: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategies error: {str(e)}")
+
+@app.post("/api/v1/strategies")
+async def create_strategy(strategy_data: dict):
+    """Create a new trading strategy"""
+    try:
+        new_strategy = {
+            "id": f"strategy_{len(strategy_data.get('name', 'new').split())}_v1",
+            "name": strategy_data.get("name", "New Strategy"),
+            "description": strategy_data.get("description", ""),
+            "status": "draft",
+            "type": strategy_data.get("type", "custom"),
+            "risk_level": strategy_data.get("risk_level", "medium"),
+            "allocated_capital": strategy_data.get("allocated_capital", 10000.0),
+            "pnl": 0.0,
+            "pnl_percent": 0.0,
+            "trades_today": 0,
+            "win_rate": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "created_at": "2025-06-14T15:30:00Z",
+            "last_executed": None
+        }
+        return {"strategy": new_strategy, "message": "Strategy created successfully"}
+    except Exception as e:
+        logger.error(f"Failed to create strategy: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy creation error: {str(e)}")
+
+@app.get("/api/v1/strategies/{strategy_id}")
+async def get_strategy(strategy_id: str):
+    """Get specific strategy details"""
+    try:
+        # Mock strategy detail with performance data
+        strategy = {
+            "id": strategy_id,
+            "name": "Momentum Trading v1",
+            "description": "Trend-following strategy with volume confirmation",
+            "status": "active",
+            "type": "momentum",
+            "risk_level": "medium",
+            "allocated_capital": 25000.0,
+            "pnl": 1847.32,
+            "pnl_percent": 7.39,
+            "trades_today": 12,
+            "win_rate": 0.68,
+            "sharpe_ratio": 1.84,
+            "max_drawdown": 0.045,
+            "created_at": "2025-06-01T09:00:00Z",
+            "last_executed": "2025-06-14T15:28:00Z",
+            "parameters": {
+                "lookback_period": 20,
+                "volume_threshold": 1.5,
+                "stop_loss": 0.02,
+                "take_profit": 0.04,
+                "position_size": 0.1
+            },
+            "performance_history": [
+                {"date": "2025-06-10", "pnl": 234.56, "trades": 8},
+                {"date": "2025-06-11", "pnl": 456.78, "trades": 12},
+                {"date": "2025-06-12", "pnl": -123.45, "trades": 6},
+                {"date": "2025-06-13", "pnl": 789.01, "trades": 15},
+                {"date": "2025-06-14", "pnl": 490.42, "trades": 12}
+            ]
+        }
+        return strategy
+    except Exception as e:
+        logger.error(f"Failed to get strategy {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy retrieval error: {str(e)}")
+
+@app.put("/api/v1/strategies/{strategy_id}")
+async def update_strategy(strategy_id: str, strategy_data: dict):
+    """Update a trading strategy"""
+    try:
+        updated_strategy = {
+            "id": strategy_id,
+            "name": strategy_data.get("name", "Updated Strategy"),
+            "description": strategy_data.get("description", ""),
+            "status": strategy_data.get("status", "active"),
+            "parameters": strategy_data.get("parameters", {}),
+            "last_updated": "2025-06-14T15:30:00Z"
+        }
+        return {"strategy": updated_strategy, "message": "Strategy updated successfully"}
+    except Exception as e:
+        logger.error(f"Failed to update strategy {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy update error: {str(e)}")
+
+@app.delete("/api/v1/strategies/{strategy_id}")
+async def delete_strategy(strategy_id: str):
+    """Delete a trading strategy"""
+    try:
+        return {"message": f"Strategy {strategy_id} deleted successfully"}
+    except Exception as e:
+        logger.error(f"Failed to delete strategy {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Strategy deletion error: {str(e)}")
+
+@app.post("/api/v1/strategies/{strategy_id}/backtest")
+async def backtest_strategy(strategy_id: str, backtest_params: dict):
+    """Run backtest for a trading strategy"""
+    try:
+        # Mock backtest results
+        backtest_results = {
+            "strategy_id": strategy_id,
+            "period": backtest_params.get("period", "1M"),
+            "start_date": backtest_params.get("start_date", "2025-05-14"),
+            "end_date": backtest_params.get("end_date", "2025-06-14"),
+            "initial_capital": 10000.0,
+            "final_capital": 11847.32,
+            "total_return": 18.47,
+            "total_trades": 89,
+            "winning_trades": 61,
+            "losing_trades": 28,
+            "win_rate": 0.685,
+            "avg_win": 156.78,
+            "avg_loss": -89.34,
+            "profit_factor": 1.75,
+            "sharpe_ratio": 1.84,
+            "max_drawdown": 0.087,
+            "daily_returns": [
+                {"date": "2025-06-10", "return": 2.34},
+                {"date": "2025-06-11", "return": 4.56},
+                {"date": "2025-06-12", "return": -1.23},
+                {"date": "2025-06-13", "return": 7.89},
+                {"date": "2025-06-14", "return": 4.91}
+            ],
+            "status": "completed",
+            "executed_at": "2025-06-14T15:30:00Z"
+        }
+        return backtest_results
+    except Exception as e:
+        logger.error(f"Failed to backtest strategy {strategy_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Backtest error: {str(e)}")
 
 @app.get("/api/v1/risk/assessment")
 async def get_risk_assessment(

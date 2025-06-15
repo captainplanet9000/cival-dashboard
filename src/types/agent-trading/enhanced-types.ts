@@ -11,6 +11,9 @@ import {
 } from './database';
 import { OrderType, PositionSide, PositionStatus, RiskLevel, TradeStatus, TradeSide, TradingDecision, TradingStrategy } from './common';
 
+// Note: Base types are exported from their respective modules (trades, positions, etc.)
+// This file only exports enhanced/extended versions
+
 // Enhanced Agent Trading Permission with UI-specific properties
 export interface EnhancedAgentTradingPermission extends AgentTradingPermission {
   // Client-side calculated properties

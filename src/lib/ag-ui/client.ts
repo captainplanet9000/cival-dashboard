@@ -15,11 +15,7 @@ export class AGUIClient {
   private session: AGUISession | null = null;
   
   constructor(config: AGUIClientConfig) {
-    this.config = {
-      maxReconnectAttempts: 5,
-      reconnectDelay: 2000,
-      ...config
-    };
+    this.config = config;
   }
 
   /**

@@ -1,53 +1,34 @@
 """
 Enhanced AI Services with PydanticAI Integration
-Complements existing Google SDK and A2A systems
+Simplified startup version for initial deployment
 """
 import asyncio
 import os
-import json # Added for JSON serialization/deserialization
-import time # Added for request logging
+import json
+import time
+from datetime import datetime
 from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request # Added Request
-from fastapi.responses import JSONResponse # Added JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
-import uvicorn
-from loguru import logger
-import redis.asyncio as aioredis
+try:
+    from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+    from fastapi.responses import JSONResponse
+    from fastapi.middleware.cors import CORSMiddleware
+    from pydantic import BaseModel, Field
+    import uvicorn
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    print("FastAPI not available - running in minimal mode")
+    FASTAPI_AVAILABLE = False
 
-# Import our enhanced AI services
-from services.trading_coordinator import TradingCoordinator
-from services.market_analyst import MarketAnalyst
-from services.risk_monitor import RiskMonitor
-from services.vault_manager import VaultManager
-from services.strategy_optimizer import StrategyOptimizer
-from utils.google_sdk_bridge import GoogleSDKBridge
-from utils.a2a_protocol import A2AProtocol
-from types.trading_types import * # Assuming TradingDecision is in here
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
 
-# New Service Imports
-from services.agent_persistence_service import AgentPersistenceService
-from services.agent_state_manager import AgentStateManager
-from services.memory_service import MemoryService, LETTA_CLIENT_AVAILABLE
-from crews.trading_crew_service import TradingCrewService, TradingCrewRequest
-from api.v1.agent_management_routes import get_agent_management_service
-
-# Added for monitoring API
-from fastapi import Query # Query for pagination params
-from uuid import UUID, uuid4 # For MemoryService dummy IDs
-
-# Import monitoring models
-from models.monitoring_models import AgentTaskSummary, TaskListResponse, DependencyStatus, SystemHealthSummary
-
-# API Routers
-from api.v1 import monitoring_routes # Added Monitoring API routerimport AgentTaskService
-from api.v1 import simulation_routes # Added Simulation API router
-from services.memory_service import MemoryService, MemoryInitializationError
-from services.event_service import EventService, EventServiceError
-from services.simulated_trade_executor import SimulatedTradeExecutor
+# Basic configuration
+API_PORT = int(os.getenv("PORT", 9000))
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 from services.hyperliquid_execution_service import HyperliquidExecutionService, HyperliquidExecutionServiceError # Added
 from services.strategy_config_service import ( # Added
     StrategyConfigService,
@@ -88,6 +69,8 @@ from services.watchlist_service import ( # Watchlist service and exceptions
 # Models and crew for new endpoint
 from models.api_models import TradingAnalysisCrewRequest, CrewRunResponse
 from agents.crew_setup import trading_analysis_crew
+from agents.autogen_setup import autogen_trading_system, run_trading_analysis_autogen, get_autogen_system_status
+from services.agui_service import agui_service
 from models.event_models import CrewLifecycleEvent, AlertEvent, AlertLevel # Added AlertEvent, AlertLevel
 
 # For SSE
@@ -100,6 +83,10 @@ from models.auth_models import AuthenticatedUser
 # User Preferences
 from models.user_models import UserPreferences
 from services.user_preference_service import UserPreferenceService, UserPreferenceServiceError
+
+# API Routes
+from api.v1 import monitoring_routes, simulation_routes
+from api import phase8_endpoints
 
 # Hyperliquid Models (for new endpoints)
 from models.hyperliquid_models import (
@@ -405,7 +392,8 @@ app = FastAPI(
 
 # Include API routers
 app.include_router(monitoring_routes.router)
-app.include_router(simulation_routes.router, prefix="/api/v1", tags=["Simulations"]) # Added Simulation router
+app.include_router(simulation_routes.router, prefix="/api/v1", tags=["Simulations"])
+app.include_router(phase8_endpoints.router)  # Phase 8: Intelligent Goal Management + Farm Knowledge
 # Add other V1 routers here if created, e.g., for agent interactions, configurations etc.
 
 
@@ -530,6 +518,222 @@ async def run_trading_crew_analysis(request_data: TradingCrewRequest):
         # This log provides specific context before the global handler takes over
         logger.error(f"Unexpected error during trading crew analysis for {request_data.symbol}: {e}")
         raise # Re-raise for the global exception handler to process
+
+# --- AutoGen AI Endpoints ---
+
+@app.post("/api/v1/autogen/trading/analyze", summary="Run AutoGen Trading Analysis", tags=["AutoGen AI Workflows"])
+async def run_autogen_trading_analysis(symbol: str, context: Optional[Dict] = None):
+    """
+    Run advanced trading analysis using AutoGen multi-agent conversation framework.
+    
+    This endpoint uses AutoGen's sophisticated agent orchestration for:
+    - Technical analysis with multiple indicators
+    - Fundamental research and market intelligence  
+    - Risk assessment and position sizing
+    - Portfolio impact analysis
+    - Execution strategy optimization
+    - Coordinated decision making
+    
+    Args:
+        symbol: Financial instrument to analyze (e.g., "AAPL", "BTC-USD")
+        context: Optional additional context for analysis
+        
+    Returns:
+        Comprehensive trading recommendation with agent consensus
+    """
+    logger.info(f"Received AutoGen trading analysis request for: {symbol}")
+    
+    try:
+        # Run AutoGen analysis
+        result = await run_trading_analysis_autogen(symbol=symbol, context=context)
+        
+        if "error" in result:
+            logger.error(f"AutoGen analysis error for {symbol}: {result['error']}")
+            raise HTTPException(status_code=500, detail=result["error"])
+            
+        logger.info(f"AutoGen analysis completed for {symbol} with confidence: {result.get('confidence', 'N/A')}")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in AutoGen analysis for {symbol}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"AutoGen analysis failed: {str(e)}")
+
+@app.get("/api/v1/autogen/status", summary="Get AutoGen System Status", tags=["AutoGen AI Workflows"])
+async def get_autogen_status():
+    """
+    Get status and health information for the AutoGen trading system.
+    
+    Returns information about:
+    - System availability and configuration
+    - Active agents and their capabilities
+    - Current conversation state
+    - LLM configuration status
+    """
+    try:
+        status = get_autogen_system_status()
+        return status
+    except Exception as e:
+        logger.error(f"Error getting AutoGen status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Status check failed: {str(e)}")
+
+@app.get("/api/v1/autogen/conversation/{conversation_id}", summary="Get AutoGen Conversation History", tags=["AutoGen AI Workflows"])
+async def get_autogen_conversation(conversation_id: str):
+    """
+    Retrieve conversation history for a specific AutoGen trading analysis.
+    
+    Args:
+        conversation_id: ID of the conversation to retrieve
+        
+    Returns:
+        Detailed conversation history with all agent interactions
+    """
+    try:
+        history = autogen_trading_system.get_conversation_history()
+        
+        # Filter by conversation ID if provided
+        if conversation_id != "latest":
+            history = [event for event in history if event.get("conversation_id") == conversation_id]
+        
+        return {
+            "conversation_id": conversation_id,
+            "events": history,
+            "total_events": len(history)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error retrieving conversation {conversation_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Conversation retrieval failed: {str(e)}")
+
+# --- AG UI Protocol Endpoints ---
+
+@app.post("/api/v1/agui/session", summary="Create AG UI Session", tags=["AG UI Protocol"])
+async def create_agui_session(session_id: Optional[str] = None):
+    """
+    Create a new AG UI Protocol session for enhanced agent-human interaction.
+    
+    Args:
+        session_id: Optional custom session ID
+        
+    Returns:
+        Session information including ID and available agents
+    """
+    try:
+        session_id = agui_service.create_session(session_id)
+        session = agui_service.get_session(session_id)
+        
+        return {
+            "session_id": session_id,
+            "agents": session.agents,
+            "status": "created",
+            "timestamp": session.start_time.isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error creating AG UI session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Session creation failed: {str(e)}")
+
+@app.post("/api/v1/agui/session/{session_id}/event", summary="Send AG UI Event", tags=["AG UI Protocol"])
+async def send_agui_event(session_id: str, event_data: Dict[str, Any]):
+    """
+    Send an event to an AG UI session.
+    
+    Args:
+        session_id: Session ID
+        event_data: Event data following AG UI Protocol specification
+        
+    Returns:
+        Confirmation of event processing
+    """
+    try:
+        session = agui_service.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+            
+        await agui_service.handle_event(session_id, event_data)
+        
+        return {
+            "success": True,
+            "session_id": session_id,
+            "event_id": event_data.get("id"),
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error handling AG UI event: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Event handling failed: {str(e)}")
+
+@app.get("/api/v1/agui/session/{session_id}/events", summary="AG UI Event Stream", tags=["AG UI Protocol"])
+async def agui_event_stream(session_id: str):
+    """
+    Server-sent events stream for AG UI Protocol.
+    
+    Args:
+        session_id: Session ID
+        
+    Returns:
+        SSE stream of AG UI events
+    """
+    session = agui_service.get_session(session_id)
+    if not session:
+        # Create session if it doesn't exist
+        session_id = agui_service.create_session(session_id)
+    
+    return EventSourceResponse(
+        agui_service.get_event_stream(session_id),
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
+
+@app.get("/api/v1/agui/session/{session_id}", summary="Get AG UI Session", tags=["AG UI Protocol"])
+async def get_agui_session(session_id: str):
+    """
+    Get AG UI session information and state.
+    
+    Args:
+        session_id: Session ID
+        
+    Returns:
+        Session data including events, state, and agents
+    """
+    session = agui_service.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    return {
+        "session_id": session.session_id,
+        "agents": session.agents,
+        "events_count": len(session.events),
+        "recent_events": [event.to_dict() for event in session.events[-10:]],
+        "state": session.state,
+        "context": session.context,
+        "start_time": session.start_time.isoformat(),
+        "last_activity": session.last_activity.isoformat()
+    }
+
+@app.get("/api/v1/agui/sessions", summary="List AG UI Sessions", tags=["AG UI Protocol"])
+async def list_agui_sessions():
+    """
+    List all active AG UI sessions.
+    
+    Returns:
+        List of session summaries
+    """
+    sessions = []
+    for session_id, session in agui_service.sessions.items():
+        sessions.append({
+            "session_id": session_id,
+            "agents_count": len(session.agents),
+            "events_count": len(session.events),
+            "start_time": session.start_time.isoformat(),
+            "last_activity": session.last_activity.isoformat()
+        })
+    
+    return {
+        "sessions": sessions,
+        "total_sessions": len(sessions),
+        "timestamp": datetime.now().isoformat()
+    }
 
 async def get_simulated_trade_executor(request: Request) -> Optional[SimulatedTradeExecutor]:
     if not hasattr(request.app.state, 'simulated_trade_executor') or request.app.state.simulated_trade_executor is None:

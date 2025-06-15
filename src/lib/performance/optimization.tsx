@@ -14,7 +14,9 @@ class MemoryCache {
     // Clean up if cache is too large
     if (this.cache.size >= this.maxSize) {
       const oldestKey = this.cache.keys().next().value;
-      this.cache.delete(oldestKey);
+      if (oldestKey !== undefined) {
+        this.cache.delete(oldestKey);
+      }
     }
 
     this.cache.set(key, {
@@ -283,7 +285,9 @@ export function usePerformanceTimer(label: string) {
 
   useEffect(() => {
     startTimer();
-    return endTimer;
+    return () => {
+      endTimer();
+    };
   }, [startTimer, endTimer]);
 
   return { startTimer, endTimer };

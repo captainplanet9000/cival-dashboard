@@ -4,7 +4,7 @@
  * Type definitions for agent state checkpoints.
  */
 
-import { UUID } from '../common';
+import { UUID } from './common';
 import { AgentStateData } from './state-types';
 
 /**

@@ -46,8 +46,8 @@ export async function GET(req: NextRequest) {
     const { trades, total } = await getAgentTrades(agentId, {
       fromDate: fromDate ? new Date(fromDate) : undefined,
       toDate: toDate ? new Date(toDate) : undefined,
-      symbol,
-      strategy,
+      symbol: symbol || undefined,
+      strategy: strategy || undefined,
       limit,
       offset
     });
