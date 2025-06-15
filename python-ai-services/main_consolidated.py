@@ -317,6 +317,213 @@ async def get_portfolio_performance(
         logger.error(f"Failed to get performance for user {current_user.user_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Performance error: {str(e)}")
 
+@app.get("/api/v1/services")
+async def get_services():
+    """Get available services and their status"""
+    try:
+        services = {
+            "portfolio_tracker": {"status": "running", "service": "Portfolio Management"},
+            "trading_engine": {"status": "running", "service": "Trading Engine"},
+            "risk_management": {"status": "running", "service": "Risk Management"},
+            "agent_management": {"status": "running", "service": "Agent Coordination"},
+            "market_data": {"status": "running", "service": "Market Data Feed"},
+            "ai_prediction": {"status": "running", "service": "AI Prediction Engine"},
+            "technical_analysis": {"status": "running", "service": "Technical Analysis"},
+            "sentiment_analysis": {"status": "running", "service": "Sentiment Analysis"}
+        }
+        return {"services": services, "timestamp": "2025-06-14T15:30:00Z"}
+    except Exception as e:
+        logger.error(f"Failed to get services: {e}")
+        raise HTTPException(status_code=500, detail=f"Services error: {str(e)}")
+
+@app.get("/api/v1/portfolio/summary")
+async def get_portfolio_summary():
+    """Get portfolio summary with key metrics"""
+    try:
+        # Mock data for frontend integration - replace with real service calls
+        summary = {
+            "total_equity": 125847.32,
+            "cash_balance": 18429.50,
+            "total_position_value": 107417.82,
+            "total_unrealized_pnl": 3247.85,
+            "total_realized_pnl": 1829.47,
+            "total_pnl": 5077.32,
+            "daily_pnl": 847.29,
+            "total_return_percent": 4.19,
+            "number_of_positions": 12,
+            "long_positions": 8,
+            "short_positions": 4,
+            "last_updated": "2025-06-14T15:30:00Z"
+        }
+        return summary
+    except Exception as e:
+        logger.error(f"Failed to get portfolio summary: {e}")
+        raise HTTPException(status_code=500, detail=f"Portfolio summary error: {str(e)}")
+
+@app.get("/api/v1/market/overview")
+async def get_market_overview():
+    """Get market overview data"""
+    try:
+        # Mock market data for frontend integration
+        overview = {
+            "market_data": [
+                {
+                    "symbol": "BTC",
+                    "price": 67234.85,
+                    "change_pct": 2.34,
+                    "volatility": 3.8,
+                    "volume": 28947583920,
+                    "market_cap": 1324500000000,
+                    "last_updated": "2025-06-14T15:30:00Z"
+                },
+                {
+                    "symbol": "ETH", 
+                    "price": 3847.92,
+                    "change_pct": -1.12,
+                    "volatility": 4.2,
+                    "volume": 15834729102,
+                    "market_cap": 462800000000,
+                    "last_updated": "2025-06-14T15:30:00Z"
+                },
+                {
+                    "symbol": "SOL",
+                    "price": 142.73,
+                    "change_pct": 5.67,
+                    "volatility": 6.1,
+                    "volume": 3294857203,
+                    "market_cap": 65400000000,
+                    "last_updated": "2025-06-14T15:30:00Z"
+                }
+            ],
+            "market_sentiment": {
+                "overall": "bullish",
+                "score": 72,
+                "fear_greed_index": 68,
+                "vix": 14.2
+            },
+            "timestamp": "2025-06-14T15:30:00Z"
+        }
+        return overview
+    except Exception as e:
+        logger.error(f"Failed to get market overview: {e}")
+        raise HTTPException(status_code=500, detail=f"Market overview error: {str(e)}")
+
+@app.get("/api/v1/trading/signals")
+async def get_trading_signals():
+    """Get AI trading signals"""
+    try:
+        # Mock trading signals for frontend integration
+        signals = [
+            {
+                "symbol": "BTC",
+                "signal": "buy",
+                "strength": 0.78,
+                "confidence": 0.85,
+                "predicted_change_pct": 3.2,
+                "reasoning": "Strong momentum with volume confirmation, breaking resistance at $66,800",
+                "generated_at": "2025-06-14T15:25:00Z",
+                "source": "momentum_analyzer"
+            },
+            {
+                "symbol": "ETH",
+                "signal": "hold",
+                "strength": 0.45,
+                "confidence": 0.62,
+                "predicted_change_pct": -0.8,
+                "reasoning": "Mixed signals with decreasing volume, waiting for clearer direction",
+                "generated_at": "2025-06-14T15:24:00Z",
+                "source": "pattern_recognition"
+            },
+            {
+                "symbol": "SOL",
+                "signal": "buy",
+                "strength": 0.89,
+                "confidence": 0.92,
+                "predicted_change_pct": 8.1,
+                "reasoning": "Breakout pattern confirmed with high volume and positive news flow",
+                "generated_at": "2025-06-14T15:26:00Z",
+                "source": "multi_factor_model"
+            }
+        ]
+        return signals
+    except Exception as e:
+        logger.error(f"Failed to get trading signals: {e}")
+        raise HTTPException(status_code=500, detail=f"Trading signals error: {str(e)}")
+
+@app.get("/api/v1/agents/status")
+async def get_all_agents_status():
+    """Get status of all agents"""
+    try:
+        # Mock agent status data for frontend integration
+        agents_status = [
+            {
+                "agent_id": "agent_marcus_momentum",
+                "name": "Marcus Momentum",
+                "status": "active",
+                "strategy": "momentum_trading",
+                "current_allocation": 25000.00,
+                "pnl": 1247.85,
+                "trades_today": 8,
+                "win_rate": 0.72,
+                "last_action": "Bought 0.15 BTC at $67,100",
+                "last_updated": "2025-06-14T15:28:00Z"
+            },
+            {
+                "agent_id": "agent_alex_arbitrage",
+                "name": "Alex Arbitrage", 
+                "status": "monitoring",
+                "strategy": "arbitrage",
+                "current_allocation": 30000.00,
+                "pnl": 892.34,
+                "trades_today": 12,
+                "win_rate": 0.83,
+                "last_action": "Monitoring price spreads across exchanges",
+                "last_updated": "2025-06-14T15:29:00Z"
+            },
+            {
+                "agent_id": "agent_sophia_reversion",
+                "name": "Sophia Reversion",
+                "status": "active",
+                "strategy": "mean_reversion",
+                "current_allocation": 20000.00,
+                "pnl": -234.12,
+                "trades_today": 5,
+                "win_rate": 0.64,
+                "last_action": "Sold 2.5 ETH at $3,850",
+                "last_updated": "2025-06-14T15:27:00Z"
+            }
+        ]
+        return agents_status
+    except Exception as e:
+        logger.error(f"Failed to get agents status: {e}")
+        raise HTTPException(status_code=500, detail=f"Agents status error: {str(e)}")
+
+@app.get("/api/v1/performance/metrics")
+async def get_performance_metrics():
+    """Get detailed performance metrics"""
+    try:
+        # Mock performance metrics for frontend integration
+        metrics = {
+            "total_return_percent": 4.19,
+            "total_pnl": 5077.32,
+            "daily_pnl": 847.29,
+            "win_rate": 0.73,
+            "sharpe_ratio": 1.84,
+            "volatility": 0.152,
+            "max_drawdown": 0.087,
+            "total_trades": 147,
+            "total_equity": 125847.32,
+            "initial_equity": 120000.00,
+            "best_trade": 892.45,
+            "worst_trade": -234.78,
+            "avg_trade": 34.52,
+            "last_updated": "2025-06-14T15:30:00Z"
+        }
+        return metrics
+    except Exception as e:
+        logger.error(f"Failed to get performance metrics: {e}")
+        raise HTTPException(status_code=500, detail=f"Performance metrics error: {str(e)}")
+
 @app.get("/api/v1/risk/assessment")
 async def get_risk_assessment(
     current_user: AuthenticatedUser = Depends(get_current_active_user),

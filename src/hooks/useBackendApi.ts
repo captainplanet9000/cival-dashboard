@@ -23,37 +23,81 @@ export function useApiCall<T>(
   options: {
     immediate?: boolean;
     refreshInterval?: number;
+    retryOnError?: boolean;
+    maxRetries?: number;
   } = {}
 ) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const maxRetries = options.maxRetries || 3;
+  const retryOnError = options.retryOnError !== false;
+
+  const fetchData = useCallback(async (isRetry = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!isRetry) {
+        setLoading(true);
+        setError(null);
+      }
       
       const response = await apiCall();
       
       if (response.error) {
-        setError(response.error);
-        setData(null);
+        if (retryOnError && retryCount < maxRetries && !isRetry) {
+          // Retry with exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+          setRetryCount(prev => prev + 1);
+          
+          retryTimeoutRef.current = setTimeout(() => {
+            fetchData(true);
+          }, delay);
+          
+          setError(`${response.error} (retrying in ${delay/1000}s...)`);
+        } else {
+          setError(response.error);
+          setData(null);
+          setRetryCount(0);
+        }
       } else {
         setData(response.data || null);
         setLastUpdated(new Date());
+        setError(null);
+        setRetryCount(0);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
-      setData(null);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      
+      if (retryOnError && retryCount < maxRetries && !isRetry) {
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+        setRetryCount(prev => prev + 1);
+        
+        retryTimeoutRef.current = setTimeout(() => {
+          fetchData(true);
+        }, delay);
+        
+        setError(`${errorMessage} (retrying in ${delay/1000}s...)`);
+      } else {
+        setError(errorMessage);
+        setData(null);
+        setRetryCount(0);
+      }
     } finally {
-      setLoading(false);
+      if (!isRetry) {
+        setLoading(false);
+      }
     }
-  }, [apiCall]);
+  }, [apiCall, retryOnError, retryCount, maxRetries]);
 
   const refresh = useCallback(() => {
+    setRetryCount(0);
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
     fetchData();
   }, [fetchData]);
 
@@ -61,11 +105,17 @@ export function useApiCall<T>(
     if (options.immediate !== false) {
       fetchData();
     }
+    
+    return () => {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
   }, dependencies);
 
   useEffect(() => {
     if (options.refreshInterval && options.refreshInterval > 0) {
-      intervalRef.current = setInterval(fetchData, options.refreshInterval);
+      intervalRef.current = setInterval(() => fetchData(), options.refreshInterval);
       
       return () => {
         if (intervalRef.current) {
@@ -75,12 +125,26 @@ export function useApiCall<T>(
     }
   }, [fetchData, options.refreshInterval]);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return {
     data,
     loading,
     error,
     refresh,
-    lastUpdated
+    lastUpdated,
+    retryCount,
+    isRetrying: retryCount > 0
   };
 }
 

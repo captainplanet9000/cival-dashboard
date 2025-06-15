@@ -123,33 +123,70 @@ class BackendApiClient {
     this.timeout = 10000; // 10 second timeout
   }
 
-  private async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  private async fetchWithTimeout(url: string, options: RequestInit = {}, retries = 3): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
-    try {
-      const response = await fetch(url, {
-        ...options,
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-      });
-      
-      clearTimeout(timeoutId);
-      return response;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            ...options.headers,
+          },
+        });
+        
+        clearTimeout(timeoutId);
+        
+        // If response is successful or client error (4xx), don't retry
+        if (response.ok || (response.status >= 400 && response.status < 500)) {
+          return response;
+        }
+        
+        // Server error (5xx) - retry if not last attempt
+        if (attempt < retries) {
+          console.warn(`Attempt ${attempt} failed with status ${response.status}, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        return response;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        
+        if (attempt < retries && (error instanceof Error && error.name !== 'AbortError')) {
+          console.warn(`Attempt ${attempt} failed with error: ${error.message}, retrying...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+          continue;
+        }
+        
+        throw error;
+      }
     }
+    
+    throw new Error('All retry attempts failed');
   }
 
   private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
     try {
       if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Try to get more detailed error from response body
+        try {
+          const errorBody = await response.text();
+          if (errorBody) {
+            const parsedError = JSON.parse(errorBody);
+            errorMessage = parsedError.detail || parsedError.message || errorMessage;
+          }
+        } catch {
+          // If parsing fails, use the default error message
+        }
+        
         return {
-          error: `HTTP ${response.status}: ${response.statusText}`,
+          error: errorMessage,
           status: response.status,
         };
       }
@@ -160,8 +197,10 @@ class BackendApiClient {
         status: response.status,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('API Response Error:', errorMessage);
       return {
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: `Response parsing error: ${errorMessage}`,
         status: response.status,
       };
     }
