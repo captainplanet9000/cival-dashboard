@@ -1,0 +1,321 @@
+/**
+ * Backend API Client
+ * Centralized client for connecting to the Python AI Services backend
+ */
+
+export interface ApiResponse<T = any> {
+  data?: T;
+  error?: string;
+  status: number;
+}
+
+export interface PortfolioSummary {
+  total_equity: number;
+  cash_balance: number;
+  total_position_value: number;
+  total_unrealized_pnl: number;
+  total_realized_pnl: number;
+  total_pnl: number;
+  daily_pnl: number;
+  total_return_percent: number;
+  number_of_positions: number;
+  long_positions: number;
+  short_positions: number;
+  last_updated: string;
+}
+
+export interface Position {
+  symbol: string;
+  quantity: number;
+  avg_cost: number;
+  current_price: number;
+  market_value: number;
+  unrealized_pnl: number;
+  realized_pnl: number;
+  pnl_percent: number;
+  last_updated: string;
+}
+
+export interface TradingSignal {
+  symbol: string;
+  signal: 'buy' | 'sell' | 'hold';
+  strength: number;
+  confidence: number;
+  predicted_change_pct: number;
+  reasoning: string;
+  generated_at: string;
+  source: string;
+}
+
+export interface AgentStatus {
+  agent_id: string;
+  name: string;
+  status: 'active' | 'monitoring' | 'paused' | 'error';
+  strategy: string;
+  current_allocation: number;
+  pnl: number;
+  trades_today: number;
+  win_rate: number;
+  last_action: string;
+  last_updated: string;
+}
+
+export interface MarketData {
+  symbol: string;
+  price: number;
+  change_pct: number;
+  volatility: number;
+  volume: number;
+  market_cap: number;
+  last_updated: string;
+}
+
+export interface MarketOverview {
+  market_data: MarketData[];
+  market_sentiment: {
+    overall: string;
+    score: number;
+    fear_greed_index: number;
+    vix: number;
+  };
+  timestamp: string;
+}
+
+export interface PerformanceMetrics {
+  total_return_percent: number;
+  total_pnl: number;
+  daily_pnl: number;
+  win_rate: number;
+  sharpe_ratio: number;
+  volatility: number;
+  max_drawdown: number;
+  total_trades: number;
+  total_equity: number;
+  initial_equity: number;
+  best_trade: number;
+  worst_trade: number;
+  avg_trade: number;
+  last_updated: string;
+}
+
+export interface ServiceStatus {
+  service: string;
+  status: string;
+  last_health_check: string;
+  [key: string]: any;
+}
+
+export interface HealthCheck {
+  status: string;
+  services: Record<string, ServiceStatus>;
+  timestamp: string;
+}
+
+class BackendApiClient {
+  private baseUrl: string;
+  private timeout: number;
+
+  constructor() {
+    // Auto-detect backend URL based on environment
+    this.baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 
+                   process.env.BACKEND_URL || 
+                   'http://localhost:8000';
+    this.timeout = 10000; // 10 second timeout
+  }
+
+  private async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        },
+      });
+      
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      throw error;
+    }
+  }
+
+  private async handleResponse<T>(response: Response): Promise<ApiResponse<T>> {
+    try {
+      if (!response.ok) {
+        return {
+          error: `HTTP ${response.status}: ${response.statusText}`,
+          status: response.status,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        data,
+        status: response.status,
+      };
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        status: response.status,
+      };
+    }
+  }
+
+  // Health and System
+  async getHealth(): Promise<ApiResponse<HealthCheck>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/health`);
+      return this.handleResponse<HealthCheck>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  async getSystemInfo(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  async getServices(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/services`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Portfolio Management
+  async getPortfolioSummary(): Promise<ApiResponse<PortfolioSummary>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/portfolio/summary`);
+      return this.handleResponse<PortfolioSummary>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  async getPortfolioPositions(): Promise<ApiResponse<Position[]>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/portfolio/positions`);
+      return this.handleResponse<Position[]>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Market Data
+  async getMarketData(symbol: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/market-data/${symbol}`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  async getMarketOverview(): Promise<ApiResponse<MarketOverview>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/market/overview`);
+      return this.handleResponse<MarketOverview>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Trading
+  async getTradingSignals(): Promise<ApiResponse<TradingSignal[]>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/trading/signals`);
+      return this.handleResponse<TradingSignal[]>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Agents
+  async getAgentsStatus(): Promise<ApiResponse<AgentStatus[]>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/agents/status`);
+      return this.handleResponse<AgentStatus[]>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Performance
+  async getPerformanceMetrics(): Promise<ApiResponse<PerformanceMetrics>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/performance/metrics`);
+      return this.handleResponse<PerformanceMetrics>(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Connection failed',
+        status: 0,
+      };
+    }
+  }
+
+  // Utility method to test connection
+  async testConnection(): Promise<boolean> {
+    try {
+      const response = await this.getHealth();
+      return response.status === 200 && !response.error;
+    } catch {
+      return false;
+    }
+  }
+
+  // Method to get backend URL for debugging
+  getBackendUrl(): string {
+    return this.baseUrl;
+  }
+
+  // Method to update backend URL dynamically
+  setBackendUrl(url: string): void {
+    this.baseUrl = url;
+  }
+}
+
+// Export singleton instance
+export const backendApi = new BackendApiClient();
+
+// Export class for testing
+export { BackendApiClient };

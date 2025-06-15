@@ -1,23 +1,28 @@
-# __init__.py for core module
+"""
+Core Module for MCP Trading Platform Monorepo
+Provides centralized service registry, database management, and initialization
+"""
 
-from .factories import get_hyperliquid_execution_service_instance
-from .scheduler_setup import (
-    scheduler, # The global scheduler instance itself
-    schedule_agent_orchestration,
-    schedule_alert_monitoring,
-    _run_alert_monitoring_for_active_agents, # Might not be needed for external export
-    start_scheduler,
-    shutdown_scheduler
-)
-from .websocket_manager import connection_manager # Added
+from .service_registry import registry, get_registry, get_service_dependency, get_connection_dependency
+from .database_manager import db_manager, get_database_manager, get_db_session, get_supabase, get_redis, get_async_redis
+from .service_initializer import service_initializer, get_service_initializer
 
 __all__ = [
-    "connection_manager", # Added
-    "get_hyperliquid_execution_service_instance",
-    "scheduler",
-    "schedule_agent_orchestration",
-    "schedule_alert_monitoring",
-    # "_run_alert_monitoring_for_active_agents", # Typically private/helper, not exported
-    "start_scheduler",
-    "shutdown_scheduler"
+    # Service Registry
+    "registry",
+    "get_registry", 
+    "get_service_dependency",
+    "get_connection_dependency",
+    
+    # Database Manager
+    "db_manager",
+    "get_database_manager",
+    "get_db_session",
+    "get_supabase", 
+    "get_redis",
+    "get_async_redis",
+    
+    # Service Initializer
+    "service_initializer",
+    "get_service_initializer"
 ]
