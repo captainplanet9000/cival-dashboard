@@ -10,8 +10,28 @@ async function checkAuth(req: NextRequest) {
 const agentPermissions = new Map();
 const agentTrades = new Map();
 
-// Initialize trading manager
-const tradingManager = new TradingManager();
+// Initialize trading manager with mock config for demo
+const tradingManagerConfig = {
+  exchanges: {
+    hyperliquid: {
+      type: 'hyperliquid' as const,
+      credentials: { apiKey: 'demo', apiSecret: 'demo' },
+      enabled: true,
+      priority: 1
+    }
+  },
+  defaultExchange: 'hyperliquid',
+  realTimeDataEnabled: false,
+  aggregateOrderBooks: false,
+  riskManagement: {
+    maxPositionSize: 10000,
+    maxDailyLoss: 1000,
+    stopLossPercentage: 5,
+    takeProfitPercentage: 10
+  }
+};
+
+const tradingManager = new TradingManager(tradingManagerConfig);
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,14 +109,12 @@ export async function POST(req: NextRequest) {
     // Execute trade through trading manager
     try {
       const tradeParams = {
+        id: `trade-${Date.now()}-${agentId}`,
         symbol,
         side,
         type: orderType,
         quantity,
-        price,
-        agentId,
-        strategy,
-        reasoning
+        price
       };
       
       const result = await tradingManager.placeOrder(tradeParams, exchange);
@@ -105,11 +123,11 @@ export async function POST(req: NextRequest) {
       const trade = {
         id: `trade-${Date.now()}`,
         agentId,
-        orderId: result.orderId,
+        orderId: result.id,
         symbol,
         side,
         quantity,
-        price: result.price || price,
+        price: result.averagePrice || price,
         orderType,
         strategy,
         reasoning,
@@ -137,10 +155,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         success: true,
         trade: {
-          orderId: result.orderId,
+          orderId: result.id,
           status: result.status,
-          executedPrice: result.price,
-          executedQuantity: result.quantity,
+          executedPrice: result.averagePrice,
+          executedQuantity: result.filledQuantity,
           timestamp: trade.executedAt
         }
       });
@@ -149,7 +167,7 @@ export async function POST(req: NextRequest) {
       console.error('Trade execution error:', error);
       return NextResponse.json({ 
         error: 'Failed to execute trade',
-        details: error.message 
+        details: error instanceof Error ? error.message : 'Unknown error'
       }, { status: 500 });
     }
     

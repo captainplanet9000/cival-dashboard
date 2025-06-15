@@ -14,24 +14,110 @@ import {
   LineChart,
   ExternalLink,
   RefreshCw,
-  Clock
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
 import { formatPrice, formatPercentage, formatRelativeTime } from "@/lib/utils";
 import { PortfolioPerformanceChart } from "@/components/charts/portfolio-performance-chart";
-import { usePortfolio } from "@/lib/hooks/usePortfolio";
+import { useDashboardData, useBackendConnection } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 import Link from "next/link";
 
 export default function OverviewPage() {
-  const { data: portfolioData, loading, error, refresh, isStale, lastFetch } = usePortfolio(true);
+  const {
+    portfolioSummary,
+    portfolioPositions,
+    marketOverview,
+    tradingSignals,
+    agentsStatus,
+    performanceMetrics,
+    health,
+    isLoading,
+    hasErrors,
+    refreshAll,
+    errors
+  } = useDashboardData();
+
+  const { isConnected, backendUrl, testConnection } = useBackendConnection();
+  
+  // Real-time data via WebSocket
+  const {
+    portfolio: realtimePortfolio,
+    agents: realtimeAgents,
+    market: realtimeMarket,
+    signals: realtimeSignals,
+    isConnected: wsConnected,
+    connectionState,
+    lastUpdated
+  } = useRealTimeData();
+
+  // Use real-time data if available, otherwise fall back to API data
+  const currentPortfolio = realtimePortfolio || portfolioSummary;
+  const currentAgents = realtimeAgents || agentsStatus;
+  const currentMarket = realtimeMarket || marketOverview;
+  const currentSignals = realtimeSignals || tradingSignals;
+
+  // Connection status indicator
+  const renderConnectionStatus = () => {
+    return (
+      <div className="flex items-center gap-4 text-sm">
+        {/* API Connection Status */}
+        <div className="flex items-center gap-2">
+          {isConnected === null ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+              <span className="text-muted-foreground">API connecting...</span>
+            </>
+          ) : isConnected ? (
+            <>
+              <CheckCircle className="h-3 w-3 text-green-600" />
+              <span className="text-green-600">API connected</span>
+            </>
+          ) : (
+            <>
+              <XCircle className="h-3 w-3 text-red-600" />
+              <span className="text-red-600">API disconnected</span>
+              <Button variant="outline" size="sm" onClick={testConnection}>
+                Reconnect
+              </Button>
+            </>
+          )}
+        </div>
+
+        {/* WebSocket Connection Status */}
+        <div className="flex items-center gap-2">
+          {connectionState === 'connecting' ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+              <span className="text-muted-foreground">WebSocket connecting...</span>
+            </>
+          ) : wsConnected ? (
+            <>
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-green-600">Live updates</span>
+            </>
+          ) : (
+            <>
+              <div className="h-2 w-2 rounded-full bg-red-500"></div>
+              <span className="text-red-600">No live updates</span>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Handle loading state
-  if (loading && !portfolioData) {
+  if (isLoading && !portfolioSummary) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
             <p className="text-muted-foreground">Loading your trading performance data...</p>
+            {renderConnectionStatus()}
           </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -52,22 +138,29 @@ export default function OverviewPage() {
   }
 
   // Handle error state
-  if (error && !portfolioData) {
+  if (hasErrors && !portfolioSummary) {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
             <p className="text-muted-foreground text-red-600">Failed to load portfolio data</p>
+            {renderConnectionStatus()}
           </div>
-          <Button onClick={refresh} variant="outline">
+          <Button onClick={refreshAll} variant="outline">
             <RefreshCw className="mr-2 h-4 w-4" />
             Retry
           </Button>
         </div>
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
-            <p className="text-red-800">Error: {error}</p>
+            <div className="space-y-2">
+              {Object.entries(errors).map(([key, error]) => error && (
+                <p key={key} className="text-red-800">
+                  <strong>{key}:</strong> {error}
+                </p>
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -75,48 +168,49 @@ export default function OverviewPage() {
   }
 
   // If we have no data yet, show loading
-  if (!portfolioData) {
+  if (!currentPortfolio) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           <p className="text-muted-foreground mt-4">Loading portfolio data...</p>
+          {renderConnectionStatus()}
         </div>
       </div>
     );
   }
 
-  // Prepare metrics data from API response
+  // Prepare metrics data from current data (real-time or API)
   const metricsData = [
     {
       title: "Total Portfolio Value",
-      value: portfolioData.totalValue,
-      change: portfolioData.dailyChange,
-      changePercent: portfolioData.dailyChangePercent,
+      value: currentPortfolio.total_equity,
+      change: currentPortfolio.daily_pnl,
+      changePercent: (currentPortfolio.daily_pnl / (currentPortfolio.total_equity - currentPortfolio.daily_pnl)) * 100,
       icon: DollarSign,
       format: "currency",
     },
     {
-      title: "Active Strategies",
-      value: portfolioData.strategies.filter(s => s.status === 'active').length,
-      change: 1, // Could be calculated from historical data
+      title: "Active Agents",
+      value: currentAgents?.filter(agent => agent.status === 'active').length || 0,
+      change: 1,
       changePercent: 5.0,
       icon: Activity,
       format: "number",
     },
     {
-      title: "Success Rate",
-      value: portfolioData.metrics.winRate,
-      change: 1.2,
+      title: "Total Return",
+      value: currentPortfolio.total_return_percent,
+      change: currentPortfolio.daily_pnl,
       changePercent: 1.4,
       icon: Target,
       format: "percentage",
     },
     {
-      title: "Total Trades Today",
-      value: portfolioData.strategies.reduce((sum, s) => sum + s.trades, 0),
-      change: 12,
-      changePercent: 8.2,
+      title: "Total Positions",
+      value: currentPortfolio.number_of_positions,
+      change: 0,
+      changePercent: 0,
       icon: BarChart3,
       format: "number",
     },
@@ -130,19 +224,24 @@ export default function OverviewPage() {
           <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
           <div className="flex items-center gap-4 text-muted-foreground">
             <span>Monitor your algorithmic trading performance and system health</span>
-            {lastFetch && (
-              <div className="flex items-center gap-1 text-xs">
-                <Clock className="h-3 w-3" />
-                <span>Updated {formatRelativeTime(lastFetch)}</span>
-                {isStale && <span className="text-yellow-600">(stale)</span>}
-              </div>
-            )}
+            {renderConnectionStatus()}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={refresh} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            {loading ? 'Refreshing...' : 'Refresh'}
+          {wsConnected && (
+            <div className="flex items-center gap-2 text-sm text-green-600 mr-4">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span>Live Data</span>
+              {lastUpdated.portfolio && (
+                <span className="text-xs text-muted-foreground">
+                  Updated {Math.round((Date.now() - lastUpdated.portfolio.getTime()) / 1000)}s ago
+                </span>
+              )}
+            </div>
+          )}
+          <Button variant="outline" onClick={refreshAll} disabled={isLoading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            {isLoading ? 'Refreshing...' : 'Refresh'}
           </Button>
           <Button variant="outline" asChild>
             <Link href="/dashboard/risk">
@@ -166,7 +265,7 @@ export default function OverviewPage() {
           const isPositive = metric.change > 0;
           
           return (
-            <Card key={metric.title} className={loading ? 'opacity-75' : ''}>
+            <Card key={metric.title} className={isLoading ? 'opacity-75' : ''}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">
                   {metric.title}
@@ -179,7 +278,7 @@ export default function OverviewPage() {
                   {metric.format === "percentage" && `${metric.value.toFixed(1)}%`}
                   {metric.format === "number" && metric.value.toLocaleString()}
                 </div>
-                <p className={`text-xs ${isPositive ? 'text-trading-profit' : 'text-trading-loss'}`}>
+                <p className={`text-xs ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
                   {isPositive ? '+' : ''}{metric.format === "currency" ? formatPrice(metric.change) : metric.change} 
                   ({formatPercentage(metric.changePercent / 100)}) from yesterday
                 </p>
@@ -190,42 +289,44 @@ export default function OverviewPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Active Strategies */}
+        {/* Active Trading Agents */}
         <Card>
           <CardHeader>
-            <CardTitle>Active Strategies</CardTitle>
+            <CardTitle>Active Trading Agents</CardTitle>
             <CardDescription>
-              Performance overview of your trading strategies
+              Performance overview of your AI trading agents
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {portfolioData.strategies.map((strategy) => (
-                <div key={strategy.id} className="flex items-center justify-between p-3 rounded-lg border">
+              {currentAgents?.map((agent) => (
+                <div key={agent.agent_id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div className="flex items-center space-x-3">
-                    <div className={`status-indicator ${
-                      strategy.status === 'active' ? 'status-online' : 
-                      strategy.status === 'paused' ? 'status-warning' : 'status-offline'
+                    <div className={`w-2 h-2 rounded-full ${
+                      agent.status === 'active' ? 'bg-green-500' : 
+                      agent.status === 'monitoring' ? 'bg-yellow-500' : 'bg-red-500'
                     }`}></div>
                     <div>
-                      <p className="font-medium">{strategy.name}</p>
+                      <p className="font-medium">{agent.name}</p>
                       <p className="text-sm text-muted-foreground">
-                        {strategy.trades} trades • {strategy.winRate.toFixed(1)}% win rate • {strategy.avgHoldTime}
+                        {agent.trades_today} trades today • {(agent.win_rate * 100).toFixed(1)}% win rate • {agent.strategy}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className={`font-semibold ${
-                      strategy.totalReturn > 0 ? 'text-trading-profit' : 'text-trading-loss'
+                      agent.pnl > 0 ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {strategy.totalReturn > 0 ? '+' : ''}{strategy.totalReturn.toFixed(2)}%
+                      {agent.pnl > 0 ? '+' : ''}${agent.pnl.toFixed(2)}
                     </p>
                     <p className="text-sm text-muted-foreground capitalize">
-                      {strategy.status}
+                      {agent.status}
                     </p>
                   </div>
                 </div>
-              ))}
+              )) || (
+                <p className="text-muted-foreground text-center py-4">No agent data available</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -240,31 +341,30 @@ export default function OverviewPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {portfolioData.systemHealth.components.map((system) => (
-                <div key={system.name} className="flex items-center justify-between p-3 rounded-lg border">
+              {health?.services ? Object.entries(health.services).map(([serviceName, serviceStatus]) => (
+                <div key={serviceName} className="flex items-center justify-between p-3 rounded-lg border">
                   <div className="flex items-center space-x-3">
-                    <div className={`status-indicator ${
-                      system.status === 'online' ? 'status-online' : 
-                      system.status === 'warning' ? 'status-warning' : 'status-error'
+                    <div className={`w-2 h-2 rounded-full ${
+                      serviceStatus.status === 'running' ? 'bg-green-500' : 'bg-red-500'
                     }`}></div>
                     <div>
-                      <p className="font-medium">{system.name}</p>
+                      <p className="font-medium">{serviceName.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}</p>
                       <p className="text-sm text-muted-foreground">
-                        Last check: {formatRelativeTime(system.lastCheck)}
+                        {serviceStatus.service || 'Trading Service'}
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-semibold">{system.uptime}</p>
-                    <p className={`text-sm capitalize ${
-                      system.status === 'online' ? 'text-status-online' : 
-                      system.status === 'warning' ? 'text-status-warning' : 'text-status-error'
+                    <p className={`text-sm capitalize font-medium ${
+                      serviceStatus.status === 'running' ? 'text-green-600' : 'text-red-600'
                     }`}>
-                      {system.status}
+                      {serviceStatus.status}
                     </p>
                   </div>
                 </div>
-              ))}
+              )) : (
+                <p className="text-muted-foreground text-center py-4">No health data available</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -311,41 +411,84 @@ export default function OverviewPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {portfolioData.holdings.map((holding) => (
-              <div key={holding.symbol} className="flex items-center justify-between p-3 rounded-lg border">
+            {portfolioPositions?.map((position) => (
+              <div key={position.symbol} className="flex items-center justify-between p-3 rounded-lg border">
                 <div className="flex items-center space-x-3">
                   <div>
-                    <p className="font-medium">{holding.symbol}</p>
-                    <p className="text-sm text-muted-foreground">{holding.name}</p>
+                    <p className="font-medium">{position.symbol}</p>
+                    <p className="text-sm text-muted-foreground">Cryptocurrency</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-6 text-sm">
                   <div className="text-right">
-                    <p className="font-medium">{holding.quantity.toLocaleString()} shares</p>
-                    <p className="text-muted-foreground">@ {formatPrice(holding.avgPrice)}</p>
+                    <p className="font-medium">{position.quantity.toLocaleString()} units</p>
+                    <p className="text-muted-foreground">@ ${position.avg_cost.toFixed(2)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{formatPrice(holding.marketValue)}</p>
-                    <p className="text-muted-foreground">{formatPrice(holding.currentPrice)}</p>
+                    <p className="font-medium">${position.market_value.toFixed(2)}</p>
+                    <p className="text-muted-foreground">${position.current_price.toFixed(2)}</p>
                   </div>
                   <div className="text-right">
-                    <p className={`font-medium ${holding.pnl >= 0 ? 'text-trading-profit' : 'text-trading-loss'}`}>
-                      {holding.pnl >= 0 ? '+' : ''}{formatPrice(holding.pnl)}
+                    <p className={`font-medium ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {position.unrealized_pnl >= 0 ? '+' : ''}${position.unrealized_pnl.toFixed(2)}
                     </p>
-                    <p className={`text-sm ${holding.pnlPercent >= 0 ? 'text-trading-profit' : 'text-trading-loss'}`}>
-                      {holding.pnlPercent >= 0 ? '+' : ''}{holding.pnlPercent.toFixed(2)}%
+                    <p className={`text-sm ${position.pnl_percent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {position.pnl_percent >= 0 ? '+' : ''}{position.pnl_percent.toFixed(2)}%
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-medium">{holding.allocation.toFixed(1)}%</p>
+                    <p className="font-medium">{portfolioSummary ? ((position.market_value / portfolioSummary.total_equity) * 100).toFixed(1) : '0'}%</p>
                     <p className="text-muted-foreground">allocation</p>
                   </div>
                 </div>
               </div>
-            ))}
+            )) || (
+              <p className="text-muted-foreground text-center py-4">No positions available</p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Trading Signals */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Trading Signals</CardTitle>
+          <CardDescription>
+            Latest AI-generated trading recommendations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {(currentSignals || []).slice(0, 5).map((signal, index) => (
+              <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-2 h-2 rounded-full ${
+                    signal.signal === 'buy' ? 'bg-green-500' : 
+                    signal.signal === 'sell' ? 'bg-red-500' : 'bg-yellow-500'
+                  }`}></div>
+                  <div>
+                    <p className="font-medium">{signal.symbol}</p>
+                    <p className="text-sm text-muted-foreground">{signal.reasoning}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`font-semibold capitalize ${
+                    signal.signal === 'buy' ? 'text-green-600' : 
+                    signal.signal === 'sell' ? 'text-red-600' : 'text-yellow-600'
+                  }`}>
+                    {signal.signal}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {(signal.confidence * 100).toFixed(0)}% confidence
+                  </p>
+                </div>
+              </div>
+            )) || (
+              <p className="text-muted-foreground text-center py-4">No trading signals available</p>
+            )}
           </div>
         </CardContent>
       </Card>
     </div>
   );
-} 
+}

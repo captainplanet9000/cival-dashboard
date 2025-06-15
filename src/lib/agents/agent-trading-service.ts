@@ -67,8 +67,28 @@ const agentTrades = new Map<string, AgentTrade[]>();
 const agentStatus = new Map<string, AgentStatus>();
 const marketDataSubscriptions = new Map<string, MarketDataSubscription>();
 
-// Trading manager instance
-const tradingManager = new TradingManager();
+// Trading manager instance with mock config
+const tradingManagerConfig = {
+  exchanges: {
+    hyperliquid: {
+      type: 'hyperliquid' as const,
+      credentials: { apiKey: 'demo', apiSecret: 'demo' },
+      enabled: true,
+      priority: 1
+    }
+  },
+  defaultExchange: 'hyperliquid',
+  realTimeDataEnabled: false,
+  aggregateOrderBooks: false,
+  riskManagement: {
+    maxPositionSize: 10000,
+    maxDailyLoss: 1000,
+    stopLossPercentage: 5,
+    takeProfitPercentage: 10
+  }
+};
+
+const tradingManager = new TradingManager(tradingManagerConfig);
 
 /**
  * Get agent permissions
@@ -157,21 +177,19 @@ export async function executeTrade(tradeParams: {
   
   // Execute trade through trading manager
   const result = await tradingManager.placeOrder({
+    id: `trade-${Date.now()}-${agentId}`,
     symbol,
     side,
-    type: tradeParams.orderType || 'limit',
+    type: (tradeParams.orderType as 'market' | 'limit' | 'stop' | 'stop_limit') || 'limit',
     quantity,
-    price,
-    agentId,
-    strategy,
-    reasoning
+    price
   }, exchange);
   
   // Record trade
   const trade: AgentTrade = {
     id: `trade-${Date.now()}`,
     agentId,
-    orderId: result.orderId,
+    orderId: result.id,
     symbol,
     side,
     quantity,

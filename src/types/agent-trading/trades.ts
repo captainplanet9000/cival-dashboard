@@ -3,6 +3,9 @@ import {
   AgentTradeInsert, 
   AgentTradeUpdate 
 } from './database';
+
+// Re-export the base types for use by other modules
+export type { AgentTrade, AgentTradeInsert, AgentTradeUpdate };
 import { 
   OrderType, 
   TradeSide, 

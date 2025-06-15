@@ -85,7 +85,13 @@ const StatCard = React.forwardRef<HTMLDivElement, StatCardProps>(
           </CardTitle>
           <div className="flex items-center space-x-2">
             {badge && (
-              <Badge variant={badge.variant || "default"}>
+              <Badge variant={
+                badge.variant === "profit" ? "default" :
+                badge.variant === "loss" ? "destructive" :
+                badge.variant === "warning" ? "secondary" :
+                badge.variant === "info" ? "secondary" :
+                "default"
+              }>
                 {badge.text}
               </Badge>
             )}

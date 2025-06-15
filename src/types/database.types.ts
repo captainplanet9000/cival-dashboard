@@ -1,995 +1,456 @@
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+/**
+ * Database Types
+ * Auto-generated database types
+ */
 
-export type Database = {
+export interface Database {
   public: {
     Tables: {
-      agent_checkpoints: {
-        Row: {
-          agent_id: string | null
-          checkpoint_id: string
-          created_at: string | null
-          description: string | null
-          id: string
-          state: Json
-          user_id: string
-        }
-        Insert: {
-          agent_id?: string | null
-          checkpoint_id: string
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          state: Json
-          user_id: string
-        }
-        Update: {
-          agent_id?: string | null
-          checkpoint_id?: string
-          created_at?: string | null
-          description?: string | null
-          id?: string
-          state?: Json
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_decisions: {
-        Row: {
-          agent_id: string | null
-          confidence_score: number | null
-          created_at: string | null
-          decision: Json
-          decision_type: string
-          executed: boolean | null
-          executed_at: string | null
-          id: string
-          result: Json | null
-          signals: Json | null
-          symbol: string
-          user_id: string
-        }
-        Insert: {
-          agent_id?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          decision: Json
-          decision_type: string
-          executed?: boolean | null
-          executed_at?: string | null
-          id?: string
-          result?: Json | null
-          signals?: Json | null
-          symbol: string
-          user_id: string
-        }
-        Update: {
-          agent_id?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          decision?: Json
-          decision_type?: string
-          executed?: boolean | null
-          executed_at?: string | null
-          id?: string
-          result?: Json | null
-          signals?: Json | null
-          symbol?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_file_access: {
-        Row: {
-          access_level: string
-          agent_id: string | null
-          created_at: string | null
-          file_id: string | null
-          id: string
-          updated_at: string | null
-        }
-        Insert: {
-          access_level: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Update: {
-          access_level?: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_file_access_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_trading_permissions"
-            referencedColumns: ["agent_id"]
-          },
-          {
-            foreignKeyName: "agent_file_access_file_id_fkey"
-            columns: ["file_id"]
-            isOneToOne: false
-            referencedRelation: "uploaded_files"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_file_access_logs: {
-        Row: {
-          accessed_at: string
-          agent_id: string | null
-          created_at: string | null
-          file_id: string | null
-          id: string
-          metadata: Json | null
-          operation: string
-        }
-        Insert: {
-          accessed_at: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          id?: string
-          metadata?: Json | null
-          operation: string
-        }
-        Update: {
-          accessed_at?: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          id?: string
-          metadata?: Json | null
-          operation?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_file_access_logs_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_permissions"
-            referencedColumns: ["agent_id"]
-          },
-          {
-            foreignKeyName: "agent_file_access_logs_file_id_fkey"
-            columns: ["file_id"]
-            isOneToOne: false
-            referencedRelation: "file_uploads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      agent_market_data_subscriptions: {
-        Row: {
-          agent_id: string | null
-          created_at: string | null
-          data_type: string
-          id: string
-          interval: string
-          is_active: boolean | null
-          last_updated: string | null
-          source: string
-          symbol: string
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          agent_id?: string | null
-          created_at?: string | null
-          data_type: string
-          id?: string
-          interval: string
-          is_active?: boolean | null
-          last_updated?: string | null
-          source: string
-          symbol: string
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          agent_id?: string | null
-          created_at?: string | null
-          data_type?: string
-          id?: string
-          interval?: string
-          is_active?: boolean | null
-          last_updated?: string | null
-          source?: string
-          symbol?: string
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_performance: {
-        Row: {
-          agent_id: string | null
-          created_at: string | null
-          date: string
-          failed_trades: number | null
-          id: string
-          max_drawdown: number | null
-          sharpe_ratio: number | null
-          successful_trades: number | null
-          total_profit_loss: number | null
-          total_trades: number | null
-          updated_at: string | null
-          user_id: string | null
-          win_rate: number | null
-        }
-        Insert: {
-          agent_id?: string | null
-          created_at?: string | null
-          date: string
-          failed_trades?: number | null
-          id?: string
-          max_drawdown?: number | null
-          sharpe_ratio?: number | null
-          successful_trades?: number | null
-          total_profit_loss?: number | null
-          total_trades?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-          win_rate?: number | null
-        }
-        Update: {
-          agent_id?: string | null
-          created_at?: string | null
-          date?: string
-          failed_trades?: number | null
-          id?: string
-          max_drawdown?: number | null
-          sharpe_ratio?: number | null
-          successful_trades?: number | null
-          total_profit_loss?: number | null
-          total_trades?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-          win_rate?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_performance_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_trading_permissions"
-            referencedColumns: ["agent_id"]
-          },
-        ]
-      }
-      agent_permissions: {
-        Row: {
-          agent_id: string
-          allowed_markets: string[] | null
-          created_at: string | null
-          data_access_level: string
-          max_trade_size: number
-          risk_level: string
-          updated_at: string | null
-        }
-        Insert: {
-          agent_id: string
-          allowed_markets?: string[] | null
-          created_at?: string | null
-          data_access_level?: string
-          max_trade_size?: number
-          risk_level?: string
-          updated_at?: string | null
-        }
-        Update: {
-          agent_id?: string
-          allowed_markets?: string[] | null
-          created_at?: string | null
-          data_access_level?: string
-          max_trade_size?: number
-          risk_level?: string
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      agent_positions: {
-        Row: {
-          account_id: string
-          agent_id: string | null
-          average_price: number
-          current_price: number | null
-          id: string
-          opened_at: string | null
-          quantity: number
-          realized_pnl: number | null
-          symbol: string
-          unrealized_pnl: number | null
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          account_id: string
-          agent_id?: string | null
-          average_price: number
-          current_price?: number | null
-          id?: string
-          opened_at?: string | null
-          quantity: number
-          realized_pnl?: number | null
-          symbol: string
-          unrealized_pnl?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          account_id?: string
-          agent_id?: string | null
-          average_price?: number
-          current_price?: number | null
-          id?: string
-          opened_at?: string | null
-          quantity?: number
-          realized_pnl?: number | null
-          symbol?: string
-          unrealized_pnl?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_positions_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_trading_permissions"
-            referencedColumns: ["agent_id"]
-          },
-        ]
-      }
-      agent_state: {
-        Row: {
-          agent_id: string
-          context: Json | null
-          created_at: string | null
-          last_checkpoint: string | null
-          last_state_update: string | null
-          state: Json
-          updated_at: string | null
-          user_id: string
-        }
-        Insert: {
-          agent_id: string
-          context?: Json | null
-          created_at?: string | null
-          last_checkpoint?: string | null
-          last_state_update?: string | null
-          state?: Json
-          updated_at?: string | null
-          user_id: string
-        }
-        Update: {
-          agent_id?: string
-          context?: Json | null
-          created_at?: string | null
-          last_checkpoint?: string | null
-          last_state_update?: string | null
-          state?: Json
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_status: {
-        Row: {
-          agent_id: string
-          cpu_usage: number | null
-          created_at: string | null
-          health_score: number | null
-          last_activity: string | null
-          last_error: string | null
-          memory_usage: number | null
-          restart_count: number | null
-          status: string
-          updated_at: string | null
-          uptime: number | null
-          user_id: string
-        }
-        Insert: {
-          agent_id: string
-          cpu_usage?: number | null
-          created_at?: string | null
-          health_score?: number | null
-          last_activity?: string | null
-          last_error?: string | null
-          memory_usage?: number | null
-          restart_count?: number | null
-          status: string
-          updated_at?: string | null
-          uptime?: number | null
-          user_id: string
-        }
-        Update: {
-          agent_id?: string
-          cpu_usage?: number | null
-          created_at?: string | null
-          health_score?: number | null
-          last_activity?: string | null
-          last_error?: string | null
-          memory_usage?: number | null
-          restart_count?: number | null
-          status?: string
-          updated_at?: string | null
-          uptime?: number | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      agent_trades: {
-        Row: {
-          agent_id: string | null
-          confidence_score: number | null
-          created_at: string | null
-          exchange: string
-          executed_at: string | null
-          id: string
-          order_id: string
-          order_type: string
-          price: number
-          quantity: number
-          reasoning: string | null
-          side: string
-          status: string
-          strategy: string | null
-          symbol: string
-          trade_id: string
-          updated_at: string | null
-          user_id: string | null
-        }
-        Insert: {
-          agent_id?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          exchange: string
-          executed_at?: string | null
-          id?: string
-          order_id: string
-          order_type: string
-          price: number
-          quantity: number
-          reasoning?: string | null
-          side: string
-          status: string
-          strategy?: string | null
-          symbol: string
-          trade_id: string
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Update: {
-          agent_id?: string | null
-          confidence_score?: number | null
-          created_at?: string | null
-          exchange?: string
-          executed_at?: string | null
-          id?: string
-          order_id?: string
-          order_type?: string
-          price?: number
-          quantity?: number
-          reasoning?: string | null
-          side?: string
-          status?: string
-          strategy?: string | null
-          symbol?: string
-          trade_id?: string
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_trades_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_trading_permissions"
-            referencedColumns: ["agent_id"]
-          },
-        ]
-      }
       agent_trading_permissions: {
         Row: {
-          account_id: string
-          agent_id: string
-          allowed_strategies: Json | null
-          allowed_symbols: Json | null
-          created_at: string | null
-          is_active: boolean | null
-          max_daily_trades: number | null
-          max_position_size: number | null
-          max_trade_size: number | null
-          position_value: number | null
-          risk_level: string | null
-          trades_today: number | null
-          updated_at: string | null
-          user_id: string | null
-        }
+          id: string;
+          agent_id: string;
+          account_id: string;
+          max_trade_size: number;
+          max_position_size: number;
+          max_daily_trades: number;
+          allowed_symbols: string[];
+          allowed_strategies: string[];
+          risk_level: string;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          account_id: string
-          agent_id: string
-          allowed_strategies?: Json | null
-          allowed_symbols?: Json | null
-          created_at?: string | null
-          is_active?: boolean | null
-          max_daily_trades?: number | null
-          max_position_size?: number | null
-          max_trade_size?: number | null
-          position_value?: number | null
-          risk_level?: string | null
-          trades_today?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          account_id: string;
+          max_trade_size: number;
+          max_position_size: number;
+          max_daily_trades: number;
+          allowed_symbols: string[];
+          allowed_strategies: string[];
+          risk_level: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          account_id?: string
-          agent_id?: string
-          allowed_strategies?: Json | null
-          allowed_symbols?: Json | null
-          created_at?: string | null
-          is_active?: boolean | null
-          max_daily_trades?: number | null
-          max_position_size?: number | null
-          max_trade_size?: number | null
-          position_value?: number | null
-          risk_level?: string | null
-          trades_today?: number | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      file_access_permissions: {
+          id?: string;
+          agent_id?: string;
+          account_id?: string;
+          max_trade_size?: number;
+          max_position_size?: number;
+          max_daily_trades?: number;
+          allowed_symbols?: string[];
+          allowed_strategies?: string[];
+          risk_level?: string;
+          is_active?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_trades: {
         Row: {
-          access_level: string
-          agent_id: string | null
-          created_at: string | null
-          file_id: string | null
-          granted_at: string | null
-          id: string
-          updated_at: string | null
-        }
+          id: string;
+          agent_id: string;
+          symbol: string;
+          side: string;
+          quantity: number;
+          price: number;
+          order_type: string;
+          status: string;
+          strategy: string;
+          reasoning: string;
+          confidence_score: number;
+          exchange: string;
+          order_id: string;
+          executed_at: string;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          access_level?: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          granted_at?: string | null
-          id?: string
-          updated_at?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          symbol: string;
+          side: string;
+          quantity: number;
+          price: number;
+          order_type: string;
+          status: string;
+          strategy?: string;
+          reasoning?: string;
+          confidence_score?: number;
+          exchange?: string;
+          order_id?: string;
+          executed_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          access_level?: string
-          agent_id?: string | null
-          created_at?: string | null
-          file_id?: string | null
-          granted_at?: string | null
-          id?: string
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "file_access_permissions_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "agent_permissions"
-            referencedColumns: ["agent_id"]
-          },
-          {
-            foreignKeyName: "file_access_permissions_file_id_fkey"
-            columns: ["file_id"]
-            isOneToOne: false
-            referencedRelation: "file_uploads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      file_uploads: {
+          id?: string;
+          agent_id?: string;
+          symbol?: string;
+          side?: string;
+          quantity?: number;
+          price?: number;
+          order_type?: string;
+          status?: string;
+          strategy?: string;
+          reasoning?: string;
+          confidence_score?: number;
+          exchange?: string;
+          order_id?: string;
+          executed_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_positions: {
         Row: {
-          content_type: string
-          created_at: string | null
-          data_format: string | null
-          data_schema: Json | null
-          description: string | null
-          file_path: string
-          file_size: number
-          file_type: string
-          filename: string
-          id: string
-          is_processed: boolean | null
-          metadata: Json | null
-          tags: string[] | null
-          updated_at: string | null
-          user_id: string
-        }
+          id: string;
+          agent_id: string;
+          symbol: string;
+          side: string;
+          quantity: number;
+          average_entry_price: number;
+          current_price: number;
+          unrealized_pnl: number;
+          position_value: number;
+          status: string;
+          strategy: string;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          content_type: string
-          created_at?: string | null
-          data_format?: string | null
-          data_schema?: Json | null
-          description?: string | null
-          file_path: string
-          file_size: number
-          file_type: string
-          filename: string
-          id?: string
-          is_processed?: boolean | null
-          metadata?: Json | null
-          tags?: string[] | null
-          updated_at?: string | null
-          user_id: string
-        }
+          id?: string;
+          agent_id: string;
+          symbol: string;
+          side: string;
+          quantity: number;
+          average_entry_price: number;
+          current_price: number;
+          unrealized_pnl: number;
+          position_value: number;
+          status: string;
+          strategy?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          content_type?: string
-          created_at?: string | null
-          data_format?: string | null
-          data_schema?: Json | null
-          description?: string | null
-          file_path?: string
-          file_size?: number
-          file_type?: string
-          filename?: string
-          id?: string
-          is_processed?: boolean | null
-          metadata?: Json | null
-          tags?: string[] | null
-          updated_at?: string | null
-          user_id?: string
-        }
-        Relationships: []
-      }
-      profiles: {
+          id?: string;
+          agent_id?: string;
+          symbol?: string;
+          side?: string;
+          quantity?: number;
+          average_entry_price?: number;
+          current_price?: number;
+          unrealized_pnl?: number;
+          position_value?: number;
+          status?: string;
+          strategy?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_performance: {
         Row: {
-          avatar_url: string | null
-          created_at: string | null
-          email: string | null
-          full_name: string | null
-          id: string
-          role: string | null
-          settings: Json | null
-          updated_at: string | null
-        }
+          id: string;
+          agent_id: string;
+          date: string;
+          profit_loss: number;
+          profit_loss_percentage: number;
+          total_trades: number;
+          successful_trades: number;
+          win_rate: number;
+          max_drawdown: number;
+          sharpe_ratio: number;
+          average_trade_duration: number;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          avatar_url?: string | null
-          created_at?: string | null
-          email?: string | null
-          full_name?: string | null
-          id: string
-          role?: string | null
-          settings?: Json | null
-          updated_at?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          date: string;
+          profit_loss: number;
+          profit_loss_percentage: number;
+          total_trades: number;
+          successful_trades: number;
+          win_rate: number;
+          max_drawdown: number;
+          sharpe_ratio: number;
+          average_trade_duration: number;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          avatar_url?: string | null
-          created_at?: string | null
-          email?: string | null
-          full_name?: string | null
-          id?: string
-          role?: string | null
-          settings?: Json | null
-          updated_at?: string | null
-        }
-        Relationships: []
-      }
-      strategy_performance: {
+          id?: string;
+          agent_id?: string;
+          date?: string;
+          profit_loss?: number;
+          profit_loss_percentage?: number;
+          total_trades?: number;
+          successful_trades?: number;
+          win_rate?: number;
+          max_drawdown?: number;
+          sharpe_ratio?: number;
+          average_trade_duration?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_status: {
         Row: {
-          average_loss: number | null
-          average_profit: number | null
-          created_at: string | null
-          id: string
-          last_updated: string | null
-          loss_count: number | null
-          max_drawdown: number | null
-          profit_factor: number | null
-          strategy_name: string
-          symbol: string
-          timeframe: string
-          user_id: string | null
-          win_count: number | null
-        }
+          id: string;
+          agent_id: string;
+          status: string;
+          health_score: number;
+          last_activity: string;
+          uptime: number;
+          error_message: string;
+          cpu_usage: number;
+          memory_usage: number;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          average_loss?: number | null
-          average_profit?: number | null
-          created_at?: string | null
-          id?: string
-          last_updated?: string | null
-          loss_count?: number | null
-          max_drawdown?: number | null
-          profit_factor?: number | null
-          strategy_name: string
-          symbol: string
-          timeframe: string
-          user_id?: string | null
-          win_count?: number | null
-        }
+          id?: string;
+          agent_id: string;
+          status: string;
+          health_score: number;
+          last_activity: string;
+          uptime: number;
+          error_message?: string;
+          cpu_usage?: number;
+          memory_usage?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          average_loss?: number | null
-          average_profit?: number | null
-          created_at?: string | null
-          id?: string
-          last_updated?: string | null
-          loss_count?: number | null
-          max_drawdown?: number | null
-          profit_factor?: number | null
-          strategy_name?: string
-          symbol?: string
-          timeframe?: string
-          user_id?: string | null
-          win_count?: number | null
-        }
-        Relationships: []
-      }
-      trading_config: {
+          id?: string;
+          agent_id?: string;
+          status?: string;
+          health_score?: number;
+          last_activity?: string;
+          uptime?: number;
+          error_message?: string;
+          cpu_usage?: number;
+          memory_usage?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_market_data_subscriptions: {
         Row: {
-          config_data: Json
-          config_name: string
-          created_at: string | null
-          id: string
-          is_active: boolean | null
-          updated_at: string | null
-          user_id: string | null
-        }
+          id: string;
+          agent_id: string;
+          symbol: string;
+          data_type: string;
+          interval: string;
+          source: string;
+          is_active: boolean;
+          last_updated: string;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          config_data: Json
-          config_name: string
-          created_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          symbol: string;
+          data_type: string;
+          interval: string;
+          source: string;
+          is_active?: boolean;
+          last_updated?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          config_data?: Json
-          config_name?: string
-          created_at?: string | null
-          id?: string
-          is_active?: boolean | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      trading_signals: {
+          id?: string;
+          agent_id?: string;
+          symbol?: string;
+          data_type?: string;
+          interval?: string;
+          source?: string;
+          is_active?: boolean;
+          last_updated?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_state: {
         Row: {
-          created_at: string | null
-          direction: string
-          expires_at: string | null
-          id: string
-          indicators: Json | null
-          is_active: boolean | null
-          price_at_signal: number
-          signal_type: string
-          strength: number
-          symbol: string
-          timeframe: string
-          user_id: string | null
-        }
+          id: string;
+          agent_id: string;
+          state_data: any;
+          last_checkpoint: string;
+          created_at: string;
+          updated_at: string;
+        };
         Insert: {
-          created_at?: string | null
-          direction: string
-          expires_at?: string | null
-          id?: string
-          indicators?: Json | null
-          is_active?: boolean | null
-          price_at_signal: number
-          signal_type: string
-          strength: number
-          symbol: string
-          timeframe: string
-          user_id?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          state_data: any;
+          last_checkpoint?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
         Update: {
-          created_at?: string | null
-          direction?: string
-          expires_at?: string | null
-          id?: string
-          indicators?: Json | null
-          is_active?: boolean | null
-          price_at_signal?: number
-          signal_type?: string
-          strength?: number
-          symbol?: string
-          timeframe?: string
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-      uploaded_files: {
+          id?: string;
+          agent_id?: string;
+          state_data?: any;
+          last_checkpoint?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      agent_checkpoints: {
         Row: {
-          content_type: string
-          created_at: string | null
-          data_format: string | null
-          data_schema: Json | null
-          description: string | null
-          file_path: string
-          file_size: number
-          file_type: string
-          filename: string
-          id: string
-          is_processed: boolean | null
-          processed_by: string[] | null
-          processing_results: Json | null
-          tags: string[] | null
-          updated_at: string | null
-          user_id: string | null
-        }
+          id: string;
+          agent_id: string;
+          checkpoint_data: any;
+          created_at: string;
+        };
         Insert: {
-          content_type: string
-          created_at?: string | null
-          data_format?: string | null
-          data_schema?: Json | null
-          description?: string | null
-          file_path: string
-          file_size: number
-          file_type: string
-          filename: string
-          id?: string
-          is_processed?: boolean | null
-          processed_by?: string[] | null
-          processing_results?: Json | null
-          tags?: string[] | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
+          id?: string;
+          agent_id: string;
+          checkpoint_data: any;
+          created_at?: string;
+        };
         Update: {
-          content_type?: string
-          created_at?: string | null
-          data_format?: string | null
-          data_schema?: Json | null
-          description?: string | null
-          file_path?: string
-          file_size?: number
-          file_type?: string
-          filename?: string
-          id?: string
-          is_processed?: boolean | null
-          processed_by?: string[] | null
-          processing_results?: Json | null
-          tags?: string[] | null
-          updated_at?: string | null
-          user_id?: string | null
-        }
-        Relationships: []
-      }
-    }
+          id?: string;
+          agent_id?: string;
+          checkpoint_data?: any;
+          created_at?: string;
+        };
+      };
+      agent_decisions: {
+        Row: {
+          id: string;
+          agent_id: string;
+          decision_type: string;
+          decision_data: any;
+          signals: any;
+          confidence: number;
+          executed_at: string;
+          result: any;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          agent_id: string;
+          decision_type: string;
+          decision_data: any;
+          signals?: any;
+          confidence: number;
+          executed_at?: string;
+          result?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          agent_id?: string;
+          decision_type?: string;
+          decision_data?: any;
+          signals?: any;
+          confidence?: number;
+          executed_at?: string;
+          result?: any;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+    };
     Views: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     Functions: {
-      aggregate_agent_daily_performance: {
-        Args: { agent_id_param: string; date_param: string }
-        Returns: undefined
-      }
-    }
+      [_ in never]: never;
+    };
     Enums: {
-      [_ in never]: never
-    }
+      [_ in never]: never;
+    };
     CompositeTypes: {
-      [_ in never]: never
-    }
-  }
+      [_ in never]: never;
+    };
+  };
 }
 
-type DefaultSchema = Database[Extract<keyof Database, "public">]
-
 export type Tables<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  PublicTableNameOrOptions extends
+    | keyof (Database['public']['Tables'])
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
-      Row: infer R
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions['schema']]['Tables'])
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions['schema']]['Tables'])[TableName] extends {
+      Row: infer R;
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
+  : PublicTableNameOrOptions extends keyof (Database['public']['Tables'])
+  ? (Database['public']['Tables'])[PublicTableNameOrOptions] extends {
+      Row: infer R;
+    }
+    ? R
     : never
+  : never;
 
 export type TablesInsert<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof (Database['public']['Tables'])
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions['schema']]['Tables'])
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions['schema']]['Tables'])[TableName] extends {
+      Insert: infer I;
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
+  : PublicTableNameOrOptions extends keyof (Database['public']['Tables'])
+  ? (Database['public']['Tables'])[PublicTableNameOrOptions] extends {
+      Insert: infer I;
+    }
+    ? I
     : never
+  : never;
 
 export type TablesUpdate<
-  DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+  PublicTableNameOrOptions extends
+    | keyof (Database['public']['Tables'])
     | { schema: keyof Database },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
-> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
+  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicTableNameOrOptions['schema']]['Tables'])
+    : never = never
+> = PublicTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicTableNameOrOptions['schema']]['Tables'])[TableName] extends {
+      Update: infer U;
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
+  : PublicTableNameOrOptions extends keyof (Database['public']['Tables'])
+  ? (Database['public']['Tables'])[PublicTableNameOrOptions] extends {
+      Update: infer U;
+    }
+    ? U
     : never
+  : never;
 
 export type Enums<
-  DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
+  PublicEnumNameOrOptions extends
+    | keyof (Database['public']['Enums'])
     | { schema: keyof Database },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
-> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
-
-export type CompositeTypes<
-  PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof Database },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
-    schema: keyof Database
-  }
-    ? keyof Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
-> = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
-
-export const Constants = {
-  public: {
-    Enums: {},
-  },
-} as const
+  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
+    ? keyof (Database[PublicEnumNameOrOptions['schema']]['Enums'])
+    : never = never
+> = PublicEnumNameOrOptions extends { schema: keyof Database }
+  ? (Database[PublicEnumNameOrOptions['schema']]['Enums'])[EnumName]
+  : PublicEnumNameOrOptions extends keyof (Database['public']['Enums'])
+  ? (Database['public']['Enums'])[PublicEnumNameOrOptions]
+  : never;

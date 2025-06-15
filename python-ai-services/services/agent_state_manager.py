@@ -3,268 +3,278 @@ Agent State Manager for persistent storage of agent trading states
 """
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-import json
-import asyncio
+import asyncio # For asyncio.Lock
 from loguru import logger
-import httpx
+
+# Assuming AgentPersistenceService is in the same package directory
+from .agent_persistence_service import AgentPersistenceService
 
 
 class AgentStateManager:
-    """Service for managing persistent agent states"""
+    """
+    Service for managing agent states with multiple layers of caching and persistence.
+    Orchestrates state retrieval and updates using AgentPersistenceService.
+    """
     
-    def __init__(self, db_connection_string: str = None):
-        self.db_connection_string = db_connection_string
-        self.base_url = "http://localhost:3000/api/agents"
-        self.in_memory_cache = {}
-        self.lock = asyncio.Lock()
+    def __init__(self, persistence_service: AgentPersistenceService, redis_realtime_ttl_seconds: int = 3600):
+        self.persistence_service: AgentPersistenceService = persistence_service
+        self.redis_realtime_ttl_seconds: int = redis_realtime_ttl_seconds
+        self.in_memory_cache: Dict[str, Dict] = {}
+        self.lock: asyncio.Lock = asyncio.Lock()
+        logger.info("AgentStateManager initialized with AgentPersistenceService.")
     
     async def get_agent_state(self, agent_id: str) -> Dict:
-        """Retrieve the agent's state from the database"""
-        logger.info(f"Getting state for agent: {agent_id}")
+        """
+        Retrieve the agent's state, checking in-memory cache, then Redis, then Supabase.
+        Returns a dictionary representing the agent's state record from Supabase,
+        or a default structure if not found.
+        The structure returned is expected to be the full record as stored in/retrieved from Supabase.
+        """
+        logger.debug(f"Getting state for agent: {agent_id}")
         
-        # Check in-memory cache first
+        # 1. Check in-memory cache first
         if agent_id in self.in_memory_cache:
-            logger.debug(f"Using cached state for agent: {agent_id}")
+            logger.debug(f"In-memory cache hit for agent: {agent_id}")
             return self.in_memory_cache[agent_id]
         
+        # 2. Check Redis
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.base_url}/state?agentId={agent_id}",
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                state = response.json()
-                
-                # Update in-memory cache
-                self.in_memory_cache[agent_id] = state
-                
-                logger.info(f"Retrieved state for agent: {agent_id}")
-                return state
-                
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 404:
-                logger.warning(f"No state found for agent: {agent_id}")
-                # Return empty state
-                empty_state = {"agentId": agent_id, "state": {}, "createdAt": datetime.utcnow().isoformat()}
-                self.in_memory_cache[agent_id] = empty_state
-                return empty_state
-            else:
-                logger.error(f"HTTP error getting agent state: {e.response.status_code} - {e.response.text}")
-                raise Exception(f"Failed to get agent state: {e.response.text}")
-        except httpx.RequestError as e:
-            logger.error(f"Request error getting agent state: {str(e)}")
-            raise Exception(f"Agent state request failed: {str(e)}")
+            redis_full_record = await self.persistence_service.get_realtime_state_from_redis(agent_id)
+            if redis_full_record is not None:
+                logger.debug(f"Redis cache hit for agent: {agent_id}.")
+                self.in_memory_cache[agent_id] = redis_full_record
+                return redis_full_record
         except Exception as e:
-            logger.error(f"Unexpected error getting agent state: {str(e)}")
-            raise
+            logger.error(f"Error accessing Redis for agent {agent_id} during get_agent_state: {e}. Proceeding to Supabase.")
+
+        # 3. Check Supabase (persistent state)
+        try:
+            supabase_record = await self.persistence_service.get_agent_state_from_supabase(agent_id)
+            if supabase_record is not None:
+                logger.debug(f"Supabase data found for agent: {agent_id}.")
+                self.in_memory_cache[agent_id] = supabase_record
+                await self.persistence_service.save_realtime_state_to_redis(
+                    agent_id,
+                    supabase_record,
+                    self.redis_realtime_ttl_seconds
+                )
+                return supabase_record
+        except Exception as e:
+            logger.critical(f"CRITICAL: Supabase query failed for {agent_id} during get_agent_state. State is unknown. Error: {e}")
+
+        # 4. Not found in any layer or Supabase failed, return default empty state and cache it (in-memory only for default)
+        logger.warning(f"No state found for agent {agent_id} in any persistence layer or Supabase failed. Returning default empty state.")
+        empty_state_record = {
+            "agent_id": agent_id,
+            "state": {},
+            "strategy_type": "default",
+            "memory_references": [],
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+            "source": "new_default"
+        }
+        self.in_memory_cache[agent_id] = empty_state_record
+        return empty_state_record
     
-    async def update_agent_state(self, agent_id: str, state: Dict) -> Dict:
-        """Update the agent's state in the database"""
-        logger.info(f"Updating state for agent: {agent_id}")
+    async def update_agent_state(
+        self,
+        agent_id: str,
+        state: Dict,
+        strategy_type: str = "unknown",
+        memory_references: Optional[List[str]] = None
+    ) -> Optional[Dict]:
+        """
+        Update the agent's state in Supabase (as source of truth), then update Redis and in-memory cache.
+        Returns the persisted state record from Supabase, or None on failure.
+        """
+        logger.info(f"Updating state for agent: {agent_id}. Strategy type: {strategy_type}. State preview: {str(state)[:100]}...")
         
-        # Acquire lock to prevent concurrent updates
         async with self.lock:
             try:
-                # Prepare the update payload
-                payload = {
-                    "agentId": agent_id,
-                    "state": state,
-                    "updatedAt": datetime.utcnow().isoformat()
-                }
+                updated_supa_record = await self.persistence_service.save_agent_state_to_supabase(
+                    agent_id, strategy_type, state, memory_references
+                )
                 
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        f"{self.base_url}/state",
-                        json=payload,
-                        timeout=10.0
-                    )
-                    response.raise_for_status()
-                    result = response.json()
+                if not updated_supa_record:
+                    logger.error(f"Failed to save state to Supabase for agent {agent_id}. Aborting update.")
+                    return None
+
+                redis_success = await self.persistence_service.save_realtime_state_to_redis(
+                    agent_id, updated_supa_record, self.redis_realtime_ttl_seconds
+                )
+                if not redis_success:
+                    logger.warning(f"Failed to save state to Redis for agent {agent_id}, but Supabase save was successful.")
+
+                self.in_memory_cache[agent_id] = updated_supa_record
+
+                logger.info(f"Successfully updated state for agent: {agent_id}.")
+                return updated_supa_record
                     
-                    # Update in-memory cache
-                    self.in_memory_cache[agent_id] = result
-                    
-                    logger.info(f"Updated state for agent: {agent_id}")
-                    return result
-                    
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error updating agent state: {e.response.status_code} - {e.response.text}")
-                raise Exception(f"Failed to update agent state: {e.response.text}")
-            except httpx.RequestError as e:
-                logger.error(f"Request error updating agent state: {str(e)}")
-                raise Exception(f"Agent state update request failed: {str(e)}")
             except Exception as e:
-                logger.error(f"Unexpected error updating agent state: {str(e)}")
-                raise
+                logger.exception(f"Unexpected error updating agent state for {agent_id}: {e}")
+                return None
     
-    async def update_state_field(self, agent_id: str, field: str, value: Any) -> Dict:
-        """Update a specific field in the agent's state"""
-        logger.info(f"Updating field '{field}' for agent: {agent_id}")
+    async def update_state_field(self, agent_id: str, field: str, value: Any) -> Optional[Dict]:
+        """Update a specific field in the agent's 'state' dictionary."""
+        logger.info(f"Attempting to update field '{field}' for agent: {agent_id}.")
         
         try:
-            # Get current state
-            current_state = await self.get_agent_state(agent_id)
+            current_full_record = await self.get_agent_state(agent_id)
             
-            # Create a copy of the state to modify
-            state_copy = current_state.get("state", {}).copy()
+            state_dict_to_modify = current_full_record.get("state", {}).copy()
+            strategy_type = current_full_record.get("strategy_type", "unknown_on_field_update")
+            memory_references = current_full_record.get("memory_references")
+
+            state_dict_to_modify[field] = value
             
-            # Update the specific field
-            state_copy[field] = value
-            
-            # Save the updated state
-            return await self.update_agent_state(agent_id, state_copy)
+            logger.debug(f"Calling update_agent_state for field update on agent {agent_id}.")
+            return await self.update_agent_state(
+                agent_id,
+                state_dict_to_modify,
+                strategy_type=strategy_type,
+                memory_references=memory_references
+            )
             
         except Exception as e:
-            logger.error(f"Error updating state field: {str(e)}")
-            raise
+            logger.exception(f"Error updating state field '{field}' for agent {agent_id}: {e}")
+            return None
     
     async def delete_agent_state(self, agent_id: str) -> bool:
-        """Delete the agent's state from the database"""
-        logger.info(f"Deleting state for agent: {agent_id}")
+        """Delete the agent's state from all persistence layers and caches."""
+        logger.info(f"Attempting to delete state for agent: {agent_id}.")
         
         async with self.lock:
             try:
-                async with httpx.AsyncClient() as client:
-                    response = await client.delete(
-                        f"{self.base_url}/state?agentId={agent_id}",
-                        timeout=10.0
-                    )
-                    response.raise_for_status()
-                    
-                    # Remove from in-memory cache
-                    if agent_id in self.in_memory_cache:
-                        del self.in_memory_cache[agent_id]
-                    
-                    logger.info(f"Deleted state for agent: {agent_id}")
-                    return True
-                    
-            except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error deleting agent state: {e.response.status_code} - {e.response.text}")
-                return False
-            except httpx.RequestError as e:
-                logger.error(f"Request error deleting agent state: {str(e)}")
-                return False
-            except Exception as e:
-                logger.error(f"Unexpected error deleting agent state: {str(e)}")
-                return False
-    
-    async def save_trading_decision(self, agent_id: str, decision: Dict) -> Dict:
-        """Save trading decision to agent history"""
-        logger.info(f"Saving trading decision for agent: {agent_id}")
-        
-        try:
-            # Prepare the decision payload
-            payload = {
-                "agentId": agent_id,
-                "decision": decision,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/decisions",
-                    json=payload,
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                logger.info(f"Saved trading decision for agent: {agent_id}")
-                
-                # Update decision history in agent state
-                await self._update_decision_history(agent_id, decision)
-                
-                return result
-                
-        except Exception as e:
-            logger.error(f"Error saving trading decision: {str(e)}")
-            raise
-    
-    async def _update_decision_history(self, agent_id: str, decision: Dict):
-        """Update decision history in agent state"""
-        try:
-            # Get current state
-            current_state = await self.get_agent_state(agent_id)
-            
-            # Create a copy of the state to modify
-            state_copy = current_state.get("state", {}).copy()
-            
-            # Initialize decision history if not present
-            if "decisionHistory" not in state_copy:
-                state_copy["decisionHistory"] = []
-            
-            # Add decision to history (with timestamp if not present)
-            if "timestamp" not in decision:
-                decision["timestamp"] = datetime.utcnow().isoformat()
-            
-            # Limit history size (keep latest 50 decisions)
-            max_history = 50
-            state_copy["decisionHistory"] = [decision] + state_copy["decisionHistory"][:max_history-1]
-            
-            # Save the updated state
-            await self.update_agent_state(agent_id, state_copy)
-            
-        except Exception as e:
-            logger.error(f"Error updating decision history: {str(e)}")
-            # Don't raise exception to prevent blocking the main flow
-            
-    async def create_agent_checkpoint(self, agent_id: str, metadata: Dict = None) -> Dict:
-        """Create a checkpoint of the agent's current state"""
-        logger.info(f"Creating checkpoint for agent: {agent_id}")
-        
-        try:
-            # Get current state
-            current_state = await self.get_agent_state(agent_id)
-            
-            # Prepare checkpoint payload
-            checkpoint = {
-                "agentId": agent_id,
-                "state": current_state.get("state", {}),
-                "metadata": metadata or {},
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/checkpoints",
-                    json=checkpoint,
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                logger.info(f"Created checkpoint for agent: {agent_id}")
-                return result
-                
-        except Exception as e:
-            logger.error(f"Error creating agent checkpoint: {str(e)}")
-            raise
-    
-    async def restore_agent_checkpoint(self, agent_id: str, checkpoint_id: str) -> Dict:
-        """Restore an agent's state from a checkpoint"""
-        logger.info(f"Restoring checkpoint {checkpoint_id} for agent: {agent_id}")
-        
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.base_url}/checkpoints/restore",
-                    json={
-                        "agentId": agent_id,
-                        "checkpointId": checkpoint_id
-                    },
-                    timeout=10.0
-                )
-                response.raise_for_status()
-                result = response.json()
-                
-                # Clear cache to force reload
+                supa_deleted = await self.persistence_service.delete_agent_state_from_supabase(agent_id)
+                redis_op_success = await self.persistence_service.delete_realtime_state_from_redis(agent_id)
+
                 if agent_id in self.in_memory_cache:
                     del self.in_memory_cache[agent_id]
-                
-                logger.info(f"Restored checkpoint for agent: {agent_id}")
-                return result
+                    logger.debug(f"Removed agent {agent_id} from in-memory cache.")
+
+                if supa_deleted:
+                    logger.info(f"Deletion process run for agent {agent_id}. Supabase main delete success: {supa_deleted}. Redis op success: {redis_op_success}.")
+                else:
+                    logger.warning(f"Supabase deletion failed or record not found for agent {agent_id}. Redis op success: {redis_op_success}.")
+                return supa_deleted
+                    
+            except Exception as e:
+                logger.exception(f"Unexpected error deleting agent state for {agent_id}: {e}")
+                return False
+    
+    async def save_trading_decision(self, agent_id: str, decision: Dict) -> Optional[Dict]:
+        """
+        Updates the agent's state with the new trading decision in its history.
+        Note: The original httpx call to log decisions to an external endpoint has been removed.
+        If such functionality is required, it should be handled by a dedicated service or explicitly
+        called by the orchestrating code that uses AgentStateManager.
+        """
+        logger.info(f"Attempting to update agent state with trading decision for agent: {agent_id}")
+        
+        try:
+            await self._update_decision_history(agent_id, decision)
+            logger.info(f"Successfully updated decision history in state for agent {agent_id}.")
+            return {"status": "decision_history_updated_in_state", "agent_id": agent_id, "decision_timestamp": decision.get("timestamp")}
+        except Exception as e:
+            logger.exception(f"Failed to save trading decision to agent state for {agent_id}: {e}")
+            raise
+            
+    async def _update_decision_history(self, agent_id: str, decision: Dict):
+        """Helper to update decision history in agent's 'state' dictionary."""
+        logger.debug(f"Updating decision history for agent {agent_id}.")
+        current_full_record = await self.get_agent_state(agent_id)
+
+        state_dict_to_modify = current_full_record.get("state", {}).copy()
+        strategy_type = current_full_record.get("strategy_type", "decision_history_update")
+        memory_references = current_full_record.get("memory_references")
+
+        if "decisionHistory" not in state_dict_to_modify:
+            state_dict_to_modify["decisionHistory"] = []
+
+        if "timestamp" not in decision:
+            decision["timestamp"] = datetime.utcnow().isoformat()
+
+        max_history = 50
+        state_dict_to_modify["decisionHistory"] = [decision] + state_dict_to_modify["decisionHistory"][:max_history-1]
+
+        updated_record = await self.update_agent_state(
+            agent_id,
+            state_dict_to_modify,
+            strategy_type=strategy_type,
+            memory_references=memory_references
+        )
+        if not updated_record:
+             raise Exception(f"Failed to save updated decision history for agent {agent_id} via update_agent_state.")
+        else:
+            logger.debug(f"Decision history updated and saved for agent {agent_id}.")
+            
+    async def create_agent_checkpoint(self, agent_id: str, metadata: Optional[Dict] = None) -> Optional[Dict]:
+        """Create a checkpoint of the agent's current 'state' dictionary using AgentPersistenceService."""
+        logger.info(f"Creating checkpoint for agent: {agent_id} with metadata: {metadata}")
+        
+        try:
+            current_state_record = await self.get_agent_state(agent_id)
+            state_to_checkpoint = current_state_record.get("state", {})
+            
+            if metadata is None: metadata = {}
+            if "strategy_type" not in metadata and current_state_record.get("strategy_type"):
+                metadata["strategy_type"] = current_state_record.get("strategy_type")
+            
+            checkpoint_result = await self.persistence_service.save_agent_checkpoint_to_supabase(
+                agent_id,
+                state_to_checkpoint,
+                metadata
+            )
+
+            if checkpoint_result:
+                logger.info(f"Successfully created checkpoint for agent: {agent_id}. ID: {checkpoint_result.get('checkpoint_id')}")
+                return checkpoint_result
+            else:
+                logger.error(f"Failed to save checkpoint to Supabase for agent {agent_id}.")
+                return None
                 
         except Exception as e:
-            logger.error(f"Error restoring agent checkpoint: {str(e)}")
-            raise
+            logger.exception(f"Error creating agent checkpoint for {agent_id}: {e}")
+            return None
+    
+    async def restore_agent_checkpoint(self, agent_id: str, checkpoint_id: str) -> Optional[Dict]:
+        """Restore an agent's state from a checkpoint using AgentPersistenceService."""
+        logger.info(f"Attempting to restore checkpoint {checkpoint_id} for agent: {agent_id}")
+        
+        try:
+            checkpoint_data = await self.persistence_service.get_agent_checkpoint_from_supabase(checkpoint_id)
+
+            if not checkpoint_data:
+                logger.error(f"Checkpoint {checkpoint_id} not found.")
+                return None
+
+            if checkpoint_data.get("agent_id") != agent_id:
+                logger.error(f"Checkpoint {checkpoint_id} agent_id mismatch. Expected {agent_id}, found {checkpoint_data.get('agent_id')}.")
+                return None
+
+            state_to_restore = checkpoint_data.get("state")
+
+            if state_to_restore is None:
+                logger.error(f"Checkpoint {checkpoint_id} for agent {agent_id} does not contain a valid 'state' field in its data.")
+                return None
+
+            metadata_from_checkpoint = checkpoint_data.get("metadata", {})
+            strategy_type_from_checkpoint = metadata_from_checkpoint.get("strategy_type", "restored_from_checkpoint")
+
+            logger.info(f"Attempting to update agent {agent_id} state from checkpoint {checkpoint_id}.")
+            updated_state_record = await self.update_agent_state(
+                agent_id,
+                state_to_restore,
+                strategy_type=strategy_type_from_checkpoint
+            )
+
+            if updated_state_record:
+                logger.info(f"Successfully restored state for agent {agent_id} from checkpoint {checkpoint_id}.")
+                return updated_state_record
+            else:
+                logger.error(f"Failed to update agent state after restoring checkpoint {checkpoint_id} for agent {agent_id}.")
+                return None
+                
+        except Exception as e:
+            logger.exception(f"Error restoring agent checkpoint for {agent_id} from {checkpoint_id}: {e}")
+            return None

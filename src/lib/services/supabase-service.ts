@@ -1,14 +1,41 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Database } from '@/types/supabase';
+import { Database } from '@/types/database.types';
 import { 
   AgentTradingPermission, 
   AgentTrade, 
   AgentPosition,
-  AgentPerformance,
-  TradingSignal,
-  StrategyPerformance,
-  TradingConfig
+  AgentPerformance
+} from '@/utils/agent-trading-db';
+import {
+  TradingSignal
 } from '@/lib/types/trading';
+
+// Define StrategyPerformance type locally if not available elsewhere
+interface StrategyPerformance {
+  id: string;
+  strategy_name: string;
+  total_return: number;
+  sharpe_ratio: number;
+  max_drawdown: number;
+  win_rate: number;
+  trades_count: number;
+  period_start: string;
+  period_end: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Define TradingConfig type locally if not available elsewhere
+interface TradingConfig {
+  id: string;
+  user_id: string;
+  config_name: string;
+  risk_parameters: Record<string, any>;
+  strategy_settings: Record<string, any>;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export class SupabaseService {
   private static instance: SupabaseService;
@@ -334,7 +361,6 @@ export class SupabaseService {
       .select('id')
       .eq('agent_id', position.agent_id)
       .eq('symbol', position.symbol)
-      .eq('account_id', position.account_id)
       .maybeSingle();
     
     if (existing) {

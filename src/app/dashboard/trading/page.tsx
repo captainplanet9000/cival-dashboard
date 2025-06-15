@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useDashboardData, useBackendConnection } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +33,20 @@ import useTradingData from '@/lib/hooks/useTradingData';
 import { toast } from 'react-hot-toast';
 
 export default function TradingPage() {
+  // Real-time API integration
+  const { portfolioSummary, portfolioPositions, tradingSignals, isLoading } = useDashboardData();
+  const { isConnected } = useBackendConnection();
+  const { 
+    portfolio: realtimePortfolio, 
+    signals: realtimeSignals, 
+    market: realtimeMarket,
+    isConnected: wsConnected 
+  } = useRealTimeData();
+
+  // Use real-time data when available, fallback to API data
+  const currentPortfolio = realtimePortfolio || portfolioSummary;
+  const currentSignals = realtimeSignals || tradingSignals;
+
   const {
     portfolio,
     portfolioLoading,

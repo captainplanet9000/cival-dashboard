@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import { useDashboardData, useBackendConnection } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
@@ -138,6 +140,18 @@ const timeFrameData = [
 ];
 
 export default function AnalyticsPage() {
+  // Real-time API integration
+  const { portfolioSummary, performanceMetrics: livePerformanceMetrics, isLoading } = useDashboardData();
+  const { isConnected } = useBackendConnection();
+  const { 
+    portfolio: realtimePortfolio, 
+    isConnected: wsConnected 
+  } = useRealTimeData();
+
+  // Use real-time data when available
+  const currentPortfolio = realtimePortfolio || portfolioSummary;
+  const currentMetrics = livePerformanceMetrics || performanceMetrics;
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [riskHeatmapData, setRiskHeatmapData] = useState<string>('');
@@ -258,6 +272,8 @@ export default function AnalyticsPage() {
 
         <TabsContent value="performance" className="space-y-6">
           {/* Key Performance Metrics */}
+          {performanceMetrics ? (
+          <>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -392,6 +408,12 @@ export default function AnalyticsPage() {
               </div>
             </CardContent>
           </Card>
+          </>
+          ) : (
+            <div className="text-center text-muted-foreground">
+              Loading performance metrics...
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="risk" className="space-y-6">

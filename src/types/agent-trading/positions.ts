@@ -3,6 +3,9 @@ import {
   AgentPositionInsert, 
   AgentPositionUpdate 
 } from './database';
+
+// Re-export the base types for use by other modules
+export type { AgentPosition, AgentPositionInsert, AgentPositionUpdate };
 import { 
   PositionSide, 
   PositionStatus 

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import {  BarChart3,  TrendingUp,  ShoppingCart,  Shield,  Vault,  Zap,  PieChart,  Home,  Settings,  User,  Bot,  Brain,} from "lucide-react";
+import {  BarChart3,  TrendingUp,  ShoppingCart,  Shield,  Vault,  Zap,  PieChart,  Home,  Settings,  User,  Bot,  Brain,  Target,} from "lucide-react";
 
 const navigation = [
   {
@@ -58,7 +58,26 @@ const navigation = [
       </svg>
     ),
   },
-  {    name: "MCP Servers",    href: "/dashboard/mcp",    icon: Zap,  },  {    name: "Agents",    href: "/dashboard/agents",    icon: Bot,  },  {    name: "Analytics",    href: "/dashboard/analytics",    icon: PieChart,  },
+  {
+    name: "Phase 8: AI Goals",
+    href: "/dashboard/phase8",
+    icon: Target,
+  },
+  {
+    name: "MCP Servers",
+    href: "/dashboard/mcp",
+    icon: Zap,
+  },
+  {
+    name: "Agents",
+    href: "/dashboard/agents",
+    icon: Bot,
+  },
+  {
+    name: "Analytics",
+    href: "/dashboard/analytics",
+    icon: PieChart,
+  },
 ];
 
 const secondaryNavigation = [
