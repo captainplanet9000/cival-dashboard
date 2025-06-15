@@ -114,6 +114,7 @@ export interface HealthCheck {
 class BackendApiClient {
   private baseUrl: string;
   private timeout: number;
+  private authToken: string | null = null;
 
   constructor() {
     // Auto-detect backend URL based on environment
@@ -121,6 +122,28 @@ class BackendApiClient {
                    process.env.BACKEND_URL || 
                    'http://localhost:8000';
     this.timeout = 10000; // 10 second timeout
+    
+    // Load auth token from localStorage
+    if (typeof window !== 'undefined') {
+      this.authToken = localStorage.getItem('auth_token');
+    }
+  }
+
+  // Set authentication token
+  setAuthToken(token: string | null): void {
+    this.authToken = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        localStorage.setItem('auth_token', token);
+      } else {
+        localStorage.removeItem('auth_token');
+      }
+    }
+  }
+
+  // Get current auth token
+  getAuthToken(): string | null {
+    return this.authToken;
   }
 
   private async fetchWithTimeout(url: string, options: RequestInit = {}, retries = 3): Promise<Response> {
@@ -129,13 +152,20 @@ class BackendApiClient {
 
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...options.headers,
+        };
+
+        // Add authorization header if token is available
+        if (this.authToken) {
+          headers['Authorization'] = `Bearer ${this.authToken}`;
+        }
+
         const response = await fetch(url, {
           ...options,
           signal: controller.signal,
-          headers: {
-            'Content-Type': 'application/json',
-            ...options.headers,
-          },
+          headers,
         });
         
         clearTimeout(timeoutId);
@@ -350,6 +380,78 @@ class BackendApiClient {
   // Method to update backend URL dynamically
   setBackendUrl(url: string): void {
     this.baseUrl = url;
+  }
+
+  // Authentication methods
+  async login(email: string, password: string): Promise<ApiResponse<{token: string, user: any}>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/auth/login`, {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      
+      const result = await this.handleResponse<{token: string, user: any}>(response);
+      
+      // Set token if login successful
+      if (result.data?.token) {
+        this.setAuthToken(result.data.token);
+      }
+      
+      return result;
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Login failed',
+        status: 0,
+      };
+    }
+  }
+
+  async logout(): Promise<void> {
+    try {
+      if (this.authToken) {
+        await this.fetchWithTimeout(`${this.baseUrl}/api/v1/auth/logout`, {
+          method: 'POST'
+        });
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    } finally {
+      this.setAuthToken(null);
+    }
+  }
+
+  async refreshToken(): Promise<ApiResponse<{token: string}>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/auth/refresh`, {
+        method: 'POST'
+      });
+      
+      const result = await this.handleResponse<{token: string}>(response);
+      
+      // Update token if refresh successful
+      if (result.data?.token) {
+        this.setAuthToken(result.data.token);
+      }
+      
+      return result;
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Token refresh failed',
+        status: 0,
+      };
+    }
+  }
+
+  async getCurrentUser(): Promise<ApiResponse<any>> {
+    try {
+      const response = await this.fetchWithTimeout(`${this.baseUrl}/api/v1/auth/me`);
+      return this.handleResponse(response);
+    } catch (error) {
+      return {
+        error: error instanceof Error ? error.message : 'Failed to get user info',
+        status: 0,
+      };
+    }
   }
 }
 

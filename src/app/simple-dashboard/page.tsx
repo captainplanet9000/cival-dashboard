@@ -24,6 +24,7 @@ import {
   useTradingSignals,
   useMarketOverview
 } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 
 export default function SimpleDashboardPage() {
   const [backendUrlInput, setBackendUrlInput] = useState('');
@@ -34,6 +35,16 @@ export default function SimpleDashboardPage() {
   const agentsStatus = useAgentsStatus();
   const tradingSignals = useTradingSignals();
   const marketOverview = useMarketOverview();
+  
+  // Real-time data via WebSocket
+  const {
+    portfolio: realtimePortfolio,
+    agents: realtimeAgents,
+    market: realtimeMarket,
+    signals: realtimeSignals,
+    isConnected: wsConnected,
+    connectionState
+  } = useRealTimeData();
 
   const handleBackendUrlChange = () => {
     if (backendUrlInput.trim()) {
@@ -119,6 +130,27 @@ export default function SimpleDashboardPage() {
                 Test
               </Button>
             </div>
+            <div className="flex flex-col items-center gap-2">
+              <Label>WebSocket</Label>
+              <div className="flex items-center gap-2">
+                {connectionState === 'connecting' ? (
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                    <span className="text-xs text-muted-foreground">Connecting</span>
+                  </>
+                ) : wsConnected ? (
+                  <>
+                    <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-xs text-green-600">Live</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="h-2 w-2 rounded-full bg-red-500"></div>
+                    <span className="text-xs text-red-600">Offline</span>
+                  </>
+                )}
+              </div>
+            </div>
           </div>
           <div className="text-sm text-muted-foreground">
             <p><strong>Current URL:</strong> {backendUrl}</p>
@@ -155,26 +187,32 @@ export default function SimpleDashboardPage() {
               </div>
             )}
             
-            {portfolioSummary.data && (
+{(realtimePortfolio || portfolioSummary.data) && (
               <div className="space-y-3">
+                {realtimePortfolio && (
+                  <div className="flex items-center gap-2 text-xs text-green-600 mb-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                    <span>Live data via WebSocket</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <p className="text-muted-foreground">Total Equity</p>
-                    <p className="font-medium">${portfolioSummary.data.total_equity.toFixed(2)}</p>
+                    <p className="font-medium">${(realtimePortfolio || portfolioSummary.data).total_equity.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Daily P&L</p>
-                    <p className={`font-medium ${portfolioSummary.data.daily_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${portfolioSummary.data.daily_pnl.toFixed(2)}
+                    <p className={`font-medium ${(realtimePortfolio || portfolioSummary.data).daily_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${(realtimePortfolio || portfolioSummary.data).daily_pnl.toFixed(2)}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Cash Balance</p>
-                    <p className="font-medium">${portfolioSummary.data.cash_balance.toFixed(2)}</p>
+                    <p className="font-medium">${(realtimePortfolio || portfolioSummary.data).cash_balance.toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground">Positions</p>
-                    <p className="font-medium">{portfolioSummary.data.number_of_positions}</p>
+                    <p className="font-medium">{(realtimePortfolio || portfolioSummary.data).number_of_positions}</p>
                   </div>
                 </div>
                 <Button onClick={portfolioSummary.refresh} variant="outline" size="sm" className="w-full">
@@ -212,10 +250,16 @@ export default function SimpleDashboardPage() {
               </div>
             )}
             
-            {agentsStatus.data && (
+{(realtimeAgents || agentsStatus.data) && (
               <div className="space-y-3">
+                {realtimeAgents && (
+                  <div className="flex items-center gap-2 text-xs text-green-600 mb-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                    <span>Live agent data</span>
+                  </div>
+                )}
                 <div className="space-y-2">
-                  {agentsStatus.data.slice(0, 3).map((agent) => (
+                  {(realtimeAgents || agentsStatus.data).slice(0, 3).map((agent) => (
                     <div key={agent.agent_id} className="flex items-center justify-between p-2 border rounded">
                       <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${

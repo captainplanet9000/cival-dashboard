@@ -22,6 +22,7 @@ import {
 import { formatPrice, formatPercentage, formatRelativeTime } from "@/lib/utils";
 import { PortfolioPerformanceChart } from "@/components/charts/portfolio-performance-chart";
 import { useDashboardData, useBackendConnection } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 import Link from "next/link";
 
 export default function OverviewPage() {
@@ -40,34 +41,70 @@ export default function OverviewPage() {
   } = useDashboardData();
 
   const { isConnected, backendUrl, testConnection } = useBackendConnection();
+  
+  // Real-time data via WebSocket
+  const {
+    portfolio: realtimePortfolio,
+    agents: realtimeAgents,
+    market: realtimeMarket,
+    signals: realtimeSignals,
+    isConnected: wsConnected,
+    connectionState,
+    lastUpdated
+  } = useRealTimeData();
+
+  // Use real-time data if available, otherwise fall back to API data
+  const currentPortfolio = realtimePortfolio || portfolioSummary;
+  const currentAgents = realtimeAgents || agentsStatus;
+  const currentMarket = realtimeMarket || marketOverview;
+  const currentSignals = realtimeSignals || tradingSignals;
 
   // Connection status indicator
   const renderConnectionStatus = () => {
-    if (isConnected === null) {
-      return (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-          <span>Connecting to backend...</span>
-        </div>
-      );
-    }
-
-    if (!isConnected) {
-      return (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <XCircle className="h-3 w-3" />
-          <span>Backend disconnected ({backendUrl})</span>
-          <Button variant="outline" size="sm" onClick={testConnection}>
-            Reconnect
-          </Button>
-        </div>
-      );
-    }
-
     return (
-      <div className="flex items-center gap-2 text-sm text-green-600">
-        <CheckCircle className="h-3 w-3" />
-        <span>Connected to backend</span>
+      <div className="flex items-center gap-4 text-sm">
+        {/* API Connection Status */}
+        <div className="flex items-center gap-2">
+          {isConnected === null ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+              <span className="text-muted-foreground">API connecting...</span>
+            </>
+          ) : isConnected ? (
+            <>
+              <CheckCircle className="h-3 w-3 text-green-600" />
+              <span className="text-green-600">API connected</span>
+            </>
+          ) : (
+            <>
+              <XCircle className="h-3 w-3 text-red-600" />
+              <span className="text-red-600">API disconnected</span>
+              <Button variant="outline" size="sm" onClick={testConnection}>
+                Reconnect
+              </Button>
+            </>
+          )}
+        </div>
+
+        {/* WebSocket Connection Status */}
+        <div className="flex items-center gap-2">
+          {connectionState === 'connecting' ? (
+            <>
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+              <span className="text-muted-foreground">WebSocket connecting...</span>
+            </>
+          ) : wsConnected ? (
+            <>
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-green-600">Live updates</span>
+            </>
+          ) : (
+            <>
+              <div className="h-2 w-2 rounded-full bg-red-500"></div>
+              <span className="text-red-600">No live updates</span>
+            </>
+          )}
+        </div>
       </div>
     );
   };
@@ -131,7 +168,7 @@ export default function OverviewPage() {
   }
 
   // If we have no data yet, show loading
-  if (!portfolioSummary) {
+  if (!currentPortfolio) {
     return (
       <div className="space-y-6">
         <div className="text-center py-12">
@@ -143,19 +180,19 @@ export default function OverviewPage() {
     );
   }
 
-  // Prepare metrics data from backend API response
+  // Prepare metrics data from current data (real-time or API)
   const metricsData = [
     {
       title: "Total Portfolio Value",
-      value: portfolioSummary.total_equity,
-      change: portfolioSummary.daily_pnl,
-      changePercent: (portfolioSummary.daily_pnl / (portfolioSummary.total_equity - portfolioSummary.daily_pnl)) * 100,
+      value: currentPortfolio.total_equity,
+      change: currentPortfolio.daily_pnl,
+      changePercent: (currentPortfolio.daily_pnl / (currentPortfolio.total_equity - currentPortfolio.daily_pnl)) * 100,
       icon: DollarSign,
       format: "currency",
     },
     {
       title: "Active Agents",
-      value: agentsStatus?.filter(agent => agent.status === 'active').length || 0,
+      value: currentAgents?.filter(agent => agent.status === 'active').length || 0,
       change: 1,
       changePercent: 5.0,
       icon: Activity,
@@ -163,15 +200,15 @@ export default function OverviewPage() {
     },
     {
       title: "Total Return",
-      value: portfolioSummary.total_return_percent,
-      change: portfolioSummary.daily_pnl,
+      value: currentPortfolio.total_return_percent,
+      change: currentPortfolio.daily_pnl,
       changePercent: 1.4,
       icon: Target,
       format: "percentage",
     },
     {
       title: "Total Positions",
-      value: portfolioSummary.number_of_positions,
+      value: currentPortfolio.number_of_positions,
       change: 0,
       changePercent: 0,
       icon: BarChart3,
@@ -191,6 +228,17 @@ export default function OverviewPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {wsConnected && (
+            <div className="flex items-center gap-2 text-sm text-green-600 mr-4">
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span>Live Data</span>
+              {lastUpdated.portfolio && (
+                <span className="text-xs text-muted-foreground">
+                  Updated {Math.round((Date.now() - lastUpdated.portfolio.getTime()) / 1000)}s ago
+                </span>
+              )}
+            </div>
+          )}
           <Button variant="outline" onClick={refreshAll} disabled={isLoading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
             {isLoading ? 'Refreshing...' : 'Refresh'}
@@ -251,7 +299,7 @@ export default function OverviewPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {agentsStatus?.map((agent) => (
+              {currentAgents?.map((agent) => (
                 <div key={agent.agent_id} className="flex items-center justify-between p-3 rounded-lg border">
                   <div className="flex items-center space-x-3">
                     <div className={`w-2 h-2 rounded-full ${
@@ -411,7 +459,7 @@ export default function OverviewPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {tradingSignals?.slice(0, 5).map((signal, index) => (
+            {(currentSignals || []).slice(0, 5).map((signal, index) => (
               <div key={index} className="flex items-center justify-between p-3 rounded-lg border">
                 <div className="flex items-center space-x-3">
                   <div className={`w-2 h-2 rounded-full ${

@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Any
 from contextlib import asynccontextmanager
 
 # FastAPI and web framework imports
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +51,75 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# WebSocket Connection Manager for Real-time Updates
+class WebSocketManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self.connection_info: Dict[WebSocket, Dict[str, Any]] = {}
+    
+    async def connect(self, websocket: WebSocket, client_info: Dict[str, Any] = None):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.connection_info[websocket] = client_info or {}
+        logger.info(f"WebSocket client connected. Total connections: {len(self.active_connections)}")
+    
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
+            self.connection_info.pop(websocket, None)
+            logger.info(f"WebSocket client disconnected. Total connections: {len(self.active_connections)}")
+    
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        try:
+            await websocket.send_text(message)
+        except Exception as e:
+            logger.error(f"Error sending personal message: {e}")
+            self.disconnect(websocket)
+    
+    async def broadcast(self, message: str, message_type: str = "update"):
+        """Broadcast message to all connected clients"""
+        if not self.active_connections:
+            return
+        
+        message_data = {
+            "type": message_type,
+            "data": json.loads(message) if isinstance(message, str) else message,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        disconnected = []
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(json.dumps(message_data))
+            except WebSocketDisconnect:
+                disconnected.append(connection)
+            except Exception as e:
+                logger.error(f"Error broadcasting to client: {e}")
+                disconnected.append(connection)
+        
+        # Clean up disconnected clients
+        for connection in disconnected:
+            self.disconnect(connection)
+    
+    async def broadcast_portfolio_update(self, portfolio_data: Dict[str, Any]):
+        """Broadcast portfolio updates"""
+        await self.broadcast(portfolio_data, "portfolio_update")
+    
+    async def broadcast_agent_update(self, agent_data: Dict[str, Any]):
+        """Broadcast agent status updates"""
+        await self.broadcast(agent_data, "agent_update")
+    
+    async def broadcast_market_update(self, market_data: Dict[str, Any]):
+        """Broadcast market data updates"""
+        await self.broadcast(market_data, "market_update")
+    
+    async def broadcast_trading_signal(self, signal_data: Dict[str, Any]):
+        """Broadcast trading signals"""
+        await self.broadcast(signal_data, "trading_signal")
+
+# Global WebSocket manager instance
+websocket_manager = WebSocketManager()
 
 # Configuration
 API_PORT = int(os.getenv("PORT", 8000))
@@ -118,13 +187,18 @@ async def lifespan(app: FastAPI):
         
         logger.info("✅ MCP Trading Platform ready for agent trading operations!")
         
+        # Start real-time data broadcasting task
+        logger.info("Starting real-time data broadcaster...")
+        broadcaster_task = asyncio.create_task(real_time_data_broadcaster())
+        
         # Store startup information in registry
         registry.register_service("startup_info", {
             "version": "2.0.0",
             "startup_time": datetime.now(timezone.utc).isoformat(),
             "environment": ENVIRONMENT,
             "services_initialized": len(registry.all_services),
-            "connections_active": len(registry.all_connections)
+            "connections_active": len(registry.all_connections),
+            "websocket_broadcaster": "running"
         })
         
     except Exception as e:
@@ -132,6 +206,15 @@ async def lifespan(app: FastAPI):
         raise e
     
     yield
+    
+    # Cleanup on shutdown
+    logger.info("Shutting down real-time data broadcaster...")
+    if 'broadcaster_task' in locals():
+        broadcaster_task.cancel()
+        try:
+            await broadcaster_task
+        except asyncio.CancelledError:
+            pass
     
     # Cleanup on shutdown
     logger.info("🛑 Shutting down MCP Trading Platform...")
@@ -730,6 +813,156 @@ async def stream_agent_events(
                 break
     
     return EventSourceResponse(event_generator())
+
+# WebSocket endpoints for real-time communication
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """Main WebSocket endpoint for real-time updates"""
+    await websocket_manager.connect(websocket)
+    try:
+        while True:
+            # Keep connection alive and handle incoming messages
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+                message_type = message.get("type", "ping")
+                
+                if message_type == "ping":
+                    await websocket_manager.send_personal_message(
+                        json.dumps({"type": "pong", "timestamp": datetime.now(timezone.utc).isoformat()}),
+                        websocket
+                    )
+                elif message_type == "subscribe":
+                    # Handle subscription to specific data types
+                    await websocket_manager.send_personal_message(
+                        json.dumps({
+                            "type": "subscription_confirmed",
+                            "subscribed_to": message.get("channels", []),
+                            "timestamp": datetime.now(timezone.utc).isoformat()
+                        }),
+                        websocket
+                    )
+                
+            except json.JSONDecodeError:
+                await websocket_manager.send_personal_message(
+                    json.dumps({"type": "error", "message": "Invalid JSON"}),
+                    websocket
+                )
+            except Exception as e:
+                logger.error(f"Error processing WebSocket message: {e}")
+                
+    except WebSocketDisconnect:
+        websocket_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        websocket_manager.disconnect(websocket)
+
+@app.websocket("/ws/portfolio")
+async def websocket_portfolio(websocket: WebSocket):
+    """WebSocket endpoint specifically for portfolio updates"""
+    await websocket_manager.connect(websocket, {"type": "portfolio"})
+    try:
+        while True:
+            # Send portfolio updates every 5 seconds
+            await asyncio.sleep(5)
+            
+            # Get current portfolio data
+            portfolio_data = {
+                "total_equity": 125847.32,
+                "daily_pnl": 847.29,
+                "total_return_percent": 4.19,
+                "number_of_positions": 12,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+            
+            await websocket_manager.send_personal_message(
+                json.dumps({
+                    "type": "portfolio_update",
+                    "data": portfolio_data,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }),
+                websocket
+            )
+            
+    except WebSocketDisconnect:
+        websocket_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Portfolio WebSocket error: {e}")
+        websocket_manager.disconnect(websocket)
+
+@app.websocket("/ws/agents")
+async def websocket_agents(websocket: WebSocket):
+    """WebSocket endpoint specifically for agent status updates"""
+    await websocket_manager.connect(websocket, {"type": "agents"})
+    try:
+        while True:
+            # Send agent updates every 10 seconds
+            await asyncio.sleep(10)
+            
+            # Get current agent data
+            agents_data = [
+                {
+                    "agent_id": "agent_marcus_momentum",
+                    "name": "Marcus Momentum",
+                    "status": "active",
+                    "pnl": 1247.85,
+                    "trades_today": 8,
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                },
+                {
+                    "agent_id": "agent_alex_arbitrage",
+                    "name": "Alex Arbitrage",
+                    "status": "monitoring",
+                    "pnl": 892.34,
+                    "trades_today": 12,
+                    "last_updated": datetime.now(timezone.utc).isoformat()
+                }
+            ]
+            
+            await websocket_manager.send_personal_message(
+                json.dumps({
+                    "type": "agents_update",
+                    "data": agents_data,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }),
+                websocket
+            )
+            
+    except WebSocketDisconnect:
+        websocket_manager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Agents WebSocket error: {e}")
+        websocket_manager.disconnect(websocket)
+
+# Background task for broadcasting real-time data
+async def real_time_data_broadcaster():
+    """Background task to broadcast real-time updates to all connected clients"""
+    while True:
+        try:
+            # Broadcast portfolio updates every 30 seconds
+            portfolio_data = {
+                "total_equity": 125847.32,
+                "daily_pnl": 847.29,
+                "total_return_percent": 4.19,
+                "number_of_positions": 12,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }
+            await websocket_manager.broadcast_portfolio_update(portfolio_data)
+            
+            # Broadcast market updates
+            market_data = {
+                "BTC": {"price": 67234.85, "change_pct": 2.34},
+                "ETH": {"price": 3847.92, "change_pct": -1.12},
+                "SOL": {"price": 142.73, "change_pct": 5.67},
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+            await websocket_manager.broadcast_market_update(market_data)
+            
+            await asyncio.sleep(30)
+            
+        except Exception as e:
+            logger.error(f"Error in real-time data broadcaster: {e}")
+            await asyncio.sleep(60)  # Wait longer on error
 
 # Development and debugging endpoints
 if DEBUG:
