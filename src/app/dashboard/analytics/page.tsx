@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
+import { useDashboardData, useBackendConnection } from "@/hooks/useBackendApi";
+import { useRealTimeData } from "@/hooks/useWebSocket";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from "@/components/ui/badge";
@@ -138,6 +140,18 @@ const timeFrameData = [
 ];
 
 export default function AnalyticsPage() {
+  // Real-time API integration
+  const { portfolioSummary, performanceMetrics, isLoading } = useDashboardData();
+  const { isConnected } = useBackendConnection();
+  const { 
+    portfolio: realtimePortfolio, 
+    isConnected: wsConnected 
+  } = useRealTimeData();
+
+  // Use real-time data when available
+  const currentPortfolio = realtimePortfolio || portfolioSummary;
+  const currentMetrics = performanceMetrics;
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [riskHeatmapData, setRiskHeatmapData] = useState<string>('');
