@@ -157,10 +157,10 @@ class BackendApiClient {
           ...options.headers,
         };
 
-        // Add authorization header if token is available
-        if (this.authToken) {
-          headers['Authorization'] = `Bearer ${this.authToken}`;
-        }
+        // Skip auth for solo operator mode
+        // if (this.authToken) {
+        //   headers['Authorization'] = `Bearer ${this.authToken}`;
+        // }
 
         const response = await fetch(url, {
           ...options,

@@ -349,55 +349,56 @@ async def get_historical_data(
 @app.post("/api/v1/trading/orders")
 async def create_order(
     order_request: CreatePaperTradeOrderRequest,
-    current_user: AuthenticatedUser = Depends(get_current_active_user),
     order_management_service = Depends(get_service_dependency("order_management"))
 ):
     """Create a new trading order"""
     try:
-        order = await order_management_service.create_order(order_request, current_user.user_id)
+        # Use a default user ID for solo operator
+        solo_user_id = "solo_operator"
+        order = await order_management_service.create_order(order_request, solo_user_id)
         return order
     except Exception as e:
-        logger.error(f"Failed to create order for user {current_user.user_id}: {e}")
+        logger.error(f"Failed to create order for solo operator: {e}")
         raise HTTPException(status_code=500, detail=f"Order creation error: {str(e)}")
 
 @app.get("/api/v1/trading/orders")
 async def get_orders(
     status: Optional[str] = None,
-    current_user: AuthenticatedUser = Depends(get_current_active_user),
     order_management_service = Depends(get_service_dependency("order_management"))
 ):
-    """Get user's trading orders"""
+    """Get trading orders"""
     try:
-        orders = await order_management_service.get_user_orders(current_user.user_id, status)
-        return {"orders": orders, "user_id": current_user.user_id}
+        solo_user_id = "solo_operator"
+        orders = await order_management_service.get_user_orders(solo_user_id, status)
+        return {"orders": orders, "user_id": solo_user_id}
     except Exception as e:
-        logger.error(f"Failed to get orders for user {current_user.user_id}: {e}")
+        logger.error(f"Failed to get orders for solo operator: {e}")
         raise HTTPException(status_code=500, detail=f"Order retrieval error: {str(e)}")
 
 @app.get("/api/v1/portfolio/positions")
 async def get_portfolio_positions(
-    current_user: AuthenticatedUser = Depends(get_current_active_user),
     portfolio_service = Depends(get_service_dependency("portfolio_tracker"))
 ):
-    """Get user's portfolio positions"""
+    """Get portfolio positions"""
     try:
-        positions = await portfolio_service.get_positions(current_user.user_id)
-        return {"positions": positions, "user_id": current_user.user_id}
+        solo_user_id = "solo_operator"
+        positions = await portfolio_service.get_positions(solo_user_id)
+        return {"positions": positions, "user_id": solo_user_id}
     except Exception as e:
-        logger.error(f"Failed to get positions for user {current_user.user_id}: {e}")
+        logger.error(f"Failed to get positions for solo operator: {e}")
         raise HTTPException(status_code=500, detail=f"Portfolio error: {str(e)}")
 
 @app.get("/api/v1/portfolio/performance")
 async def get_portfolio_performance(
-    current_user: AuthenticatedUser = Depends(get_current_active_user),
     portfolio_service = Depends(get_service_dependency("portfolio_tracker"))
 ):
     """Get portfolio performance metrics"""
     try:
-        performance = await portfolio_service.get_performance_metrics(current_user.user_id)
-        return {"performance": performance, "user_id": current_user.user_id}
+        solo_user_id = "solo_operator"
+        performance = await portfolio_service.get_performance_metrics(solo_user_id)
+        return {"performance": performance, "user_id": solo_user_id}
     except Exception as e:
-        logger.error(f"Failed to get performance for user {current_user.user_id}: {e}")
+        logger.error(f"Failed to get performance for solo operator: {e}")
         raise HTTPException(status_code=500, detail=f"Performance error: {str(e)}")
 
 @app.get("/api/v1/services")
